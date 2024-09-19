@@ -1,0 +1,46 @@
+﻿@page "/goaltasks/Maingoal"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+
+<PageTitle>รายการเป้าหมาย</PageTitle>
+
+<h1>รายการเป้าหมาย</h1>
+
+<p>
+    <a href="goaltasks/create">เพิ่มเป้าหมาย/Add New Goal</a>
+</p>
+
+<QuickGrid Class="table" Items="context.GoalTasks">
+    <PropertyColumn Property="goaltask => goaltask.Name" />
+    <PropertyColumn Property="goaltask => goaltask.Startdate" />
+    <PropertyColumn Property="goaltask => goaltask.EndDate" />
+    <PropertyColumn Property="goaltask => goaltask.progress" />
+    <PropertyColumn Property="goaltask => goaltask.Description" />
+    <PropertyColumn Property="goaltask => goaltask.wol" />
+    <PropertyColumn Property="goaltask => goaltask.Lesson1" />
+    <PropertyColumn Property="goaltask => goaltask.Lesson2" />
+    <PropertyColumn Property="goaltask => goaltask.ThankFully" />
+
+
+    <TemplateColumn Context="goaltask">
+        <a href="@($"goaltasks/edit?id={goaltask.Id}")">แก้ไข</a> |
+        <a href="@($"goaltasks/details?id={goaltask.Id}")">ดู</a> |
+        <a href="@($"/goaltasks/details/{goaltask.Id}")">View Details</a>
+
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

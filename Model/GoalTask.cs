@@ -7,6 +7,8 @@ namespace LeaderDevelop.Model
 {
     public class GoalTask
     {
+        public GoalTask() { }
+
         [Key]
         public int Id { get; set; }
 

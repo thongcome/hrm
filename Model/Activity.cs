@@ -14,9 +14,11 @@ namespace LeaderDevelop.Model
         // Foreign key to TodoTask
         [Required]
         public int TaskId { get; set; }  // This is the property you are missing
+
+
         [ForeignKey("TaskId")]  // ForeignKey should match the property in the TodoTask class
         [InverseProperty("Activity")]  // This references the navigation property in TodoTask
-        public virtual GoalTask? GoalTask { get; set; }
+        public  virtual  GoalTask? GoalTask { get; set; }
 
 
 
@@ -37,7 +39,7 @@ namespace LeaderDevelop.Model
 
 
         [Display(Name = ("ลำดับที่/Order"))]
-        public int? Order { get; set; }
+        public int? Order { get; set; } = null;
 
 
         [StringLength(250)]
