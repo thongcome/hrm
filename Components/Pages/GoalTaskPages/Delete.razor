@@ -1,0 +1,123 @@
+﻿@page "/goaltasks/delete"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>GoalTask</h2>
+    <hr />
+    @if (goaltask is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@goaltask.Name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Startdate</dt>
+            <dd class="col-sm-10">@goaltask.Startdate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">EndDate</dt>
+            <dd class="col-sm-10">@goaltask.EndDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">DayofGoal</dt>
+            <dd class="col-sm-10">@goaltask.DayofGoal</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">progress</dt>
+            <dd class="col-sm-10">@goaltask.progress</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10">@goaltask.Description</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">wol</dt>
+            <dd class="col-sm-10">@goaltask.wol</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Lesson1</dt>
+            <dd class="col-sm-10">@goaltask.Lesson1</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Lesson2</dt>
+            <dd class="col-sm-10">@goaltask.Lesson2</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ThankFully</dt>
+            <dd class="col-sm-10">@goaltask.ThankFully</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">UserId</dt>
+            <dd class="col-sm-10">@goaltask.UserId</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">coachId</dt>
+            <dd class="col-sm-10">@goaltask.coachId</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WolId</dt>
+            <dd class="col-sm-10">@goaltask.WolId</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">IsActive</dt>
+            <dd class="col-sm-10">@goaltask.IsActive</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Modby</dt>
+            <dd class="col-sm-10">@goaltask.Modby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">CreateBy</dt>
+            <dd class="col-sm-10">@goaltask.CreateBy</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">CreateDate</dt>
+            <dd class="col-sm-10">@goaltask.CreateDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ModDate</dt>
+            <dd class="col-sm-10">@goaltask.ModDate</dd>
+        </dl>
+        <EditForm method="post" Model="goaltask" OnValidSubmit="DeleteGoalTask" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(goaltask is null)">Delete</button> |
+            <a href="/goaltasks">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private GoalTask? goaltask;
+
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        goaltask = await context.GoalTasks.FirstOrDefaultAsync(m => m.Id == Id);
+
+        if (goaltask is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task DeleteGoalTask()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.GoalTasks.Remove(goaltask!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/goaltasks");
+    }
+}

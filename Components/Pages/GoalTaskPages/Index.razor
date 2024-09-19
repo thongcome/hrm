@@ -1,0 +1,53 @@
+﻿@page "/goaltasks"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="goaltasks/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.GoalTasks">
+    <PropertyColumn Property="goaltask => goaltask.Name" />
+    <PropertyColumn Property="goaltask => goaltask.Startdate" />
+    <PropertyColumn Property="goaltask => goaltask.EndDate" />
+    <PropertyColumn Property="goaltask => goaltask.DayofGoal" />
+    <PropertyColumn Property="goaltask => goaltask.progress" />
+    <PropertyColumn Property="goaltask => goaltask.Description" />
+    <PropertyColumn Property="goaltask => goaltask.wol" />
+    <PropertyColumn Property="goaltask => goaltask.Lesson1" />
+    <PropertyColumn Property="goaltask => goaltask.Lesson2" />
+    <PropertyColumn Property="goaltask => goaltask.ThankFully" />
+    <PropertyColumn Property="goaltask => goaltask.UserId" />
+    <PropertyColumn Property="goaltask => goaltask.coachId" />
+    <PropertyColumn Property="goaltask => goaltask.WolId" />
+    <PropertyColumn Property="goaltask => goaltask.IsActive" />
+    <PropertyColumn Property="goaltask => goaltask.Modby" />
+    <PropertyColumn Property="goaltask => goaltask.CreateBy" />
+    <PropertyColumn Property="goaltask => goaltask.CreateDate" />
+    <PropertyColumn Property="goaltask => goaltask.ModDate" />
+
+    <TemplateColumn Context="goaltask">
+        <a href="@($"goaltasks/edit?id={goaltask.Id}")">Edit</a> |
+        <a href="@($"goaltasks/details?id={goaltask.Id}")">Details</a> |
+        <a href="@($"goaltasks/delete?id={goaltask.Id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

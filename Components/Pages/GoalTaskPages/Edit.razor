@@ -1,0 +1,174 @@
+﻿@page "/goaltasks/edit"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>GoalTask</h2>
+<hr />
+@if (GoalTask is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="GoalTask" OnValidSubmit="UpdateGoalTask" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <input type="hidden" name="GoalTask.Id" value="@GoalTask.Id" />
+                <div class="mb-3">
+                    <label for="name" class="form-label">Name:</label>
+                    <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="startdate" class="form-label">Startdate:</label>
+                    <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="enddate" class="form-label">EndDate:</label>
+                    <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="dayofgoal" class="form-label">DayofGoal:</label>
+                    <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="progress" class="form-label">progress:</label>
+                    <InputNumber id="progress" @bind-Value="GoalTask.progress" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.progress" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description:</label>
+                    <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Description" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="wol" class="form-label">wol:</label>
+                    <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lesson1" class="form-label">Lesson1:</label>
+                    <InputText id="lesson1" @bind-Value="GoalTask.Lesson1" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Lesson1" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lesson2" class="form-label">Lesson2:</label>
+                    <InputText id="lesson2" @bind-Value="GoalTask.Lesson2" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Lesson2" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="thankfully" class="form-label">ThankFully:</label>
+                    <InputText id="thankfully" @bind-Value="GoalTask.ThankFully" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.ThankFully" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="userid" class="form-label">UserId:</label>
+                    <InputNumber id="userid" @bind-Value="GoalTask.UserId" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.UserId" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="coachid" class="form-label">coachId:</label>
+                    <InputNumber id="coachid" @bind-Value="GoalTask.coachId" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.coachId" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="wolid" class="form-label">WolId:</label>
+                    <InputNumber id="wolid" @bind-Value="GoalTask.WolId" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.WolId" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isactive" class="form-label">IsActive:</label>
+                    <InputCheckbox id="isactive" @bind-Value="GoalTask.IsActive" class="form-check-input" />
+                    <ValidationMessage For="() => GoalTask.IsActive" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modby" class="form-label">Modby:</label>
+                    <InputText id="modby" @bind-Value="GoalTask.Modby" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Modby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="createby" class="form-label">CreateBy:</label>
+                    <InputText id="createby" @bind-Value="GoalTask.CreateBy" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.CreateBy" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="createdate" class="form-label">CreateDate:</label>
+                    <InputDate id="createdate" @bind-Value="GoalTask.CreateDate" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.CreateDate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">ModDate:</label>
+                    <InputDate id="moddate" @bind-Value="GoalTask.ModDate" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.ModDate" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/goaltasks">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    [SupplyParameterFromForm]
+    private GoalTask? GoalTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        GoalTask ??= await context.GoalTasks.FirstOrDefaultAsync(m => m.Id == Id);
+
+        if (GoalTask is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateGoalTask()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(GoalTask!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!GoalTaskExists(GoalTask!.Id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/goaltasks");
+    }
+
+    private bool GoalTaskExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.GoalTasks.Any(e => e.Id == id);
+    }
+}

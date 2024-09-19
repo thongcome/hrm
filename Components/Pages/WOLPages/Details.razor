@@ -1,0 +1,52 @@
+﻿@page "/wols/details"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>WOL</h2>
+    <hr />
+    @if (wol is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@wol.Name</dd>
+            <dt class="col-sm-2">description</dt>
+            <dd class="col-sm-10">@wol.description</dd>
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@wol.code</dd>
+            <dt class="col-sm-2">theme</dt>
+            <dd class="col-sm-10">@wol.theme</dd>
+        </dl>
+        <div>
+            <a href="@($"/wols/edit?id={wol.id}")">Edit</a> |
+            <a href="@($"/wols")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private WOL? wol;
+
+    [SupplyParameterFromQuery]
+    private int id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        wol = await context.WOLs.FirstOrDefaultAsync(m => m.id == id);
+
+        if (wol is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

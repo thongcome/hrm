@@ -1,0 +1,69 @@
+﻿@page "/todotasks/details"
+
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h4>TodoTask</h4>
+    <hr />
+    @if (todotask is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@todotask.Name</dd>
+            <dt class="col-sm-2">Startdate</dt>
+            <dd class="col-sm-10">@todotask.Startdate</dd>
+            <dt class="col-sm-2">EndDate</dt>
+            <dd class="col-sm-10">@todotask.EndDate</dd>
+            <dt class="col-sm-2">StatusCode</dt>
+            <dd class="col-sm-10">@todotask.StatusCode</dd>
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10">@todotask.Description</dd>
+            <dt class="col-sm-2">LessonMode</dt>
+            <dd class="col-sm-10">@todotask.LessonMode</dd>
+            <dt class="col-sm-2">Lesson1</dt>
+            <dd class="col-sm-10">@todotask.Lesson1</dd>
+            <dt class="col-sm-2">Lesson2</dt>
+            <dd class="col-sm-10">@todotask.Lesson2</dd>
+            <dt class="col-sm-2">UserId</dt>
+            <dd class="col-sm-10">@todotask.UserId</dd>
+            <dt class="col-sm-2">Email</dt>
+            <dd class="col-sm-10">@todotask.Email</dd>
+            <dt class="col-sm-2">IsActive</dt>
+            <dd class="col-sm-10">@todotask.IsActive</dd>
+            <dt class="col-sm-2">ThankFully</dt>
+            <dd class="col-sm-10">@todotask.ThankFully</dd>
+        </dl>
+        <div>
+            <a href="@($"/todotasks/edit?id={todotask.Id}")">Edit</a> |
+            <a href="@($"/todotasks")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    TodoTask? todotask;
+
+    [SupplyParameterFromQuery]
+    public int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        todotask = await context.TodoTasks.FirstOrDefaultAsync(m => m.Id == Id);
+
+        if (todotask is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

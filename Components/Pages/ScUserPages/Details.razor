@@ -1,0 +1,112 @@
+﻿@page "/scusers/details"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>ScUser</h2>
+    <hr />
+    @if (scuser is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">Title</dt>
+            <dd class="col-sm-10">@scuser.Title</dd>
+            <dt class="col-sm-2">Firstname</dt>
+            <dd class="col-sm-10">@scuser.Firstname</dd>
+            <dt class="col-sm-2">Lastname</dt>
+            <dd class="col-sm-10">@scuser.Lastname</dd>
+            <dt class="col-sm-2">Loginname</dt>
+            <dd class="col-sm-10">@scuser.Loginname</dd>
+            <dt class="col-sm-2">Password</dt>
+            <dd class="col-sm-10">@scuser.Password</dd>
+            <dt class="col-sm-2">Phone</dt>
+            <dd class="col-sm-10">@scuser.Phone</dd>
+            <dt class="col-sm-2">Mobilephone</dt>
+            <dd class="col-sm-10">@scuser.Mobilephone</dd>
+            <dt class="col-sm-2">Isforcechanged</dt>
+            <dd class="col-sm-10">@scuser.Isforcechanged</dd>
+            <dt class="col-sm-2">Iscancel</dt>
+            <dd class="col-sm-10">@scuser.Iscancel</dd>
+            <dt class="col-sm-2">Pwdexpdate</dt>
+            <dd class="col-sm-10">@scuser.Pwdexpdate</dd>
+            <dt class="col-sm-2">Lasttimelogin</dt>
+            <dd class="col-sm-10">@scuser.Lasttimelogin</dd>
+            <dt class="col-sm-2">Invalidpwcount</dt>
+            <dd class="col-sm-10">@scuser.Invalidpwcount</dd>
+            <dt class="col-sm-2">Lastinvalidpwd</dt>
+            <dd class="col-sm-10">@scuser.Lastinvalidpwd</dd>
+            <dt class="col-sm-2">Remark</dt>
+            <dd class="col-sm-10">@scuser.Remark</dd>
+            <dt class="col-sm-2">Upperuserid</dt>
+            <dd class="col-sm-10">@scuser.Upperuserid</dd>
+            <dt class="col-sm-2">Orgname</dt>
+            <dd class="col-sm-10">@scuser.Orgname</dd>
+            <dt class="col-sm-2">Orgcode</dt>
+            <dd class="col-sm-10">@scuser.Orgcode</dd>
+            <dt class="col-sm-2">Startdate</dt>
+            <dd class="col-sm-10">@scuser.Startdate</dd>
+            <dt class="col-sm-2">Enddate</dt>
+            <dd class="col-sm-10">@scuser.Enddate</dd>
+            <dt class="col-sm-2">Remindpwd</dt>
+            <dd class="col-sm-10">@scuser.Remindpwd</dd>
+            <dt class="col-sm-2">Social</dt>
+            <dd class="col-sm-10">@scuser.Social</dd>
+            <dt class="col-sm-2">Moddate</dt>
+            <dd class="col-sm-10">@scuser.Moddate</dd>
+            <dt class="col-sm-2">Modby</dt>
+            <dd class="col-sm-10">@scuser.Modby</dd>
+            <dt class="col-sm-2">Empid</dt>
+            <dd class="col-sm-10">@scuser.Empid</dd>
+            <dt class="col-sm-2">Email</dt>
+            <dd class="col-sm-10">@scuser.Email</dd>
+            <dt class="col-sm-2">Poscode</dt>
+            <dd class="col-sm-10">@scuser.Poscode</dd>
+            <dt class="col-sm-2">PosName</dt>
+            <dd class="col-sm-10">@scuser.PosName</dd>
+            <dt class="col-sm-2">IsActivate</dt>
+            <dd class="col-sm-10">@scuser.IsActivate</dd>
+            <dt class="col-sm-2">Supervisor</dt>
+            <dd class="col-sm-10">@scuser.Supervisor</dd>
+            <dt class="col-sm-2">Costcenter</dt>
+            <dd class="col-sm-10">@scuser.Costcenter</dd>
+            <dt class="col-sm-2">Verifycode</dt>
+            <dd class="col-sm-10">@scuser.Verifycode</dd>
+            <dt class="col-sm-2">Registerdate</dt>
+            <dd class="col-sm-10">@scuser.Registerdate</dd>
+            <dt class="col-sm-2">Ref1</dt>
+            <dd class="col-sm-10">@scuser.Ref1</dd>
+            <dt class="col-sm-2">Ref2</dt>
+            <dd class="col-sm-10">@scuser.Ref2</dd>
+        </dl>
+        <div>
+            <a href="@($"/scusers/edit?userid={scuser.Userid}")">Edit</a> |
+            <a href="@($"/scusers")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private ScUser? scuser;
+
+    [SupplyParameterFromQuery]
+    private long Userid { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        scuser = await context.ScUsers.FirstOrDefaultAsync(m => m.Userid == Userid);
+
+        if (scuser is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

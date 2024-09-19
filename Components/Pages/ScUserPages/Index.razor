@@ -1,0 +1,69 @@
+﻿@page "/scusers"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="scusers/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.ScUsers">
+    <PropertyColumn Property="scuser => scuser.Title" />
+    <PropertyColumn Property="scuser => scuser.Firstname" />
+    <PropertyColumn Property="scuser => scuser.Lastname" />
+    <PropertyColumn Property="scuser => scuser.Loginname" />
+    <PropertyColumn Property="scuser => scuser.Password" />
+    <PropertyColumn Property="scuser => scuser.Phone" />
+    <PropertyColumn Property="scuser => scuser.Mobilephone" />
+    <PropertyColumn Property="scuser => scuser.Isforcechanged" />
+    <PropertyColumn Property="scuser => scuser.Iscancel" />
+    <PropertyColumn Property="scuser => scuser.Pwdexpdate" />
+    <PropertyColumn Property="scuser => scuser.Lasttimelogin" />
+    <PropertyColumn Property="scuser => scuser.Invalidpwcount" />
+    <PropertyColumn Property="scuser => scuser.Lastinvalidpwd" />
+    <PropertyColumn Property="scuser => scuser.Remark" />
+    <PropertyColumn Property="scuser => scuser.Upperuserid" />
+    <PropertyColumn Property="scuser => scuser.Orgname" />
+    <PropertyColumn Property="scuser => scuser.Orgcode" />
+    <PropertyColumn Property="scuser => scuser.Startdate" />
+    <PropertyColumn Property="scuser => scuser.Enddate" />
+    <PropertyColumn Property="scuser => scuser.Remindpwd" />
+    <PropertyColumn Property="scuser => scuser.Social" />
+    <PropertyColumn Property="scuser => scuser.Moddate" />
+    <PropertyColumn Property="scuser => scuser.Modby" />
+    <PropertyColumn Property="scuser => scuser.Empid" />
+    <PropertyColumn Property="scuser => scuser.Email" />
+    <PropertyColumn Property="scuser => scuser.Poscode" />
+    <PropertyColumn Property="scuser => scuser.PosName" />
+    <PropertyColumn Property="scuser => scuser.IsActivate" />
+    <PropertyColumn Property="scuser => scuser.Supervisor" />
+    <PropertyColumn Property="scuser => scuser.Costcenter" />
+    <PropertyColumn Property="scuser => scuser.Verifycode" />
+    <PropertyColumn Property="scuser => scuser.Registerdate" />
+    <PropertyColumn Property="scuser => scuser.Ref1" />
+    <PropertyColumn Property="scuser => scuser.Ref2" />
+
+    <TemplateColumn Context="scuser">
+        <a href="@($"scusers/edit?userid={scuser.Userid}")">Edit</a> |
+        <a href="@($"scusers/details?userid={scuser.Userid}")">Details</a> |
+        <a href="@($"scusers/delete?userid={scuser.Userid}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

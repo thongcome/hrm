@@ -1,0 +1,98 @@
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Security.Permissions;
+using Microsoft.EntityFrameworkCore;
+
+namespace LeaderDevelop.Model
+{
+    public class GoalTask
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(250)]
+        [Unicode(true)]
+        [Display(Name =("เป้าหมาย/Goal"))]
+        public string Name { get; set; } = string.Empty;
+
+        [Display(Name = ("วันที่เริ่ม/Start Date"))]
+        public DateTime? Startdate { get; set; } = null;
+
+        [Display(Name = ("วันที่สิ้นสุด/End Date"))]
+        public DateTime? EndDate { get; set; } = null;
+
+        [Display(Name = ("ใช้เวลากี่วัน/Day Period"))]
+        public int? DayofGoal { get; set; }
+
+
+        [Display(Name = ("ความก้าวหน้า/Progress"))]
+        public decimal? progress { get; set; }
+
+        [StringLength(250)]
+        [Unicode(true)]
+        
+        [Display(Name = ("อธิบายเพิ่มเติม/Description"))]
+
+        public string Description { get; set; } = string.Empty;
+
+        [StringLength(50)]
+        [Unicode(true)]
+       
+        [Display(Name = ("โหมด/Mode"))]
+        public string wol { get; set; } = string.Empty;
+
+        [StringLength(500)]
+        [Unicode(true)]
+        [Display(Name = ("สิ่งที่ได้รับ/got idea"))]
+        public string Lesson1 { get; set; } = string.Empty;
+
+        [StringLength(500)]
+        [Unicode(true)]
+        [Display(Name = ("สิ่งที่ได้เรียนรู้/Learning"))]
+        public string Lesson2 { get; set; } = string.Empty;
+
+
+        [StringLength(500)]
+        [Unicode(true)]
+        [Display(Name = ("คำขอบคุณ/ThankFully"))]
+        public string ThankFully { get; set; } = string.Empty;
+        public int? UserId { get; set; }
+
+      
+        public int? coachId { get; set; }
+
+        // Add a nullable foreign key to WOL
+        [Display(Name = "WOL ID")]
+        public int? WolId { get; set; }
+
+        // Navigation property for the WOL entity
+        [ForeignKey("WolId")]
+        public virtual WOL? WOL { get; set; }
+
+
+        [Display(Name = ("ยกเลิก/Is Active"))]
+        public bool IsActive { get; set; } = true;
+
+
+        [StringLength(250)]
+        [Unicode(true)]
+        [Display(Name = ("ผู้แก้ไข/Modified By"))]
+        public string? Modby{ get; set; } = string.Empty;
+
+        [StringLength(250)]
+        [Unicode(true)]
+        [Display(Name = ("ผู้สร้าง/Create By"))]
+        public string? CreateBy { get; set; } = string.Empty;
+
+        [Display(Name = ("วันที่สร้าง/Create Date"))]
+        public DateTime CreateDate { get; set; } = DateTime.UtcNow;
+
+        [Display(Name = ("วันที่แก้/Modify Date"))]
+        public DateTime ModDate { get; set; } = DateTime.UtcNow;
+
+
+        [InverseProperty("GoalTask")]
+        public virtual ICollection<Activity>? Activity { get; set; }
+    }
+}

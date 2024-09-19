@@ -1,0 +1,101 @@
+﻿@page "/todotasks/create"
+
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h4>TodoTask</h4>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="TodoTask" OnValidSubmit="AddTodoTask" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+            <div class="mb-3">
+                <label for="name" class="form-label">Name:</label> 
+                <InputText id="name" @bind-Value="TodoTask.Name" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="startdate" class="form-label">Startdate:</label> 
+                <InputDate id="startdate" @bind-Value="TodoTask.Startdate" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Startdate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="enddate" class="form-label">EndDate:</label> 
+                <InputDate id="enddate" @bind-Value="TodoTask.EndDate" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.EndDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="statuscode" class="form-label">StatusCode:</label> 
+                <InputText id="statuscode" @bind-Value="TodoTask.StatusCode" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.StatusCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="description" class="form-label">Description:</label> 
+                <InputText id="description" @bind-Value="TodoTask.Description" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Description" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lessonmode" class="form-label">LessonMode:</label> 
+                <InputText id="lessonmode" @bind-Value="TodoTask.LessonMode" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.LessonMode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lesson1" class="form-label">Lesson1:</label> 
+                <InputText id="lesson1" @bind-Value="TodoTask.Lesson1" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Lesson1" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lesson2" class="form-label">Lesson2:</label> 
+                <InputText id="lesson2" @bind-Value="TodoTask.Lesson2" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Lesson2" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="userid" class="form-label">UserId:</label> 
+                <InputNumber id="userid" @bind-Value="TodoTask.UserId" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.UserId" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="email" class="form-label">Email:</label> 
+                <InputText id="email" @bind-Value="TodoTask.Email" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.Email" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isactive" class="form-label">IsActive:</label> 
+                <InputCheckbox id="isactive" @bind-Value="TodoTask.IsActive" class="form-check-input" /> 
+                <ValidationMessage For="() => TodoTask.IsActive" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="thankfully" class="form-label">ThankFully:</label> 
+                <InputText id="thankfully" @bind-Value="TodoTask.ThankFully" class="form-control" /> 
+                <ValidationMessage For="() => TodoTask.ThankFully" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/todotasks">Back to List</a>
+</div>
+
+@code {
+
+    [SupplyParameterFromForm]
+    public TodoTask TodoTask { get; set; } = new();
+
+    // To protect from overposting attacks, see https://aka.ms/RazorPagesCRUD
+    public async Task AddTodoTask()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.TodoTasks.Add(TodoTask);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/todotasks");
+    }
+}

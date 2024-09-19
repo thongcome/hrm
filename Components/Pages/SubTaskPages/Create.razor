@@ -1,0 +1,94 @@
+﻿@page "/subtasks/create"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>SubTask</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="SubTask" OnValidSubmit="AddSubTask" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+            <div class="mb-3">
+                <label for="taskid" class="form-label">TaskId:</label> 
+                <InputNumber id="taskid" @bind-Value="SubTask.TaskId" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.TaskId" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="name" class="form-label">Name:</label> 
+                <InputText id="name" @bind-Value="SubTask.Name" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.Name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="startdate" class="form-label">StartDate:</label> 
+                <InputDate id="startdate" @bind-Value="SubTask.StartDate" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.StartDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="enddate" class="form-label">EndDate:</label> 
+                <InputDate id="enddate" @bind-Value="SubTask.EndDate" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.EndDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="order" class="form-label">Order:</label> 
+                <InputNumber id="order" @bind-Value="SubTask.Order" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.Order" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="description" class="form-label">Description:</label> 
+                <InputText id="description" @bind-Value="SubTask.Description" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.Description" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lessonmode" class="form-label">LessonMode:</label> 
+                <InputText id="lessonmode" @bind-Value="SubTask.LessonMode" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.LessonMode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lesson1" class="form-label">Lesson1:</label> 
+                <InputText id="lesson1" @bind-Value="SubTask.Lesson1" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.Lesson1" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lesson2" class="form-label">Lesson2:</label> 
+                <InputText id="lesson2" @bind-Value="SubTask.Lesson2" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.Lesson2" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="thankfully" class="form-label">ThankFully:</label> 
+                <InputText id="thankfully" @bind-Value="SubTask.ThankFully" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.ThankFully" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="statuscode" class="form-label">StatusCode:</label> 
+                <InputText id="statuscode" @bind-Value="SubTask.StatusCode" class="form-control" /> 
+                <ValidationMessage For="() => SubTask.StatusCode" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/subtasks">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private SubTask SubTask { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task AddSubTask()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.SubTasks.Add(SubTask);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/subtasks");
+    }
+}

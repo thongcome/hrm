@@ -1,0 +1,67 @@
+﻿@page "/wols/delete"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>WOL</h2>
+    <hr />
+    @if (wol is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@wol.Name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">description</dt>
+            <dd class="col-sm-10">@wol.description</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@wol.code</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">theme</dt>
+            <dd class="col-sm-10">@wol.theme</dd>
+        </dl>
+        <EditForm method="post" Model="wol" OnValidSubmit="DeleteWOL" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(wol is null)">Delete</button> |
+            <a href="/wols">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private WOL? wol;
+
+    [SupplyParameterFromQuery]
+    private int id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        wol = await context.WOLs.FirstOrDefaultAsync(m => m.id == id);
+
+        if (wol is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task DeleteWOL()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.WOLs.Remove(wol!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wols");
+    }
+}

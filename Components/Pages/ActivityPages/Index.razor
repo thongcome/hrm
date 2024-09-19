@@ -1,0 +1,50 @@
+﻿@page "/activities"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="activities/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.Activity">
+    <PropertyColumn Property="activity => activity.TaskId" />
+    <PropertyColumn Property="activity => activity.Name" />
+    <PropertyColumn Property="activity => activity.StartDate" />
+    <PropertyColumn Property="activity => activity.EndDate" />
+    <PropertyColumn Property="activity => activity.Order" />
+    <PropertyColumn Property="activity => activity.Description" />
+    <PropertyColumn Property="activity => activity.Lesson1" />
+    <PropertyColumn Property="activity => activity.Lesson2" />
+    <PropertyColumn Property="activity => activity.ThankFully" />
+    <PropertyColumn Property="activity => activity.IsActive" />
+    <PropertyColumn Property="activity => activity.StatusCode" />
+    <PropertyColumn Property="activity => activity.Modby" />
+    <PropertyColumn Property="activity => activity.CreateBy" />
+    <PropertyColumn Property="activity => activity.CreateDate" />
+    <PropertyColumn Property="activity => activity.ModDate" />
+
+    <TemplateColumn Context="activity">
+        <a href="@($"activities/edit?subid={activity.SubId}")">Edit</a> |
+        <a href="@($"activities/details?subid={activity.SubId}")">Details</a> |
+        <a href="@($"activities/delete?subid={activity.SubId}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

@@ -1,0 +1,66 @@
+﻿@page "/subtasks/details"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>SubTask</h2>
+    <hr />
+    @if (subtask is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">TaskId</dt>
+            <dd class="col-sm-10">@subtask.TaskId</dd>
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@subtask.Name</dd>
+            <dt class="col-sm-2">StartDate</dt>
+            <dd class="col-sm-10">@subtask.StartDate</dd>
+            <dt class="col-sm-2">EndDate</dt>
+            <dd class="col-sm-10">@subtask.EndDate</dd>
+            <dt class="col-sm-2">Order</dt>
+            <dd class="col-sm-10">@subtask.Order</dd>
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10">@subtask.Description</dd>
+            <dt class="col-sm-2">LessonMode</dt>
+            <dd class="col-sm-10">@subtask.LessonMode</dd>
+            <dt class="col-sm-2">Lesson1</dt>
+            <dd class="col-sm-10">@subtask.Lesson1</dd>
+            <dt class="col-sm-2">Lesson2</dt>
+            <dd class="col-sm-10">@subtask.Lesson2</dd>
+            <dt class="col-sm-2">ThankFully</dt>
+            <dd class="col-sm-10">@subtask.ThankFully</dd>
+            <dt class="col-sm-2">StatusCode</dt>
+            <dd class="col-sm-10">@subtask.StatusCode</dd>
+        </dl>
+        <div>
+            <a href="@($"/subtasks/edit?subid={subtask.SubId}")">Edit</a> |
+            <a href="@($"/subtasks")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private SubTask? subtask;
+
+    [SupplyParameterFromQuery]
+    private int SubId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        subtask = await context.SubTasks.FirstOrDefaultAsync(m => m.SubId == SubId);
+
+        if (subtask is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

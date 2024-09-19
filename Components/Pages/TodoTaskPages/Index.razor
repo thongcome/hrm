@@ -1,0 +1,48 @@
+﻿@page "/todotasks"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@implements IAsyncDisposable
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="todotasks/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.TodoTasks">
+    <PropertyColumn Property="todotask => todotask.Name" />
+    <PropertyColumn Property="todotask => todotask.Startdate" />
+    <PropertyColumn Property="todotask => todotask.EndDate" />
+    <PropertyColumn Property="todotask => todotask.StatusCode" />
+    <PropertyColumn Property="todotask => todotask.Description" />
+    <PropertyColumn Property="todotask => todotask.LessonMode" />
+    <PropertyColumn Property="todotask => todotask.Lesson1" />
+    <PropertyColumn Property="todotask => todotask.Lesson2" />
+    <PropertyColumn Property="todotask => todotask.UserId" />
+    <PropertyColumn Property="todotask => todotask.Email" />
+    <PropertyColumn Property="todotask => todotask.IsActive" />
+    <PropertyColumn Property="todotask => todotask.ThankFully" />
+
+    <TemplateColumn Context="todotask">
+        <a href="@($"todotasks/edit?id={todotask.Id}")">Edit</a> |
+        <a href="@($"todotasks/details?id={todotask.Id}")">Details</a> |
+        <a href="@($"todotasks/delete?id={todotask.Id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

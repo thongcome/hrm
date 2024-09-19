@@ -1,0 +1,59 @@
+﻿@page "/wols/create"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>WOL</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="WOL" OnValidSubmit="AddWOL" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+            <div class="mb-3">
+                <label for="name" class="form-label">Name:</label> 
+                <InputText id="name" @bind-Value="WOL.Name" class="form-control" /> 
+                <ValidationMessage For="() => WOL.Name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="description" class="form-label">description:</label> 
+                <InputText id="description" @bind-Value="WOL.description" class="form-control" /> 
+                <ValidationMessage For="() => WOL.description" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="code" class="form-label">code:</label> 
+                <InputText id="code" @bind-Value="WOL.code" class="form-control" /> 
+                <ValidationMessage For="() => WOL.code" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="theme" class="form-label">theme:</label> 
+                <InputText id="theme" @bind-Value="WOL.theme" class="form-control" /> 
+                <ValidationMessage For="() => WOL.theme" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/wols">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private WOL WOL { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task AddWOL()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.WOLs.Add(WOL);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wols");
+    }
+}

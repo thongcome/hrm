@@ -1,0 +1,81 @@
+﻿@page "/taskmasters/create"
+
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h4>TaskMaster</h4>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="TaskMaster" OnValidSubmit="AddTaskMaster" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+            <div class="mb-3">
+                <label for="name" class="form-label">Name:</label> 
+                <InputText id="name" @bind-Value="TaskMaster.Name" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.Name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isactive" class="form-label">IsActive:</label> 
+                <InputCheckbox id="isactive" @bind-Value="TaskMaster.IsActive" class="form-check-input" /> 
+                <ValidationMessage For="() => TaskMaster.IsActive" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="statuscode" class="form-label">StatusCode:</label> 
+                <InputText id="statuscode" @bind-Value="TaskMaster.StatusCode" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.StatusCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="description" class="form-label">Description:</label> 
+                <InputText id="description" @bind-Value="TaskMaster.Description" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.Description" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="remark" class="form-label">Remark:</label> 
+                <InputText id="remark" @bind-Value="TaskMaster.Remark" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.Remark" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="color" class="form-label">Color:</label> 
+                <InputText id="color" @bind-Value="TaskMaster.Color" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.Color" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="level" class="form-label">Level:</label> 
+                <InputNumber id="level" @bind-Value="TaskMaster.Level" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.Level" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="defaultday" class="form-label">DefaultDay:</label> 
+                <InputNumber id="defaultday" @bind-Value="TaskMaster.DefaultDay" class="form-control" /> 
+                <ValidationMessage For="() => TaskMaster.DefaultDay" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/taskmasters">Back to List</a>
+</div>
+
+@code {
+
+    [SupplyParameterFromForm]
+    public TaskMaster TaskMaster { get; set; } = new();
+
+    // To protect from overposting attacks, see https://aka.ms/RazorPagesCRUD
+    public async Task AddTaskMaster()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.TaskMasters.Add(TaskMaster);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/taskmasters");
+    }
+}

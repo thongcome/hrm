@@ -1,0 +1,39 @@
+﻿@page "/wols"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="wols/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.WOLs">
+    <PropertyColumn Property="wol => wol.Name" />
+    <PropertyColumn Property="wol => wol.description" />
+    <PropertyColumn Property="wol => wol.code" />
+    <PropertyColumn Property="wol => wol.theme" />
+
+    <TemplateColumn Context="wol">
+        <a href="@($"wols/edit?id={wol.id}")">Edit</a> |
+        <a href="@($"wols/details?id={wol.id}")">Details</a> |
+        <a href="@($"wols/delete?id={wol.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

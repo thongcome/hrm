@@ -1,0 +1,44 @@
+﻿@page "/taskmasters"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@implements IAsyncDisposable
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="taskmasters/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.TaskMasters">
+    <PropertyColumn Property="taskmaster => taskmaster.Name" />
+    <PropertyColumn Property="taskmaster => taskmaster.IsActive" />
+    <PropertyColumn Property="taskmaster => taskmaster.StatusCode" />
+    <PropertyColumn Property="taskmaster => taskmaster.Description" />
+    <PropertyColumn Property="taskmaster => taskmaster.Remark" />
+    <PropertyColumn Property="taskmaster => taskmaster.Color" />
+    <PropertyColumn Property="taskmaster => taskmaster.Level" />
+    <PropertyColumn Property="taskmaster => taskmaster.DefaultDay" />
+
+    <TemplateColumn Context="taskmaster">
+        <a href="@($"taskmasters/edit?id={taskmaster.Id}")">Edit</a> |
+        <a href="@($"taskmasters/details?id={taskmaster.Id}")">Details</a> |
+        <a href="@($"taskmasters/delete?id={taskmaster.Id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    ApplicationDbContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

@@ -1,0 +1,74 @@
+﻿@page "/activities/details"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Activity</h2>
+    <hr />
+    @if (activity is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">TaskId</dt>
+            <dd class="col-sm-10">@activity.TaskId</dd>
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@activity.Name</dd>
+            <dt class="col-sm-2">StartDate</dt>
+            <dd class="col-sm-10">@activity.StartDate</dd>
+            <dt class="col-sm-2">EndDate</dt>
+            <dd class="col-sm-10">@activity.EndDate</dd>
+            <dt class="col-sm-2">Order</dt>
+            <dd class="col-sm-10">@activity.Order</dd>
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10">@activity.Description</dd>
+            <dt class="col-sm-2">Lesson1</dt>
+            <dd class="col-sm-10">@activity.Lesson1</dd>
+            <dt class="col-sm-2">Lesson2</dt>
+            <dd class="col-sm-10">@activity.Lesson2</dd>
+            <dt class="col-sm-2">ThankFully</dt>
+            <dd class="col-sm-10">@activity.ThankFully</dd>
+            <dt class="col-sm-2">IsActive</dt>
+            <dd class="col-sm-10">@activity.IsActive</dd>
+            <dt class="col-sm-2">StatusCode</dt>
+            <dd class="col-sm-10">@activity.StatusCode</dd>
+            <dt class="col-sm-2">Modby</dt>
+            <dd class="col-sm-10">@activity.Modby</dd>
+            <dt class="col-sm-2">CreateBy</dt>
+            <dd class="col-sm-10">@activity.CreateBy</dd>
+            <dt class="col-sm-2">CreateDate</dt>
+            <dd class="col-sm-10">@activity.CreateDate</dd>
+            <dt class="col-sm-2">ModDate</dt>
+            <dd class="col-sm-10">@activity.ModDate</dd>
+        </dl>
+        <div>
+            <a href="@($"/activities/edit?subid={activity.SubId}")">Edit</a> |
+            <a href="@($"/activities")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private Activity? activity;
+
+    [SupplyParameterFromQuery]
+    private int SubId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        activity = await context.Activity.FirstOrDefaultAsync(m => m.SubId == SubId);
+
+        if (activity is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}
