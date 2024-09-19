@@ -72,4 +72,4 @@ app.MapRazorComponents<App>()
 app.MapAdditionalIdentityEndpoints();
 
 app.Run();
-// test
+// test dev
