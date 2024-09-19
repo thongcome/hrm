@@ -21,7 +21,7 @@ else
             <EditForm method="post" Model="Activity" OnValidSubmit="UpdateActivity" FormName="edit" Enhance>
                 <DataAnnotationsValidator />
                 <ValidationSummary />
-                <input type="hidden" name="Activity.SubId" value="@Activity.SubId" />
+                <input type="hidden" name="Activity.SubId" value="@Activity.Id" />
                 <div class="mb-3">
                     <label for="taskid" class="form-label">TaskId:</label>
                     <InputNumber id="taskid" @bind-Value="Activity.TaskId" class="form-control" />
@@ -44,8 +44,8 @@ else
                 </div>
                 <div class="mb-3">
                     <label for="order" class="form-label">Order:</label>
-                    <InputNumber id="order" @bind-Value="Activity.Order" class="form-control" />
-                    <ValidationMessage For="() => Activity.Order" class="text-danger" />
+                    <InputNumber id="order" @bind-Value="Activity.Orders" class="form-control" />
+                    <ValidationMessage For="() => Activity.Orders" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="description" class="form-label">Description:</label>
@@ -67,11 +67,11 @@ else
                     <InputText id="thankfully" @bind-Value="Activity.ThankFully" class="form-control" />
                     <ValidationMessage For="() => Activity.ThankFully" class="text-danger" />
                 </div>
-                <div class="mb-3">
+         @*        <div class="mb-3">
                     <label for="isactive" class="form-label">IsActive:</label>
                     <InputCheckbox id="isactive" @bind-Value="Activity.IsActive" class="form-check-input" />
                     <ValidationMessage For="() => Activity.IsActive" class="text-danger" />
-                </div>
+                </div> *@
                 <div class="mb-3">
                     <label for="statuscode" class="form-label">StatusCode:</label>
                     <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
@@ -117,7 +117,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         using var context = DbFactory.CreateDbContext();
-        Activity ??= await context.Activity.FirstOrDefaultAsync(m => m.SubId == SubId);
+        Activity ??= await context.Activity.FirstOrDefaultAsync(m => m.Id == SubId);
 
         if (Activity is null)
         {
@@ -138,7 +138,7 @@ else
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (!ActivityExists(Activity!.SubId))
+            if (!ActivityExists(Activity!.Id))
             {
                 NavigationManager.NavigateTo("notfound");
             }
@@ -154,6 +154,6 @@ else
     private bool ActivityExists(int subid)
     {
         using var context = DbFactory.CreateDbContext();
-        return context.Activity.Any(e => e.SubId == subid);
+        return context.Activity.Any(e => e.Id == subid);
     }
 }

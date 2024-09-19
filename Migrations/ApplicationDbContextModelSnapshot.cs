@@ -89,19 +89,18 @@ namespace LeaderDevelop.Migrations
 
             modelBuilder.Entity("LeaderDevelop.Model.Activity", b =>
                 {
-                    b.Property<int>("SubId")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SubId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CreateBy")
-                        .IsRequired()
                         .HasMaxLength(250)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<DateTime>("CreateDate")
+                    b.Property<DateTime?>("CreateDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
@@ -112,26 +111,20 @@ namespace LeaderDevelop.Migrations
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool?>("IsActive")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Lesson1")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Lesson2")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<DateTime>("ModDate")
+                    b.Property<DateTime?>("ModDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Modby")
-                        .IsRequired()
                         .HasMaxLength(250)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
@@ -142,7 +135,7 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<int?>("Order")
+                    b.Property<int?>("Orders")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("StartDate")
@@ -156,12 +149,11 @@ namespace LeaderDevelop.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ThankFully")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
-                    b.HasKey("SubId");
+                    b.HasKey("Id");
 
                     b.HasIndex("TaskId");
 
@@ -257,6 +249,188 @@ namespace LeaderDevelop.Migrations
                     b.HasIndex("WolId");
 
                     b.ToTable("GoalTasks");
+                });
+
+            modelBuilder.Entity("LeaderDevelop.Model.ScUser", b =>
+                {
+                    b.Property<long>("Userid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("userid");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Userid"));
+
+                    b.Property<string>("Costcenter")
+                        .HasMaxLength(250)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("costcenter");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Empid")
+                        .HasMaxLength(50)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("empid");
+
+                    b.Property<DateTime?>("Enddate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("enddate");
+
+                    b.Property<string>("Firstname")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("firstname");
+
+                    b.Property<int?>("Invalidpwcount")
+                        .HasColumnType("int")
+                        .HasColumnName("invalidpwcount");
+
+                    b.Property<bool>("IsActivate")
+                        .HasColumnType("bit")
+                        .HasColumnName("isActivate");
+
+                    b.Property<bool>("Iscancel")
+                        .HasColumnType("bit")
+                        .HasColumnName("iscancel");
+
+                    b.Property<bool>("Isforcechanged")
+                        .HasColumnType("bit")
+                        .HasColumnName("isforcechanged");
+
+                    b.Property<DateTime?>("Lastinvalidpwd")
+                        .HasColumnType("datetime")
+                        .HasColumnName("lastinvalidpwd");
+
+                    b.Property<string>("Lastname")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("lastname");
+
+                    b.Property<DateTime?>("Lasttimelogin")
+                        .HasColumnType("datetime")
+                        .HasColumnName("lasttimelogin");
+
+                    b.Property<string>("Loginname")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("loginname");
+
+                    b.Property<string>("Mobilephone")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("mobilephone");
+
+                    b.Property<string>("Modby")
+                        .HasMaxLength(250)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("modby");
+
+                    b.Property<DateTime?>("Moddate")
+                        .HasColumnType("datetime")
+                        .HasColumnName("moddate");
+
+                    b.Property<string>("Orgcode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("orgcode");
+
+                    b.Property<string>("Orgname")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("orgname");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("password");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("PosName")
+                        .HasMaxLength(250)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("pos_name");
+
+                    b.Property<string>("Poscode")
+                        .HasMaxLength(50)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("poscode");
+
+                    b.Property<DateTime?>("Pwdexpdate")
+                        .HasColumnType("datetime")
+                        .HasColumnName("pwdexpdate");
+
+                    b.Property<string>("Ref1")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("ref1");
+
+                    b.Property<string>("Ref2")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("ref2");
+
+                    b.Property<DateTime?>("Registerdate")
+                        .HasColumnType("datetime")
+                        .HasColumnName("registerdate");
+
+                    b.Property<string>("Remark")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("remark");
+
+                    b.Property<string>("Remindpwd")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("remindpwd");
+
+                    b.Property<string>("Social")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("social");
+
+                    b.Property<DateTime?>("Startdate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("startdate");
+
+                    b.Property<string>("Supervisor")
+                        .HasMaxLength(250)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("supervisor");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("title");
+
+                    b.Property<int?>("Upperuserid")
+                        .HasColumnType("int")
+                        .HasColumnName("upperuserid");
+
+                    b.Property<string>("Verifycode")
+                        .HasMaxLength(250)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("verifycode");
+
+                    b.HasKey("Userid");
+
+                    b.ToTable("sc_user");
                 });
 
             modelBuilder.Entity("LeaderDevelop.Model.SubTask", b =>

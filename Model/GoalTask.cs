@@ -96,5 +96,6 @@ namespace LeaderDevelop.Model
 
         [InverseProperty("GoalTask")]
         public virtual ICollection<Activity>? Activity { get; set; }
+
     }
 }

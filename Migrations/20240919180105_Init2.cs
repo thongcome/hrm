@@ -5,24 +5,24 @@
 namespace LeaderDevelop.Migrations
 {
     /// <inheritdoc />
-    public partial class add2 : Migration
+    public partial class Init2 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "remark",
-                table: "Products",
-                type: "nvarchar(max)",
-                nullable: true);
+            migrationBuilder.RenameColumn(
+                name: "Order",
+                table: "Activity",
+                newName: "Orders");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "remark",
-                table: "Products");
+            migrationBuilder.RenameColumn(
+                name: "Orders",
+                table: "Activity",
+                newName: "Order");
         }
     }
 }

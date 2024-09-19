@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeaderDevelop.Migrations
 {
     /// <inheritdoc />
-    public partial class InitCreate : Migration
+    public partial class Init : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -335,7 +335,7 @@ namespace LeaderDevelop.Migrations
                 name: "Activity",
                 columns: table => new
                 {
-                    SubId = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     TaskId = table.Column<int>(type: "int", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
@@ -343,19 +343,18 @@ namespace LeaderDevelop.Migrations
                     EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Order = table.Column<int>(type: "int", nullable: true),
                     Description = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
-                    Lesson1 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    Lesson2 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    ThankFully = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Lesson1 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Lesson2 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    ThankFully = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     StatusCode = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Modby = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
-                    CreateBy = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
-                    CreateDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    ModDate = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Modby = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
+                    CreateBy = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
+                    CreateDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    ModDate = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Activity", x => x.SubId);
+                    table.PrimaryKey("PK_Activity", x => x.Id);
                     table.ForeignKey(
                         name: "FK_Activity_GoalTasks_TaskId",
                         column: x => x.TaskId,

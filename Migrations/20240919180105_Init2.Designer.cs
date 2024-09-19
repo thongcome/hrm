@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaderDevelop.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240919153916_InitCreate")]
-    partial class InitCreate
+    [Migration("20240919180105_Init2")]
+    partial class Init2
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -92,19 +92,18 @@ namespace LeaderDevelop.Migrations
 
             modelBuilder.Entity("LeaderDevelop.Model.Activity", b =>
                 {
-                    b.Property<int>("SubId")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SubId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CreateBy")
-                        .IsRequired()
                         .HasMaxLength(250)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<DateTime>("CreateDate")
+                    b.Property<DateTime?>("CreateDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
@@ -115,26 +114,20 @@ namespace LeaderDevelop.Migrations
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Lesson1")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Lesson2")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<DateTime>("ModDate")
+                    b.Property<DateTime?>("ModDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Modby")
-                        .IsRequired()
                         .HasMaxLength(250)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
@@ -145,7 +138,7 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<int?>("Order")
+                    b.Property<int?>("Orders")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("StartDate")
@@ -159,12 +152,11 @@ namespace LeaderDevelop.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ThankFully")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(500)");
 
-                    b.HasKey("SubId");
+                    b.HasKey("Id");
 
                     b.HasIndex("TaskId");
 

@@ -26,7 +26,7 @@
             <dt class="col-sm-2">EndDate</dt>
             <dd class="col-sm-10">@activity.EndDate</dd>
             <dt class="col-sm-2">Order</dt>
-            <dd class="col-sm-10">@activity.Order</dd>
+            <dd class="col-sm-10">@activity.Orders</dd>
             <dt class="col-sm-2">Description</dt>
             <dd class="col-sm-10">@activity.Description</dd>
             <dt class="col-sm-2">Lesson1</dt>
@@ -35,8 +35,8 @@
             <dd class="col-sm-10">@activity.Lesson2</dd>
             <dt class="col-sm-2">ThankFully</dt>
             <dd class="col-sm-10">@activity.ThankFully</dd>
-            <dt class="col-sm-2">IsActive</dt>
-            <dd class="col-sm-10">@activity.IsActive</dd>
+@*             <dt class="col-sm-2">IsActive</dt>
+            <dd class="col-sm-10">@activity.IsActive</dd> *@
             <dt class="col-sm-2">StatusCode</dt>
             <dd class="col-sm-10">@activity.StatusCode</dd>
             <dt class="col-sm-2">Modby</dt>
@@ -49,7 +49,7 @@
             <dd class="col-sm-10">@activity.ModDate</dd>
         </dl>
         <div>
-            <a href="@($"/activities/edit?subid={activity.SubId}")">Edit</a> |
+            <a href="@($"/activities/edit?subid={activity.Id}")">Edit</a> |
             <a href="@($"/activities")">Back to List</a>
         </div>
     }
@@ -64,7 +64,7 @@
     protected override async Task OnInitializedAsync()
     {
         using var context = DbFactory.CreateDbContext();
-        activity = await context.Activity.FirstOrDefaultAsync(m => m.SubId == SubId);
+        activity = await context.Activity.FirstOrDefaultAsync(m => m.Id == SubId);
 
         if (activity is null)
         {

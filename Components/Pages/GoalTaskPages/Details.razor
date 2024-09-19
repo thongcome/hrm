@@ -56,7 +56,7 @@
                 @foreach (var activity in Activities)
                 {
                     <li class="list-group-item">
-                        <strong>@(activity.Order?.ToString() ?? "-"). </strong> @activity.Name - สถานะ: @activity.StatusCode
+                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - สถานะ: @activity.StatusCode
                     </li>
                 }
             }
@@ -75,23 +75,45 @@
         <div class="card-body bg-light">
             <h4>เพิ่มกิจกรรม</h4>
             <EditForm Model="NewActivity" OnValidSubmit="AddActivity">
+
+                <!-- Order Input -->
                 <div class="mb-3">
                     <label for="order" class="form-label">Order:</label>
-                    <InputNumber id="order" @bind-Value="NewActivity.Order" class="form-control" />
-                    <ValidationMessage For="() => NewActivity.Order" />
+                    <InputNumber id="order" @bind-Value="NewActivity.Orders" class="form-control" />
+                    <ValidationMessage For="() => NewActivity.Orders" />
                 </div>
 
+                <!-- Name Input -->
                 <div class="mb-3">
                     <label for="Name" class="form-label">Activity:</label>
                     <InputText id="Name" @bind-Value="NewActivity.Name" class="form-control" />
                     <ValidationMessage For="() => NewActivity.Name" />
                 </div>
 
+                <!-- StartDate Input -->
+                <div class="mb-3">
+                    <label for="StartDate" class="form-label">Start Date:</label>
+                    <InputDate id="StartDate" @bind-Value="NewActivity.StartDate" class="form-control" />
+                    <ValidationMessage For="() => NewActivity.StartDate" />
+                </div>
+
+                <!-- EndDate Input -->
+                <div class="mb-3">
+                    <label for="EndDate" class="form-label">End Date:</label>
+                    <InputDate id="EndDate" @bind-Value="NewActivity.EndDate" class="form-control" />
+                    <ValidationMessage For="() => NewActivity.EndDate" />
+                </div>
 
                 <button type="submit" class="btn btn-primary">Save</button>
                 <button type="button" class="btn btn-secondary ml-2" @onclick="HideAddActivityForm">ยกเลิก</button>
             </EditForm>
         </div>
+    </div>
+}
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger">
+        @ErrorMessage
     </div>
 }
 
@@ -111,7 +133,7 @@
     protected override async Task OnInitializedAsync()
     {
         using var context = DbFactory.CreateDbContext();
-        goaltask = await context.GoalTasks.Include(g => g.WOL).FirstOrDefaultAsync(m => m.Id == Id);
+        goaltask = await context.GoalTasks.FindAsync(Id);
 
         if (goaltask is null)
         {
@@ -119,33 +141,55 @@
         }
 
         // Load related activities for this goal task
-        Activities = await context.Activity.Where(a => a.TaskId == goaltask.Id).ToListAsync();
+        Activities = await context.Activity.Where(a => a.TaskId == Id).ToListAsync();
     }
-
     private void ShowAddActivityForm()
     {
         ShowActivityForm = true;
         NewActivity = new Activity
             {
-                TaskId = goaltask.Id,
+                TaskId = Id,
                 GoalTask = goaltask // Set GoalTask to the current goal task
             };
     }
+
 
     private void HideAddActivityForm()
     {
         ShowActivityForm = false;
     }
+    private string ErrorMessage = string.Empty;
 
     private async Task AddActivity()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.Activity.Add(NewActivity);
-        await context.SaveChangesAsync();
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
 
-        Activities.Add(NewActivity);
-        HideAddActivityForm();
+            // เชื่อมโยงกับ GoalTask ที่มีอยู่แล้วโดยไม่กำหนดค่า Id เอง
+            if (goaltask != null)
+            {
+                NewActivity.TaskId = goaltask.Id; // ใช้ Id ที่มีอยู่ของ GoalTask
+                NewActivity.GoalTask = goaltask;  // เชื่อมโยงกับ GoalTask ที่มีอยู่
+                
+            }
+
+            // บันทึก Activity โดยไม่ตั้งค่า Id ให้ GoalTask
+            context.Activity.Add(NewActivity);
+            await context.SaveChangesAsync();
+
+            Activities.Add(NewActivity);
+            HideAddActivityForm();
+        }
+        catch (Exception ex)
+        {
+            // บันทึก error message
+            ErrorMessage = $"Error: {ex.Message}";
+            Console.WriteLine(ErrorMessage);
+        }
     }
+
+
 
     private async Task CancelGoalTask()
     {

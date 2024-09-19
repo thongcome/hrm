@@ -9,21 +9,19 @@ namespace LeaderDevelop.Model
         public Activity() { }
         public Activity(int? maxOrder)
         {
-            this.Order = (maxOrder ?? 0) + 1;
+            this.Orders = (maxOrder ?? 0) + 1;
         }
         // Foreign key to TodoTask
         [Required]
         public int TaskId { get; set; }  // This is the property you are missing
-
-
         [ForeignKey("TaskId")]  // ForeignKey should match the property in the TodoTask class
         [InverseProperty("Activity")]  // This references the navigation property in TodoTask
-        public  virtual  GoalTask? GoalTask { get; set; }
+        public virtual GoalTask GoalTask { get; set; } = new GoalTask();
 
 
 
         [Key]
-        public int SubId { get; set; }
+        public int Id { get; set; }
 
         [Required]
         [StringLength(250)]
@@ -39,7 +37,7 @@ namespace LeaderDevelop.Model
 
 
         [Display(Name = ("ลำดับที่/Order"))]
-        public int? Order { get; set; } = null;
+        public int? Orders { get; set; } = null;
 
 
         [StringLength(250)]
@@ -51,22 +49,23 @@ namespace LeaderDevelop.Model
         [StringLength(500)]
         [Unicode(true)]
         [Display(Name = ("สิ่งที่ได้รับ/got idea"))]
-        public string Lesson1 { get; set; } = string.Empty;
+        public string? Lesson1 { get; set; } = string.Empty;
 
         [StringLength(500)]
         [Unicode(true)]
         [Display(Name = ("สิ่งที่ได้เรียนรู้/Learning"))]
-        public string Lesson2 { get; set; } = string.Empty;
+        public string? Lesson2 { get; set; } = string.Empty;
 
 
 
         [StringLength(500)]
         [Unicode(true)]
         [Display(Name = ("คำขอบคุณ/ThankFully"))]
-        public string ThankFully { get; set; } = string.Empty;
+        public string? ThankFully { get; set; } = string.Empty;
 
-        [Display(Name = ("ยกเลิก/Is Active"))]
-        public bool IsActive { get; set; } = true;
+        //[Display(Name = ("ยกเลิก/Is Active"))]
+        //[Required]
+        //public bool IsActive { get; set; } = true;
 
         [Unicode(true)]
         [Display(Name = ("สถานะ/Status"))]
@@ -76,18 +75,18 @@ namespace LeaderDevelop.Model
         [StringLength(250)]
         [Unicode(true)]
         [Display(Name = ("ผู้แก้ไข/Modified By"))]
-        public string Modby { get; set; } = string.Empty;
+        public string? Modby { get; set; } = string.Empty;
 
         [StringLength(250)]
         [Unicode(true)]
         [Display(Name = ("ผู้สร้าง/Create By"))]
-        public string CreateBy { get; set; } = string.Empty;
+        public string? CreateBy { get; set; } = string.Empty;
 
         [Display(Name = ("วันที่สร้าง/Create Date"))]
-        public DateTime CreateDate { get; set; } = DateTime.UtcNow;
+        public DateTime? CreateDate { get; set; } = DateTime.UtcNow;
 
         [Display(Name = ("วันที่แก้/Modify Date"))]
-        public DateTime ModDate { get; set; } = DateTime.UtcNow;
+        public DateTime? ModDate { get; set; } = DateTime.UtcNow;
 
   
 
