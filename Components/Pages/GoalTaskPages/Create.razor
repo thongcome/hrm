@@ -1,6 +1,7 @@
 ﻿@page "/goaltasks/create"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 
@@ -13,35 +14,54 @@
     <div class="col-md-4">
         <EditForm method="post" Model="GoalTask" OnValidSubmit="AddGoalTask" FormName="create" Enhance>
             <DataAnnotationsValidator />
+            <div class="mb-3">
+                <label for="name" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
+                <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" />
+                <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
+            </div>
             <ValidationSummary class="text-danger" />
             <div class="mb-3">
-                <label for="name" class="form-label">Name:</label> 
-                <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.Name" class="text-danger" /> 
-            </div>        
+                <label for="dayofgoal" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") : แนะนำ 14 วัน หรือ 7 วัน
+                </label>
+                <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
+                <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+            </div>
             <div class="mb-3">
-                <label for="startdate" class="form-label">Startdate:</label> 
+                <label for="startdate" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
                 <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" /> 
             </div>        
             <div class="mb-3">
-                <label for="enddate" class="form-label">EndDate:</label> 
+                <label for="enddate" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
                 <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" /> 
             </div>        
-            <div class="mb-3">
-                <label for="dayofgoal" class="form-label">DayofGoal:</label> 
-                <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" /> 
-            </div>        
+                
               
             <div class="mb-3">
-                <label for="description" class="form-label">Description:</label> 
+                <label for="description" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
                 <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.Description" class="text-danger" /> 
             </div>        
             <div class="mb-3">
-                <label for="wol" class="form-label">wol:</label> 
+                <label for="wol" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
                 <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.wol" class="text-danger" /> 
             </div>        
@@ -59,6 +79,7 @@
 @code {
     [SupplyParameterFromForm]
     private GoalTask GoalTask { get; set; } = new();
+    
 
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task AddGoalTask()

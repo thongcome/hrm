@@ -95,7 +95,7 @@ namespace LeaderDevelop.Model
         public int TaskId { get; set; }
 
         // Navigation property back to GoalTask
-        [ForeignKey("GoalTaskId")]
+        [ForeignKey("TaskId")]
         public GoalTask GoalTask { get; set; }
     }
 }
