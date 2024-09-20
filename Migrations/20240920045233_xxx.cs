@@ -5,24 +5,25 @@
 namespace LeaderDevelop.Migrations
 {
     /// <inheritdoc />
-    public partial class Init2 : Migration
+    public partial class xxx : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "Order",
+            migrationBuilder.AddColumn<int>(
+                name: "GoalTaskId",
                 table: "Activity",
-                newName: "Orders");
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "Orders",
-                table: "Activity",
-                newName: "Order");
+            migrationBuilder.DropColumn(
+                name: "GoalTaskId",
+                table: "Activity");
         }
     }
 }

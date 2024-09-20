@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaderDevelop.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240919172230_Init")]
-    partial class Init
+    [Migration("20240920004114_Init3143")]
+    partial class Init3143
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -138,7 +138,7 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<int?>("Order")
+                    b.Property<int?>("Orders")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("StartDate")
@@ -818,7 +818,7 @@ namespace LeaderDevelop.Migrations
             modelBuilder.Entity("LeaderDevelop.Model.GoalTask", b =>
                 {
                     b.HasOne("LeaderDevelop.Model.WOL", "WOL")
-                        .WithMany("GoalTasks")
+                        .WithMany()
                         .HasForeignKey("WolId");
 
                     b.Navigation("WOL");
@@ -894,11 +894,6 @@ namespace LeaderDevelop.Migrations
             modelBuilder.Entity("LeaderDevelop.Model.TodoTask", b =>
                 {
                     b.Navigation("SubTasks");
-                });
-
-            modelBuilder.Entity("LeaderDevelop.Model.WOL", b =>
-                {
-                    b.Navigation("GoalTasks");
                 });
 #pragma warning restore 612, 618
         }

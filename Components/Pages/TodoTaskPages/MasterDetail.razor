@@ -1,4 +1,4 @@
-﻿@page "/goaltasks/details/{Id:int}"
+﻿@page "/todotask/details/{Id:int}"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
@@ -48,7 +48,7 @@
     </div>
     <div class="card-body">
         <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่ม</button>
-        <p class="text-muted">รายการกิจกรรม  ไม่ควรเกิน 14 กืจกรรม</p>
+        <p class="text-muted">รายการกิจกรรม ลด ได้อีกหรือไม่ / ไม่เกิน 14 item </p>
 
         <ul class="list-group">
             @if (Activities != null && Activities.Any())
@@ -76,12 +76,6 @@
             <h4>เพิ่มกิจกรรม</h4>
             <EditForm Model="NewActivity" OnValidSubmit="AddActivity">
 
-
-                <div class="mb-3">
-                    <label for="order" class="form-label">Task ID:</label>
-                    <InputNumber id="order" @bind-Value="NewActivity.TaskId" class="form-control" hidden />
-                    <ValidationMessage For="() => NewActivity.TaskId" />
-                </div>
                 <!-- Order Input -->
                 <div class="mb-3">
                     <label for="order" class="form-label">Order:</label>
@@ -133,8 +127,6 @@
     private Activity NewActivity = new Activity();
     private bool ShowActivityForm = false;
 
-
-
     [Parameter]
     public int Id { get; set; }
 
@@ -151,21 +143,15 @@
         // Load related activities for this goal task
         Activities = await context.Activity.Where(a => a.TaskId == Id).ToListAsync();
     }
-    // private void ShowAddActivityForm()
-    // {
-    //     ShowActivityForm = true;
-    //     NewActivity = new Activity();
-    //     NewActivity.TaskId = Id;
-    //     if (goaltask != null)
-    //     {
-    //         NewActivity.GoalTask = goaltask;
-    //     }
-    // }
     private void ShowAddActivityForm()
     {
         ShowActivityForm = true;
         NewActivity = new Activity();
-        NewActivity.TaskId = Id;  // This ensures the activity is linked to the current GoalTask
+        NewActivity.TaskId = Id;
+        if (goaltask != null)
+        {
+            NewActivity.GoalTask = goaltask;
+        }
     }
 
 
@@ -175,63 +161,35 @@
     }
     private string ErrorMessage = string.Empty;
 
-    // private async Task AddActivity()
-    // {
-    //     try
-    //     {
-    //         using var context = DbFactory.CreateDbContext();
-
-    //         // เชื่อมโยงกับ GoalTask ที่มีอยู่แล้วโดยไม่กำหนดค่า Id เอง
-    //         if (goaltask != null)
-    //         {
-    //              NewActivity.TaskId = Id; // ใช้ Id ที่มีอยู่ของ GoalTask
-    //             NewActivity.CreateDate = DateTime.UtcNow;
-    //             NewActivity.ModDate = DateTime.UtcNow;
-
-    //         }
-
-    //         context.Activity.Add(NewActivity);
-    //         await context.SaveChangesAsync();
-
-    //         Activities.Add(NewActivity);
-    //         HideAddActivityForm();
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         // บันทึก error message
-    //         ErrorMessage = $"Error: {ex.Message}";
-    //         Console.WriteLine(ErrorMessage);
-    //     }
-    // }
-
     private async Task AddActivity()
     {
         try
         {
             using var context = DbFactory.CreateDbContext();
 
-            // Set the TaskId (foreign key) to the current GoalTask Id
-            NewActivity.TaskId = Id;
-            NewActivity.CreateDate = DateTime.UtcNow;
-            NewActivity.ModDate = DateTime.UtcNow;
+            // เชื่อมโยงกับ GoalTask ที่มีอยู่แล้วโดยไม่กำหนดค่า Id เอง
+            if (goaltask != null)
+            {
+                NewActivity.TaskId = goaltask.Id; // ใช้ Id ที่มีอยู่ของ GoalTask
+                NewActivity.GoalTask = goaltask;  // เชื่อมโยงกับ GoalTask ที่มีอยู่
 
-            // Add the new Activity without manually setting the Id
+            }
+
+            // บันทึก Activity โดยไม่ตั้งค่า Id ให้ GoalTask
             context.Activity.Add(NewActivity);
             await context.SaveChangesAsync();
 
-            // Update the list of activities to reflect the newly added one
             Activities.Add(NewActivity);
-
-            // Hide the form after adding
             HideAddActivityForm();
         }
         catch (Exception ex)
         {
-            // Log the error message
+            // บันทึก error message
             ErrorMessage = $"Error: {ex.Message}";
             Console.WriteLine(ErrorMessage);
         }
     }
+
 
 
     private async Task CancelGoalTask()

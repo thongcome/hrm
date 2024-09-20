@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaderDevelop.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240919180105_Init2")]
-    partial class Init2
+    [Migration("20240920045233_xxx")]
+    partial class xxx
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -113,6 +113,9 @@ namespace LeaderDevelop.Migrations
 
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("GoalTaskId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Lesson1")
                         .HasMaxLength(500)
@@ -818,7 +821,7 @@ namespace LeaderDevelop.Migrations
             modelBuilder.Entity("LeaderDevelop.Model.GoalTask", b =>
                 {
                     b.HasOne("LeaderDevelop.Model.WOL", "WOL")
-                        .WithMany("GoalTasks")
+                        .WithMany()
                         .HasForeignKey("WolId");
 
                     b.Navigation("WOL");
@@ -894,11 +897,6 @@ namespace LeaderDevelop.Migrations
             modelBuilder.Entity("LeaderDevelop.Model.TodoTask", b =>
                 {
                     b.Navigation("SubTasks");
-                });
-
-            modelBuilder.Entity("LeaderDevelop.Model.WOL", b =>
-                {
-                    b.Navigation("GoalTasks");
                 });
 #pragma warning restore 612, 618
         }

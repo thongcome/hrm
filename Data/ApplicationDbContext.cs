@@ -11,7 +11,7 @@ namespace LeaderDevelop.Data
         {
         }
 
-   
+
         public DbSet<TaskMaster> TaskMasters { get; set; }
         public DbSet<TodoTask> TodoTasks { get; set; }
         public DbSet<SubTask> SubTasks { get; set; }
@@ -21,9 +21,9 @@ namespace LeaderDevelop.Data
 
         public DbSet<WOL> WOLs { get; set; }
 
-        public DbSet<ScUser> ScUsers { get; set; }  
+        public DbSet<ScUser> ScUsers { get; set; }
 
- 
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             // Configuring one-to-many relationship between TodoTask and SubTask
@@ -32,7 +32,17 @@ namespace LeaderDevelop.Data
                 .WithOne(s => s.TodoTask)
                 .HasForeignKey(s => s.TaskId);
 
+            //modelBuilder.Entity<GoalTask>()
+            //   .HasMany(t => t.Activity)
+            //   .WithOne(s => s.GoalTask)
+            //   .HasForeignKey(s => s.TaskId);
+            modelBuilder.Entity<Activity>()
+          .HasOne(a => a.GoalTask)
+          .WithMany(g => g.Activity)
+          .HasForeignKey(a => a.TaskId);
+
             base.OnModelCreating(modelBuilder);
+
         }
     }
 }

@@ -11,17 +11,18 @@ namespace LeaderDevelop.Model
         {
             this.Orders = (maxOrder ?? 0) + 1;
         }
-        // Foreign key to TodoTask
-        [Required]
-        public int TaskId { get; set; }  // This is the property you are missing
-        [ForeignKey("TaskId")]  // ForeignKey should match the property in the TodoTask class
-        [InverseProperty("Activity")]  // This references the navigation property in TodoTask
-        public virtual GoalTask GoalTask { get; set; } = new GoalTask();
-
+        //// Foreign key to TodoTask
+        //[Required]
+        // public int TaskId { get; set; }  // This is the property you are missing
+        //[ForeignKey("TaskId")]  // ForeignKey should match the property in the TodoTask class
+        //[InverseProperty("Activity")]  // This references the navigation property in TodoTask
+        //public  GoalTask? GoalTask { get; set; }
 
 
         [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]  // Auto-generate Id
         public int Id { get; set; }
+
 
         [Required]
         [StringLength(250)]
@@ -88,7 +89,13 @@ namespace LeaderDevelop.Model
         [Display(Name = ("วันที่แก้/Modify Date"))]
         public DateTime? ModDate { get; set; } = DateTime.UtcNow;
 
-  
 
+
+        // Foreign key to GoalTask
+        public int TaskId { get; set; }
+
+        // Navigation property back to GoalTask
+        [ForeignKey("GoalTaskId")]
+        public GoalTask GoalTask { get; set; }
     }
 }

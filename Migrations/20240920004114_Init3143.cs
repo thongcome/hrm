@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeaderDevelop.Migrations
 {
     /// <inheritdoc />
-    public partial class Init : Migration
+    public partial class Init3143 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -341,7 +341,7 @@ namespace LeaderDevelop.Migrations
                     Name = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    Order = table.Column<int>(type: "int", nullable: true),
+                    Orders = table.Column<int>(type: "int", nullable: true),
                     Description = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     Lesson1 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     Lesson2 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),

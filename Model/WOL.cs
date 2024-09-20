@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LeaderDevelop.Model
 {
@@ -28,8 +29,8 @@ namespace LeaderDevelop.Model
         [Display(Name = ("Theme"))]
         public string? theme { get; set; }
 
-        // Navigation property to GoalTasks
-        public virtual ICollection<GoalTask> GoalTasks { get; set; } = new HashSet<GoalTask>();
+      
+ 
 
     }
 }

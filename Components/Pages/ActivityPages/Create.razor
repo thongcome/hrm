@@ -106,9 +106,14 @@
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task AddActivity()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.Activity.Add(Activity);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/activities");
+        try{
+            using var context = DbFactory.CreateDbContext();
+            context.Activity.Add(Activity);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/activities");
+        }catch(Exception e)
+        {
+            e.Message.ToString();
+        }
     }
 }

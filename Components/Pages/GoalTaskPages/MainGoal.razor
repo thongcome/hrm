@@ -39,8 +39,14 @@
 
     protected override void OnInitialized()
     {
-        context = DbFactory.CreateDbContext();
+        try
+        {
+            context = DbFactory.CreateDbContext();
+        }catch(Exception e)
+        {
+            e.Message.ToString();
+        }
     }
-
+    
     public async ValueTask DisposeAsync() => await context.DisposeAsync();
 }

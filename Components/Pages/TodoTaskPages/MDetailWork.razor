@@ -1,0 +1,190 @@
+﻿@page "/todotasks/details/{Id:int}"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Todo Task Details</PageTitle>
+
+<h1>รายละเอียดงานหลัก</h1>
+
+<!-- TodoTask Details Section -->
+<div class="card border-danger mb-4">
+    <div class="card-header bg-danger text-white d-flex justify-content-between">
+        <h2>รายละเอียดงานหลัก</h2>
+        <div>
+            <button class="btn btn-light btn-sm text-danger mr-2" @onclick="CancelTodoTask">ยกเลิกงาน</button>
+            <button class="btn btn-success btn-sm" @onclick="StartTodoTask">เริ่มงาน</button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (todotask == null)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else
+        {
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>ชื่องาน (Task Name):</strong> @todotask.Name</p>
+                    <p><strong>วันที่เริ่ม:</strong> @todotask.Startdate?.ToString("dd/MM/yyyy")</p>
+                    <p><strong>วันที่สิ้นสุด:</strong> @todotask.EndDate?.ToString("dd/MM/yyyy")</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>คำอธิบายเพิ่มเติม (Description):</strong> @todotask.Description</p>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- SubTask Section -->
+<div class="card mb-4">
+    <div class="card-header text-danger">
+        <h3>รายละเอียด SubTask</h3>
+    </div>
+    <div class="card-body">
+        <button class="btn btn-danger mb-3" @onclick="ShowAddSubTaskForm">เพิ่ม SubTask</button>
+        <ul class="list-group">
+            @if (SubTasks != null && SubTasks.Any())
+            {
+                @foreach (var subTask in SubTasks)
+                {
+                    <li class="list-group-item">
+                        <strong>@(subTask.Order ?? 0). </strong> @subTask.Name - สถานะ: @subTask.StatusCode
+                    </li>
+                }
+            }
+            else
+            {
+                <li class="list-group-item">No SubTasks added yet.</li>
+            }
+        </ul>
+    </div>
+</div>
+
+<!-- Add SubTask Form -->
+@if (ShowSubTaskForm)
+{
+    <div class="card">
+        <div class="card-body bg-light">
+            <h4>เพิ่ม SubTask</h4>
+            <EditForm Model="NewSubTask" OnValidSubmit="AddSubTask">
+                <div class="mb-3">
+                    <label for="order" class="form-label">Order:</label>
+                    <InputNumber id="order" @bind-Value="NewSubTask.Order" class="form-control" />
+                    <ValidationMessage For="() => NewSubTask.Order" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="Name" class="form-label">SubTask:</label>
+                    <InputText id="Name" @bind-Value="NewSubTask.Name" class="form-control" />
+                    <ValidationMessage For="() => NewSubTask.Name" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="StartDate" class="form-label">Start Date:</label>
+                    <InputDate id="StartDate" @bind-Value="NewSubTask.StartDate" class="form-control" />
+                    <ValidationMessage For="() => NewSubTask.StartDate" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="EndDate" class="form-label">End Date:</label>
+                    <InputDate id="EndDate" @bind-Value="NewSubTask.EndDate" class="form-control" />
+                    <ValidationMessage For="() => NewSubTask.EndDate" />
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save</button>
+                <button type="button" class="btn btn-secondary ml-2" @onclick="HideAddSubTaskForm">ยกเลิก</button>
+            </EditForm>
+        </div>
+    </div>
+}
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger">
+        @ErrorMessage
+    </div>
+}
+
+<div class="mt-4">
+    <a href="@($"/todotasks")" class="btn btn-outline-danger">Back to List</a>
+</div>
+
+@code {
+    private TodoTask? todotask;
+    private List<SubTask> SubTasks = new List<SubTask>();
+    private SubTask NewSubTask = new SubTask();
+    private bool ShowSubTaskForm = false;
+
+    [Parameter]
+    public int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        todotask = await context.TodoTasks.FindAsync(Id);
+
+        if (todotask == null)
+        {
+            NavigationManager.NavigateTo("notfound");
+            return;
+        }
+
+        // Load related SubTasks
+        SubTasks = await context.SubTasks.Where(s => s.TaskId == Id).ToListAsync();
+    }
+
+    private void ShowAddSubTaskForm()
+    {
+        ShowSubTaskForm = true;
+        NewSubTask = new SubTask { TaskId = Id };
+    }
+
+    private void HideAddSubTaskForm()
+    {
+        ShowSubTaskForm = false;
+    }
+
+    private async Task AddSubTask()
+    {
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+            context.SubTasks.Add(NewSubTask);
+            await context.SaveChangesAsync();
+
+            SubTasks.Add(NewSubTask);
+            HideAddSubTaskForm();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error: {ex.Message}";
+            Console.WriteLine(ErrorMessage);
+        }
+    }
+
+    private async Task CancelTodoTask()
+    {
+        if (todotask != null)
+        {
+            using var context = DbFactory.CreateDbContext();
+            todotask.IsActive = false;
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/todotasks");
+        }
+    }
+
+    private async Task StartTodoTask()
+    {
+        if (todotask != null)
+        {
+            using var context = DbFactory.CreateDbContext();
+            todotask.IsActive = true;
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/todotasks");
+        }
+    }
+
+    private string ErrorMessage = string.Empty;
+}
