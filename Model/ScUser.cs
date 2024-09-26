@@ -48,25 +48,28 @@ public partial class ScUser
     public bool Isforcechanged { get; set; } = false;
 
 
+    [Column("IsCoach")]
+    public bool IsCoach { get; set; } = false;
+
     [Column("iscancel")]
     public bool Iscancel { get; set; } = false;
 
     [Column("pwdexpdate", TypeName = "datetime")]
-    public DateTime? Pwdexpdate { get; set; } =null;
+    public DateTime? Pwdexpdate { get; set; } = null;
 
     [Column("lasttimelogin", TypeName = "datetime")]
     public DateTime? Lasttimelogin { get; set; } = null;
 
     [Column("invalidpwcount")]
-    public int? Invalidpwcount { get; set; } =0;
+    public int? Invalidpwcount { get; set; } = 0;
 
     [Column("lastinvalidpwd", TypeName = "datetime")]
     public DateTime? Lastinvalidpwd { get; set; } = null;
 
     [Column("remark")]
-    public string? Remark { get; set; } =string.Empty;  
+    public string? Remark { get; set; } = string.Empty;
 
-   
+
 
     [Column("upperuserid")]
     public int? Upperuserid { get; set; }
@@ -80,10 +83,10 @@ public partial class ScUser
     public string? Orgcode { get; set; } = string.Empty;
 
     [Column("startdate")]
-    public DateTime? Startdate { get; set; }=null;
+    public DateTime? Startdate { get; set; } = null;
 
     [Column("enddate")]
-    public DateTime? Enddate { get; set; } =null ;
+    public DateTime? Enddate { get; set; } = null;
 
     [Column("remindpwd")]
     [StringLength(250)]
@@ -94,7 +97,7 @@ public partial class ScUser
     public string? Social { get; set; } = string.Empty;
 
 
-    
+
 
     [Column("moddate", TypeName = "datetime")]
     public DateTime? Moddate { get; set; }
@@ -109,13 +112,13 @@ public partial class ScUser
     [Unicode(true)]
     public string? Empid { get; set; } = string.Empty;
 
-  
+
 
     [Column("email")]
     [StringLength(250)]
     public string? Email { get; set; } = string.Empty;
 
-   
+
 
     [Column("poscode")]
     [StringLength(50)]
@@ -128,10 +131,10 @@ public partial class ScUser
     public string? PosName { get; set; } = string.Empty;
 
     [Column("isActivate")]
-    public bool IsActivate { get; set; } =true;
+    public bool IsActivate { get; set; } = true;
 
-   
- 
+
+
 
     [Column("supervisor")]
     [StringLength(250)]

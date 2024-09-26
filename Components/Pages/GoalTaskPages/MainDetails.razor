@@ -1,4 +1,4 @@
-﻿@page "/goaltasks/details/{Id:int}"
+﻿@page "/goaltasks/maindetails/{Id:int}"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
@@ -45,7 +45,7 @@
 <div class="card mb-4">
     <div class="mb-2">
         <div class="card-header  text-danger">
-            <h4>รายละเอียดกิจกรรม</h4>  
+            <h4>รายละเอียดกิจกรรม</h4>  คำแนะนำการวางแผนอย่างเป็นระบบ
         </div>
     </div> <div class="mb-2"> <link href="" > คำแนะนำการวางแผนอย่างเป็นระบบ</div>
 
@@ -59,7 +59,7 @@
                 @foreach (var activity in Activities)
                 {
                     <li class="list-group-item">
-                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - ความก้าวหน้า: @activity.progress 
+                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - สถานะ: @activity.StatusCode
                     </li>
                 }
             }
@@ -135,6 +135,7 @@
     private List<Activity> Activities = new List<Activity>();
     private Activity NewActivity = new Activity();
     private bool ShowActivityForm = false;
+
 
 
     [Parameter]
@@ -216,22 +217,10 @@
             NewActivity.TaskId = Id;
             NewActivity.CreateDate = DateTime.UtcNow;
             NewActivity.ModDate = DateTime.UtcNow;
-            NewActivity.progress = 0m;
-
-
 
             // Add the new Activity without manually setting the Id
             context.Activity.Add(NewActivity);
             await context.SaveChangesAsync();
-            
-            // if (NewActivity != null)
-            // {
-            //     int newActivityId = NewActivity.Id;
-            //   //  await GoalTaskService.UpdateActivityProgressAsync(newActivityId, newProgress);
-            //     await GoalTaskService.UpdateActivityProgressAsync((int)1, newProgress);
-
-            // }
-
 
             // Update the list of activities to reflect the newly added one
             Activities.Add(NewActivity);
@@ -269,5 +258,4 @@
             NavigationManager.NavigateTo("/goaltasks");
         }
     }
- 
 }

@@ -4,102 +4,158 @@
 @using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject UserService UserService
 
 <PageTitle>Create</PageTitle>
 
-
-<h4>เพิ่มเป้าหมาย/Goal Create  (Card แดง) </h4>
+<h4 class="text-danger">เพิ่มเป้าหมาย/Goal Create  (Card แดง)</h4>
 <hr />
 <div class="row">
     <div class="col-md-4">
-        <EditForm method="post" Model="GoalTask" OnValidSubmit="AddGoalTask" FormName="create" Enhance>
-            <DataAnnotationsValidator />
-            <div class="mb-3">
-                <label for="name" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-                <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" />
-                <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
+        <div class="card border-danger mb-3">
+            <div class="card-header bg-danger text-white">
+                เพิ่มเป้าหมาย/Goal Create
             </div>
-            <ValidationSummary class="text-danger" />
-            <div class="mb-3">
-                <label for="dayofgoal" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") : แนะนำ 14 วัน หรือ 7 วัน
-                </label>
-                <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
-                <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+            <div class="card-body">
+                <EditForm method="post" Model="GoalTask" OnValidSubmit="AddGoalTask" FormName="create" Enhance>
+                    <DataAnnotationsValidator />
+                    <div class="mb-3">
+                        <label for="name" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                        </label>
+                        <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" />
+                        <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
+                    </div>
+                    <ValidationSummary class="text-danger" />
+                    <div class="mb-3">
+                        <label for="dayofgoal" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Day of Goal") : แนะนำ 14 วัน หรือ 7 วัน
+                        </label>
+                        <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
+                        <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="startdate" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
+                        </label>
+                        <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" />
+                        <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="enddate" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "End Date")
+                        </label>
+                        <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" />
+                        <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Description")
+                        </label>
+                        <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" />
+                        <ValidationMessage For="() => GoalTask.Description" class="text-danger" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="wol" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
+                        </label>
+                        <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
+                            <option value="">-- Select an option --</option>
+                            @foreach (var option in wolOptions)
+                            {
+                                <option value="@option.code">@option.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="coachSearch">Search for Coach by Name</label>
+                        <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" />
+
+                        @if (filteredCoaches.Any())
+                        {
+                            <label for="coachSelect">Select Coach</label>
+                            <InputSelect id="coachSelect" @bind-Value="selectedCoachId" class="form-control">
+                                <option value="">-- Select Coach --</option>
+                                @foreach (var coach in filteredCoaches)
+                                {
+                                    <option value="@coach.Userid">@coach.Firstname</option>
+                                }
+                            </InputSelect>
+                        }
+                        else
+                        {
+                            <p>No coaches found.</p>
+                        }
+                    </div>
+
+                    <button type="submit" class="btn btn-danger">เพิ่ม/Create</button>
+                </EditForm>
             </div>
-            <div class="mb-3">
-                <label for="startdate" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-                <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="enddate" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-                <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" /> 
-            </div>        
-                
-              
-            <div class="mb-3">
-                <label for="description" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-                <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.Description" class="text-danger" /> 
-            </div>        
-         @*    <div class="mb-3">
-                <label for="wol" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-                <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" /> 
-                <ValidationMessage For="() => GoalTask.wol" class="text-danger" /> 
-            </div>    *@     
-            <div class="mb-3">
-                <label for="wol" class="form-label">
-                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                </label>
-
-                <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
-                    <option value="">-- Select an option --</option>
-                    @foreach (var option in wolOptions)
-                    {
-                        <option value="@option.code">@option.Name</option>
-                    }
-                </InputSelect>
-
-                <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
-            </div>
-
-         
-
-           
-            <button type="submit" class="btn btn-primary">เพิ่ม/Create</button>
-        </EditForm>
+        </div>
     </div>
 </div>
 
 <div>
     <a href="/goaltasks">รายการเป้าหมาย/Goal List</a>
 </div>
+@code {
+    private GoalTask newGoalTask = new GoalTask();
+    private List<ScUser> coaches = new List<ScUser>();
+    private List<ScUser> filteredCoaches = new List<ScUser>(); // List of coaches filtered by search
+    private string searchQuery = ""; // Search input
+    private string selectedCoachId = "";  // The selected coach's ID
 
- 
+    protected override async Task OnInitializedAsync()
+    {
+        // Fetch the list of available coaches from the service
+        using var context = DbFactory.CreateDbContext();
+
+        coaches = await context.ScUsers.Where(u => u.IsCoach).ToListAsync();
+
+        // coaches = await GoalTaskService.GetAllCoachesAsync();
+        filteredCoaches = coaches; // Initialize the filtered list
+    }
+
+    // Method to filter coaches based on search query
+    private void FilterCoaches(ChangeEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            filteredCoaches = coaches; // Show all coaches if no search query
+        }
+        else
+        {
+            filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    // private async Task HandleValidSubmit()
+    // {
+    //     // Ensure a coach is selected
+    //     if (string.IsNullOrWhiteSpace(selectedCoachId))
+    //     {
+    //         // Handle error: No coach selected
+    //         return;
+    //     }
+
+    //     // Create the GoalTask with the selected CoachID
+    //     await GoalTaskService.CreateNewGoalTaskAsync(newGoalTask, selectedCoachId);
+    //     // Navigate or show success message
+    // }
+}
 
 @code {
     [SupplyParameterFromForm]
     private GoalTask GoalTask { get; set; } = new();
-    private List<WOL> wolOptions = new List<WOL> ();
+    private List<WOL> wolOptions = new List<WOL>();
 
     protected override void OnInitialized()
     {
@@ -110,30 +166,25 @@
     {
         // Load or initialize the WOL options here
         using var context = DbFactory.CreateDbContext();
-
         wolOptions = context.WOLs.ToList();
-
-        // If you need to load options asynchronously, use OnInitializedAsync instead.
     }
 
-    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task AddGoalTask()
     {
         using var context = DbFactory.CreateDbContext();
         GoalTask.CalculateEndDate();
+
+        var currentUser = UserService.GetUserName();
+        GoalTask.Modby = currentUser;
+        GoalTask.CreateBy = currentUser;
+        GoalTask.ModDate = DateTime.UtcNow;
+        GoalTask.CreateDate = DateTime.UtcNow;
+
         context.GoalTasks.Add(GoalTask);
         await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/goaltasks/Maingoal");
     }
 
-
-
-    private void HandleValidSubmit()
-    {
-        GoalTask.CalculateEndDate();
-    }
-
-    // Automatically update EndDate whenever DayofGoal or StartDate changes
     private void UpdateEndDate()
     {
         GoalTask.CalculateEndDate();
