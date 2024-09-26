@@ -27,7 +27,7 @@ namespace LeaderDevelop.Model
         public DateTime? EndDate { get; set; } = null;
 
         [Display(Name = ("ใช้เวลากี่วัน/Day Period"))]
-        public int? DayofGoal { get; set; }
+        public double? DayofGoal { get; set; }
 
 
         [Display(Name = ("ความก้าวหน้า/Progress"))]
@@ -101,7 +101,27 @@ namespace LeaderDevelop.Model
         public ICollection<Activity> Activity { get; set; } = new List<Activity>();
 
 
+    
 
+        // Method to calculate EndDate
+        public void CalculateEndDate()
+        {
+            if (DayofGoal.HasValue) {
+                //EndDate = (Startdate ?? DateTime.Now).AddDays((double)DayofGoal);
 
+                if (Startdate.HasValue)
+                {
+                    EndDate = Startdate.Value.AddDays((double)DayofGoal);
+                     
+                }
+                else
+                {
+                    // Handle the case where StartDate is null (assign default value if needed)
+                    EndDate = DateTime.Now.AddDays((double)DayofGoal);// or any other default logic
+                }
+            }
+        }
     }
+
 }
+

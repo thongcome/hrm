@@ -57,15 +57,33 @@
                 <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.Description" class="text-danger" /> 
             </div>        
-            <div class="mb-3">
+         @*    <div class="mb-3">
                 <label for="wol" class="form-label">
                     @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                         .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
                 </label>
                 <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" /> 
                 <ValidationMessage For="() => GoalTask.wol" class="text-danger" /> 
-            </div>        
-            
+            </div>    *@     
+            <div class="mb-3">
+                <label for="wol" class="form-label">
+                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                </label>
+
+                <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
+                    <option value="">-- Select an option --</option>
+                    @foreach (var option in wolOptions)
+                    {
+                        <option value="@option.code">@option.Name</option>
+                    }
+                </InputSelect>
+
+                <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+            </div>
+
+         
+
            
             <button type="submit" class="btn btn-primary">เพิ่ม/Create</button>
         </EditForm>
@@ -76,17 +94,48 @@
     <a href="/goaltasks">รายการเป้าหมาย/Goal List</a>
 </div>
 
+ 
+
 @code {
     [SupplyParameterFromForm]
     private GoalTask GoalTask { get; set; } = new();
-    
+    private List<WOL> wolOptions = new List<WOL> ();
+
+    protected override void OnInitialized()
+    {
+        InitializeWolOptions();
+    }
+
+    private void InitializeWolOptions()
+    {
+        // Load or initialize the WOL options here
+        using var context = DbFactory.CreateDbContext();
+
+        wolOptions = context.WOLs.ToList();
+
+        // If you need to load options asynchronously, use OnInitializedAsync instead.
+    }
 
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task AddGoalTask()
     {
         using var context = DbFactory.CreateDbContext();
+        GoalTask.CalculateEndDate();
         context.GoalTasks.Add(GoalTask);
         await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/goaltasks/Maingoal");
+    }
+
+
+
+    private void HandleValidSubmit()
+    {
+        GoalTask.CalculateEndDate();
+    }
+
+    // Automatically update EndDate whenever DayofGoal or StartDate changes
+    private void UpdateEndDate()
+    {
+        GoalTask.CalculateEndDate();
     }
 }
