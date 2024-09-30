@@ -158,16 +158,7 @@
         // Load related activities for this goal task
         Activities = await context.Activity.Where(a => a.TaskId == Id).ToListAsync();
     }
-    // private void ShowAddActivityForm()
-    // {
-    //     ShowActivityForm = true;
-    //     NewActivity = new Activity();
-    //     NewActivity.TaskId = Id;
-    //     if (goaltask != null)
-    //     {
-    //         NewActivity.GoalTask = goaltask;
-    //     }
-    // }
+  
     private void ShowAddActivityForm()
     {
         ShowActivityForm = true;
@@ -182,34 +173,7 @@
     }
     private string ErrorMessage = string.Empty;
 
-    // private async Task AddActivity()
-    // {
-    //     try
-    //     {
-    //         using var context = DbFactory.CreateDbContext();
-
-    //         // เชื่อมโยงกับ GoalTask ที่มีอยู่แล้วโดยไม่กำหนดค่า Id เอง
-    //         if (goaltask != null)
-    //         {
-    //              NewActivity.TaskId = Id; // ใช้ Id ที่มีอยู่ของ GoalTask
-    //             NewActivity.CreateDate = DateTime.UtcNow;
-    //             NewActivity.ModDate = DateTime.UtcNow;
-
-    //         }
-
-    //         context.Activity.Add(NewActivity);
-    //         await context.SaveChangesAsync();
-
-    //         Activities.Add(NewActivity);
-    //         HideAddActivityForm();
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         // บันทึก error message
-    //         ErrorMessage = $"Error: {ex.Message}";
-    //         Console.WriteLine(ErrorMessage);
-    //     }
-    // }
+   
 
     private async Task AddActivity()
     {
@@ -228,15 +192,6 @@
             // Add the new Activity without manually setting the Id
             context.Activity.Add(NewActivity);
             await context.SaveChangesAsync();
-
-            // if (NewActivity != null)
-            // {
-            //     int newActivityId = NewActivity.Id;
-            //   //  await GoalTaskService.UpdateActivityProgressAsync(newActivityId, newProgress);
-            //     await GoalTaskService.UpdateActivityProgressAsync((int)1, newProgress);
-
-            // }
-
 
             // Update the list of activities to reflect the newly added one
             Activities.Add(NewActivity);

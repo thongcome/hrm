@@ -3,7 +3,9 @@ using LeaderDevelop.Components.Account;
 using LeaderDevelop.Data;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,7 +48,13 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 //builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 //    options.UseSqlServer(connectionString));
 
-
+//var supportedCultures = new[] { new CultureInfo("en-US") }; // Change to "th-TH ,en-US " or your preferred culture
+//builder.Services.Configure<RequestLocalizationOptions>(options =>
+//{
+//    options.DefaultRequestCulture = new RequestCulture("en-US"); // Set default culture
+//    options.SupportedCultures = supportedCultures;
+//    options.SupportedUICultures = supportedCultures;
+//});
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
@@ -64,6 +72,7 @@ else
     app.UseHsts();
     app.UseMigrationsEndPoint();
 }
+//app.UseRequestLocalization();
 
 app.UseHttpsRedirection();
 

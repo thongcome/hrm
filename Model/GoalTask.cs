@@ -11,8 +11,8 @@ namespace LeaderDevelop.Model
         public GoalTask()
         {
             // Default StartDate to today and DayofGoal to 14 days
-            Startdate = DateTime.Today;
-            DayofGoal = 14;
+            Startdate = DateTime.Now;
+             
         }
 
 
@@ -33,6 +33,10 @@ namespace LeaderDevelop.Model
         [Display(Name = ("วันที่สิ้นสุด/End Date"))]
         public DateTime? EndDate { get; set; } = null;
 
+
+
+        // Adding validation to DayofGoal
+        [Range(7, 14, ErrorMessage = "DayofGoal must be between 7 and 14 days.")]
         [Display(Name = ("ใช้เวลากี่วัน/Day Period"))]
         public double? DayofGoal { get; set; }
 
@@ -50,7 +54,7 @@ namespace LeaderDevelop.Model
         [StringLength(50)]
         [Unicode(true)]
 
-        [Display(Name = ("โหมด/Mode"))]
+        [Display(Name = ("เรื่อง/WOL"))]
         public string wol { get; set; } = string.Empty;
 
         [StringLength(500)]
@@ -97,10 +101,10 @@ namespace LeaderDevelop.Model
         public string? CreateBy { get; set; } = string.Empty;
 
         [Display(Name = ("วันที่สร้าง/Create Date"))]
-        public DateTime CreateDate { get; set; } = DateTime.UtcNow;
+        public DateTime CreateDate { get; set; } = DateTime.Now;
 
         [Display(Name = ("วันที่แก้/Modify Date"))]
-        public DateTime ModDate { get; set; } = DateTime.UtcNow;
+        public DateTime ModDate { get; set; } = DateTime.Now;
 
 
         [InverseProperty("GoalTask")]
@@ -116,8 +120,8 @@ namespace LeaderDevelop.Model
             if (DayofGoal.HasValue)
             {
                 //EndDate = (Startdate ?? DateTime.Now).AddDays((double)DayofGoal);
-                if (DayofGoal >= 7 && DayofGoal <= 14)
-                {
+                //if (DayofGoal >= 7 && DayofGoal <= 14)
+                //{
                     if (Startdate.HasValue)
                     {
                         EndDate = Startdate.Value.AddDays((double)DayofGoal);
@@ -128,7 +132,7 @@ namespace LeaderDevelop.Model
                         // Handle the case where StartDate is null (assign default value if needed)
                         EndDate = DateTime.Now.AddDays((double)DayofGoal);// or any other default logic
                     }
-                }
+                //}
             }
         }
     }

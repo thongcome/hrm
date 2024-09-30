@@ -29,30 +29,53 @@
                     </div>
                     <ValidationSummary class="text-danger" />
                     <div class="mb-3">
-                        <label for="startdate" class="form-label">Start Date</label>
-                                                 <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" @onchange="CheckAndUpdateEndDate" />
-                        
-@*                         <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" @onchange="OnStartDateChanged" />
- *@
-                        <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
+                        <label for="startdate" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
+                        </label>
+                        <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" @oninput="OnStartDateChanged" />
+                    <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
                     </div>
+                   
+           @*          <div class="mb-3">
+                        <label for="startdate" class="form-label">Start Date</label>
+                        <InputDate id="startdate" Value="@GoalTask.Startdate" class="form-control" @oninput="OnStartDateChanged" />
+                        <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
+                    </div> *@
 
                     <div class="mb-3">
-                        <label for="dayofgoal" class="form-label">Day of Goal</label>
-                        <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" @onchange="CheckAndUpdateEndDate" />
-@*                         <InputDate id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" @onchange="OnStartDateChanged" />
- *@
-                        <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+                        <label for="dayofgoal" class="form-label">
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "กี่วัน")
+                        </label>
+                        <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" @oninput="OnDayOfGoalChanged" />
+
+                    <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
                     </div>
+
+                 
+
+                 @*    <div class="mb-3">
+                        <label for="dayofgoal" class="form-label">Day of Goal</label>
+                        <InputNumber id="dayofgoal" Value="@GoalTask.DayofGoal" class="form-control" @oninput="OnDayOfGoalChanged" />
+                        <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
+                    </div> *@
 
                     <div class="mb-3">
                         <label for="enddate" class="form-label">End Date</label>
-                        @*                         <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" />
-                        *@
                         <input id="enddate" type="date" value="@GoalTask.EndDate?.ToString("yyyy-MM-dd")" class="form-control" readonly />
-
                         <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
                     </div>
+
+
+@* 
+                    <div class="mb-3">
+                        <label for="enddate" class="form-label">End Date</label>
+                        <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" readonly />
+
+
+                        <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
+                    </div> *@
 
                     <div class="mb-3">
                         <label for="description" class="form-label">
@@ -76,7 +99,6 @@
                         </InputSelect>
                         <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
                     </div>
-
                     <div class="form-group">
                         <label for="coachSearch">Search for Coach by Name</label>
                         <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" />
@@ -84,7 +106,7 @@
                         @if (filteredCoaches.Any())
                         {
                             <label for="coachSelect">Select Coach</label>
-                            <InputSelect id="coachSelect" @bind-Value="selectedCoachId" class="form-control">
+                            <InputSelect id="coachSelect" @bind-Value="GoalTask.coachId" class="form-control">
                                 <option value="">-- Select Coach --</option>
                                 @foreach (var coach in filteredCoaches)
                                 {
@@ -97,6 +119,7 @@
                             <p>No coaches found.</p>
                         }
                     </div>
+
 
                     <button type="submit" class="btn btn-danger">เพิ่ม/Create</button>
                 </EditForm>
@@ -112,7 +135,6 @@
 
 
 @code {
-    private GoalTask newGoalTask = new GoalTask();
     private List<ScUser> coaches = new List<ScUser>();
     private List<ScUser> filteredCoaches = new List<ScUser>(); // List of coaches filtered by search
     private string searchQuery = ""; // Search input
@@ -123,10 +145,10 @@
     private GoalTask GoalTask { get; set; } = new();
     private List<WOL> wolOptions = new List<WOL>();
 
-    protected override void OnInitialized()
-    {
-        InitializeWolOptions();
-    }
+    // protected override void OnInitialized()
+    // {
+    //     InitializeWolOptions();
+    // }
 
     private void InitializeWolOptions()
     {
@@ -134,41 +156,78 @@
         using var context = DbFactory.CreateDbContext();
         wolOptions = context.WOLs.ToList();
     }
+    // private void OnStartDateChanged(ChangeEventArgs e)
+    // {
+    //     // Check if the value has changed and call the update method
+    //     if (DateTime.TryParse(e.Value?.ToString(), out DateTime newStartDate))
+    //     {
+    //         CheckAndUpdateEndDate(); // Call your method to update the EndDate
+    //     }
+    // }
+
     private void OnStartDateChanged(ChangeEventArgs e)
     {
-        // Check if the value has changed and call the update method
         if (DateTime.TryParse(e.Value?.ToString(), out DateTime newStartDate))
         {
-            CheckAndUpdateEndDate(); // Call your method to update the EndDate
+            GoalTask.Startdate = newStartDate;  // Update the GoalTask's Startdate
+            CheckAndUpdateEndDate(); // Recalculate EndDate
         }
     }
+
+
+    // private void OnDayOfGoalChanged(ChangeEventArgs e)
+    // {
+    //     // Check if the value has changed and call the update method
+
+
+    //         CheckAndUpdateEndDate(); // Call your method to update the EndDate
+
+    // }
+
+
+    private void OnDayOfGoalChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out double newDayofGoal))
+        {
+            GoalTask.DayofGoal = newDayofGoal;  // Update the GoalTask's DayofGoal
+            CheckAndUpdateEndDate(); // Recalculate EndDate
+        }
+    }
+
     private async Task AddGoalTask()
     {
-        using var context = DbFactory.CreateDbContext();
-        GoalTask.CalculateEndDate();
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+            GoalTask.CalculateEndDate();
+           
+            var currentUser = UserService.GetUserName();
 
-        var currentUser = UserService.GetUserName();
-        GoalTask.Modby = currentUser;
-        GoalTask.CreateBy = currentUser;
-        GoalTask.ModDate = DateTime.UtcNow;
-        GoalTask.CreateDate = DateTime.UtcNow;
+            GoalTask.Modby = currentUser;
+            GoalTask.CreateBy = currentUser;
+            GoalTask.ModDate = DateTime.UtcNow;
+            GoalTask.CreateDate = DateTime.UtcNow;
 
-        context.GoalTasks.Add(GoalTask);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/goaltasks/Maingoal");
+            context.GoalTasks.Add(GoalTask);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/goaltasks/Maingoal");
+
+        }catch(Exception e)
+        {
+            e.Message.ToString();
+        }
     }
+
+     
 
     private void CheckAndUpdateEndDate()
     {
-        // Call the method to calculate the EndDate based on DayofGoal and Startdate, but only if they are valid
         if (GoalTask.DayofGoal.HasValue && GoalTask.Startdate.HasValue)
         {
-            GoalTask.CalculateEndDate();
-            StateHasChanged(); // Force UI update
+            GoalTask.CalculateEndDate(); // Update EndDate based on DayofGoal and Startdate
+            StateHasChanged(); // Ensure the UI refreshes
         }
-        StateHasChanged(); // Force UI update
     }
-
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,8 +238,11 @@
 
         // coaches = await GoalTaskService.GetAllCoachesAsync();
         filteredCoaches = coaches; // Initialize the filtered list
-        newGoalTask.DayofGoal=14;
+        GoalTask.DayofGoal = 14;
+        GoalTask.CalculateEndDate();
+        InitializeWolOptions();
 
+        StateHasChanged(); // Force UI update
     }
 
     // Method to filter coaches based on search query
@@ -198,45 +260,26 @@
 
     }
 
+    public void ThisCalculateEndDate()
+    {
+        if (GoalTask.DayofGoal.HasValue)
+        {
+            //EndDate = (Startdate ?? DateTime.Now).AddDays((double)DayofGoal);
+            if (GoalTask.DayofGoal >= 7 && GoalTask.DayofGoal <= 14)
+            {
+                if (GoalTask.Startdate.HasValue)
+                {
+                    GoalTask.EndDate = GoalTask.Startdate.Value.AddDays((double)GoalTask.DayofGoal);
+
+                }
+                else
+                {
+                    // Handle the case where StartDate is null (assign default value if needed)
+                    GoalTask.EndDate = DateTime.Now.AddDays((double)GoalTask.DayofGoal);// or any other default logic
+                }
+            }
+        }
+    }
+
 
 }
-@*
-@code {
-    [SupplyParameterFromForm]
-    private GoalTask GoalTask { get; set; } = new();
-    private List<WOL> wolOptions = new List<WOL>();
-
-    protected override void OnInitialized()
-    {
-        InitializeWolOptions();
-    }
-
-    private void InitializeWolOptions()
-    {
-        // Load or initialize the WOL options here
-        using var context = DbFactory.CreateDbContext();
-        wolOptions = context.WOLs.ToList();
-    }
-
-    private async Task AddGoalTask()
-    {
-        using var context = DbFactory.CreateDbContext();
-        GoalTask.CalculateEndDate();
-
-        var currentUser = UserService.GetUserName();
-        GoalTask.Modby = currentUser;
-        GoalTask.CreateBy = currentUser;
-        GoalTask.ModDate = DateTime.UtcNow;
-        GoalTask.CreateDate = DateTime.UtcNow;
-
-        context.GoalTasks.Add(GoalTask);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/goaltasks/Maingoal");
-    }
-
-    private void UpdateEndDate()
-    {
-        GoalTask.CalculateEndDate();
-    }
-}
- *@
