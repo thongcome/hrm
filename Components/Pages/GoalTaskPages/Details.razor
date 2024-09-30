@@ -45,9 +45,9 @@
 <div class="card mb-4">
     <div class="mb-2">
         <div class="card-header  text-danger">
-            <h4>รายละเอียดกิจกรรม</h4>  
+            <h4>รายละเอียดกิจกรรม</h4>
         </div>
-    </div> <div class="mb-2"> <link href="" > คำแนะนำการวางแผนอย่างเป็นระบบ</div>
+    </div> <div class="mb-2"> <link href=""> คำแนะนำการวางแผนอย่างเป็นระบบ</div>
 
     <div class="card-body">
         <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่ม</button>
@@ -59,7 +59,10 @@
                 @foreach (var activity in Activities)
                 {
                     <li class="list-group-item">
-                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - ความก้าวหน้า: @activity.progress 
+                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
+
+                        <a href="@($"activities/edit?subid={activity.Id}")">Edit</a> |
+                        <a href="@($"activities/details?subid={activity.Id}")">Details</a> |
                     </li>
                 }
             }
@@ -116,6 +119,8 @@
                 <button type="submit" class="btn btn-primary">Save</button>
                 <button type="button" class="btn btn-secondary ml-2" @onclick="HideAddActivityForm">ยกเลิก</button>
             </EditForm>
+
+
         </div>
     </div>
 }
@@ -223,7 +228,7 @@
             // Add the new Activity without manually setting the Id
             context.Activity.Add(NewActivity);
             await context.SaveChangesAsync();
-            
+
             // if (NewActivity != null)
             // {
             //     int newActivityId = NewActivity.Id;
@@ -269,5 +274,5 @@
             NavigationManager.NavigateTo("/goaltasks");
         }
     }
- 
+
 }
