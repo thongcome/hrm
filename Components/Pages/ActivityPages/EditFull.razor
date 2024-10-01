@@ -1,14 +1,14 @@
-﻿@page "/activities/edit"
+﻿@page "/activities/editfull"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 
-<PageTitle>จัดการกิจกรรม/Manage Activities</PageTitle>
+<PageTitle>Edit</PageTitle>
 
-<h1>จัดการกิจกรรม/Manage Activities</h1>
+<h1>Edit</h1>
 
-<h2>จัดการกิจกรรม/Manage Activities</h2>
+<h2>Activity</h2>
 <hr />
 @if (Activity is null)
 {
@@ -24,30 +24,29 @@ else
                 <input type="hidden" name="Activity.SubId" value="@Activity.Id" />
                 <div class="mb-3">
                     <label for="taskid" class="form-label">TaskId:</label>
-                    <InputNumber id="taskid" @bind-Value="Activity.TaskId" class="form-control" hidden />
+                    <InputNumber id="taskid" @bind-Value="Activity.TaskId" class="form-control" />
                     <ValidationMessage For="() => Activity.TaskId" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="order" class="form-label">Order:</label>
-                    <InputNumber id="order" @bind-Value="Activity.Orders" class="form-control" readonly />
-                    <ValidationMessage For="() => Activity.Orders" class="text-danger" />
-                </div>
-                <div class="mb-3">
                     <label for="name" class="form-label">Name:</label>
-                    <InputText id="name" @bind-Value="Activity.Name" class="form-control" readonly />
+                    <InputText id="name" @bind-Value="Activity.Name" class="form-control" />
                     <ValidationMessage For="() => Activity.Name" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="startdate" class="form-label">StartDate:</label>
-                    <InputDate id="startdate" @bind-Value="Activity.StartDate" class="form-control" readonly />
+                    <InputDate id="startdate" @bind-Value="Activity.StartDate" class="form-control" />
                     <ValidationMessage For="() => Activity.StartDate" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="enddate" class="form-label">EndDate:</label>
-                    <InputDate id="enddate" @bind-Value="Activity.EndDate" class="form-control" readonly />
+                    <InputDate id="enddate" @bind-Value="Activity.EndDate" class="form-control" />
                     <ValidationMessage For="() => Activity.EndDate" class="text-danger" />
                 </div>
-            
+                <div class="mb-3">
+                    <label for="order" class="form-label">Order:</label>
+                    <InputNumber id="order" @bind-Value="Activity.Orders" class="form-control" />
+                    <ValidationMessage For="() => Activity.Orders" class="text-danger" />
+                </div>
                 <div class="mb-3">
                     <label for="description" class="form-label">Description:</label>
                     <InputText id="description" @bind-Value="Activity.Description" class="form-control" />
@@ -73,25 +72,41 @@ else
                     <InputCheckbox id="isactive" @bind-Value="Activity.IsActive" class="form-check-input" />
                     <ValidationMessage For="() => Activity.IsActive" class="text-danger" />
                 </div> *@
-               @*  <div class="mb-3">
+                <div class="mb-3">
                     <label for="statuscode" class="form-label">StatusCode:</label>
                     <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
                     <ValidationMessage For="() => Activity.StatusCode" class="text-danger" />
-                </div> *@
-                <div class="mb-3">
-                    <label for="statuscode" class="form-label">Progress:</label>
-                    <InputNumber id="statuscode" @bind-Value="Activity.progress" class="form-control" />
-                    <ValidationMessage For="() => Activity.progress" class="text-danger" />
                 </div>
-
-                <button type="submit" class="btn btn-primary">Update</button>                 <button type="button" class="btn btn-success" @onclick="SucessActivity">สำเร้จ/Sucess</button>
-
+                <div class="mb-3">
+                    <label for="modby" class="form-label">Modby:</label>
+                    <InputText id="modby" @bind-Value="Activity.Modby" class="form-control" />
+                    <ValidationMessage For="() => Activity.Modby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="createby" class="form-label">CreateBy:</label>
+                    <InputText id="createby" @bind-Value="Activity.CreateBy" class="form-control" />
+                    <ValidationMessage For="() => Activity.CreateBy" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="createdate" class="form-label">CreateDate:</label>
+                    <InputDate id="createdate" @bind-Value="Activity.CreateDate" class="form-control" />
+                    <ValidationMessage For="() => Activity.CreateDate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">ModDate:</label>
+                    <InputDate id="moddate" @bind-Value="Activity.ModDate" class="form-control" />
+                    <ValidationMessage For="() => Activity.ModDate" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
             </EditForm>
         </div>
     </div>
 }
 
- 
+<div>
+    <a href="/activities">Back to List</a>
+</div>
+
 @code {
     [SupplyParameterFromQuery]
     private int SubId { get; set; }
@@ -116,11 +131,7 @@ else
     {
         using var context = DbFactory.CreateDbContext();
         context.Attach(Activity!).State = EntityState.Modified;
-        if(Activity is not null)
-        {
-            Activity.ModDate = DateTime.Now;
 
-        }
         try
         {
             await context.SaveChangesAsync();
@@ -137,37 +148,9 @@ else
             }
         }
 
-        NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
+        NavigationManager.NavigateTo("/activities");
     }
-    private async Task SucessActivity()
-    {
-        using var context = DbFactory.CreateDbContext();
-        context.Attach(Activity!).State = EntityState.Modified;
-        if (Activity is not null)
-        {
-            Activity.ModDate = DateTime.Now;
-            Activity.progress = 100;
-        }
-        
-        try
-        {
-            await context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ActivityExists(Activity!.Id))
-            {
-                NavigationManager.NavigateTo("notfound");
-            }
-            else
-            {
-                throw;
-            }
-        }
- 
-         
-        NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
-    }
+
     private bool ActivityExists(int subid)
     {
         using var context = DbFactory.CreateDbContext();
