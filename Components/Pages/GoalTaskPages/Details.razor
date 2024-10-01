@@ -13,12 +13,11 @@
     <div class="card-header bg-danger text-white d-flex justify-content-between">
         <h2>รายละเอียดเป้าหมาย</h2>
         <div>
-            @*
-            <button class="btn btn-light btn-sm text-danger mr-2" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
-            <button class="btn btn-success btn-sm" @onclick="StartGoalTask">เริ่มกำหนดเป้าหมาย</button> *@
+         
 
-            <button class="btn btn-light btn-sm text-danger mr-2" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
-            <button class="btn btn-success btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
+           @*  <button class="btn btn-light btn-sm text-danger mr-2" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+           
+            <button class="btn btn-success btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button> *@
 
         </div>
     </div>
@@ -39,7 +38,18 @@
                     <p><strong>สิ่งที่ได้เรียนรู้ (Learning):</strong> @goaltask.Lesson2</p>
                 </div>
             </div>
+            <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+        
+            @if (goaltask.IsActive==true)
+            {
+                <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
+            }
+            else
+            {
+                <button id="activegoal" class="btn btn-danger btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
 
+            }
+     
         }
     </div>
 </div>
@@ -250,6 +260,15 @@
         // e.g., change the task status to "In Progress" or something similar
         Console.WriteLine("Goal task started");
         NavigationManager.NavigateTo("/goaltasks/cancel?id=" + Id);
+
+    }
+
+    private void ActiveGoalTask()
+    {
+        // Logic for starting the goal task
+        // e.g., change the task status to "In Progress" or something similar
+        Console.WriteLine("Goal task started");
+        NavigationManager.NavigateTo("/goaltasks/active?id=" + Id);
 
     }
 }
