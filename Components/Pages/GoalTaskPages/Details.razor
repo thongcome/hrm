@@ -13,8 +13,13 @@
     <div class="card-header bg-danger text-white d-flex justify-content-between">
         <h2>รายละเอียดเป้าหมาย</h2>
         <div>
+            @*
             <button class="btn btn-light btn-sm text-danger mr-2" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
-            <button class="btn btn-success btn-sm" @onclick="StartGoalTask">เริ่มกำหนดเป้าหมาย</button>
+            <button class="btn btn-success btn-sm" @onclick="StartGoalTask">เริ่มกำหนดเป้าหมาย</button> *@
+
+            <button class="btn btn-light btn-sm text-danger mr-2" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+            <button class="btn btn-success btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
+
         </div>
     </div>
     <div class="card-body">
@@ -26,10 +31,7 @@
         {
             <div class="row">
                 <div class="col-md-6">
-                    <p><strong>ชื่อเป้าหมาย (Goal Name):</strong> @goaltask.Name</p>
-                    <p><strong>วันที่เริ่ม:</strong> @goaltask.Startdate?.ToString("dd/MM/yyyy")</p>
-                    <p><strong>วันที่สิ้นสุด:</strong> @goaltask.EndDate?.ToString("dd/MM/yyyy")</p>
-                    <p><strong>Wheel of Life:</strong> @(goaltask.WOL?.Name ?? "N/A")</p>
+                    <p><strong>ชื่อเป้าหมาย (Goal Name):</strong> @goaltask.Name </p>
                 </div>
                 <div class="col-md-6">
                     <p><strong>ความก้าวหน้า (Progress):</strong> @goaltask.progress</p>
@@ -37,6 +39,7 @@
                     <p><strong>สิ่งที่ได้เรียนรู้ (Learning):</strong> @goaltask.Lesson2</p>
                 </div>
             </div>
+
         }
     </div>
 </div>
@@ -132,7 +135,7 @@
 }
 
 <div class="mt-4">
-    <a href="@($"/goaltasks")" class="btn btn-outline-danger">ไปรายการเป้าหมาย</a>
+    <a href="@($"/goaltasks/maingoal")" class="btn btn-outline-danger">ไปรายการเป้าหมาย</a>
 </div>
 
 @code {
@@ -158,7 +161,7 @@
         // Load related activities for this goal task
         Activities = await context.Activity.Where(a => a.TaskId == Id).ToListAsync();
     }
-  
+
     private void ShowAddActivityForm()
     {
         ShowActivityForm = true;
@@ -173,7 +176,7 @@
     }
     private string ErrorMessage = string.Empty;
 
-   
+
 
     private async Task AddActivity()
     {
@@ -207,17 +210,18 @@
         }
     }
 
+    // private async Task CancelGoalTask()
+    // {
+    //     if (goaltask != null)
+    //     {
+    //         using var context = DbFactory.CreateDbContext();
+    //         goaltask.IsActive = false;
+    //         await context.SaveChangesAsync();
+    //         NavigationManager.NavigateTo("/goaltasks");
+    //     }
+    // }
 
-    private async Task CancelGoalTask()
-    {
-        if (goaltask != null)
-        {
-            using var context = DbFactory.CreateDbContext();
-            goaltask.IsActive = false;
-            await context.SaveChangesAsync();
-            NavigationManager.NavigateTo("/goaltasks");
-        }
-    }
+
 
     private async Task StartGoalTask()
     {
@@ -230,4 +234,22 @@
         }
     }
 
+    //// button click
+    private void EditGoalTask()
+    {
+        // Logic for starting the goal task
+        // e.g., change the task status to "In Progress" or something similar
+        Console.WriteLine("Goal task started");
+        NavigationManager.NavigateTo("/goaltasks/edit?id=" + Id);
+
+    }
+
+    private void CancelGoalTask()
+    {
+        // Logic for starting the goal task
+        // e.g., change the task status to "In Progress" or something similar
+        Console.WriteLine("Goal task started");
+        NavigationManager.NavigateTo("/goaltasks/cancel?id=" + Id);
+
+    }
 }

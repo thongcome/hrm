@@ -1,4 +1,4 @@
-﻿@page "/goaltasks/edit"
+﻿@page "/goaltasks/cancel"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.ComponentModel.DataAnnotations
@@ -31,38 +31,8 @@ else
                     <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" readonly />
                     <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
                 </div>
-                <div class="mb-3">
-                    <label for="startdate" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="enddate" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="dayofgoal" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="progress" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputNumber id="progress" @bind-Value="GoalTask.progress" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.progress" class="text-danger" />
-                </div>
+              
+           
                 <div class="mb-3">
                     <label for="description" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
@@ -103,28 +73,9 @@ else
                     <InputText id="thankfully" @bind-Value="GoalTask.ThankFully" class="form-control" />
                     <ValidationMessage For="() => GoalTask.ThankFully" class="text-danger" />
                 </div>
-               @*  <div class="mb-3">
-                    <label for="userid" class="form-label">UserId:</label>
-                    <InputNumber id="userid" @bind-Value="GoalTask.UserId" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.UserId" class="text-danger" />
-                </div> *@
-                <div class="mb-3">
-                    <label for="coachid" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.coachId))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputNumber id="coachid" @bind-Value="GoalTask.coachId" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.coachId" class="text-danger" />
-                </div>
-           
-                @* <div class="mb-3">
-                    <label for="isactive" class="form-label">IsActive:</label>
-                    <InputCheckbox id="isactive" @bind-Value="GoalTask.IsActive" class="form-check-input" />
-                    <ValidationMessage For="() => GoalTask.IsActive" class="text-danger" />
-                </div> *@
 
-                <button type="submit" class="btn btn-primary">Save</button>
-              <button type="button" class="btn btn-danger" @onclick="@(() => NavigationManager.NavigateTo("/goaltasks/maingoal"))">ยกเลิก</button>
+                <button type="submit" class="btn btn-primary">ยุติเป้าหมายนี้</button>
+              <button type="button" class="btn btn-danger" @onclick="@(() => NavigationManager.NavigateTo("/goaltasks/maingoal"))">กลับไปรายการเป้าหมาย</button>
 
             </EditForm>
         </div>
@@ -158,10 +109,16 @@ else
     private async Task UpdateGoalTask()
     {
         using var context = DbFactory.CreateDbContext();
+
         context.Attach(GoalTask!).State = EntityState.Modified;
 
+        // Modify the specific fields
+        GoalTask!.ModDate = DateTime.Now;  // Update Moddate to current time
+        GoalTask.IsActive = false;         // Set IsActive to false
+        GoalTask.Description = "ยุติเป้าหมายนี้";
         try
         {
+            
             await context.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
@@ -175,8 +132,8 @@ else
                 throw;
             }
         }
-
-        NavigationManager.NavigateTo("/goaltasks");
+   
+        NavigationManager.NavigateTo("/goaltasks/details/"+GoalTask.Id);
     }
 
     private bool GoalTaskExists(int id)
