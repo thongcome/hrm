@@ -57,8 +57,14 @@ namespace LeaderDevelop.Model
         [Display(Name = ("สิ่งที่ได้เรียนรู้/Learning"))]
         public string? Lesson2 { get; set; } = string.Empty;
 
-        [Display(Name = ("ความก้าวหน้า/Progress"))]
+
+        [Display(Name = "ความก้าวหน้า/Progress")]
+        [Range(0, 100, ErrorMessage = "Progress must be between 0 and 100.")]
         public decimal? progress { get; set; }
+
+
+        //[Display(Name = ("ความก้าวหน้า/Progress"))]
+        //public decimal? progress { get; set; }
 
         [StringLength(500)]
         [Unicode(true)]

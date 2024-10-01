@@ -41,8 +41,12 @@ namespace LeaderDevelop.Model
         public double? DayofGoal { get; set; }
 
 
-        [Display(Name = ("ความก้าวหน้า/Progress"))]
+        [Display(Name = "ความก้าวหน้า/Progress")]
+        [Range(0, 100, ErrorMessage = "Progress must be between 0 and 100.")]
         public decimal? progress { get; set; }
+
+        //[Display(Name = ("ความก้าวหน้า/Progress"))]
+        //public decimal? progress { get; set; }
 
         [StringLength(250)]
         [Unicode(true)]
