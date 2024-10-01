@@ -1,0 +1,145 @@
+﻿@page "/goaltasks/finish"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>ยกเลิกเป้าหมาย/Terminate Goal </PageTitle>
+<h4 class="text-danger">ยกเลิกเป้าหมาย/Terminate Goal</h4>
+
+<h2>ยกเลิกเป้าหมาย/Terminate Goal</h2>
+<hr class="bg-danger" />
+
+@if (GoalTask is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="GoalTask" OnValidSubmit="UpdateGoalTask" FormName="edit" Enhance>
+                <ValidationSummary class="text-danger" />
+                <ValidationSummary />
+                <input type="hidden" name="GoalTask.Id" value="@GoalTask.Id" readonly />
+                <div class="mb-3">
+                    <label for="name" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="name" @bind-Value="GoalTask.Name" class="form-control" readonly />
+                    <ValidationMessage For="() => GoalTask.Name" class="text-danger" />
+                </div>
+              
+           
+                <div class="mb-3">
+                    <label for="description" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Description" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="wol" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lesson1" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.Lesson1))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="lesson1" @bind-Value="GoalTask.Lesson1" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Lesson1" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lesson2" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.Lesson2))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="lesson2" @bind-Value="GoalTask.Lesson2" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.Lesson2" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="thankfully" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputText id="thankfully" @bind-Value="GoalTask.ThankFully" class="form-control" />
+                    <ValidationMessage For="() => GoalTask.ThankFully" class="text-danger" />
+                </div>
+
+                <button type="submit" class="btn btn-primary">Finish Goal</button>
+              <button type="button" class="btn btn-danger" @onclick="@(() => NavigationManager.NavigateTo("/goaltasks/maingoal"))">กลับไปรายการเป้าหมาย</button>
+
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/goaltasks/maingoal">กลับไปรายการเป้าหมาย</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    [SupplyParameterFromForm]
+    private GoalTask? GoalTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        GoalTask ??= await context.GoalTasks.FirstOrDefaultAsync(m => m.Id == Id);
+
+        if (GoalTask is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateGoalTask()
+    {
+        using var context = DbFactory.CreateDbContext();
+
+        context.Attach(GoalTask!).State = EntityState.Modified;
+
+        // Modify the specific fields
+        GoalTask!.ModDate = DateTime.Now;  // Update Moddate to current time
+      // Set IsActive to false
+        GoalTask.status = GoalTask.GoalTaskStatus.Success;
+
+        try
+        {
+            
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!GoalTaskExists(GoalTask!.Id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+   
+        NavigationManager.NavigateTo("/goaltasks/details/"+GoalTask.Id);
+    }
+
+    private bool GoalTaskExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.GoalTasks.Any(e => e.Id == id);
+    }
+}

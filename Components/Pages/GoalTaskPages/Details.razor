@@ -90,18 +90,26 @@
 
             </div>
             <hr />
-            <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
-
-            @if (goaltask.IsActive == true)
+            @if (!(goaltask.status == GoalTask.GoalTaskStatus.Success))
             {
-                <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
-            }
-            else
-            {
-                <button id="activegoal" class="btn btn-danger btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
+                <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+
+                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Cancel))
+                {
+                    <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
+                    @if (goaltask.progress == 100)
+                    {
+                        <button id="cancelgoal" class="btn btn-outline-primary btn-sm" @onclick="FinishGoalTask">เป้าหมายสำเร็จ/Finished</button>
+                    }
+
+                }
+                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Cancel))
+                {
+                    <button id="activegoal" class="btn btn-light btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
+
+                }
 
             }
-
         }
     </div>
 </div>
@@ -115,7 +123,13 @@
     </div> <div class="mb-2"> <link href=""> คำแนะนำการวางแผนอย่างเป็นระบบ</div>
 
     <div class="card-body">
-        <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่ม</button>
+        @if (goaltask is not null)
+        {
+            @if (!((goaltask.status == GoalTask.GoalTaskStatus.Success) || (goaltask.status == GoalTask.GoalTaskStatus.Cancel)))
+            {
+                <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่มกิจกรรม/Add Activity</button>
+            }
+        }
         <p class="text-muted">รายการกิจกรรม  ไม่ควรเกิน 14 กืจกรรม</p>
 
         <ul class="list-group">
@@ -319,6 +333,16 @@
         // e.g., change the task status to "In Progress" or something similar
         Console.WriteLine("Goal task started");
         NavigationManager.NavigateTo("/goaltasks/cancel?id=" + Id);
+
+    }
+
+
+    private void FinishGoalTask()
+    {
+        // Logic for starting the goal task
+        // e.g., change the task status to "In Progress" or something similar
+        Console.WriteLine("Goal task started");
+        NavigationManager.NavigateTo("/goaltasks/finish?id=" + Id);
 
     }
 

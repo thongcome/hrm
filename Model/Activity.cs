@@ -59,7 +59,7 @@ namespace LeaderDevelop.Model
 
 
         [Display(Name = "ความก้าวหน้า/Progress")]
-        [Range(0, 100, ErrorMessage = "Progress must be between 0 and 100.")]
+        [Range(0, 100, ErrorMessage = "ใส่ค่า 0-100 / Progress must be between 0 and 100.")]
         public decimal? progress { get; set; }
 
 
