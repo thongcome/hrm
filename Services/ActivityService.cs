@@ -34,6 +34,13 @@ public class ActivityService
         newActivity.CreateDate = DateTime.Now;
         //newActivity.StatusCode = ActivityStatus.Active;
 
+        var maxOrder = await _context.Activity
+           .Where(a => a.TaskId == newActivity.TaskId)
+           .MaxAsync(a => (int?)a.Orders) ?? 0;  // If no activities, start at 0
+
+        // Set the new order value
+        newActivity.Orders = maxOrder + 1;
+
         // Add the new activity to the DbContext
         _context.Activity.Add(newActivity);
         await _context.SaveChangesAsync();  // Save changes
@@ -55,6 +62,7 @@ public class ActivityService
         // Update the activity fields
         existingActivity.Name = updatedActivity.Name;
         existingActivity.progress = updatedActivity.progress;
+        existingActivity.StatusCode = updatedActivity.StatusCode;
         existingActivity.ModDate = DateTime.Now;
         existingActivity.Modby = _httpContextAccessor.HttpContext?.User?.Identity?.Name;
 
@@ -104,9 +112,9 @@ public class ActivityService
             else
             {
                 // Calculate the average progress from all activities
-                //  goalTask.progress = goalTask.Activity.Average(a => a.progress); // old version
+                  goalTask.progress = goalTask.Activity.Average(a => a.progress); // old version
 
-               await updateProgressToGoal(goalTask.Id);
+              // await updateProgressToGoal(goalTask.Id);
             }
 
             // Save the updated progress to the database

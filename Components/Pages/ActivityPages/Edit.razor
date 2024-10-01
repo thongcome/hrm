@@ -79,7 +79,11 @@ else
             <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
             <ValidationMessage For="() => Activity.StatusCode" class="text-danger" />
             </div> *@
+                <div class="mb-3">
+                    <label for="statuscode" class="form-label">Status</label>
+                    <p><strong>Status:</strong> @Activity.StatusCode</p>
 
+                </div>
 
                 <div class="mb-3">
                     <label for="progress" class="form-label">Progress</label>
@@ -129,11 +133,20 @@ else
         if (Activity is not null)
         {
             Activity.ModDate = DateTime.Now;
+            Activity.StatusCode = Activity.ActivityStatus.Active;
 
 
             try
             {
+                if(Activity.progress == 100)
+                {
+                   await SucessActivity();
+                }
+                else
+                {
+                    await ActivityService.UpdateActivityAsync(Activity);
 
+                }
                 await ActivityService.UpdateActivityAsync(Activity);
 
                 // await updateProgressToGoal(Activity.TaskId);
@@ -162,6 +175,7 @@ else
         {
             Activity.ModDate = DateTime.Now;
             Activity.progress = 100;
+            Activity.StatusCode = Activity.ActivityStatus.Success;
 
 
             try

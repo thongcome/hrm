@@ -15,10 +15,10 @@
     <div class="card-header bg-danger text-white d-flex justify-content-between">
         <h2>รายละเอียดเป้าหมาย</h2>
         <div>
-         
 
-           @*  <button class="btn btn-light btn-sm text-danger mr-2" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
-           
+
+            @*  <button class="btn btn-light btn-sm text-danger mr-2" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+
             <button class="btn btn-success btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button> *@
 
         </div>
@@ -49,9 +49,15 @@
                             @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                                 .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
                         </strong> @goaltask.progress %
+
                     </p>
 
                 </div>
+
+
+
+
+
                 <div class="col-md-6">
                     <p>
                         <strong>
@@ -73,9 +79,20 @@
                     </p>
                 </div>
             </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: @goaltask.progress%" aria-valuenow="@goaltask.progress" aria-valuemin="0" aria-valuemax="100">
+                            @goaltask.progress%
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <hr />
             <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
-        
-            @if (goaltask.IsActive==true)
+
+            @if (goaltask.IsActive == true)
             {
                 <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
             }
@@ -84,7 +101,7 @@
                 <button id="activegoal" class="btn btn-danger btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
 
             }
-     
+
         }
     </div>
 </div>
@@ -107,10 +124,14 @@
                 @foreach (var activity in Activities)
                 {
                     <li class="list-group-item">
+                        @if (activity.StatusCode == Activity.ActivityStatus.Success)
+                        {
+                            <button id="successshow" class="btn btn-success btn-sm">สำเร็จ</button>
+                        }
                         <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
 
-                           <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a>
- 
+                        <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a>
+
                     </li>
                 }
             }
@@ -132,14 +153,14 @@
 
 
                 <div class="mb-3">
-                    <label for="order" class="form-label">Task ID:</label>
-                    <InputNumber id="order" @bind-Value="NewActivity.TaskId" class="form-control" hidden />
+                    <label for="taskid" class="form-label">Task ID:</label>
+                    <InputNumber id="taskid" @bind-Value="NewActivity.TaskId" class="form-control" hidden />
                     <ValidationMessage For="() => NewActivity.TaskId" />
                 </div>
                 <!-- Order Input -->
                 <div class="mb-3">
-                    <label for="order" class="form-label">Order:</label>
-                    <InputNumber id="order" @bind-Value="NewActivity.Orders" class="form-control" />
+                    <label for="order" class="form-label">(auto)Order:</label>
+                    <InputNumber id="order" @bind-Value="NewActivity.Orders" class="form-control" readonly />
                     <ValidationMessage For="() => NewActivity.Orders" />
                 </div>
 
@@ -235,7 +256,7 @@
             NewActivity.ModDate = DateTime.UtcNow;
             NewActivity.progress = 0m;
             NewActivity.StatusCode = Activity.ActivityStatus.Active;
-            
+
 
 
             // Add the new Activity without manually setting the Id
