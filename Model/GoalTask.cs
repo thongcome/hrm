@@ -106,13 +106,23 @@ namespace LeaderDevelop.Model
         [Display(Name = ("วันที่แก้/Modify Date"))]
         public DateTime ModDate { get; set; } = DateTime.Now;
 
+         
+        [Unicode(true)]
+        [Display(Name = ("สถานะ/Status"))]
+        public GoalTaskStatus? status { get; set; } = GoalTaskStatus.Active;
+
 
         [InverseProperty("GoalTask")]
         //public virtual ICollection<Activity>? Activity { get; set; }
         public ICollection<Activity> Activity { get; set; } = new List<Activity>();
 
 
-
+        public enum GoalTaskStatus
+        {
+            Active,
+            Cancel,
+            Success
+        }
 
         // Method to calculate EndDate
         public void CalculateEndDate()

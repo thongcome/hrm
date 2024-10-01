@@ -1,8 +1,10 @@
 ﻿@page "/goaltasks/details/{Id:int}"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ActivityService ActivityService
 
 <PageTitle>Goal Task Details</PageTitle>
 
@@ -30,12 +32,45 @@
         {
             <div class="row">
                 <div class="col-md-6">
-                    <p><strong>ชื่อเป้าหมาย (Goal Name):</strong> @goaltask.Name </p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.Name
+                    </p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.Description
+                    </p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.progress %
+                    </p>
+
                 </div>
                 <div class="col-md-6">
-                    <p><strong>ความก้าวหน้า (Progress):</strong> @goaltask.progress</p>
-                    <p><strong>คำอธิบายเพิ่มเติม (Description):</strong> @goaltask.Description</p>
-                    <p><strong>สิ่งที่ได้เรียนรู้ (Learning):</strong> @goaltask.Lesson2</p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Lesson1))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.Lesson1
+                    </p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Lesson2))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.Lesson2
+                    </p>
+                    <p>
+                        <strong>
+                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.ThankFully
+                    </p>
                 </div>
             </div>
             <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
@@ -199,12 +234,15 @@
             NewActivity.CreateDate = DateTime.UtcNow;
             NewActivity.ModDate = DateTime.UtcNow;
             NewActivity.progress = 0m;
-
+            NewActivity.StatusCode = Activity.ActivityStatus.Active;
+            
 
 
             // Add the new Activity without manually setting the Id
-            context.Activity.Add(NewActivity);
-            await context.SaveChangesAsync();
+            await ActivityService.CreateNewActivityAsync(NewActivity);
+
+            // context.Activity.Add(NewActivity);
+            // await context.SaveChangesAsync();
 
             // Update the list of activities to reflect the newly added one
             Activities.Add(NewActivity);

@@ -71,9 +71,9 @@ namespace LeaderDevelop.Model
 
         [Unicode(true)]
         [Display(Name = ("สถานะ/Status"))]
-        public string? StatusCode { get; set; } = string.Empty;
-
-
+        public ActivityStatus? StatusCode { get; set; } = ActivityStatus.Active;
+       
+        
         [StringLength(250)]
         [Unicode(true)]
         [Display(Name = ("ผู้แก้ไข/Modified By"))]
@@ -98,5 +98,14 @@ namespace LeaderDevelop.Model
         // Navigation property back to GoalTask
         [ForeignKey("TaskId")]
         public GoalTask GoalTask { get; set; }
+
+        public enum ActivityStatus
+        {
+            Active,
+            Cancel,
+            Success
+        }
+
+
     }
 }

@@ -3,6 +3,7 @@
 @using LeaderDevelop.Model
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ActivityService ActivityService
 
 <PageTitle>จัดการกิจกรรม/Manage Activities</PageTitle>
 
@@ -47,7 +48,7 @@ else
                     <InputDate id="enddate" @bind-Value="Activity.EndDate" class="form-control" readonly />
                     <ValidationMessage For="() => Activity.EndDate" class="text-danger" />
                 </div>
-            
+
                 <div class="mb-3">
                     <label for="description" class="form-label">Description:</label>
                     <InputText id="description" @bind-Value="Activity.Description" class="form-control" />
@@ -68,16 +69,16 @@ else
                     <InputText id="thankfully" @bind-Value="Activity.ThankFully" class="form-control" />
                     <ValidationMessage For="() => Activity.ThankFully" class="text-danger" />
                 </div>
-         @*        <div class="mb-3">
-                    <label for="isactive" class="form-label">IsActive:</label>
-                    <InputCheckbox id="isactive" @bind-Value="Activity.IsActive" class="form-check-input" />
-                    <ValidationMessage For="() => Activity.IsActive" class="text-danger" />
-                </div> *@
-               @*  <div class="mb-3">
-                    <label for="statuscode" class="form-label">StatusCode:</label>
-                    <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
-                    <ValidationMessage For="() => Activity.StatusCode" class="text-danger" />
-                </div> *@
+                @*        <div class="mb-3">
+            <label for="isactive" class="form-label">IsActive:</label>
+            <InputCheckbox id="isactive" @bind-Value="Activity.IsActive" class="form-check-input" />
+            <ValidationMessage For="() => Activity.IsActive" class="text-danger" />
+            </div> *@
+                @*  <div class="mb-3">
+            <label for="statuscode" class="form-label">StatusCode:</label>
+            <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
+            <ValidationMessage For="() => Activity.StatusCode" class="text-danger" />
+            </div> *@
                 <div class="mb-3">
                     <label for="statuscode" class="form-label">Progress:</label>
                     <InputNumber id="statuscode" @bind-Value="Activity.progress" class="form-control" />
@@ -91,10 +92,12 @@ else
     </div>
 }
 
- 
+
 @code {
     [SupplyParameterFromQuery]
     private int SubId { get; set; }
+
+    private const int V = 0;
 
     [SupplyParameterFromForm]
     private Activity? Activity { get; set; }
@@ -116,27 +119,32 @@ else
     {
         using var context = DbFactory.CreateDbContext();
         context.Attach(Activity!).State = EntityState.Modified;
-        if(Activity is not null)
+        if (Activity is not null)
         {
             Activity.ModDate = DateTime.Now;
 
-        }
-        try
-        {
-            await context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ActivityExists(Activity!.Id))
-            {
-                NavigationManager.NavigateTo("notfound");
-            }
-            else
-            {
-                throw;
-            }
-        }
 
+            try
+            {
+
+                await ActivityService.UpdateActivityAsync(Activity);
+
+                // await updateProgressToGoal(Activity.TaskId);
+
+                // await context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!ActivityExists(Activity!.Id))
+                {
+                    NavigationManager.NavigateTo("notfound");
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
         NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
     }
     private async Task SucessActivity()
@@ -147,30 +155,77 @@ else
         {
             Activity.ModDate = DateTime.Now;
             Activity.progress = 100;
-        }
-        
-        try
-        {
-            await context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ActivityExists(Activity!.Id))
+
+
+            try
             {
-                NavigationManager.NavigateTo("notfound");
+                await ActivityService.UpdateActivityAsync(Activity);
+
+                // await updateProgressToGoal(Activity.TaskId);
+                // await context.SaveChangesAsync();
+
             }
-            else
+            catch (DbUpdateConcurrencyException)
             {
-                throw;
+                if (!ActivityExists(Activity!.Id))
+                {
+                    NavigationManager.NavigateTo("notfound");
+                }
+                else
+                {
+                    throw;
+                }
             }
         }
- 
-         
+
         NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
     }
     private bool ActivityExists(int subid)
     {
         using var context = DbFactory.CreateDbContext();
         return context.Activity.Any(e => e.Id == subid);
+    }
+
+    public async Task updateProgressToGoal(int taskid)
+    {
+        try
+        {
+            decimal sum = 0.00M;
+            decimal avg = 0.00M;
+            using var context = DbFactory.CreateDbContext();
+            List<Activity> activitires = new List<Activity>();
+            var goal = await context.GoalTasks.FindAsync(taskid);
+            if (goal is not null)
+            {
+
+
+                activitires = await context.Activity.Where(b => b.TaskId == taskid && b.StatusCode == Activity.ActivityStatus.Active).ToListAsync();
+
+                foreach (var item in activitires)
+                {
+                    if (item.progress is null)
+                    {
+                        item.progress = 0;
+                    }
+                    sum += (decimal)item.progress;
+
+                }
+                avg = sum / activitires.Count();
+
+                goal.progress = avg;
+                 context.SaveChanges();
+            }
+
+        }
+        catch (Exception e)
+        {
+            e.Message.ToString();
+        }
+
+
+
+
+
+
     }
 }
