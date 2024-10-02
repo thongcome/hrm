@@ -1,6 +1,7 @@
 ﻿using LeaderDevelop.Data;
 using LeaderDevelop.Model;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 
 public class UserService
@@ -28,8 +29,16 @@ public class UserService
         }
         return Task.FromResult(currentUser);
     }
+    //public async Task<string> GetUserId()
+    //{
+    //    var currentUserID = await _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+    //    if (currentUserID == null)
+    //    {
+    //    }
+    //    return currentUserID;
+    //}
 
-    public String GetUserName()
+public String GetUserName()
     {
         // Get the logged-in user's identity
         var currentUser =  _httpContextAccessor.HttpContext?.User?.Identity?.Name;

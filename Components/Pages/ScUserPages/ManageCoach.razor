@@ -1,0 +1,173 @@
+﻿@page "/scusers/managecoach"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@using System.Security.Claims
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>ScUser</h2>
+<hr />
+@if (ScUser is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="ScUser" OnValidSubmit="UpdateScUser" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <input type="hidden" name="ScUser.Userid" value="@ScUser.Userid" />
+              
+                <div class="mb-3">
+                    <label for="firstname" class="form-label">Firstname:</label>
+                    <InputText id="firstname" @bind-Value="ScUser.Firstname" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Firstname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lastname" class="form-label">Lastname:</label>
+                    <InputText id="lastname" @bind-Value="ScUser.Lastname" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Lastname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="loginname" class="form-label">Loginname:</label>
+                    <InputText id="loginname" @bind-Value="ScUser.Loginname" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Loginname" class="text-danger" />
+                </div>
+        
+                <div class="mb-3">
+                    <label for="phone" class="form-label">Phone:</label>
+                    <InputText id="phone" @bind-Value="ScUser.Phone" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Phone" class="text-danger" />
+                </div>
+                
+          @*       <div class="mb-3">
+                    <label for="iscancel" class="form-label">Iscancel:</label>
+                    <InputCheckbox id="iscancel" @bind-Value="ScUser.Iscancel" class="form-check-input" />
+                    <ValidationMessage For="() => ScUser.Iscancel" class="text-danger" />
+                </div>
+                 *@
+               
+          
+               
+              
+              @*   <div class="mb-3">
+                    <label for="startdate" class="form-label">Startdate:</label>
+                    <InputDate id="startdate" @bind-Value="ScUser.Startdate" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Startdate" class="text-danger" />
+                </div> *@
+        
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email:</label>
+                    <InputText id="email" @bind-Value="ScUser.Email" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Email" class="text-danger" />
+                </div>
+    
+                <div class="mb-3">
+                    <label for="iscoach" class="form-label"> สถานะ Coach:</label>
+                    <InputCheckbox id="iscoach" @bind-Value="ScUser.IsCoach" class="form-check-input" readonly />
+                    <ValidationMessage For="() => ScUser.IsCoach" class="text-danger" />
+                </div>
+               
+                <div class="mb-3">
+                    <label for="registerdate" class="form-label">Registerdate:</label>
+                    <InputDate id="registerdate" @bind-Value="ScUser.Registerdate" class="form-control" readonly/>
+                    <ValidationMessage For="() => ScUser.Registerdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lasttimelogin" class="form-label">Lasttimelogin:</label>
+                    <InputDate id="lasttimelogin" @bind-Value="ScUser.Lasttimelogin" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Lasttimelogin" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/scusers/coachmanagelists">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long Userid { get; set; }
+
+    [SupplyParameterFromForm]
+    private ScUser? ScUser { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get the logged-in user's ID from HttpContext
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (userId == null)
+        {
+            // If no user is logged in, redirect to login page or show a message
+            NavigationManager.NavigateTo("/Identity/Account/Login");
+            return;
+        }
+
+        // Fetch ScUser details from the database using the AspNetUser ID
+        using var context = DbFactory.CreateDbContext();
+        ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
+
+        if (ScUser is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     using var context = DbFactory.CreateDbContext();
+    //     ScUser ??= await context.ScUsers.FirstOrDefaultAsync(m => m.Userid == Userid);
+
+    //     if (ScUser is null)
+    //     {
+    //         NavigationManager.NavigateTo("notfound");
+    //     }
+    // }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateScUser()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(ScUser!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!ScUserExists(ScUser!.Userid))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/scusers/coachmanagelists");
+    }
+
+    private bool ScUserExists(long userid)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.ScUsers.Any(e => e.Userid == userid);
+    }
+}

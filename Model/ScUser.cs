@@ -13,6 +13,11 @@ public partial class ScUser
     [Column("userid")]
     public long Userid { get; set; }
 
+  
+    [Column("id")]
+    [StringLength(450)]
+    public string Id { get; set; }
+
     [Column("title")]
     [StringLength(250)]
     public string? Title { get; set; } = string.Empty;
