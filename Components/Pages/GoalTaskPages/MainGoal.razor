@@ -5,6 +5,7 @@
 @using LeaderDevelop.Data
 @implements IAsyncDisposable
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject UserService UserService;
 
 <PageTitle>รายการเป้าหมาย</PageTitle>
 
@@ -13,53 +14,54 @@
 <p>
     <a href="goaltasks/create">เพิ่มเป้าหมาย/Add New Goal</a>
 </p>
-
-<QuickGrid Class="table" Items="context.GoalTasks.OrderByDescending(b => b.Startdate)">
-    <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเภท/Mode" />
-    <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
-    <PropertyColumn Property="goaltask => goaltask.progress" Title="ความก้าวหน้า/Progress" />
-    <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
-    <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
-@*     <PropertyColumn Property="goaltask => goaltask.Description" Title="อธิบายเพิ่มเติม/Description" />
- *@  
- <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
-    <PropertyColumn Property="goaltask => goaltask.Lesson2" Title="สิ่งที่ได้เรียนรู้/Learning" />
-    <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="คำขอบคุณ/ThankFully" />
-
-@* 
-    <PropertyColumn Property="goaltask => goaltask.Name" />
-    <PropertyColumn Property="goaltask => goaltask.Startdate" />
-    <PropertyColumn Property="goaltask => goaltask.EndDate" />
-    <PropertyColumn Property="goaltask => goaltask.progress" />
-    <PropertyColumn Property="goaltask => goaltask.Description" />
-    <PropertyColumn Property="goaltask => goaltask.wol" />
-    <PropertyColumn Property="goaltask => goaltask.Lesson1" />
-    <PropertyColumn Property="goaltask => goaltask.Lesson2" />
-    <PropertyColumn Property="goaltask => goaltask.ThankFully" />
-    <PropertyColumn Property="goaltask => goaltask.ModDate" Title="วันที่แก้/Modify Date" /> *@
-
- 
-
-    <TemplateColumn Context="goaltask">
-        <a href="@($"goaltasks/edit?id={goaltask.Id}")">แก้ไข</a> |
-        <a href="@($"goaltasks/details/{goaltask.Id}")">รายการกิจกรรม</a>
-    </TemplateColumn>
-</QuickGrid>
+@if (GoalTaskList != null && GoalTaskList.Any())
+{
+    <QuickGrid Class="table" Items="GoalTaskList" TItem="GoalTask">
 
 
+        <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเภท/Mode" />
+        <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
+        <PropertyColumn Property="goaltask => goaltask.progress" Title="ความก้าวหน้า/Progress" />
+        <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
+        <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
+  
+        <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
+        <PropertyColumn Property="goaltask => goaltask.Lesson2" Title="สิ่งที่ได้เรียนรู้/Learning" />
+        <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="คำขอบคุณ/ThankFully" />
+
+
+
+        <TemplateColumn Context="goaltask">
+            <a href="@($"goaltasks/edit?id={goaltask.Id}")">แก้ไข</a> |
+            <a href="@($"goaltasks/details/{goaltask.Id}")">รายการกิจกรรม</a>
+        </TemplateColumn>
+    </QuickGrid>
+}
 @code {
     private ApplicationDbContext context = default!;
+    private IQueryable<GoalTask> GoalTaskList = default!;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
-            context = DbFactory.CreateDbContext();
-        }catch(Exception e)
+            context = await DbFactory.CreateDbContextAsync();
+            var userId = UserService.GetUserId();
+            if (!String.IsNullOrEmpty(userId))
+            {
+                // Use AsQueryable for deferred execution
+                GoalTaskList = context.GoalTasks
+                    .Where(b => b.OwnerID == userId)
+                    .OrderByDescending(b => b.Startdate)
+                    .AsQueryable();
+            }
+        }
+        catch (Exception e)
         {
-            e.Message.ToString();
+            Console.WriteLine(e.Message); // Log the exception
         }
     }
-    
+
+    // Dispose the DbContext
     public async ValueTask DisposeAsync() => await context.DisposeAsync();
 }

@@ -116,6 +116,16 @@ namespace LeaderDevelop.Model
         public GoalTaskStatus? status { get; set; } = GoalTaskStatus.Active;
 
 
+        [StringLength(450)]
+        [Unicode(true)]
+        [Display(Name = ("ผู้ตั้งเป้าหมาย/Goal By"))]
+        public string? OwnerID { get; set; } = string.Empty;
+
+        [StringLength(450)]
+        [Unicode(true)]
+        [Display(Name = ("email"))]
+        public string? email { get; set; } = string.Empty;
+
         [InverseProperty("GoalTask")]
         //public virtual ICollection<Activity>? Activity { get; set; }
         public ICollection<Activity> Activity { get; set; } = new List<Activity>();

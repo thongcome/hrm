@@ -200,14 +200,17 @@
         {
             using var context = DbFactory.CreateDbContext();
             GoalTask.CalculateEndDate();
-           
+
             var currentUser = UserService.GetUserName();
 
             GoalTask.Modby = currentUser;
             GoalTask.CreateBy = currentUser;
             GoalTask.ModDate = DateTime.UtcNow;
             GoalTask.CreateDate = DateTime.UtcNow;
-            
+            GoalTask.progress = 0M;
+            GoalTask.OwnerID = UserService.GetUserId();
+            GoalTask.email = UserService.GetUserEmail();
+
 
             context.GoalTasks.Add(GoalTask);
             await context.SaveChangesAsync();

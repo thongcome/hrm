@@ -1,0 +1,140 @@
+﻿@page "/scusers/editshort"
+@using Microsoft.EntityFrameworkCore
+@using LeaderDevelop.Model
+@using System.Security.Claims
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>แก้ไขข้อมูลส่วนตัว/Personal Data</PageTitle>
+
+<h1>แก้ไขข้อมูลส่วนตัว/Personal Data</h1>
+
+@if (!string.IsNullOrEmpty(StatusMessage))
+{
+    <div class="alert alert-success">@StatusMessage</div>
+}
+
+<h2>แก้ไขข้อมูลส่วนตัว/Personal Data</h2>
+<hr />
+@if (ScUser is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="ScUser" OnValidSubmit="UpdateScUser" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <input type="hidden" name="ScUser.Userid" value="@ScUser.Userid" />
+
+                <div class="mb-3">
+                    <label for="loginname" class="form-label">Loginname:</label>
+                    <InputText id="loginname" @bind-Value="ScUser.Loginname" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Loginname" class="text-danger" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email:</label>
+                    <InputText id="email" @bind-Value="ScUser.Email" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Email" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="firstname" class="form-label">Firstname:</label>
+                    <InputText id="firstname" @bind-Value="ScUser.Firstname" class="form-control" />
+                    <ValidationMessage For="() => ScUser.Firstname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lastname" class="form-label">Lastname:</label>
+                    <InputText id="lastname" @bind-Value="ScUser.Lastname" class="form-control" />
+                    <ValidationMessage For="() => ScUser.Lastname" class="text-danger" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="mobilephone" class="form-label">Mobilephone:</label>
+                    <InputText id="mobilephone" @bind-Value="ScUser.Mobilephone" class="form-control" />
+                    <ValidationMessage For="() => ScUser.Mobilephone" class="text-danger" />
+                </div>
+
+                <div class="mb-3">
+                    <label for="registerdate" class="form-label">Registerdate:</label>
+                    <InputDate id="registerdate" @bind-Value="ScUser.Registerdate" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Registerdate" class="text-danger" />
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/scusers">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long Userid { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? StatusMessage { get; set; } // Query parameter for status message
+
+    [SupplyParameterFromForm]
+    private ScUser? ScUser { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get the logged-in user's ID from HttpContext
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (userId == null)
+        {
+            // If no user is logged in, redirect to login page or show a message
+            NavigationManager.NavigateTo("/Identity/Account/Login");
+            return;
+        }
+
+        // Fetch ScUser details from the database using the AspNetUser ID
+        using var context = DbFactory.CreateDbContext();
+        ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
+
+        if (ScUser is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task UpdateScUser()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(ScUser!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+            // After saving changes, redirect to the same page with a status message
+            NavigationManager.NavigateTo($"/scusers/editshort?statusMessage=Update successful");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!ScUserExists(ScUser!.Userid))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+    }
+
+    private bool ScUserExists(long userid)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.ScUsers.Any(e => e.Userid == userid);
+    }
+}
