@@ -8,7 +8,7 @@
 <PageTitle>แก้ไขเป้าหมาย/Edit Goal Information</PageTitle>
 <h4 class="text-danger">แก้ไขเป้าหมาย/Edit Goal Information</h4>
 
-<h2>GoalTask</h2>
+
 <hr class="bg-danger" />
 
 @if (GoalTask is null)
@@ -60,7 +60,7 @@ else
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                             .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
                     </label>
-                    <InputNumber id="progress" @bind-Value="GoalTask.progress" class="form-control" />
+                    <InputNumber id="progress" @bind-Value="GoalTask.progress" class="form-control" readonly />
                     <ValidationMessage For="() => GoalTask.progress" class="text-danger" />
                 </div>
                 <div class="mb-3">
@@ -74,7 +74,7 @@ else
                 <div class="mb-3">
                     <label for="wol" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
                     </label>
                     <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" />
                     <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
@@ -108,20 +108,41 @@ else
                     <InputNumber id="userid" @bind-Value="GoalTask.UserId" class="form-control" />
                     <ValidationMessage For="() => GoalTask.UserId" class="text-danger" />
                 </div> *@
-                <div class="mb-3">
+           @*      <div class="mb-3">
                     <label for="coachid" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.coachId))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Facilator Name")
                     </label>
                     <InputNumber id="coachid" @bind-Value="GoalTask.coachId" class="form-control" />
                     <ValidationMessage For="() => GoalTask.coachId" class="text-danger" />
-                </div>
-           
-                @* <div class="mb-3">
-                    <label for="isactive" class="form-label">IsActive:</label>
-                    <InputCheckbox id="isactive" @bind-Value="GoalTask.IsActive" class="form-check-input" />
-                    <ValidationMessage For="() => GoalTask.IsActive" class="text-danger" />
                 </div> *@
+
+                <div class="form-group">
+                    <label for="coachSearch">Search for Facililator by Name</label>
+                    <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" />
+
+                    @if (filteredCoaches.Any())
+                    {
+                        <label for="coachSelect">เลือกที่ปรึกษา/Facililator</label>
+                        <InputSelect id="coachSelect" @bind-Value="GoalTask.facililatorID" class="form-control">
+                            <option value="">-- Select Coach --</option>
+                            @foreach (var coach in filteredCoaches)
+                            {
+
+                                <option value="@coach.Id" selected="@((GoalTask.facililatorID == coach.Id) ? "selected" : null)">
+                                    @coach.Firstname @coach.Lastname
+                                </option>
+                    
+                                
+
+                            }
+                        </InputSelect>
+                    }
+                    else
+                    {
+                        <p>No coaches found.</p>
+                    }
+                </div>
 
                 <button type="submit" class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-danger" @onclick="@(() => NavigationManager.NavigateTo("/goaltasks/maingoal"))">ยกเลิก</button>
@@ -136,6 +157,11 @@ else
 </div>
 
 @code {
+
+    private List<ScUser> coaches = new List<ScUser>();
+    private List<ScUser> filteredCoaches = new List<ScUser>(); // List of coaches filtered by search
+    private string searchQuery = ""; // Search input
+    private string selectedCoachId = "";  // The selected coach's ID
     [SupplyParameterFromQuery]
     private int Id { get; set; }
 
@@ -146,7 +172,10 @@ else
     {
         using var context = DbFactory.CreateDbContext();
         GoalTask ??= await context.GoalTasks.FirstOrDefaultAsync(m => m.Id == Id);
+        coaches = await context.ScUsers.Where(u => u.IsCoach).ToListAsync();
 
+        // coaches = await GoalTaskService.GetAllCoachesAsync();
+        filteredCoaches = coaches; // Initialize the filtered list
         if (GoalTask is null)
         {
             NavigationManager.NavigateTo("notfound");
@@ -178,6 +207,25 @@ else
 
         NavigationManager.NavigateTo("/goaltasks/maingoal");
     }
+
+
+    // Method to filter coaches based on search query
+    private void FilterCoaches(ChangeEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            filteredCoaches = coaches; // Show all coaches if no search query
+        }
+        else
+        {
+          //  filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+            filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        }
+
+
+    }
+
 
     private bool GoalTaskExists(int id)
     {

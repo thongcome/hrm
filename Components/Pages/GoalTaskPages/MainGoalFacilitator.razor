@@ -1,0 +1,65 @@
+﻿@page "/goaltasks/Maingoalfacilitator"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using LeaderDevelop.Model
+@using LeaderDevelop.Data
+@implements IAsyncDisposable
+@inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject UserService UserService;
+
+<PageTitle>รายการเป้าหมาย</PageTitle>
+
+<h1>รายการเป้าหมาย</h1>
+
+@if (GoalTaskList != null && GoalTaskList.Any())
+{
+    <QuickGrid Class="table" Items="GoalTaskList" TItem="GoalTask" >
+
+        <PropertyColumn Property="goaltask => goaltask.OwnerID" Title="เจ้าของเป้าหมาย/Goal Owner"  />
+
+        <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเภท/Mode" />
+        <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
+        <PropertyColumn Property="goaltask => goaltask.progress" Title="ความก้าวหน้า/Progress" />
+        <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
+        <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
+  
+        <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
+        <PropertyColumn Property="goaltask => goaltask.Lesson2" Title="สิ่งที่ได้เรียนรู้/Learning" />
+        <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="คำขอบคุณ/ThankFully" />
+
+
+
+        <TemplateColumn Context="goaltask">
+       
+            <a href="@($"goaltasks/details/{goaltask.Id}")">รายการกิจกรรม</a>
+        </TemplateColumn>
+    </QuickGrid>
+}
+@code {
+    private ApplicationDbContext context = default!;
+    private IQueryable<GoalTask> GoalTaskList = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            context = await DbFactory.CreateDbContextAsync();
+            var userId = UserService.GetUserId();
+            if (!String.IsNullOrEmpty(userId))
+            {
+                // Use AsQueryable for deferred execution
+                GoalTaskList = context.GoalTasks
+                    .Where(b => b.facililatorID == userId)
+                    .OrderByDescending(b => b.Startdate)
+                    .AsQueryable();
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message); // Log the exception
+        }
+    }
+
+    // Dispose the DbContext
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

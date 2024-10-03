@@ -81,6 +81,11 @@ namespace LeaderDevelop.Model
 
         public int? coachId { get; set; }
 
+        [StringLength(450)]
+        [Unicode(true)]
+        [Display(Name = ("ทีปรึกษา/Facililator"))]
+        public string? facililatorID { get; set; } = string.Empty;
+
         // Add a nullable foreign key to WOL
         [Display(Name = "WOL ID")]
         public int? WolId { get; set; }

@@ -1,14 +1,22 @@
 ﻿@page "/goaltasks/details/{Id:int}"
+@using LeaderDevelop.Data
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ActivityService ActivityService
+@inject UserService UserService
 
 <PageTitle>Goal Task Details</PageTitle>
-
-<h1>เพิ่มการวางแผนกิจกรรมอย่างเป็นระบบสู่เป้าหมาย</h1>
+@if (isOwner)
+{
+    <h4>เพิ่มการวางแผนกิจกรรมอย่างเป็นระบบสู่เป้าหมาย</h4>
+}
+else
+{
+    <h4>การวางแผนกิจกรรมอย่างเป็นระบบสู่เป้าหมาย ของ @currentUser </h4>
+}
 
 <!-- Goal Task Details Section -->
 <div class="card border-danger mb-4">
@@ -90,25 +98,30 @@
 
             </div>
             <hr />
-            @if (!(goaltask.status == GoalTask.GoalTaskStatus.Success))
-            {
-                <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
 
-                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Cancel))
+            <div>Status: @goaltask.status | Owner: @isOwner</div>
+            @if (isOwner)
+            {
+                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Success))
                 {
-                    <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
-                    @if (goaltask.progress == 100)
+                    <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
+
+                    @if (!(goaltask.status == GoalTask.GoalTaskStatus.Cancel))
                     {
-                        <button id="cancelgoal" class="btn btn-outline-primary btn-sm" @onclick="FinishGoalTask">เป้าหมายสำเร็จ/Finished</button>
+                        <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
+                        @if (goaltask.progress == 100)
+                        {
+                            <button id="cancelgoal" class="btn btn-outline-primary btn-sm" @onclick="FinishGoalTask">เป้าหมายสำเร็จ/Finished</button>
+                        }
+
+                    }
+                    @if ((goaltask.status == GoalTask.GoalTaskStatus.Cancel))
+                    {
+                        <button id="activegoal" class="btn btn-light btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
+
                     }
 
                 }
-                @if ((goaltask.status == GoalTask.GoalTaskStatus.Cancel))
-                {
-                    <button id="activegoal" class="btn btn-light btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
-
-                }
-
             }
         }
     </div>
@@ -127,7 +140,10 @@
         {
             @if (!((goaltask.status == GoalTask.GoalTaskStatus.Success) || (goaltask.status == GoalTask.GoalTaskStatus.Cancel)))
             {
-                <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่มกิจกรรม/Add Activity</button>
+                @if (isOwner)
+                {
+                    <button class="btn btn-danger mb-3" @onclick="ShowAddActivityForm">เพิ่มกิจกรรม/Add Activity</button>
+                }
             }
         }
         <p class="text-muted">รายการกิจกรรม  ไม่ควรเกิน 14 กืจกรรม</p>
@@ -138,13 +154,19 @@
                 @foreach (var activity in Activities)
                 {
                     <li class="list-group-item">
-                        @if (activity.StatusCode == Activity.ActivityStatus.Success)
-                        {
-                            <button id="successshow" class="btn btn-success btn-sm">สำเร็จ</button>
-                        }
-                        <strong>@(activity.Orders?.ToString() ?? "-"). </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
 
-                        <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a>
+                        <strong>
+                            @(activity.Orders?.ToString() ?? "-"). @if (activity.StatusCode == Activity.ActivityStatus.Success)
+                            {
+                                <button id="successshow" class="btn btn-success btn-sm">สำเร็จ</button>
+                            }
+                        </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
+                        @if (isOwner )
+                        {
+                             <button class="btn btn-primary mb-3" @onclick="ManageActivity">จัดการกิจกรรม/ Manage</button>
+
+@*                             <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a>
+ *@                        }
 
                     </li>
                 }
@@ -223,7 +245,10 @@
     private List<Activity> Activities = new List<Activity>();
     private Activity NewActivity = new Activity();
     private bool ShowActivityForm = false;
-   
+    private bool isOwner = false;
+    private ApplicationDbContext context = default!;
+    private string currentUser = "";
+
 
 
     [Parameter]
@@ -231,12 +256,30 @@
 
     protected override async Task OnInitializedAsync()
     {
-        using var context = DbFactory.CreateDbContext();
+        context = DbFactory.CreateDbContext();
         goaltask = await context.GoalTasks.FindAsync(Id);
+        isOwner = false;
 
         if (goaltask is null)
         {
             NavigationManager.NavigateTo("notfound");
+        }
+        try
+        {
+            var loggedIn = UserService.GetUserId();
+            currentUser = UserService.GetUserName();
+            if (loggedIn is not null && goaltask is not null)
+            {
+                if (loggedIn == goaltask.OwnerID)
+                {
+                    isOwner = true;
+                }
+
+            }
+        }
+        catch (Exception e)
+        {
+            e.Message.ToString();
         }
 
         // Load related activities for this goal task
@@ -263,7 +306,7 @@
     {
         try
         {
-            using var context = DbFactory.CreateDbContext();
+            context = DbFactory.CreateDbContext();
 
             // Set the TaskId (foreign key) to the current GoalTask Id
             NewActivity.TaskId = Id;
@@ -310,7 +353,7 @@
     {
         if (goaltask != null)
         {
-            using var context = DbFactory.CreateDbContext();
+            context = DbFactory.CreateDbContext();
             goaltask.IsActive = true;
             await context.SaveChangesAsync();
             NavigationManager.NavigateTo("/goaltasks");
@@ -339,10 +382,16 @@
 
     private void FinishGoalTask()
     {
+ 
+        NavigationManager.NavigateTo("/goaltasks/finish?id=" + Id);
+
+    }
+    private void ManageActivity()
+    {
         // Logic for starting the goal task
         // e.g., change the task status to "In Progress" or something similar
         Console.WriteLine("Goal task started");
-        NavigationManager.NavigateTo("/goaltasks/finish?id=" + Id);
+        NavigationManager.NavigateTo("activities/edit?subid=" + Id);
 
     }
 
@@ -354,4 +403,7 @@
         NavigationManager.NavigateTo("/goaltasks/active?id=" + Id);
 
     }
+
+    // Dispose the DbContext
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
 }
