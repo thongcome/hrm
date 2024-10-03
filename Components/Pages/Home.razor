@@ -1,4 +1,9 @@
-﻿@page "/"
+﻿
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Welcome to the New Life</h3>
+
 
 <PageTitle>Home</PageTitle>
 
@@ -12,225 +17,268 @@
             <br />
             เข้าสู่ยุคใหม่ของการเรียนรู้ที่คุณเป็นผู้ควบคุม กำหนดเป้าหมายของตนเอง ตัดสินใจอย่างรอบคอบ และพัฒนาตนเองอย่างต่อเนื่องด้วยการเรียนรู้แบบนำตนเอง
         </p>
-        <a href="/Account/Register" class="btn btn-primary btn-md">Start Your Journey / เริ่มต้นการเดินทางของคุณ</a>
-    </div>
-</div>
+       
+ 
+        @* Conditional rendering based on user authentication status *@
+        @if (!isAuthenticated)
+        {
+            <a href="/Account/Register" class="btn btn-primary btn-md">Start Your Journey / เริ่มต้นการเดินทางของคุณ</a>
+        }
+        else
+        {
+            <a href="/goaltasks/Create" class="btn btn-light btn-md">Start Your Journey / เริ่มต้นการเดินทางของคุณ</a>
 
-<!-- What You'll Learn Section -->
-<section class="content-section">
-    <h2 class="section-title">What You'll Learn / สิ่งที่คุณจะได้เรียนรู้</h2>
-    <p class="section-description">
-        This platform is designed to guide you through self-directed learning, helping you grow in every aspect of your life.
-        <br />
-        แพลตฟอร์มนี้ถูกออกแบบมาเพื่อช่วยคุณพัฒนาทักษะการเรียนรู้แบบนำตนเอง โดยครอบคลุมทุกมิติของชีวิต
-    </p>
-    <div class="learning-grid">
-        <div class="learning-card">
-            <i class="bi bi-currency-dollar icon"></i>
-            <h3>Money & Finance / การเงิน</h3>
-            <p>
-                Take control of your finances and make informed financial decisions.
-                <br /> ควบคุมการเงินของคุณและตัดสินใจทางการเงินอย่างรอบคอบ
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-briefcase icon"></i>
-            <h3>Work & Career / การงาน</h3>
-            <p>
-                Develop skills and strategies to advance your career and find meaningful work.
-                <br /> พัฒนาทักษะและกลยุทธ์เพื่อก้าวหน้าในอาชีพของคุณ
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-heart-pulse icon"></i>
-            <h3>Health & Fitness / สุขภาพกาย</h3>
-            <p>
-                Focus on physical wellness and cultivate healthy habits.
-                <br /> มุ่งเน้นการดูแลสุขภาพและสร้างนิสัยที่ดีต่อสุขภาพ
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-heart icon"></i>
-            <h3>Spirituality / สุขภาพจิต</h3>
-            <p>
-                Explore ways to nurture your mental health and inner peace.
-                <br /> ค้นหาวิธีดูแลสุขภาพจิตและสร้างความสงบภายใน
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-controller icon"></i>
-            <h3>Fun & Creation / การพักผ่อน</h3>
-            <p>
-                Learn how to balance work with creativity, play, and relaxation.
-                <br /> เรียนรู้วิธีการปรับสมดุลระหว่างการทำงานและการสร้างสรรค์และการพักผ่อน
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-people icon"></i>
-            <h3>Family & Friends / ครอบครัวและเพื่อน</h3>
-            <p>
-                Build and sustain meaningful relationships with family and friends.
-                <br /> สร้างและรักษาความสัมพันธ์ที่มีคุณค่ากับครอบครัวและเพื่อน
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-chat-heart icon"></i>
-            <h3>Partner & Love / ความสัมพันธ์</h3>
-            <p>
-                Strengthen your relationship with your partner and cultivate love.
-                <br /> สร้างความสัมพันธ์ที่ดีและความรักกับคู่ของคุณ
-            </p>
-        </div>
-        <div class="learning-card">
-            <i class="bi bi-lightbulb icon"></i>
-            <h3>Growth & Learning / การเติบโต</h3>
-            <p>
-                Continuously grow and expand your knowledge and skills.
-                <br /> เติบโตและพัฒนาความรู้และทักษะของคุณอย่างต่อเนื่อง
-            </p>
-        </div>
-    </div>
-</section>
-
-<style>
-    /* Hero Section */
-    .hero-section {
-        background: url('path-to-your-background-image.jpg') no-repeat center center;
-        background-size: cover;
-        height: 70vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        color: white;
-        position: relative;
-    }
-
-    .hero-content {
-        max-width: 600px;
-        padding: 15px;
-        background-color: rgba(0, 0, 0, 0.5); /* Background overlay */
-        border-radius: 8px;
-    }
-
-    .display-5 {
-        font-size: 2rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        margin-bottom: 10px;
-    }
-
-    .lead {
-        margin-top: 10px;
-        font-size: 1rem;
-        color: #f0f0f0;
-    }
-
-    .btn-md {
-        padding: 10px 20px;
-        font-size: 1rem;
-    }
-
-    /* What You'll Learn Section */
-    .content-section {
-        padding: 40px 20px;
-        text-align: center;
-        background-color: #f9f9f9;
-    }
-
-    .section-title {
-        font-size: 2rem;
-        font-weight: 700;
-        margin-bottom: 15px;
-    }
-
-    .section-description {
-        font-size: 1rem;
-        margin-bottom: 30px;
-        color: #555;
-    }
-
-    .learning-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 15px;
-    }
-
-    .learning-card {
-        background-color: white;
-        padding: 15px;
-        border-radius: 6px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-        .learning-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+             
         }
 
-    .icon {
-        font-size: 2rem;
-        color: #007bff;
-        margin-bottom: 8px;
-    }
+        </div>
+    </div>
 
-    .learning-card h3 {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin-bottom: 8px;
-    }
+    <!-- What You'll Learn Section -->
+    <section class="content-section">
+        <h2 class="section-title">What You'll Learn / สิ่งที่คุณจะได้เรียนรู้</h2>
+        <p class="section-description">
+            This platform is designed to guide you through self-directed learning, helping you grow in every aspect of your life.
+            <br />
+            แพลตฟอร์มนี้ถูกออกแบบมาเพื่อช่วยคุณพัฒนาทักษะการเรียนรู้แบบนำตนเอง โดยครอบคลุมทุกมิติของชีวิต
+        </p>
+        <div class="learning-grid">
+            <div class="learning-card">
+                <i class="bi bi-currency-dollar icon"></i>
+                <h3>Money & Finance / การเงิน</h3>
+                <p>
+                    Take control of your finances and make informed financial decisions.
+                    <br /> ควบคุมการเงินของคุณและตัดสินใจทางการเงินอย่างรอบคอบ
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-briefcase icon"></i>
+                <h3>Work & Career / การงาน</h3>
+                <p>
+                    Develop skills and strategies to advance your career and find meaningful work.
+                    <br /> พัฒนาทักษะและกลยุทธ์เพื่อก้าวหน้าในอาชีพของคุณ
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-heart-pulse icon"></i>
+                <h3>Health & Fitness / สุขภาพกาย</h3>
+                <p>
+                    Focus on physical wellness and cultivate healthy habits.
+                    <br /> มุ่งเน้นการดูแลสุขภาพและสร้างนิสัยที่ดีต่อสุขภาพ
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-heart icon"></i>
+                <h3>Spirituality / สุขภาพจิต</h3>
+                <p>
+                    Explore ways to nurture your mental health and inner peace.
+                    <br /> ค้นหาวิธีดูแลสุขภาพจิตและสร้างความสงบภายใน
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-controller icon"></i>
+                <h3>Fun & Creation / การพักผ่อน</h3>
+                <p>
+                    Learn how to balance work with creativity, play, and relaxation.
+                    <br /> เรียนรู้วิธีการปรับสมดุลระหว่างการทำงานและการสร้างสรรค์และการพักผ่อน
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-people icon"></i>
+                <h3>Family & Friends / ครอบครัวและเพื่อน</h3>
+                <p>
+                    Build and sustain meaningful relationships with family and friends.
+                    <br /> สร้างและรักษาความสัมพันธ์ที่มีคุณค่ากับครอบครัวและเพื่อน
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-chat-heart icon"></i>
+                <h3>Partner & Love / ความสัมพันธ์</h3>
+                <p>
+                    Strengthen your relationship with your partner and cultivate love.
+                    <br /> สร้างความสัมพันธ์ที่ดีและความรักกับคู่ของคุณ
+                </p>
+            </div>
+            <div class="learning-card">
+                <i class="bi bi-lightbulb icon"></i>
+                <h3>Growth & Learning / การเติบโต</h3>
+                <p>
+                    Continuously grow and expand your knowledge and skills.
+                    <br /> เติบโตและพัฒนาความรู้และทักษะของคุณอย่างต่อเนื่อง
+                </p>
+            </div>
+        </div>
+    </section>
 
-    .learning-card p {
-        font-size: 0.9rem;
-        color: #777;
-    }
-
-    /* Responsive Adjustments */
-    @@media (max-width: 768px) {
+    <style>
+        /* Hero Section */
         .hero-section {
-            height: 50vh;
+            background: url('path-to-your-background-image.jpg') no-repeat center center;
+            background-size: cover;
+            height: 70vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: white;
+            position: relative;
         }
 
         .hero-content {
-            padding: 10px;
+            max-width: 600px;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.5); /* Background overlay */
+            border-radius: 8px;
         }
 
         .display-5 {
-            font-size: 1.5rem;
+            font-size: 2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: 10px;
         }
 
         .lead {
-            font-size: 0.9rem;
+            margin-top: 10px;
+            font-size: 1rem;
+            color: #f0f0f0;
         }
 
         .btn-md {
-            padding: 8px 16px;
-            font-size: 0.9rem;
+            padding: 10px 20px;
+            font-size: 1rem;
+        }
+
+        /* What You'll Learn Section */
+        .content-section {
+            padding: 40px 20px;
+            text-align: center;
+            background-color: #f9f9f9;
         }
 
         .section-title {
-            font-size: 1.75rem;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 15px;
         }
 
         .section-description {
-            font-size: 0.95rem;
+            font-size: 1rem;
+            margin-bottom: 30px;
+            color: #555;
+        }
+
+        .learning-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
         }
 
         .learning-card {
-            padding: 10px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
 
+            .learning-card:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+
         .icon {
-            font-size: 1.75rem;
+            font-size: 2rem;
+            color: #007bff;
+            margin-bottom: 8px;
         }
 
         .learning-card h3 {
-            font-size: 1.1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
 
         .learning-card p {
-            font-size: 0.85rem;
+            font-size: 0.9rem;
+            color: #777;
+        }
+
+        /* Responsive Adjustments */
+        @@media (max-width: 768px) {
+            .hero-section {
+                height: 50vh;
+            }
+
+            .hero-content {
+                padding: 10px;
+            }
+
+            .display-5 {
+                font-size: 1.5rem;
+            }
+
+            .lead {
+                font-size: 0.9rem;
+            }
+
+            .btn-md {
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+
+            .section-title {
+                font-size: 1.75rem;
+            }
+
+            .section-description {
+                font-size: 0.95rem;
+            }
+
+            .learning-card {
+                padding: 10px;
+            }
+
+            .icon {
+                font-size: 1.75rem;
+            }
+
+            .learning-card h3 {
+                font-size: 1.1rem;
+            }
+
+            .learning-card p {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+@*     @code {
+    private string? currentUser;
+
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+        {
+            currentUser = UserService.GetUserName();
+        }
+    } *@
+
+    @page "/"
+
+@code {
+    private bool isAuthenticated = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        // Check if the user and their identity is not null
+        if (user != null && user.Identity != null)
+        {
+            isAuthenticated = user.Identity.IsAuthenticated;
         }
     }
-</style>
+}
+
