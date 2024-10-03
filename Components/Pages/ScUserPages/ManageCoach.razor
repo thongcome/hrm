@@ -110,20 +110,20 @@ else
     protected override async Task OnInitializedAsync()
     {
         // Get the logged-in user's ID from HttpContext
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        // var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        // var user = authState.User;
+        // var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        if (userId == null)
-        {
-            // If no user is logged in, redirect to login page or show a message
-            NavigationManager.NavigateTo("/Identity/Account/Login");
-            return;
-        }
+        // if (userId == null)
+        // {
+        //     // If no user is logged in, redirect to login page or show a message
+        //     NavigationManager.NavigateTo("/Identity/Account/Login");
+        //     return;
+        // }
 
         // Fetch ScUser details from the database using the AspNetUser ID
         using var context = DbFactory.CreateDbContext();
-        ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
+        ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Userid == Userid);
 
         if (ScUser is null)
         {

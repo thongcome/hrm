@@ -36,25 +36,26 @@ else
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                             .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
                     </label>
-                    <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" />
+                    <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" @oninput="OnStartDateChanged" />
                     <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="enddate" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
-                    </label>
-                    <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" />
-                    <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="dayofgoal" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                             .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
                     </label>
-                    <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" />
+                    <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" @oninput="OnDayOfGoalChanged" />
                     <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
                 </div>
+                <div class="mb-3">
+                    <label for="enddate" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
+                    <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" readonly />
+                    <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
+                </div>
+               
                 <div class="mb-3">
                     <label for="progress" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
@@ -234,12 +235,48 @@ else
         }
         else
         {
-          //  filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+            //  filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
             filteredCoaches = coaches.Where(c => c.Firstname.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
 
         }
 
 
+    }
+
+    private void OnStartDateChanged(ChangeEventArgs e)
+    {
+        if (GoalTask is not null)
+        {
+            if (DateTime.TryParse(e.Value?.ToString(), out DateTime newStartDate))
+            {
+                GoalTask.Startdate = newStartDate;  // Update the GoalTask's Startdate
+                CheckAndUpdateEndDate(); // Recalculate EndDate
+            }
+        }
+    }
+
+    private void CheckAndUpdateEndDate()
+    {
+        if (GoalTask is not null)
+        {
+            if (GoalTask.DayofGoal.HasValue && GoalTask.Startdate.HasValue)
+            {
+                GoalTask.CalculateEndDate(); // Update EndDate based on DayofGoal and Startdate
+                StateHasChanged(); // Ensure the UI refreshes
+            }
+        }
+    }
+
+    private void OnDayOfGoalChanged(ChangeEventArgs e)
+    {
+        if (GoalTask is not null)
+        {
+            if (double.TryParse(e.Value?.ToString(), out double newDayofGoal))
+            {
+                GoalTask.DayofGoal = newDayofGoal;  // Update the GoalTask's DayofGoal
+                CheckAndUpdateEndDate(); // Recalculate EndDate
+            }
+        }
     }
 
 
