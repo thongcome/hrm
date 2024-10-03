@@ -1,4 +1,5 @@
 ﻿@page "/scusers/mydetails"
+@using LeaderDevelop.Data
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.Security.Claims
@@ -99,6 +100,7 @@
 
 @code {
     private ScUser? scuser;
+    private ApplicationDbContext context = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -115,7 +117,7 @@
         }
 
         // Fetch ScUser details from the database using the AspNetUser ID
-        using var context = DbFactory.CreateDbContext();
+        context = DbFactory.CreateDbContext();
         scuser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
 
         if (scuser is null)
@@ -123,4 +125,8 @@
             NavigationManager.NavigateTo("notfound");
         }
     }
+
+
+    // Dispose the DbContext
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
 }

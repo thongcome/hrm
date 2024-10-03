@@ -1,4 +1,5 @@
 ﻿@page "/goaltasks/edit"
+@using LeaderDevelop.Data
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.ComponentModel.DataAnnotations
@@ -177,6 +178,11 @@ else
     private string searchQuery = ""; // Search input
     private string selectedCoachId = "";  // The selected coach's ID
     private List<WOL> wolOptions = new List<WOL>();
+
+    private ApplicationDbContext context = default!;
+
+    // Dispose the DbContext
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
 
     [SupplyParameterFromQuery]
     private int Id { get; set; }

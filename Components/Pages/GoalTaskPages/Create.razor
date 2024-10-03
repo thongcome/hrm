@@ -1,4 +1,5 @@
 ﻿@page "/goaltasks/create"
+@using LeaderDevelop.Data
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.ComponentModel.DataAnnotations
@@ -6,7 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject UserService UserService
 
-<PageTitle>Create</PageTitle>
+<PageTitle>Create your Goal</PageTitle>
 
 <h4 class="text-danger">เพิ่มเป้าหมาย/Goal Create  (Card แดง)</h4>
 <hr />
@@ -143,6 +144,9 @@
     private string searchQuery = ""; // Search input
     private string selectedCoachId = "";  // The selected coach's ID
 
+    private ApplicationDbContext context = default!;
+    // Dispose the DbContext
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
 
     [SupplyParameterFromForm]
     private GoalTask GoalTask { get; set; } = new();
@@ -156,7 +160,7 @@
     private void InitializeWolOptions()
     {
         // Load or initialize the WOL options here
-        using var context = DbFactory.CreateDbContext();
+        context = DbFactory.CreateDbContext();
         wolOptions = context.WOLs.ToList();
     }
     // private void OnStartDateChanged(ChangeEventArgs e)
@@ -201,19 +205,33 @@
     {
         try
         {
-            using var context = DbFactory.CreateDbContext();
+            context = DbFactory.CreateDbContext();
             GoalTask.CalculateEndDate();
-
+            string userid =UserService.GetUserId();
             var currentUser = UserService.GetUserName();
 
             GoalTask.Modby = currentUser;
-            GoalTask.CreateBy = currentUser;
             GoalTask.ModDate = DateTime.UtcNow;
             GoalTask.CreateDate = DateTime.UtcNow;
             GoalTask.progress = 0M;
-            GoalTask.OwnerID = UserService.GetUserId();
-            GoalTask.email = UserService.GetUserEmail();
-
+            GoalTask.OwnerID = userid;
+            if (!String.IsNullOrEmpty(userid))
+            {
+                ScUser? scUser = await context.ScUsers.Where(b => b.Id == userid).FirstOrDefaultAsync();
+                if(scUser is not null)
+                {
+                    GoalTask.CreateBy = scUser.Firstname + " " + scUser.Lastname;
+                    GoalTask.email = scUser.Email;
+                }
+                else
+                {
+                    GoalTask.CreateBy = currentUser;
+                    GoalTask.email = UserService.GetUserEmail();
+                }
+            }
+           
+            // GoalTask.email = UserService.GetUserEmail();
+            
 
             context.GoalTasks.Add(GoalTask);
             await context.SaveChangesAsync();

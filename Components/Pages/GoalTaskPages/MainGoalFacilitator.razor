@@ -15,8 +15,8 @@
 {
     <QuickGrid Class="table" Items="GoalTaskList" TItem="GoalTask" >
 
-        <PropertyColumn Property="goaltask => goaltask.OwnerID" Title="เจ้าของเป้าหมาย/Goal Owner"  />
-
+        <PropertyColumn Property="goaltask => goaltask.CreateBy" Title="เจ้าของเป้าหมาย/Goal Owner"  />
+            
         <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเภท/Mode" />
         <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
         <PropertyColumn Property="goaltask => goaltask.progress" Title="ความก้าวหน้า/Progress" />
@@ -36,8 +36,11 @@
     </QuickGrid>
 }
 @code {
-    private ApplicationDbContext context = default!;
+
     private IQueryable<GoalTask> GoalTaskList = default!;
+
+    private ApplicationDbContext context = default!;
+    // private ScUser? user;
 
     protected override async Task OnInitializedAsync()
     {
@@ -52,7 +55,11 @@
                     .Where(b => b.facililatorID == userId)
                     .OrderByDescending(b => b.Startdate)
                     .AsQueryable();
+                // user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+
             }
+ 
+
         }
         catch (Exception e)
         {

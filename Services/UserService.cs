@@ -41,6 +41,8 @@ public class UserService
         return Task.FromResult(currentUser);
     }
 
+ 
+
     // Method to get the current logged-in user's ID (from ClaimTypes.NameIdentifier)
     public string GetUserId()
     {
