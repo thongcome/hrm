@@ -71,14 +71,14 @@ else
                     <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" />
                     <ValidationMessage For="() => GoalTask.Description" class="text-danger" />
                 </div>
-                <div class="mb-3">
+               @*  <div class="mb-3">
                     <label for="wol" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                             .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
                     </label>
                     <InputText id="wol" @bind-Value="GoalTask.wol" class="form-control" />
                     <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
-                </div>
+                </div> *@
                 <div class="mb-3">
                     <label for="lesson1" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Lesson1))?.GetCustomAttributes(typeof(DisplayAttribute), false)
@@ -116,7 +116,20 @@ else
                     <InputNumber id="coachid" @bind-Value="GoalTask.coachId" class="form-control" />
                     <ValidationMessage For="() => GoalTask.coachId" class="text-danger" />
                 </div> *@
-
+                <div class="mb-3">
+                    <label for="wol" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
+                    </label>
+                    <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
+                        <option value="">-- Select an option --</option>
+                        @foreach (var option in wolOptions)
+                        {
+                            <option value="@option.code" selected="@((GoalTask.wol == option.code) ? "selected" : null)">@option.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+                </div>
                 <div class="form-group">
                     <label for="coachSearch">Search for Facililator by Name</label>
                     <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" />
@@ -162,6 +175,8 @@ else
     private List<ScUser> filteredCoaches = new List<ScUser>(); // List of coaches filtered by search
     private string searchQuery = ""; // Search input
     private string selectedCoachId = "";  // The selected coach's ID
+    private List<WOL> wolOptions = new List<WOL>();
+
     [SupplyParameterFromQuery]
     private int Id { get; set; }
 
@@ -173,6 +188,7 @@ else
         using var context = DbFactory.CreateDbContext();
         GoalTask ??= await context.GoalTasks.FirstOrDefaultAsync(m => m.Id == Id);
         coaches = await context.ScUsers.Where(u => u.IsCoach).ToListAsync();
+        wolOptions = context.WOLs.ToList();
 
         // coaches = await GoalTaskService.GetAllCoachesAsync();
         filteredCoaches = coaches; // Initialize the filtered list
