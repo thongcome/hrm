@@ -73,9 +73,9 @@ namespace LeaderDevelop.Model
         public string Lesson2 { get; set; } = string.Empty;
 
 
-        [StringLength(500)]
+        [StringLength(1000)]
         [Unicode(true)]
-        [Display(Name = ("คำขอบคุณ/ThankFully"))]
+        [Display(Name = ("สิ่งที่ได้เรียนรู้หรือขอบคุณ/Lesson or ThankFully"))]
         public string ThankFully { get; set; } = string.Empty;
         public int? UserId { get; set; }
 

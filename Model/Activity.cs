@@ -66,7 +66,7 @@ namespace LeaderDevelop.Model
         //[Display(Name = ("ความก้าวหน้า/Progress"))]
         //public decimal? progress { get; set; }
 
-        [StringLength(500)]
+        [StringLength(1000)]
         [Unicode(true)]
         [Display(Name = ("คำขอบคุณ/ThankFully"))]
         public string? ThankFully { get; set; } = string.Empty;
