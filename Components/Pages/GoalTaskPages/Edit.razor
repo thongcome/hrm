@@ -25,6 +25,20 @@ else
                 <ValidationSummary />
                 <input type="hidden" name="GoalTask.Id" value="@GoalTask.Id" readonly />
                 <div class="mb-3">
+                    <label for="wol" class="form-label">
+                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
+                    </label>
+                    <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
+                        <option value="">-- Select an option --</option>
+                        @foreach (var option in wolOptions)
+                        {
+                            <option value="@option.code" selected="@((GoalTask.wol == option.code) ? "selected" : null)">@option.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
+                </div>
+                <div class="mb-3">
                     <label for="name" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                             .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
@@ -35,7 +49,7 @@ else
                 <div class="mb-3">
                     <label for="startdate" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Startdate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
                     </label>
                     <InputDate id="startdate" @bind-Value="GoalTask.Startdate" class="form-control" @oninput="OnStartDateChanged" />
                     <ValidationMessage For="() => GoalTask.Startdate" class="text-danger" />
@@ -43,7 +57,7 @@ else
                 <div class="mb-3">
                     <label for="dayofgoal" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Day of Goal")   ควรอยู่ระหว่าง 7-14 วัน
                     </label>
                     <InputNumber id="dayofgoal" @bind-Value="GoalTask.DayofGoal" class="form-control" @oninput="OnDayOfGoalChanged" />
                     <ValidationMessage For="() => GoalTask.DayofGoal" class="text-danger" />
@@ -51,7 +65,7 @@ else
                 <div class="mb-3">
                     <label for="enddate" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "End Date")
                     </label>
                     <InputDate id="enddate" @bind-Value="GoalTask.EndDate" class="form-control" readonly />
                     <ValidationMessage For="() => GoalTask.EndDate" class="text-danger" />
@@ -60,7 +74,7 @@ else
                 <div class="mb-3">
                     <label for="progress" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Progress")
                     </label>
                     <InputNumber id="progress" @bind-Value="GoalTask.progress" class="form-control" readonly />
                     <ValidationMessage For="() => GoalTask.progress" class="text-danger" />
@@ -68,7 +82,7 @@ else
                 <div class="mb-3">
                     <label for="description" class="form-label">
                         @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Description")
                     </label>
                     <InputText id="description" @bind-Value="GoalTask.Description" class="form-control" />
                     <ValidationMessage For="() => GoalTask.Description" class="text-danger" />
@@ -118,27 +132,14 @@ else
                     <InputNumber id="coachid" @bind-Value="GoalTask.coachId" class="form-control" />
                     <ValidationMessage For="() => GoalTask.coachId" class="text-danger" />
                 </div> *@
-                <div class="mb-3">
-                    <label for="wol" class="form-label">
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.wol))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "WOL")
-                    </label>
-                    <InputSelect id="wol" @bind-Value="GoalTask.wol" class="form-control">
-                        <option value="">-- Select an option --</option>
-                        @foreach (var option in wolOptions)
-                        {
-                            <option value="@option.code" selected="@((GoalTask.wol == option.code) ? "selected" : null)">@option.Name</option>
-                        }
-                    </InputSelect>
-                    <ValidationMessage For="() => GoalTask.wol" class="text-danger" />
-                </div>
+               
                 <div class="form-group">
                     <label for="coachSearch">Search for Facililator by Name</label>
-                    <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" />
+                    <input type="text" id="coachSearch" @bind="searchQuery" class="form-control" placeholder="Enter coach name" @oninput="FilterCoaches" readonly />
 
                     @if (filteredCoaches.Any())
                     {
-                        <label for="coachSelect">เลือกที่ปรึกษา/Facililator</label>
+                        <label for="coachSelect">เลือกที่ปรึกษา/Facililator  (การปรับที่ปรึกษา ต้องทำการยุติ เป้าหมาย)</label>
                         <InputSelect id="coachSelect" @bind-Value="GoalTask.facililatorID" class="form-control">
                             <option value="">-- Select Coach --</option>
                             @foreach (var coach in filteredCoaches)

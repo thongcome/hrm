@@ -24,16 +24,19 @@ public partial class ScUser
 
     [Column("firstname")]
     [StringLength(250)]
+    [Display(Name = ("ชื่อ/Name"))]
     [Required]
     public string Firstname { get; set; } = string.Empty;
 
     [Column("lastname")]
     [StringLength(250)]
+    [Display(Name = ("นามสกุล/Last Name"))]
     public string Lastname { get; set; } = string.Empty;
 
     [Column("loginname")]
     [StringLength(250)]
     [Required]
+    [Display(Name = ("ชื่อเข้าระบบ/Login Name"))]
     public string Loginname { get; set; } = string.Empty;
 
     [Column("password")]
@@ -47,13 +50,18 @@ public partial class ScUser
 
     [Column("mobilephone")]
     [StringLength(250)]
+    [Display(Name = ("เบอร์มือถือ/Mobile"))]
     public string? Mobilephone { get; set; } = string.Empty;
 
     [Column("isforcechanged")]
     public bool Isforcechanged { get; set; } = false;
 
+    [Column("IsCoachRequest")]
+    [Display(Name = ("ต้องการเป็นเป็นที่ปรึกษา/Request Facililator"))]
+    public bool IsCoachRequest { get; set; } = false;
 
     [Column("IsCoach")]
+    [Display(Name = ("เป็นที่ปรึกษา/Is Facililator"))]
     public bool IsCoach { get; set; } = false;
 
     [Column("iscancel")]
@@ -121,6 +129,7 @@ public partial class ScUser
 
     [Column("email")]
     [StringLength(250)]
+    [Display(Name = ("อีเมล์/Email"))]
     public string? Email { get; set; } = string.Empty;
 
 
@@ -138,7 +147,8 @@ public partial class ScUser
     [Column("isActivate")]
     public bool IsActivate { get; set; } = true;
 
-
+    [Display(Name = "คะแนน/Score")]
+    public decimal? score { get; set; }
 
 
     [Column("supervisor")]
@@ -157,11 +167,14 @@ public partial class ScUser
     public string? Verifycode { get; set; } = string.Empty;
 
     [Column("registerdate", TypeName = "datetime")]
+    [Display(Name = ("วันที่ลงทะเบียน/Register Date"))]
     public DateTime? Registerdate { get; set; } = null;
 
 
     [Column("ref1")]
     [StringLength(500)]
+    [Display(Name = ("คำอธิบาย คุณสมบัติเป็น Facililator/Please describe Why you can be facililator"))]
+
     public string? Ref1 { get; set; } = string.Empty;
 
     [Column("ref2")]

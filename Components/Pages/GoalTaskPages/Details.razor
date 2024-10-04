@@ -49,7 +49,7 @@ else
                     <p>
                         <strong>
                             @((typeof(GoalTask).GetProperty(nameof(GoalTask.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Description") :
                         </strong> @goaltask.Description
                     </p>
                     <p>
@@ -82,10 +82,20 @@ else
                     <p>
                         <strong>
                             @((typeof(GoalTask).GetProperty(nameof(GoalTask.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "ThankFully") :
                         </strong> @goaltask.ThankFully
                     </p>
                 </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <strong>
+                     @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                        </strong> @goaltask.progress %
+                  เป้าหมายจะสำเร็จ ต้องมี ความก้าวหน้า 80% ขึ้น ไป /  Progress equal 80% or more , you can finish of your goal 
+                </div>
+
             </div>
             <div class="row">
                 <div class="col-md-12">
@@ -109,15 +119,16 @@ else
                     @if (!(goaltask.status == GoalTask.GoalTaskStatus.Cancel))
                     {
                         <button id="cancelgoal" class="btn btn-danger btn-sm" @onclick="CancelGoalTask">ยกเลิกเป้าหมาย</button>
-                        @if (goaltask.progress == 100)
+                        @if (goaltask.progress >= 80)
                         {
                             <button id="cancelgoal" class="btn btn-outline-primary btn-sm" @onclick="FinishGoalTask">เป้าหมายสำเร็จ/Finished</button>
+
                         }
 
                     }
                     @if ((goaltask.status == GoalTask.GoalTaskStatus.Cancel))
                     {
-                        <button id="activegoal" class="btn btn-light btn-sm" @onclick="ActiveGoalTask">Activeเป้าหมาย</button>
+                        <button id="activegoal" class="btn btn-light btn-sm" @onclick="ActiveGoalTask">Active/เป้าหมาย</button>
 
                     }
 
@@ -133,7 +144,7 @@ else
         <div class="card-header  text-danger">
             <h4>รายละเอียดกิจกรรม</h4>
         </div>
-    </div> <div class="mb-2"> <link href=""> คำแนะนำการวางแผนอย่างเป็นระบบ</div>
+    </div> <div class="mb-2"> <a  href=""> คำแนะนำการวางแผนอย่างเป็นระบบ</a></div>
 
     <div class="card-body">
         @if (goaltask is not null)
@@ -163,10 +174,14 @@ else
                         </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
                         @if (isOwner )
                         {
-                             <button class="btn btn-primary mb-3" @onclick="ManageActivity">จัดการกิจกรรม/ Manage</button>
+@*                              <button class="btn btn-primary mb-3" @onclick="ManageActivity">จัดการกิจกรรม/ Manage</button>
+ *@@* 
+                            <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a> *@
+                            <a class="btn btn-primary" href="@($"activities/edit?subid={activity.Id}")">
+                                จัดการกิจกรรม/ Manage
+                            </a>
 
-@*                             <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a>
- *@                        }
+                        }
 
                     </li>
                 }

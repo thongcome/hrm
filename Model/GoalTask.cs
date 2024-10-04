@@ -45,6 +45,7 @@ namespace LeaderDevelop.Model
         [Range(0, 100, ErrorMessage = "ใส่ค่า 0-100 / Progress must be between 0 and 100.")]
         public decimal? progress { get; set; }
 
+
         //[Display(Name = ("ความก้าวหน้า/Progress"))]
         //public decimal? progress { get; set; }
 
@@ -153,13 +154,13 @@ namespace LeaderDevelop.Model
                 //{
                     if (Startdate.HasValue)
                     {
-                        EndDate = Startdate.Value.AddDays((double)DayofGoal);
+                        EndDate = Startdate.Value.AddDays((double)DayofGoal).Date;
 
                     }
                     else
                     {
                         // Handle the case where StartDate is null (assign default value if needed)
-                        EndDate = DateTime.Now.AddDays((double)DayofGoal);// or any other default logic
+                        EndDate = DateTime.Now.AddDays((double)DayofGoal).Date;// or any other default logic
                     }
                 //}
             }

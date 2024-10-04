@@ -9,7 +9,7 @@
 
 <PageTitle>รายการเป้าหมาย</PageTitle>
 
-<h1>รายการเป้าหมาย</h1>
+<h4>รายการเป้าหมาย   (Your Score : @facililatorScore)</h4>
 
 @if (GoalTaskList != null && GoalTaskList.Any())
 {
@@ -40,7 +40,8 @@
     private IQueryable<GoalTask> GoalTaskList = default!;
 
     private ApplicationDbContext context = default!;
-    // private ScUser? user;
+    private decimal facililatorScore = 0.00M;
+
 
     protected override async Task OnInitializedAsync()
     {
@@ -55,7 +56,28 @@
                     .Where(b => b.facililatorID == userId)
                     .OrderByDescending(b => b.Startdate)
                     .AsQueryable();
-                // user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+
+                foreach(var item in GoalTaskList)
+                {
+                    if(item.progress == null)
+                    {
+                        item.progress = 0;
+                    }
+                }
+
+                var avgScore = GoalTaskList.Where(x => x.status != GoalTask.GoalTaskStatus.Cancel).Average(x => x.progress);
+                if (avgScore != null)
+                {
+                    facililatorScore= (decimal)avgScore;
+                    // var user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+                    // if(user is not null)
+                    // {
+                    //     user.score = facililatorScore;
+                    //     await context.SaveChangesAsync();
+
+                    // }
+
+                }
 
             }
  

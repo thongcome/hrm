@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @using System.Security.Claims
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
@@ -32,25 +33,37 @@ else
                 <input type="hidden" name="ScUser.Userid" value="@ScUser.Userid" />
               
                 <div class="mb-3">
-                    <label for="firstname" class="form-label">Firstname:</label>
+                    <label for="firstname" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Firstname))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
+                    </label>
                     <InputText id="firstname" @bind-Value="ScUser.Firstname" class="form-control" readonly />
                     <ValidationMessage For="() => ScUser.Firstname" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="lastname" class="form-label">Lastname:</label>
+                    <label for="lastname" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Lastname))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Last Name") :
+                    </label>
                     <InputText id="lastname" @bind-Value="ScUser.Lastname" class="form-control" readonly />
                     <ValidationMessage For="() => ScUser.Lastname" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="loginname" class="form-label">Loginname:</label>
+                    <label for="loginname" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Loginname))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Loginname") :
+                    </label>
                     <InputText id="loginname" @bind-Value="ScUser.Loginname" class="form-control" readonly />
                     <ValidationMessage For="() => ScUser.Loginname" class="text-danger" />
                 </div>
         
                 <div class="mb-3">
-                    <label for="phone" class="form-label">Phone:</label>
-                    <InputText id="phone" @bind-Value="ScUser.Phone" class="form-control" readonly />
-                    <ValidationMessage For="() => ScUser.Phone" class="text-danger" />
+                    <label for="phone" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Mobilephone))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Mobile") :
+                    </label>
+                    <InputText id="phone" @bind-Value="ScUser.Mobilephone" class="form-control" readonly />
+                    <ValidationMessage For="() => ScUser.Mobilephone" class="text-danger" />
                 </div>
                 
           @*       <div class="mb-3">
@@ -77,9 +90,28 @@ else
     
                 <div class="mb-3">
                     <label for="iscoach" class="form-label"> สถานะ Facilitator:</label>
-                    <InputCheckbox id="iscoach" @bind-Value="ScUser.IsCoach" class="form-check-input" readonly />
+                    <InputCheckbox id="iscoach" @bind-Value="ScUser.IsCoach" class="form-check-input" readonly /> (คลิ๊กเพื่ออนุมัติ Chedk for approval)
                     <ValidationMessage For="() => ScUser.IsCoach" class="text-danger" />
                 </div>
+
+                <div class="mb-3">
+                    <label for="iscoachrequest" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.IsCoachRequest))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Request to be Facililator") :
+                    </label>
+                    <InputCheckbox id="iscoachrequest" @bind-Value="ScUser.IsCoachRequest" class="form-check-input" disabled />
+                    <ValidationMessage For="() => ScUser.IsCoachRequest" class="text-danger" />
+                </div>
+ 
+                    <div class="mb-3">
+                        <label for="ref1" class="form-label">
+                            @((typeof(ScUser).GetProperty(nameof(ScUser.Ref1))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "คุณสมบัติของคุณ") :
+                        </label>
+                        <InputTextArea id="ref1" @bind-Value="ScUser.Ref1" class="form-control" readonly />
+                        <ValidationMessage For="() => ScUser.Ref1" class="text-danger" />
+                    </div>
+               
                
                 <div class="mb-3">
                     <label for="registerdate" class="form-label">Registerdate:</label>
