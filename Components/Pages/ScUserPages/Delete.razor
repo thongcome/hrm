@@ -1,8 +1,11 @@
 ﻿@page "/scusers/delete"
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
+
+@attribute [Authorize]
 
 <PageTitle>Delete</PageTitle>
 
@@ -180,8 +183,8 @@
     private async Task DeleteScUser()
     {
         using var context = DbFactory.CreateDbContext();
-        context.ScUsers.Remove(scuser!);
-        await context.SaveChangesAsync();
+        // context.ScUsers.Remove(scuser!);
+         await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/scusers");
     }
 }
