@@ -41,7 +41,7 @@ namespace LeaderDevelop.Model
         public double? DayofGoal { get; set; }
 
 
-        [Display(Name = "ความก้าวหน้า/Progress")]
+        [Display(Name = "% of Goal completion")]
         [Range(0, 100, ErrorMessage = "ใส่ค่า 0-100 / Progress must be between 0 and 100.")]
         public decimal? progress { get; set; }
 
@@ -52,14 +52,14 @@ namespace LeaderDevelop.Model
         [StringLength(250)]
         [Unicode(true)]
 
-        [Display(Name = ("อธิบายเพิ่มเติม/Description"))]
+        [Display(Name = ("ตรวจสอบเป้าหมาย"))]
 
         public string Description { get; set; } = string.Empty;
 
-        [StringLength(50)]
+        [StringLength(250)]
         [Unicode(true)]
 
-        [Display(Name = ("เรื่อง/WOL"))]
+        [Display(Name = ("ประเด็น/Topic"))]
         public string wol { get; set; } = string.Empty;
 
         [StringLength(500)]
@@ -72,10 +72,15 @@ namespace LeaderDevelop.Model
         [Display(Name = ("สิ่งที่ได้เรียนรู้/Learning"))]
         public string Lesson2 { get; set; } = string.Empty;
 
+        [StringLength(500)]
+        [Unicode(true)]
+        [Display(Name = ("เหตุผล/Reason"))]
+        public string Reason { get; set; } = string.Empty;
+
 
         [StringLength(1000)]
         [Unicode(true)]
-        [Display(Name = ("สิ่งที่ได้เรียนรู้หรือขอบคุณ/Lesson or ThankFully"))]
+        [Display(Name = ("สิ่งที่ได้เรียนรู้/Lesson"))]
         public string ThankFully { get; set; } = string.Empty;
         public int? UserId { get; set; }
 

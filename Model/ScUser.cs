@@ -57,11 +57,11 @@ public partial class ScUser
     public bool Isforcechanged { get; set; } = false;
 
     [Column("IsCoachRequest")]
-    [Display(Name = ("ต้องการเป็นเป็นที่ปรึกษา/Request Facililator"))]
+    [Display(Name = ("Apply to be Facililator"))]
     public bool IsCoachRequest { get; set; } = false;
 
     [Column("IsCoach")]
-    [Display(Name = ("เป็นที่ปรึกษา/Is Facililator"))]
+    [Display(Name = ("Facililator Status"))]
     public bool IsCoach { get; set; } = false;
 
     [Column("iscancel")]
@@ -173,7 +173,7 @@ public partial class ScUser
 
     [Column("ref1")]
     [StringLength(500)]
-    [Display(Name = ("คำอธิบาย คุณสมบัติเป็น Facililator/Please describe Why you can be facililator"))]
+    [Display(Name = ("คำอธิบาย คุณสมบัติเป็น Facililator/Write a description to get approval as a facilitator"))]
 
     public string? Ref1 { get; set; } = string.Empty;
 

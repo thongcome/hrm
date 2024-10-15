@@ -12,9 +12,12 @@
 
 <PageTitle>รายการเป้าหมาย</PageTitle>
 
-<h3>รายการเป้าหมาย</h3> 
+@* <h3>รายการเป้าหมาย</h3> 
 
+ *@<p>
 <p>
+    <h4> % of Goal completion : @facililatorScore.ToString("0.00")</h4>
+</p>
     <a href="goaltasks/create">เพิ่มเป้าหมาย/Add New Goal</a>
 </p>
 @if (GoalTaskList != null && GoalTaskList.Any())
@@ -24,13 +27,13 @@
 
         <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเภท/Mode" />
         <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
-        <PropertyColumn Property="goaltask => goaltask.progress" Title="ความก้าวหน้า/Progress" />
-        <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
-        <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
+        <PropertyColumn Property="goaltask => goaltask.progress" Title="% of Goal completion" />
+@*         <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
+ *@        <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
   
     @*     <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
         <PropertyColumn Property="goaltask => goaltask.Lesson2" Title="สิ่งที่ได้เรียนรู้/Learning" /> *@
-        <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="คำขอบคุณ/ThankFully" />
+        <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="สิ่งที่ได้เรียนรู้" />
 
 
 
@@ -43,6 +46,7 @@
 @code {
     private ApplicationDbContext context = default!;
     private IQueryable<GoalTask> GoalTaskList = default!;
+    private decimal facililatorScore = 0.00M;
 
     protected override async Task OnInitializedAsync()
     {
@@ -57,6 +61,21 @@
                     .Where(b => b.OwnerID == userId)
                     .OrderByDescending(b => b.Startdate)
                     .AsQueryable();
+            }
+            // var avgScore = GoalTaskList.Where(x => x.status != GoalTask.GoalTaskStatus.Cancel).Average(x => x.progress);
+
+            var avgScore = GoalTaskList.Average(x => x.progress);
+            if (avgScore != null)
+            {
+                facililatorScore = (decimal)avgScore;
+                // var user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+                // if(user is not null)
+                // {
+                //     user.score = facililatorScore;
+                //     await context.SaveChangesAsync();
+
+                // }
+
             }
         }
         catch (Exception e)
