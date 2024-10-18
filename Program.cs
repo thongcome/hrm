@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,6 +61,16 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 //});
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+
+// Configure Serilog
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Error()  // กำหนดระดับการบันทึกขั้นต่ำเป็น Error
+    .WriteTo.Console()  // บันทึก log ไปยัง Console
+    .WriteTo.File("logs/error-log.txt", rollingInterval: RollingInterval.Day)  // บันทึก log เฉพาะ Error ลงไฟล์
+    .CreateLogger();
+
+builder.Host.UseSerilog();  // ใช้ Serilog เป็น logging provider
 
 var app = builder.Build();
 

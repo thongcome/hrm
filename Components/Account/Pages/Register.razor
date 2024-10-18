@@ -52,13 +52,13 @@
             <button type="submit" class="w-100 btn btn-lg btn-primary">ลงทะเบียน/Register</button>
         </EditForm>
     </div>
-    <div class="col-md-6 col-md-offset-2">
+ @*    <div class="col-md-6 col-md-offset-2">
         <section>
             <h3>Use another service to register.</h3>
             <hr />
             <ExternalLoginPicker />
         </section>
-    </div>
+    </div> *@
 </div>
 
 @code {
@@ -103,8 +103,8 @@
         scUser.Registerdate = DateTime.Now;
         scUser.Iscancel = false;
         scUser.IsCoach = false;
-       
-        
+
+
 
         DbContext.ScUsers.Add(scUser);
         await DbContext.SaveChangesAsync();  // Save ScUser to the database
@@ -136,8 +136,9 @@
         {
             return Activator.CreateInstance<ApplicationUser>();
         }
-        catch
+        catch(Exception e)
         {
+            Logger.LogError(e.Message.ToString());
             throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
                 $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor.");
         }
@@ -169,5 +170,12 @@
         [Display(Name = "Confirm password")]
         [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
         public string ConfirmPassword { get; set; } = "";
+    }
+
+    private void LogMessages()
+    {
+        Logger.LogInformation("This is an information log.");
+        Logger.LogWarning("This is a warning log.");
+        Logger.LogError("This is an error log.");
     }
 }
