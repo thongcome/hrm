@@ -6,6 +6,7 @@
 @using LeaderDevelop.Data
 @implements IAsyncDisposable
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
+@inject UserService UserService;
 
 @attribute [Authorize]
 
@@ -31,7 +32,7 @@
         <PropertyColumn Property="scuser => scuser.Email" Title="อีเมล์/Email" />
         <PropertyColumn Property="scuser => scuser.Registerdate" Title="วันลงทะเบียน/Register Date" Sortable="true" />
         <TemplateColumn Context="scuser">
-            @if (scuser.Isforcechanged == true)
+            @if (scUser?.Isforcechanged == true)
             {
                 <a href="@($"/scusers/managecoach?userid=" + scuser.Userid)">ปรับระดับ Facililator</a>
             }
@@ -45,6 +46,7 @@ else
 @code {
     private ApplicationDbContext context = default!;
     private IQueryable<ScUser> ScUserList = default!;
+    private ScUser? scUser;
 
     private string searchFirstName = "";
     private string searchLastName = "";
@@ -53,6 +55,8 @@ else
     {
         context = await DbFactory.CreateDbContextAsync();
         LoadScUsers();  // No await needed because the method is now synchronous
+        scUser = await UserService.GetScUserAsync();
+
     }
 
     // Synchronous method

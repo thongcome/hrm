@@ -1,6 +1,7 @@
 ﻿using LeaderDevelop.Data;
 using LeaderDevelop.Model;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using System.Security.Claims;
 
 public class UserService
@@ -68,6 +69,51 @@ public class UserService
 
         return Task.FromResult(userId);
     }
+
+
+    //public  ScUser  GetScUser()
+    //{
+    //    var scUser = new ScUser();
+    //    var userId = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    //    if (userId == null)
+    //    {
+    //        throw new InvalidOperationException("Unable to determine the current user ID.");
+    //    }
+    //    scUser =  _context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+    //    if (scUser == null)
+    //    {
+    //        throw new InvalidOperationException("Unable to determine the current Sc user .");
+    //    }
+    //    return  scUser;
+    //}
+    public async Task<ScUser> GetScUserAsync()
+    {
+        ScUser? scUser = new ScUser();
+        try
+        {
+            var userId = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (userId == null)
+        {
+            throw new InvalidOperationException("Unable to determine the current user ID.");
+        }
+      
+            scUser = await _context.ScUsers.Where(x => x.Id == userId).FirstOrDefaultAsync();
+        }
+        catch (Exception ex) {
+            Log.Error(ex.Message.ToString());
+            ex.Message.ToString().Trim();
+        }
+
+        if (scUser == null)
+        {
+            throw new InvalidOperationException("Unable to determine the current Sc user.");
+        }
+
+        return await Task.FromResult(scUser);  // scUser is guaranteed to be non-null at this point
+    }
+
 
     // Method to get the current logged-in user's email
     public string GetUserEmail()

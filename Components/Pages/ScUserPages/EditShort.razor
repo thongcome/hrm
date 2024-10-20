@@ -7,13 +7,25 @@
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
-
+@inject UserService UserService;
 @attribute [Authorize]
 
 <PageTitle>แก้ไขข้อมูลส่วนตัว/Personal Data</PageTitle>
 
-<h4>แก้ไขข้อมูลส่วนตัว/Personal Data</h4>
+<h4>แก้ไขข้อมูลส่วนตัว/Personal Data</h4> 
+@* @if (isAdmin == true)
+{
+    <p>You are Admin</p>
 
+    <div class="nav-item px-3">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="/scusers/all">
+                <span class="bi bi-lock-nav-menu" aria-hidden="true"></span> Member List
+            </NavLink>
+        </div>
+    </div>
+}
+ *@
 @if (!string.IsNullOrEmpty(StatusMessage))
 {
     <div class="alert alert-success">@StatusMessage</div>
@@ -112,6 +124,15 @@ else
                     <InputCheckbox id="iscoachrequest" @bind-Value="ScUser.IsCoachRequest" class="form-check-input" @oninput="ToggleRef1Visibility" />
                     <ValidationMessage For="() => ScUser.IsCoachRequest" class="text-danger" />
                 </div>
+            
+            @*     <div class="mb-3">
+                    <label for="iscoachrequest" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Isforcechanged))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Admin?") :
+                    </label>
+                    <InputCheckbox id="iscoachrequest" @bind-Value="ScUser.Isforcechanged" class="form-check-input" @oninput="ToggleRef1Visibility" />
+                    <ValidationMessage For="() => ScUser.Isforcechanged" class="text-danger" />
+                </div> *@
 
                 @if (showRef1 || ScUser.IsCoachRequest)
                 {
@@ -159,6 +180,8 @@ else
 
 
     private bool showRef1 = false;
+    private bool isAdmin = false;
+
 
 
     [SupplyParameterFromQuery]
@@ -184,14 +207,22 @@ else
             return;
         }
 
+          ScUser = await UserService.GetScUserAsync();
         // Fetch ScUser details from the database using the AspNetUser ID
-        using var context = DbFactory.CreateDbContext();
-        ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
+        // using var context = DbFactory.CreateDbContext();
+        // ScUser = await context.ScUsers.FirstOrDefaultAsync(m => m.Id == userId);
 
         if (ScUser is null)
         {
             NavigationManager.NavigateTo("notfound");
+
+        }
+        else
+        {
+            
+                isAdmin = ScUser.Isforcechanged;
  
+
         }
     }
 
