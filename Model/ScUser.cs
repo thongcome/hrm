@@ -53,6 +53,8 @@ public partial class ScUser
     [Display(Name = ("เบอร์มือถือ/Mobile"))]
     public string? Mobilephone { get; set; } = string.Empty;
 
+    [Display(Name = ("สถานะ Admin"))]
+
     [Column("isforcechanged")]
     public bool Isforcechanged { get; set; } = false;
 

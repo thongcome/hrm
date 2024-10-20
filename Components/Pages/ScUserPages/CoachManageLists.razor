@@ -31,7 +31,10 @@
         <PropertyColumn Property="scuser => scuser.Email" Title="อีเมล์/Email" />
         <PropertyColumn Property="scuser => scuser.Registerdate" Title="วันลงทะเบียน/Register Date" Sortable="true" />
         <TemplateColumn Context="scuser">
-            <a href="@($"/scusers/managecoach?userid=" + scuser.Userid)">ปรับระดับ Facililator</a>
+            @if (scuser.Isforcechanged == true)
+            {
+                <a href="@($"/scusers/managecoach?userid=" + scuser.Userid)">ปรับระดับ Facililator</a>
+            }
         </TemplateColumn>
     </QuickGrid>
 }
@@ -58,7 +61,7 @@ else
         ScUserList = context.ScUsers
             .Where(scuser => (string.IsNullOrEmpty(searchFirstName) || EF.Functions.Like(scuser.Firstname, $"%{searchFirstName}%")) &&
                              (string.IsNullOrEmpty(searchLastName) || EF.Functions.Like(scuser.Lastname, $"%{searchLastName}%")) &&
-                             (scuser.IsCoach==true ) && (scuser.IsCoachRequest ==true)
+                             ((scuser.IsCoach==true ) || (scuser.IsCoachRequest ==true))
                             )                
             .OrderBy(scuser => scuser.Firstname)
             .AsQueryable();
