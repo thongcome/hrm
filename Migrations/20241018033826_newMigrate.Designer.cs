@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LeaderDevelop.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20241002053014_addGoalEmail_ID")]
-    partial class addGoalEmail_ID
+    [Migration("20241018033826_newMigrate")]
+    partial class newMigrate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -43,6 +43,14 @@ namespace LeaderDevelop.Migrations
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
@@ -152,9 +160,9 @@ namespace LeaderDevelop.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ThankFully")
-                        .HasMaxLength(500)
+                        .HasMaxLength(1000)
                         .IsUnicode(true)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<decimal?>("progress")
                         .HasColumnType("decimal(18,2)");
@@ -228,14 +236,20 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTime?>("Startdate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("ThankFully")
                         .IsRequired()
-                        .HasMaxLength(500)
+                        .HasMaxLength(1000)
                         .IsUnicode(true)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<int?>("UserId")
                         .HasColumnType("int");
@@ -251,6 +265,11 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("facililatorID")
+                        .HasMaxLength(450)
+                        .IsUnicode(true)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<decimal?>("progress")
                         .HasColumnType("decimal(18,2)");
 
@@ -260,9 +279,9 @@ namespace LeaderDevelop.Migrations
 
                     b.Property<string>("wol")
                         .IsRequired()
-                        .HasMaxLength(50)
+                        .HasMaxLength(250)
                         .IsUnicode(true)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(250)");
 
                     b.HasKey("Id");
 
@@ -323,6 +342,10 @@ namespace LeaderDevelop.Migrations
                     b.Property<bool>("IsCoach")
                         .HasColumnType("bit")
                         .HasColumnName("IsCoach");
+
+                    b.Property<bool>("IsCoachRequest")
+                        .HasColumnType("bit")
+                        .HasColumnName("IsCoachRequest");
 
                     b.Property<bool>("Iscancel")
                         .HasColumnType("bit")
@@ -456,6 +479,9 @@ namespace LeaderDevelop.Migrations
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(250)")
                         .HasColumnName("verifycode");
+
+                    b.Property<decimal?>("score")
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Userid");
 

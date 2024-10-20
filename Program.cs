@@ -46,6 +46,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddDefaultTokenProviders();
 
 
+builder.Services.AddRazorPages();  // เพิ่มการใช้งาน Razor Pages
 
 
 //// Register DbContextFactory for Blazor component and background task usage
@@ -86,7 +87,20 @@ else
     app.UseHsts();
     app.UseMigrationsEndPoint();
 }
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+        ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+        ctx.Context.Response.Headers.Append("Expires", "0");
+    }
+});
 //app.UseRequestLocalization();
+
+
+
 
 app.UseHttpsRedirection();
 
@@ -97,9 +111,19 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 // Add additional endpoints required by the Identity /Account Razor components.
-//app.MapAdditionalIdentityEndpoints();
+app.MapAdditionalIdentityEndpoints();
 
-app.UseAuthentication();
-app.UseAuthorization();
+// remark becuase solved antifogery mismath
+//app.UseAuthentication();
+//app.UseAuthorization();
+
+
+
+//app.UseRouting();
+
+ app.MapRazorPages();  // เปิดใช้งานเส้นทาง Razor Pages ของ Identity
 
 app.Run();
+
+
+

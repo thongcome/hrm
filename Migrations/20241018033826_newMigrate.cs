@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LeaderDevelop.Migrations
 {
     /// <inheritdoc />
-    public partial class addIsCoach : Migration
+    public partial class newMigrate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -30,6 +30,8 @@ namespace LeaderDevelop.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    FirstName = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
+                    LastName = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -56,6 +58,7 @@ namespace LeaderDevelop.Migrations
                 {
                     userid = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
+                    id = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
                     title = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     firstname = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
                     lastname = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
@@ -64,6 +67,7 @@ namespace LeaderDevelop.Migrations
                     phone = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     mobilephone = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     isforcechanged = table.Column<bool>(type: "bit", nullable: false),
+                    IsCoachRequest = table.Column<bool>(type: "bit", nullable: false),
                     IsCoach = table.Column<bool>(type: "bit", nullable: false),
                     iscancel = table.Column<bool>(type: "bit", nullable: false),
                     pwdexpdate = table.Column<DateTime>(type: "datetime", nullable: true),
@@ -85,6 +89,7 @@ namespace LeaderDevelop.Migrations
                     poscode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     pos_name = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     isActivate = table.Column<bool>(type: "bit", nullable: false),
+                    score = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
                     supervisor = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     costcenter = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     verifycode = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
@@ -309,18 +314,23 @@ namespace LeaderDevelop.Migrations
                     DayofGoal = table.Column<double>(type: "float", nullable: true),
                     progress = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
                     Description = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
-                    wol = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    wol = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: false),
                     Lesson1 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     Lesson2 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    ThankFully = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    ThankFully = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
                     UserId = table.Column<int>(type: "int", nullable: true),
                     coachId = table.Column<int>(type: "int", nullable: true),
+                    facililatorID = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
                     WolId = table.Column<int>(type: "int", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     Modby = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     CreateBy = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     CreateDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    ModDate = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ModDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    status = table.Column<int>(type: "int", nullable: true),
+                    OwnerID = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
+                    email = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -346,8 +356,8 @@ namespace LeaderDevelop.Migrations
                     Lesson1 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     Lesson2 = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     progress = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
-                    ThankFully = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    StatusCode = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ThankFully = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    StatusCode = table.Column<int>(type: "int", nullable: true),
                     Modby = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     CreateBy = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
                     CreateDate = table.Column<DateTime>(type: "datetime2", nullable: true),
