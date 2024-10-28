@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Serilog;
+using LeaderDevelop.Services;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using LeaderDevelop.Model;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,7 +64,22 @@ builder.Services.AddRazorPages();  // เพิ่มการใช้งาน Razor Pages
 //    options.SupportedUICultures = supportedCultures;
 //});
 
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+//builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+
+
+//config for email sender
+builder.Services.AddTransient<IEmailSender, EmailSender>();
+
+builder.Services.Configure<AuthMessageSenderOptions>(builder.Configuration);
+// Load SMTP settings
+ var smtpSettings = builder.Configuration.GetSection("SmtpSettings").Get<SmtpSettings>();
+builder.Services.AddSingleton<IEmailSender, EmailSender>();
+// Program.cs
+builder.Services.AddTransient<EmailSender>(); // Register the concrete type
+
+//builder.Services.AddSingleton(smtpSettings);
+
+//builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
 // Configure Serilog
 
@@ -72,6 +90,7 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();  // ใช้ Serilog เป็น logging provider
+builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Information);
 
 var app = builder.Build();
 
@@ -124,6 +143,3 @@ app.MapAdditionalIdentityEndpoints();
  app.MapRazorPages();  // เปิดใช้งานเส้นทาง Razor Pages ของ Identity
 
 app.Run();
-
-
-

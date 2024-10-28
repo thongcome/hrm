@@ -5,8 +5,11 @@
 @using System.Text.Encodings.Web
 @using LeaderDevelop.Model
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Identity.UI.Services
 @using Microsoft.AspNetCore.WebUtilities
 @using LeaderDevelop.Data
+@using System.Security.Policy
+@using LeaderDevelop.Services
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserStore<ApplicationUser> UserStore
@@ -15,6 +18,8 @@
 @inject ILogger<Register> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
+@inject IEmailSender EmailSender
+
 
 
 @inject ApplicationDbContext DbContext  // Inject the DbContext
@@ -51,12 +56,12 @@
             <button type="submit" class="w-100 btn btn-lg btn-primary">ลงทะเบียน/Register</button>
         </EditForm>
     </div>
- @*    <div class="col-md-6 col-md-offset-2">
-        <section>
-            <h3>Use another service to register.</h3>
-            <hr />
-            <ExternalLoginPicker />
-        </section>
+    @*    <div class="col-md-6 col-md-offset-2">
+    <section>
+    <h3>Use another service to register.</h3>
+    <hr />
+    <ExternalLoginPicker />
+    </section>
     </div> *@
 </div>
 
@@ -76,7 +81,7 @@
         var user = CreateUser();
 
         await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
-        var emailStore = GetEmailStore();   
+        var emailStore = GetEmailStore();
         await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
         var result = await UserManager.CreateAsync(user, Input.Password);
 
@@ -95,7 +100,7 @@
         // scUser.Userid = long.Parse(user.Id);
         scUser.Email = Input.Email;
         scUser.Loginname = Input.Email;
-        scUser.Firstname =  Input.Email.Split('@')[0];
+        scUser.Firstname = Input.Email.Split('@')[0];
         scUser.Lastname = Input.Email;
         scUser.Password = Input.Password;
         scUser.Id = user.Id;
@@ -116,13 +121,22 @@
             NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
             new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
 
-        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+     // await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+        await EmailSender.SendEmailAsync(Input.Email, "Confirm your email", $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+     
+
 
         if (UserManager.Options.SignIn.RequireConfirmedAccount)
         {
             RedirectManager.RedirectTo(
                 "Account/RegisterConfirmation",
                 new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
+        }
+        else
+        {
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            RedirectManager.RedirectTo(ReturnUrl);
         }
 
         await SignInManager.SignInAsync(user, isPersistent: false);
@@ -135,7 +149,7 @@
         {
             return Activator.CreateInstance<ApplicationUser>();
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             Logger.LogError(e.Message.ToString());
             throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +

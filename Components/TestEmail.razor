@@ -1,0 +1,75 @@
+﻿@page "/test-email"
+@using LeaderDevelop.Services
+@inject EmailSender EmailSender
+
+<h3>Test Email Sending (Synchronous)</h3>
+
+@if (emailSent)
+{
+    <div class="alert alert-success mt-3">Email sent successfully!</div>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">Error: @errorMessage</div>
+}
+
+<EditForm Model="@this" OnValidSubmit="SendTestEmailASync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label for="recipient" class="form-label">Recipient Email:</label>
+        <InputText id="recipient" class="form-control" @bind-Value="recipientEmail" />
+    </div>
+
+    <div class="mb-3">
+        <label for="subject" class="form-label">Subject:</label>
+        <InputText id="subject" class="form-control" @bind-Value="subject" />
+    </div>
+
+    <div class="mb-3">
+        <label for="message" class="form-label">Message:</label>
+        <InputTextArea id="message" class="form-control" @bind-Value="message" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Send Email (Sync)</button>
+</EditForm>
+
+@code {
+    private string recipientEmail = "";
+    private string subject = "";
+    private string message = "";
+    private bool emailSent = false;
+    private string? errorMessage;
+
+    private void SendTestEmailSync()
+    {
+        try
+        {
+            errorMessage = null;
+            EmailSender.SendEmail(recipientEmail, subject, message); // Calling the synchronous method
+            emailSent = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            emailSent = false;
+        }
+    }
+
+
+    private async Task SendTestEmailASync()
+    {
+        try
+        {
+            errorMessage = null;
+           await EmailSender.SendEmailAsync(recipientEmail, subject, message); // Calling the synchronous method
+            emailSent = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            emailSent = false;
+        }
+    }
+}
