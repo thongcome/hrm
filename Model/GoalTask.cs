@@ -146,7 +146,8 @@ namespace LeaderDevelop.Model
         {
             Active,
             Cancel,
-            Success
+            Success,
+            Overtime
         }
 
         // Method to calculate EndDate

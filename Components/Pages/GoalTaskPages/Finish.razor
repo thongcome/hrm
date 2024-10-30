@@ -119,8 +119,18 @@ else
 
         // Modify the specific fields
         GoalTask!.ModDate = DateTime.Now;  // Update Moddate to current time
-      // Set IsActive to false
-        GoalTask.status = GoalTask.GoalTaskStatus.Success;
+        if(GoalTask.EndDate?.Date < DateTime.Now.Date)
+        {
+            GoalTask.status = GoalTask.GoalTaskStatus.Overtime;
+
+        }
+        else
+        {
+            GoalTask.status = GoalTask.GoalTaskStatus.Success;
+
+        }
+        // Set IsActive to false
+        GoalTask.IsActive = false;
 
         try
         {
