@@ -18,7 +18,7 @@
 }
 else
 {
-    <h4>การวางแผนกิจกรรมอย่างเป็นระบบสู่เป้าหมาย ของ @currentUser </h4>
+    <h4>การวางแผนกิจกรรมอย่างเป็นระบบสู่เป้าหมาย @* ของ @currentUser *@ </h4>
 }
 
 <!-- Goal Task Details Section -->
@@ -47,7 +47,9 @@ else
                         <strong>
                             @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                                 .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
-                        </strong> @goaltask.Name
+                        </strong>   @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "ระยะเวลา") @goaltask.DayofGoal    @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "สิ้นสุด")
                     </p>
                     <p>
                         <strong>
@@ -100,7 +102,7 @@ else
                      @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
                                 .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
                         </strong> @goaltask.progress %
-                  เป้าหมายจะสำเร็จ ต้องมี ความก้าวหน้า 80% ขึ้น ไป /  Progress equal 80% or more , you can finish of your goal 
+                  (หมายเหตุ: เป้าหมายจะสำเร็จ ต้องมี ความก้าวหน้า 80% ขึ้น ไป /  Progress equal 80% or more , you can finish of your goal )
                 </div>
 
             </div>
@@ -178,16 +180,16 @@ else
                             {
                                 <button id="successshow" class="btn btn-success btn-sm">สำเร็จ</button>
                             }
-                        </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate ถึง @activity.EndDate
+                        </strong> @activity.Name - ความก้าวหน้า: @activity.progress % วันที่เริ่ม: @activity.StartDate?.ToString("dd/MM/yyyy")  ถึง  @activity.EndDate?.ToString("dd/MM/yyyy")
                         @if (isOwner )
                         {
-@*                              <button class="btn btn-primary mb-3" @onclick="ManageActivity">จัดการกิจกรรม/ Manage</button>
+@*                               <button class="btn btn-primary mb-3" @onclick="ManageActivity">จัดการกิจกรรม/ Manage</button>
  *@@* 
                             <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a> *@
                             <a class="btn btn-primary" href="@($"activities/edit?subid={activity.Id}")">
                                 จัดการกิจกรรม/ Manage
                             </a>
-
+ 
                         }
 
                     </li>
@@ -211,40 +213,52 @@ else
 
 
                 <div class="mb-3">
-                    <label for="taskid" class="form-label">Task ID:</label>
-                    <InputNumber id="taskid" @bind-Value="NewActivity.TaskId" class="form-control" hidden />
+@*                     <label for="taskid" class="form-label">Task ID:</label>
+ *@                    <InputNumber id="taskid" @bind-Value="NewActivity.TaskId" class="form-control" hidden />
                     <ValidationMessage For="() => NewActivity.TaskId" />
                 </div>
                 <!-- Order Input -->
                 <div class="mb-3">
-                    <label for="order" class="form-label">(auto)Order:</label>
+                    <label for="order" class="form-label">
+                        (auto) @((typeof(Activity).GetProperty(nameof(Activity.Orders))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                     .FirstOrDefault() as DisplayAttribute)?.Name ?? "Order") :
+                    </label>
                     <InputNumber id="order" @bind-Value="NewActivity.Orders" class="form-control" readonly />
                     <ValidationMessage For="() => NewActivity.Orders" />
                 </div>
 
                 <!-- Name Input -->
                 <div class="mb-3">
-                    <label for="Name" class="form-label">Activity:</label>
+                    <label for="Name" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+                    </label>
                     <InputText id="Name" @bind-Value="NewActivity.Name" class="form-control" />
                     <ValidationMessage For="() => NewActivity.Name" />
                 </div>
 
                 <!-- StartDate Input -->
                 <div class="mb-3">
-                    <label for="StartDate" class="form-label">Start Date:</label>
+                    <label for="StartDate" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.StartDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
+                    </label>
                     <InputDate id="StartDate" @bind-Value="NewActivity.StartDate" class="form-control" />
                     <ValidationMessage For="() => NewActivity.StartDate" />
                 </div>
 
                 <!-- EndDate Input -->
                 <div class="mb-3">
-                    <label for="EndDate" class="form-label">End Date:</label>
+                    <label for="EndDate" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "End Date")
+                    </label>
                     <InputDate id="EndDate" @bind-Value="NewActivity.EndDate" class="form-control" />
                     <ValidationMessage For="() => NewActivity.EndDate" />
                 </div>
 
                 <button type="submit" class="btn btn-primary">Save</button>
-                <button type="button" class="btn btn-secondary ml-2" @onclick="HideAddActivityForm">ยกเลิก</button>
+                <button type="button" class="btn btn-secondary ml-2" @onclick="HideAddActivityForm">Cancel</button>
             </EditForm>
 
 

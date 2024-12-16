@@ -49,6 +49,7 @@
                 IsBodyHtml = true,
             };
             mailMessage.To.Add(email);
+          //  mailMessage.AlternateViews.Add(AlternateView.CreateAlternateViewFromString("This is the plain text version of the email.", null, "text/plain"));
 
             await client.SendMailAsync(mailMessage);
         }

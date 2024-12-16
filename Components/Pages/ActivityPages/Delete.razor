@@ -1,59 +1,83 @@
 ﻿@page "/activities/delete"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ActivityService ActivityService
 
 <PageTitle>Delete</PageTitle>
 
-<h1>Delete</h1>
+<h1>ลบกิจกรรม</h1>
 
-<p>Are you sure you want to delete this?</p>
+<p><h2>Are you sure you want to delete this?/ต้องการลบกิจกรรมนี้จริงหรือไม่</h2></p>
 <div>
-    <h2>Activity</h2>
     <hr />
     @if (activity is null)
     {
         <p><em>Loading...</em></p>
     }
-    else {
-        <dl class="row">
+    else
+    {
+      @*   <dl class="row">
             <dt class="col-sm-2">TaskId</dt>
             <dd class="col-sm-10">@activity.TaskId</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">Name</dt>
-            <dd class="col-sm-10">@activity.Name</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">StartDate</dt>
-            <dd class="col-sm-10">@activity.StartDate</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">EndDate</dt>
-            <dd class="col-sm-10">@activity.EndDate</dd>
-        </dl>
+        </dl> *@
         <dl class="row">
             <dt class="col-sm-2">Order</dt>
             <dd class="col-sm-10">@activity.Orders</dd>
         </dl>
         <dl class="row">
-            <dt class="col-sm-2">Description</dt>
+            <dt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name")
+            </dt>
+            <dd class="col-sm-10">@activity.Name</dd>
+        </dl>
+ 
+        <dl class="row">
+            <dt class="col-sm-2">
+                dt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.StartDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "StartDate")
+            </dt>
+            <dd class="col-sm-10">@activity.StartDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">
+                Edt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "EndDate")
+            </dt>
+            <dd class="col-sm-10">@activity.EndDate</dd>
+        </dl>
+
+        <dl class="row">
+            <dt class="col-sm-2">
+                dt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "Description")
+            </dt>
             <dd class="col-sm-10">@activity.Description</dd>
         </dl>
         <dl class="row">
-            <dt class="col-sm-2">Lesson1</dt>
+            <dt class="col-sm-2">
+                dt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.Lesson1))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "Lesson1")
+            </dt>
             <dd class="col-sm-10">@activity.Lesson1</dd>
         </dl>
+        
         <dl class="row">
-            <dt class="col-sm-2">Lesson2</dt>
-            <dd class="col-sm-10">@activity.Lesson2</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">ThankFully</dt>
+            <dt class="col-sm-2">
+                dt class="col-sm-2">
+                @((typeof(Activity).GetProperty(nameof(Activity.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "ข้อคิด")
+            </dt>
             <dd class="col-sm-10">@activity.ThankFully</dd>
         </dl>
-   @*      <dl class="row">
+        @*      <dl class="row">
             <dt class="col-sm-2">IsActive</dt>
             <dd class="col-sm-10">@activity.IsActive</dd>
         </dl> *@
@@ -61,31 +85,17 @@
             <dt class="col-sm-2">StatusCode</dt>
             <dd class="col-sm-10">@activity.StatusCode</dd>
         </dl>
-        <dl class="row">
-            <dt class="col-sm-2">Modby</dt>
-            <dd class="col-sm-10">@activity.Modby</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">CreateBy</dt>
-            <dd class="col-sm-10">@activity.CreateBy</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">CreateDate</dt>
-            <dd class="col-sm-10">@activity.CreateDate</dd>
-        </dl>
-        <dl class="row">
-            <dt class="col-sm-2">ModDate</dt>
-            <dd class="col-sm-10">@activity.ModDate</dd>
-        </dl>
+       
         <EditForm method="post" Model="activity" OnValidSubmit="DeleteActivity" FormName="delete" Enhance>
-            <button type="submit" class="btn btn-danger" disabled="@(activity is null)">Delete</button> |
-            <a href="/activities">Back to List</a>
-        </EditForm>
+            <button type="submit" class="btn btn-danger" disabled="@(activity is null)">Confirm Delelte</button> |
+@*             <a href="/activities">Back to List</a>
+ *@        </EditForm>
     }
 </div>
 
 @code {
     private Activity? activity;
+    private int goaltaskid;
 
     [SupplyParameterFromQuery]
     private int SubId { get; set; }
@@ -98,14 +108,31 @@
         if (activity is null)
         {
             NavigationManager.NavigateTo("notfound");
+        }else{
+            goaltaskid = activity.TaskId;
+
         }
     }
 
     private async Task DeleteActivity()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.Activity.Remove(activity!);
-        // await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/activities");
+        // using var context = DbFactory.CreateDbContext();
+        try
+        {
+            // context.Activity.Remove(activity!);
+            //  await context.SaveChangesAsync();
+
+            await ActivityService.DeleteActivityAsync(SubId);
+
+            // await ActivityService.RecalculateGoalTaskProgressAsync(goaltaskid);
+        }
+        catch (Exception e)
+        {
+            e.Message.ToString();
+            return;
+        }
+        NavigationManager.NavigateTo("/goaltasks/details/" + goaltaskid);
+
+        // NavigationManager.NavigateTo("goaltasks/edit?id={goaltask.goalTaskID}");
     }
 }

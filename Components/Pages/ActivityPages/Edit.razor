@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ActivityService ActivityService
@@ -28,48 +29,70 @@ else
                 <ValidationSummary />
                 <input type="hidden" name="Activity.SubId" value="@Activity.Id" />
                 <div class="mb-3">
-                    <label for="taskid" class="form-label">TaskId:</label>
+                    @*                     <label for="taskid" class="form-label">TaskId:</label>
+ *@          
                     <InputNumber id="taskid" @bind-Value="Activity.TaskId" class="form-control" hidden />
                     <ValidationMessage For="() => Activity.TaskId" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="order" class="form-label">Order:</label>
+                    <label for="order" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.Orders))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Order")
+                    </label>
                     <InputNumber id="order" @bind-Value="Activity.Orders" class="form-control" readonly />
                     <ValidationMessage For="() => Activity.Orders" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="name" class="form-label">Name:</label>
-                    <InputText id="name" @bind-Value="Activity.Name" class="form-control" readonly />
+                    <label for="name" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
+                    </label>
+                    <InputText id="name" @bind-Value="Activity.Name" class="form-control"  />
                     <ValidationMessage For="() => Activity.Name" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="startdate" class="form-label">StartDate:</label>
-                    <InputDate id="startdate" @bind-Value="Activity.StartDate" class="form-control" readonly />
+                    <label for="startdate" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.StartDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Start Date")
+                    </label>
+                    <InputDate id="startdate" @bind-Value="Activity.StartDate" class="form-control"  />
                     <ValidationMessage For="() => Activity.StartDate" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="enddate" class="form-label">EndDate:</label>
-                    <InputDate id="enddate" @bind-Value="Activity.EndDate" class="form-control" readonly />
+                    <label for="enddate" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "End Date")
+                    </label>
+                    <InputDate id="enddate" @bind-Value="Activity.EndDate" class="form-control"  />
                     <ValidationMessage For="() => Activity.EndDate" class="text-danger" />
                 </div>
 
                 <div class="mb-3">
-                    <label for="description" class="form-label">Description:</label>
+                    <label for="description" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.Description))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Note")
+                    </label>
                     <InputText id="description" @bind-Value="Activity.Description" class="form-control" />
                     <ValidationMessage For="() => Activity.Description" class="text-danger" />
                 </div>
                 <div class="mb-3">
-                    <label for="statuscode" class="form-label">Status</label>
-                    <p><strong>Status:</strong> @Activity.StatusCode</p>
+                    <label for="statuscode" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.StatusCode))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Status")
+                    </label>
+                    <p> @Activity.StatusCode</p>
 
                 </div>
 
                 <div class="mb-3">
-                    <label for="progress" class="form-label">Progress</label>
+                    <label for="progress" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Progress")
+                    </label>
                     <InputNumber id="progress" @bind-Value="Activity.progress" class="form-control" />
                     <ValidationMessage For="() => Activity.progress" class="text-danger" />
                 </div>
-               @*  <div class="mb-3">
+                @*  <div class="mb-3">
                     <label for="lesson1" class="form-label">Lesson1:</label>
                     <InputText id="lesson1" @bind-Value="Activity.Lesson1" class="form-control" />
                     <ValidationMessage For="() => Activity.Lesson1" class="text-danger" />
@@ -80,10 +103,13 @@ else
                     <ValidationMessage For="() => Activity.Lesson2" class="text-danger" />
                 </div> *@
                 <div class="mb-3">
-                    <label for="thankfully" class="form-label">ThankFully:</label>
+                    <label for="thankfully" class="form-label">
+                        @((typeof(Activity).GetProperty(nameof(Activity.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Order")
+                    </label>
                     <InputTextArea id="ThankFully" @bind-Value="Activity.ThankFully" class="form-control" />
 
-@*                     <InputText id="thankfully" @bind-Value="Activity.ThankFully" class="form-control" />
+                    @*                     <InputText id="thankfully" @bind-Value="Activity.ThankFully" class="form-control" />
  *@                    <ValidationMessage For="() => Activity.ThankFully" class="text-danger" />
                 </div>
                 @*        <div class="mb-3">
@@ -96,16 +122,21 @@ else
             <InputText id="statuscode" @bind-Value="Activity.StatusCode" class="form-control" />
             <ValidationMessage For="() => Activity.StatusCode" class="text-danger" />
             </div> *@
-             
-               @*  <div class="mb-3">
+
+                @*  <div class="mb-3">
                     <label for="statuscode" class="form-label">Progress:</label>
                     <InputNumber id="progress" @bind-Value="Activity.progress" class="form-control" />
                     <ValidationMessage For="() => Activity.progress" class="text-danger" />
                 </div> *@
 
-                <button type="submit" class="btn btn-primary">Update</button>                 <button type="button" class="btn btn-success" @onclick="SucessActivity">สำเร้จ/Sucess</button>
+                <button type="submit" class="btn btn-primary">Update</button>       
+                <button type="button" class="btn btn-success" @onclick="SucessActivity">สำเร้จ/Sucess</button>
+@*                 <button type="submit" class="btn btn-danger" @onclick="DeleteActivityAsync">ลบกิจกรรม/Delete </button>
+ *@               
+                <a href="@($"activities/delete?subid={Activity.Id}")" class="btn btn-danger">Delete</a>
 
             </EditForm>
+
         </div>
     </div>
 }
@@ -117,7 +148,7 @@ else
 
     private const int V = 0;
 
-    [SupplyParameterFromForm]
+
     private Activity? Activity { get; set; }
 
     protected override async Task OnInitializedAsync()
@@ -147,7 +178,7 @@ else
             {
                 if(Activity.progress == 100)
                 {
-                   await SucessActivity();
+                    await SucessActivity();
                 }
                 else
                 {
@@ -158,7 +189,7 @@ else
 
                 // await updateProgressToGoal(Activity.TaskId);
 
-                // await context.SaveChangesAsync();
+                await context.SaveChangesAsync();
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -173,6 +204,20 @@ else
             }
         }
         NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
+    }
+    private async Task DeleteActivityAsync()
+    {
+        try
+        {
+            await ActivityService.DeleteActivityAsync(SubId);
+
+        }catch(Exception e){
+
+            e.Message.ToString();
+            return;
+        }
+    NavigationManager.NavigateTo("/goaltasks/details/" + Activity!.TaskId);
+
     }
     private async Task SucessActivity()
     {

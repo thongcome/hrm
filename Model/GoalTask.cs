@@ -11,8 +11,10 @@ namespace LeaderDevelop.Model
         public GoalTask()
         {
             // Default StartDate to today and DayofGoal to 14 days
-            Startdate = DateTime.Now;
-             
+            Startdate = DateTime.UtcNow; // Default StartDate to now
+            DayofGoal = 14;
+            EndDate = DateTime.UtcNow.AddDays((double)DayofGoal);   // Default EndDate to now
+
         }
 
 
@@ -28,16 +30,22 @@ namespace LeaderDevelop.Model
         public string Name { get; set; } = string.Empty;
 
         [Display(Name = ("วันที่เริ่ม/Start Date"))]
+        //[Required(ErrorMessage = "Start Date is required.")]
+
+        //[FutureDate(ErrorMessage = "วันที่เริ่มต้องเป็นปัจจุบันหรือในอนาคตเท่านั้น / Start date must be now or in the future.")]
         public DateTime? Startdate { get; set; } = null;
 
         [Display(Name = ("วันที่สิ้นสุด/End Date"))]
+        //[Required(ErrorMessage = "End Date is required.")]
+
+        //[FutureDate(ErrorMessage = "วันที่สิ้นสุดต้องเป็นปัจจุบันหรือในอนาคตเท่านั้น / End date must be now or in the future.")]
         public DateTime? EndDate { get; set; } = null;
 
 
 
         // Adding validation to DayofGoal
         [Range(7, 14, ErrorMessage = "DayofGoal must be between 7 and 14 days.")]
-        [Display(Name = ("ใช้เวลากี่วัน/Day Period"))]
+        [Display(Name = ("ระยะเวลา(วัน)/Period(day)"))]
         public double? DayofGoal { get; set; }
 
 
@@ -52,14 +60,14 @@ namespace LeaderDevelop.Model
         [StringLength(250)]
         [Unicode(true)]
 
-        [Display(Name = ("ตรวจสอบเป้าหมาย"))]
+        [Display(Name = ("หมายเหตุ/Note"))]
 
         public string Description { get; set; } = string.Empty;
 
         [StringLength(250)]
         [Unicode(true)]
 
-        [Display(Name = ("ประเด็น/Topic"))]
+        [Display(Name = ("ประเด็นที่ต้องการพัฒนา/Topic"))]
         public string wol { get; set; } = string.Empty;
 
         [StringLength(500)]
@@ -80,7 +88,7 @@ namespace LeaderDevelop.Model
 
         [StringLength(1000)]
         [Unicode(true)]
-        [Display(Name = ("สิ่งที่ได้เรียนรู้/Lesson"))]
+        [Display(Name = ("สิ่งที่ได้เรียนรู้/Lesson Learned"))]
         public string ThankFully { get; set; } = string.Empty;
         public int? UserId { get; set; }
 

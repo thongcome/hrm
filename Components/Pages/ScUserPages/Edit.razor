@@ -1,6 +1,7 @@
 ﻿@page "/scusers/edit"
 @using Microsoft.EntityFrameworkCore
 @using LeaderDevelop.Model
+@using System.ComponentModel.DataAnnotations
 @inject IDbContextFactory<LeaderDevelop.Data.ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 
@@ -37,93 +38,49 @@ else
                     <InputText id="lastname" @bind-Value="ScUser.Lastname" class="form-control" />
                     <ValidationMessage For="() => ScUser.Lastname" class="text-danger" />
                 </div>
-                <div class="mb-3">
+               @*  <div class="mb-3">
                     <label for="loginname" class="form-label">Loginname:</label>
                     <InputText id="loginname" @bind-Value="ScUser.Loginname" class="form-control" />
                     <ValidationMessage For="() => ScUser.Loginname" class="text-danger" />
-                </div>
+                </div> *@
              
-                <div class="mb-3">
+              @*   <div class="mb-3">
                     <label for="phone" class="form-label">Phone:</label>
                     <InputText id="phone" @bind-Value="ScUser.Phone" class="form-control" />
                     <ValidationMessage For="() => ScUser.Phone" class="text-danger" />
-                </div>
-                <div class="mb-3">
+                </div> *@
+                @* <div class="mb-3">
                     <label for="mobilephone" class="form-label">Mobilephone:</label>
                     <InputText id="mobilephone" @bind-Value="ScUser.Mobilephone" class="form-control" />
                     <ValidationMessage For="() => ScUser.Mobilephone" class="text-danger" />
-                </div>
+                </div> *@
                 <div class="mb-3">
-                    <label for="isforcechanged" class="form-label">Isforcechanged:</label>
+                    <label for="isforcechanged" class="form-label">
+                        @((typeof(ScUser).GetProperty(nameof(ScUser.Isforcechanged))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Is Admin?")
+                    </label>
                     <InputCheckbox id="isforcechanged" @bind-Value="ScUser.Isforcechanged" class="form-check-input" />
                     <ValidationMessage For="() => ScUser.Isforcechanged" class="text-danger" />
                 </div>
-                <div class="mb-3">
+             @*    <div class="mb-3">
                     <label for="iscancel" class="form-label">Iscancel:</label>
                     <InputCheckbox id="iscancel" @bind-Value="ScUser.Iscancel" class="form-check-input" />
                     <ValidationMessage For="() => ScUser.Iscancel" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="pwdexpdate" class="form-label">Pwdexpdate:</label>
-                    <InputDate id="pwdexpdate" @bind-Value="ScUser.Pwdexpdate" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Pwdexpdate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="lasttimelogin" class="form-label">Lasttimelogin:</label>
-                    <InputDate id="lasttimelogin" @bind-Value="ScUser.Lasttimelogin" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Lasttimelogin" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="invalidpwcount" class="form-label">Invalidpwcount:</label>
-                    <InputNumber id="invalidpwcount" @bind-Value="ScUser.Invalidpwcount" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Invalidpwcount" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="lastinvalidpwd" class="form-label">Lastinvalidpwd:</label>
-                    <InputDate id="lastinvalidpwd" @bind-Value="ScUser.Lastinvalidpwd" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Lastinvalidpwd" class="text-danger" />
-                </div>
+                </div> *@
+             
                 <div class="mb-3">
                     <label for="remark" class="form-label">Remark:</label>
                     <InputText id="remark" @bind-Value="ScUser.Remark" class="form-control" />
                     <ValidationMessage For="() => ScUser.Remark" class="text-danger" />
                 </div>
-                <div class="mb-3">
-                    <label for="upperuserid" class="form-label">Upperuserid:</label>
-                    <InputNumber id="upperuserid" @bind-Value="ScUser.Upperuserid" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Upperuserid" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="orgname" class="form-label">Orgname:</label>
-                    <InputText id="orgname" @bind-Value="ScUser.Orgname" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Orgname" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="orgcode" class="form-label">Orgcode:</label>
-                    <InputText id="orgcode" @bind-Value="ScUser.Orgcode" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Orgcode" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="startdate" class="form-label">Startdate:</label>
-                    <InputDate id="startdate" @bind-Value="ScUser.Startdate" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Startdate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="enddate" class="form-label">Enddate:</label>
-                    <InputDate id="enddate" @bind-Value="ScUser.Enddate" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Enddate" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="remindpwd" class="form-label">Remindpwd:</label>
-                    <InputText id="remindpwd" @bind-Value="ScUser.Remindpwd" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Remindpwd" class="text-danger" />
-                </div>
+             
+            
                 <div class="mb-3">
                     <label for="social" class="form-label">Social:</label>
                     <InputText id="social" @bind-Value="ScUser.Social" class="form-control" />
                     <ValidationMessage For="() => ScUser.Social" class="text-danger" />
                 </div>
-                <div class="mb-3">
+               @*  <div class="mb-3">
                     <label for="moddate" class="form-label">Moddate:</label>
                     <InputDate id="moddate" @bind-Value="ScUser.Moddate" class="form-control" />
                     <ValidationMessage For="() => ScUser.Moddate" class="text-danger" />
@@ -137,42 +94,20 @@ else
                     <label for="empid" class="form-label">Empid:</label>
                     <InputText id="empid" @bind-Value="ScUser.Empid" class="form-control" />
                     <ValidationMessage For="() => ScUser.Empid" class="text-danger" />
-                </div>
+                </div> *@
                 <div class="mb-3">
                     <label for="email" class="form-label">Email:</label>
                     <InputText id="email" @bind-Value="ScUser.Email" class="form-control" />
                     <ValidationMessage For="() => ScUser.Email" class="text-danger" />
                 </div>
-                <div class="mb-3">
-                    <label for="poscode" class="form-label">Poscode:</label>
-                    <InputText id="poscode" @bind-Value="ScUser.Poscode" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Poscode" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="posname" class="form-label">PosName:</label>
-                    <InputText id="posname" @bind-Value="ScUser.PosName" class="form-control" />
-                    <ValidationMessage For="() => ScUser.PosName" class="text-danger" />
-                </div>
+                
                 <div class="mb-3">
                     <label for="isactivate" class="form-label">IsActivate:</label>
                     <InputCheckbox id="isactivate" @bind-Value="ScUser.IsActivate" class="form-check-input" />
                     <ValidationMessage For="() => ScUser.IsActivate" class="text-danger" />
                 </div>
-                <div class="mb-3">
-                    <label for="supervisor" class="form-label">Supervisor:</label>
-                    <InputText id="supervisor" @bind-Value="ScUser.Supervisor" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Supervisor" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="costcenter" class="form-label">Costcenter:</label>
-                    <InputText id="costcenter" @bind-Value="ScUser.Costcenter" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Costcenter" class="text-danger" />
-                </div>
-                <div class="mb-3">
-                    <label for="verifycode" class="form-label">Verifycode:</label>
-                    <InputText id="verifycode" @bind-Value="ScUser.Verifycode" class="form-control" />
-                    <ValidationMessage For="() => ScUser.Verifycode" class="text-danger" />
-                </div>
+                
+               
                 <div class="mb-3">
                     <label for="registerdate" class="form-label">Registerdate:</label>
                     <InputDate id="registerdate" @bind-Value="ScUser.Registerdate" class="form-control" />

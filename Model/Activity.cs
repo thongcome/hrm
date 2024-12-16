@@ -6,7 +6,11 @@ namespace LeaderDevelop.Model
 {
     public class Activity
     {
-        public Activity() { }
+        public Activity()
+        {
+            //StartDate = DateTime.UtcNow; // Default StartDate to now
+            //EndDate = DateTime.UtcNow;   // Default EndDate to now
+        }
         public Activity(int? maxOrder)
         {
             this.Orders = (maxOrder ?? 0) + 1;
@@ -31,25 +35,30 @@ namespace LeaderDevelop.Model
         public string Name { get; set; } = string.Empty;
 
         [Display(Name = ("วันที่เริ่ม/Start Date"))]
-        public DateTime? StartDate { get; set; }
+        //[FutureDate(ErrorMessage = "วันที่เริ่มต้องเป็นปัจจุบันหรือในอนาคตเท่านั้น / Start date must be now or in the future.")]
+        //[Required(ErrorMessage = "Start Date is required.")]
+         public DateTime? StartDate { get; set; }
 
         [Display(Name = ("วันที่สิ้นสุด/End Date"))]
+        //[Required(ErrorMessage = "End Date is required.")]
+
+        //[FutureDate(ErrorMessage = "วันที่สิ้นสุดต้องเป็นปัจจุบันหรือในอนาคตเท่านั้น / End date must be now or in the future.")]
         public DateTime? EndDate { get; set; }
 
 
-        [Display(Name = ("ลำดับที่/Order"))]
+        [Display(Name = ("ลำดับที่/Task No."))]
         public int? Orders { get; set; } = null;
 
 
         [StringLength(250)]
         [Unicode(true)]
-        [Display(Name = ("คำอธิบาย/Description"))]
+        [Display(Name = ("หมายเหตุ/Note"))]
         public string? Description { get; set; } = string.Empty;
 
 
         [StringLength(500)]
         [Unicode(true)]
-        [Display(Name = ("สิ่งที่ได้รับ/got idea"))]
+        [Display(Name = ("ประเด็นที่ได้เรียนรู้/Lesson Lenarned"))]
         public string? Lesson1 { get; set; } = string.Empty;
 
         [StringLength(500)]
@@ -68,7 +77,7 @@ namespace LeaderDevelop.Model
 
         [StringLength(1000)]
         [Unicode(true)]
-        [Display(Name = ("คำขอบคุณ/ThankFully"))]
+        [Display(Name = ("ประเด็นที่ได้เรียนรู้/Lesson Learned"))]
         public string? ThankFully { get; set; } = string.Empty;
 
         //[Display(Name = ("ยกเลิก/Is Active"))]
@@ -78,8 +87,8 @@ namespace LeaderDevelop.Model
         [Unicode(true)]
         [Display(Name = ("สถานะ/Status"))]
         public ActivityStatus? StatusCode { get; set; } = ActivityStatus.Active;
-       
-        
+
+
         [StringLength(250)]
         [Unicode(true)]
         [Display(Name = ("ผู้แก้ไข/Modified By"))]
@@ -114,4 +123,20 @@ namespace LeaderDevelop.Model
 
 
     }
+
+    //public class FutureDateAttribute : ValidationAttribute
+    //{
+    //    protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)
+    //    {
+    //        if (value is DateTime date)
+    //        {
+    //            if (date < DateTime.UtcNow.Date)
+    //            {
+    //                return new ValidationResult(ErrorMessage);
+    //            }
+    //        }
+    //        return ValidationResult.Success;
+    //    }
+
+    //}
 }
