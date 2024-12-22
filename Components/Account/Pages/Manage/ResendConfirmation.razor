@@ -1,0 +1,39 @@
+﻿@page "/Account/ResendConfirmation"
+@inject HttpClient Http
+
+<h3>Resend Confirmation Email</h3>
+
+<EditForm Model="@model" OnValidSubmit="@ResendEmail">
+    <label>Email:</label>
+    <InputText @bind-Value="model.Email" />
+    <ValidationSummary />
+    <button type="submit">Resend Confirmation Email</button>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <p>@statusMessage</p>
+}
+
+@code {
+    private ResendEmailModel model = new();
+    private string? statusMessage;
+
+    private async Task ResendEmail()
+    {
+        var response = await Http.PostAsJsonAsync("api/account/resend-email-confirmation", model);
+        if (response.IsSuccessStatusCode)
+        {
+            statusMessage = "A new confirmation email has been sent.";
+        }
+        else
+        {
+            statusMessage = "Error: Could not resend confirmation email.";
+        }
+    }
+
+    public class ResendEmailModel
+    {
+        public string Email { get; set; } = string.Empty;
+    }
+}
