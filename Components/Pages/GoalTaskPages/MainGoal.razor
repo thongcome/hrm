@@ -15,8 +15,11 @@
 @* <h3>รายการเป้าหมาย</h3> 
 
  *@<p>
-<p>
+@* <p>
     <h4> % of Goal completion : @facililatorScore.ToString("0.00")</h4>
+</p> *@
+<p>
+    <h4> Goal status   Active: @statusActiveCount รายการ, Success : @statusSucessCount รายการ, Success but Overtime : @statusOvertimeCount รายการ , Cancel : @statusCancelCount รายการ</h4>
 </p>
     <a href="goaltasks/create">เพิ่มเป้าหมาย/Add New Goal</a>
 </p>
@@ -28,17 +31,18 @@
         <PropertyColumn Property="goaltask => goaltask.wol" Title="ประเด็น/Topic" />
         <PropertyColumn Property="goaltask => goaltask.Name" Title="เป้าหมาย/Goal" />
         <PropertyColumn Property="goaltask => goaltask.progress" Title="% of Goal completion" />
-@*         <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
+        @*         <PropertyColumn Property="goaltask => goaltask.Startdate" Title="วันที่เริ่ม/Start Date" />
  *@        <PropertyColumn Property="goaltask => goaltask.EndDate" Title="วันที่สิ้นสุด/End Date" />
-  
-    @*     <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
+
+        @*     <PropertyColumn Property="goaltask => goaltask.Lesson1" Title="สิ่งที่ได้รับ/got idea" />
         <PropertyColumn Property="goaltask => goaltask.Lesson2" Title="สิ่งที่ได้เรียนรู้/Learning" /> *@
         <PropertyColumn Property="goaltask => goaltask.ThankFully" Title="สิ่งที่ได้เรียนรู้" />
-            
+        <PropertyColumn Property="goaltask => goaltask.status" Title="สถานะ" />
+
 
 
         <TemplateColumn Context="goaltask">
-            <a href="@($"goaltasks/edit?id={goaltask.Id}")">แก้ไข</a> |
+            @*   <a href="@($"goaltasks/edit?id={goaltask.Id}")">แก้ไข</a> | *@
             <a href="@($"goaltasks/details/{goaltask.Id}")">รายการกิจกรรม</a>
         </TemplateColumn>
     </QuickGrid>
@@ -47,6 +51,10 @@
     private ApplicationDbContext context = default!;
     private IQueryable<GoalTask> GoalTaskList = default!;
     private decimal facililatorScore = 0.00M;
+    int statusActiveCount = 0;
+    int statusSucessCount = 0;
+    int statusCancelCount = 0;
+    int statusOvertimeCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,23 +68,38 @@
                 GoalTaskList = context.GoalTasks
                     .Where(b => b.OwnerID == userId)
                     .OrderByDescending(b => b.Startdate)
+                    .OrderBy( c => c.status )
                     .AsQueryable();
+            }
+
+            if(GoalTaskList.Count() > 0){
+                try
+                {
+                    statusActiveCount = GoalTaskList.Count(b => b.status == GoalTask.GoalTaskStatus.Active);
+                    statusCancelCount = GoalTaskList.Count(b => b.status == GoalTask.GoalTaskStatus.Cancel);
+                    statusSucessCount = GoalTaskList.Count(b => b.status == GoalTask.GoalTaskStatus.Success);
+                    statusOvertimeCount = GoalTaskList.Count(b => b.status == GoalTask.GoalTaskStatus.Overtime);
+
+                }catch(Exception e){
+                    e.Message.ToString();
+                }
+
             }
             // var avgScore = GoalTaskList.Where(x => x.status != GoalTask.GoalTaskStatus.Cancel).Average(x => x.progress);
 
-            var avgScore = GoalTaskList.Average(x => x.progress);
-            if (avgScore != null)
-            {
-                facililatorScore = (decimal)avgScore;
-                // var user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
-                // if(user is not null)
-                // {
-                //     user.score = facililatorScore;
-                //     await context.SaveChangesAsync();
+            // var avgScore = GoalTaskList.Average(x => x.progress);
+            // if (avgScore != null)
+            // {
+            //     facililatorScore = (decimal)avgScore;
+            //     // var user = context.ScUsers.Where(x => x.Id == userId).FirstOrDefault();
+            //     // if(user is not null)
+            //     // {
+            //     //     user.score = facililatorScore;
+            //     //     await context.SaveChangesAsync();
 
-                // }
+            //     // }
 
-            }
+            // }
         }
         catch (Exception e)
         {

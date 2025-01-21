@@ -23,7 +23,7 @@ else
 
 <!-- Goal Task Details Section -->
 <div class="card border-danger mb-4">
-    <div class="card-header bg-danger text-white d-flex justify-content-between">
+    <div class="card-header bg-info text-white d-flex justify-content-between">
         <h2>รายละเอียดเป้าหมาย</h2>
         <div>
 
@@ -45,16 +45,14 @@ else
                 <div class="col-md-6">
                     <p>
                         <strong>
-                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
-                        </strong>   @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "ระยะเวลา") @goaltask.DayofGoal    @((typeof(GoalTask).GetProperty(nameof(GoalTask.EndDate))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "สิ้นสุด")
+
+                              @((typeof(GoalTask).GetProperty(nameof(GoalTask.Name))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                           .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") : @goaltask.Name
+                        </strong>  
                     </p>
                     <p>
                         <strong>
-                            ระยะเวลา  @goaltask.DayofGoal วัน วันที่สิ้นสุด @goaltask.EndDate?.ToString("dd/MM/yyyy")  @* @((typeof(GoalTask).GetProperty(nameof(GoalTask.DayofGoal))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "ระยะเวลา") : *@
+                            สถานะ/Status : @goaltask.status     ระยะเวลา   @goaltask.DayofGoal วัน วันที่สิ้นสุด @goaltask.EndDate?.ToString("dd/MM/yyyy") 
                         </strong>
                     </p>
 
@@ -78,19 +76,19 @@ else
                                 .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
                         </strong> @goaltask.Lesson2
                     </p> *@
-                    @if ((goaltask.status == GoalTask.GoalTaskStatus.Success || goaltask.status == GoalTask.GoalTaskStatus.Cancel))
+                    @if ((goaltask.status == GoalTask.GoalTaskStatus.Success || goaltask.status == GoalTask.GoalTaskStatus.Cancel || goaltask.status == GoalTask.GoalTaskStatus.Overtime))
                     {
                         <p>
                             <strong>
-                                @((typeof(GoalTask).GetProperty(nameof(GoalTask.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                    .FirstOrDefault() as DisplayAttribute)?.Name ?? "ThankFully") :
+                                     @((typeof(GoalTask).GetProperty(nameof(GoalTask.ThankFully))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "ThankFully") :
                             </strong> @goaltask.ThankFully
                         </p>
                     }
                     <p>
                         <strong>
-                            @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                                .FirstOrDefault() as DisplayAttribute)?.Name ?? "Progress") :
+                                    @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+                        .FirstOrDefault() as DisplayAttribute)?.Name ?? "Progress") :
                         </strong> @goaltask.progress %
 
                     </p>
@@ -99,9 +97,10 @@ else
             <div class="row">
                 <div class="col-md-12">
                     <strong>
-                        @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
-                            .FirstOrDefault() as DisplayAttribute)?.Name ?? "Name") :
-                    </strong> @goaltask.progress %
+                        @*                         (5)   @((typeof(GoalTask).GetProperty(nameof(GoalTask.progress))?.GetCustomAttributes(typeof(DisplayAttribute), false)
+ *@             
+ 
+                    </strong> @* @goaltask.progress % *@
                     (หมายเหตุ: เป้าหมายจะสำเร็จ ต้องมี ความก้าวหน้า 80% ขึ้น ไป /  Progress equal 80% or more , you can finish of your goal )
                 </div>
 
@@ -121,7 +120,7 @@ else
             @*             <div>Status: @goaltask.status | Owner: @isOwner</div>
  *@            @if (isOwner)
             {
-                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Success))
+                @if (!(goaltask.status == GoalTask.GoalTaskStatus.Success) && !(goaltask.status == GoalTask.GoalTaskStatus.Overtime))
                 {
                     <button id="editgoal" class="btn btn-primary btn-sm" @onclick="EditGoalTask">แก้ไขเป้าหมาย</button>
 
@@ -158,7 +157,7 @@ else
     <div class="card-body">
         @if (goaltask is not null)
         {
-            @if (!((goaltask.status == GoalTask.GoalTaskStatus.Success) || (goaltask.status == GoalTask.GoalTaskStatus.Cancel)))
+            @if (!((goaltask.status == GoalTask.GoalTaskStatus.Success) || (goaltask.status == GoalTask.GoalTaskStatus.Cancel) || (goaltask.status == GoalTask.GoalTaskStatus.Overtime)))
             {
                 @if (isOwner)
                 {
@@ -166,7 +165,7 @@ else
                 }
             }
         }
-        <p class="text-muted">รายการกิจกรรม  ไม่ควรเกิน 14 กืจกรรม</p>
+        <p class="text-muted">รายการกิจกรรม  ไม่ควรเกิน 14 กิจกรรม</p>
 
         <ul class="list-group">
             @if (Activities != null && Activities.Any())
@@ -176,7 +175,8 @@ else
                     <li class="list-group-item">
 
                         <strong>
-                            @(activity.Orders?.ToString() ?? "-"). @if (activity.StatusCode == Activity.ActivityStatus.Success)
+                            @*   @(activity.Orders?.ToString() ?? "-").  *@
+                            @if (activity.StatusCode == Activity.ActivityStatus.Success)
                             {
                                 <button id="successshow" class="btn btn-success btn-sm">สำเร็จ</button>
                             }
@@ -187,14 +187,21 @@ else
  *@@* 
                             <a href="@($"activities/edit?subid={activity.Id}")"> จัดการกิจกรรม/ Manage</a> *@
 
-                            @if (!(goaltask?.status == GoalTask.GoalTaskStatus.Success) || !(goaltask?.status == GoalTask.GoalTaskStatus.Cancel))
+                            @*    @if (!(goaltask?.status == GoalTask.GoalTaskStatus.Success) || !(goaltask?.status == GoalTask.GoalTaskStatus.Cancel) || !(goaltask?.status == GoalTask.GoalTaskStatus.Overtime))
+                            {
+                                <a class="btn btn-primary" href="@($"activities/edit?subid={activity.Id}")">
+                                    จัดการกิจกรรม/ Manage
+                                </a>
+
+                            } *@
+
+                            @if ((goaltask?.status == GoalTask.GoalTaskStatus.Active))
                             {
                                 <a class="btn btn-primary" href="@($"activities/edit?subid={activity.Id}")">
                                     จัดการกิจกรรม/ Manage
                                 </a>
 
                             }
-
 
                         }
 
