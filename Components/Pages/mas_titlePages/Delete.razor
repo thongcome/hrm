@@ -1,0 +1,75 @@
+﻿@page "/mas_titles/delete"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>mas_title</h2>
+    <hr />
+    @if (mas_title is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">title</dt>
+            <dd class="col-sm-10">@mas_title.title</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@mas_title.code</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@mas_title.isActive</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@mas_title.moddate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@mas_title.modby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">title_en</dt>
+            <dd class="col-sm-10">@mas_title.title_en</dd>
+        </dl>
+        <EditForm method="post" Model="mas_title" OnValidSubmit="Deletemas_title" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(mas_title is null)">Delete</button> |
+            <a href="/mas_titles">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private mas_title? mas_title;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        mas_title = await context.mas_titles.FirstOrDefaultAsync(m => m.id == id);
+
+        if (mas_title is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Deletemas_title()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.mas_titles.Remove(mas_title!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/mas_titles");
+    }
+}

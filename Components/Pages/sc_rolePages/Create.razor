@@ -1,0 +1,94 @@
+﻿@page "/sc_roles/create"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>sc_role</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="sc_role" OnValidSubmit="Addsc_role" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="name" class="form-label">name:</label> 
+                <InputText id="name" @bind-Value="sc_role.name" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="abbr" class="form-label">abbr:</label> 
+                <InputText id="abbr" @bind-Value="sc_role.abbr" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.abbr" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="rolelevel" class="form-label">rolelevel:</label> 
+                <InputText id="rolelevel" @bind-Value="sc_role.rolelevel" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.rolelevel" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="upperrole" class="form-label">upperrole:</label> 
+                <InputText id="upperrole" @bind-Value="sc_role.upperrole" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.upperrole" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="rolecode" class="form-label">rolecode:</label> 
+                <InputText id="rolecode" @bind-Value="sc_role.rolecode" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.rolecode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isactive" class="form-label">isactive:</label> 
+                <InputCheckbox id="isactive" @bind-Value="sc_role.isactive" class="form-check-input" aria-required="true"/> 
+                <ValidationMessage For="() => sc_role.isactive" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="moddate" class="form-label">moddate:</label> 
+                <InputDate id="moddate" @bind-Value="sc_role.moddate" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.moddate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="modby" class="form-label">modby:</label> 
+                <InputText id="modby" @bind-Value="sc_role.modby" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.modby" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isheader" class="form-label">isHeader:</label> 
+                <InputCheckbox id="isheader" @bind-Value="sc_role.isHeader" class="form-check-input" /> 
+                <ValidationMessage For="() => sc_role.isHeader" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="ref1" class="form-label">ref1:</label> 
+                <InputText id="ref1" @bind-Value="sc_role.ref1" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.ref1" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="ref2" class="form-label">ref2:</label> 
+                <InputText id="ref2" @bind-Value="sc_role.ref2" class="form-control" /> 
+                <ValidationMessage For="() => sc_role.ref2" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/sc_roles">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private sc_role sc_role { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Addsc_role()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.sc_roles.Add(sc_role);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/sc_roles");
+    }
+}

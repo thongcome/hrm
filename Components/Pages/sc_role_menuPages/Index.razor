@@ -1,0 +1,43 @@
+﻿@page "/sc_role_menus"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="sc_role_menus/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.sc_role_menus">
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.menuid" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.roleid" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.startdate" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.enddate" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.isactive" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.remark" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.moddate" />
+    <PropertyColumn Property="sc_role_menu => sc_role_menu.modby" />
+
+    <TemplateColumn Context="sc_role_menu">
+        <a href="@($"sc_role_menus/edit?rolemenuid={sc_role_menu.rolemenuid}")">Edit</a> |
+        <a href="@($"sc_role_menus/details?rolemenuid={sc_role_menu.rolemenuid}")">Details</a> |
+        <a href="@($"sc_role_menus/delete?rolemenuid={sc_role_menu.rolemenuid}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

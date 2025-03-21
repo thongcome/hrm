@@ -1,0 +1,131 @@
+﻿@page "/emp_overtime_requests/delete"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>emp_overtime_request</h2>
+    <hr />
+    @if (emp_overtime_request is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@emp_overtime_request.empid</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@emp_overtime_request.name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">requestDate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.requestDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">starttime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.starttime</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">endtime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.endtime</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.moddate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@emp_overtime_request.modby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">workhour</dt>
+            <dd class="col-sm-10">@emp_overtime_request.workhour</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">workminute</dt>
+            <dd class="col-sm-10">@emp_overtime_request.workminute</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ot_rate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.ot_rate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">status</dt>
+            <dd class="col-sm-10">@emp_overtime_request.status</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">approveby</dt>
+            <dd class="col-sm-10">@emp_overtime_request.approveby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">approvedate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.approvedate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">real_starttime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.real_starttime</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">real_endtime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.real_endtime</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">objective</dt>
+            <dd class="col-sm-10">@emp_overtime_request.objective</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@emp_overtime_request.remark</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">orgcode</dt>
+            <dd class="col-sm-10">@emp_overtime_request.orgcode</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">orgname</dt>
+            <dd class="col-sm-10">@emp_overtime_request.orgname</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">com_code_all</dt>
+            <dd class="col-sm-10">@emp_overtime_request.com_code_all</dd>
+        </dl>
+        <EditForm method="post" Model="emp_overtime_request" OnValidSubmit="Deleteemp_overtime_request" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(emp_overtime_request is null)">Delete</button> |
+            <a href="/emp_overtime_requests">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private emp_overtime_request? emp_overtime_request;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        emp_overtime_request = await context.emp_overtime_requests.FirstOrDefaultAsync(m => m.id == id);
+
+        if (emp_overtime_request is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Deleteemp_overtime_request()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.emp_overtime_requests.Remove(emp_overtime_request!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/emp_overtime_requests");
+    }
+}

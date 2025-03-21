@@ -1,0 +1,314 @@
+﻿@page "/employees/create"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>employee</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="employee" OnValidSubmit="Addemployee" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="userid" class="form-label">UserID:</label> 
+                <InputNumber id="userid" @bind-Value="employee.UserID" class="form-control" /> 
+                <ValidationMessage For="() => employee.UserID" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="username" class="form-label">UserName:</label> 
+                <InputText id="username" @bind-Value="employee.UserName" class="form-control" /> 
+                <ValidationMessage For="() => employee.UserName" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="titleth" class="form-label">TitleTh:</label> 
+                <InputText id="titleth" @bind-Value="employee.TitleTh" class="form-control" /> 
+                <ValidationMessage For="() => employee.TitleTh" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="titleen" class="form-label">TitleEn:</label> 
+                <InputText id="titleen" @bind-Value="employee.TitleEn" class="form-control" /> 
+                <ValidationMessage For="() => employee.TitleEn" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="nameth" class="form-label">NameTh:</label> 
+                <InputText id="nameth" @bind-Value="employee.NameTh" class="form-control" /> 
+                <ValidationMessage For="() => employee.NameTh" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="nameen" class="form-label">NameEn:</label> 
+                <InputText id="nameen" @bind-Value="employee.NameEn" class="form-control" /> 
+                <ValidationMessage For="() => employee.NameEn" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="cardid" class="form-label">CardID:</label> 
+                <InputText id="cardid" @bind-Value="employee.CardID" class="form-control" /> 
+                <ValidationMessage For="() => employee.CardID" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="cardtype" class="form-label">CardType:</label> 
+                <InputText id="cardtype" @bind-Value="employee.CardType" class="form-control" /> 
+                <ValidationMessage For="() => employee.CardType" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="employeeid" class="form-label">EmployeeID:</label> 
+                <InputText id="employeeid" @bind-Value="employee.EmployeeID" class="form-control" /> 
+                <ValidationMessage For="() => employee.EmployeeID" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="email" class="form-label">Email:</label> 
+                <InputText id="email" @bind-Value="employee.Email" class="form-control" /> 
+                <ValidationMessage For="() => employee.Email" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="companycode" class="form-label">Companycode:</label> 
+                <InputText id="companycode" @bind-Value="employee.Companycode" class="form-control" /> 
+                <ValidationMessage For="() => employee.Companycode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="company" class="form-label">Company:</label> 
+                <InputText id="company" @bind-Value="employee.Company" class="form-control" /> 
+                <ValidationMessage For="() => employee.Company" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="costcenter" class="form-label">CostCenter:</label> 
+                <InputText id="costcenter" @bind-Value="employee.CostCenter" class="form-control" /> 
+                <ValidationMessage For="() => employee.CostCenter" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="location" class="form-label">Location:</label> 
+                <InputText id="location" @bind-Value="employee.Location" class="form-control" /> 
+                <ValidationMessage For="() => employee.Location" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="mfname" class="form-label">MFName:</label> 
+                <InputText id="mfname" @bind-Value="employee.MFName" class="form-control" /> 
+                <ValidationMessage For="() => employee.MFName" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="superviserid" class="form-label">SuperviserID:</label> 
+                <InputText id="superviserid" @bind-Value="employee.SuperviserID" class="form-control" /> 
+                <ValidationMessage For="() => employee.SuperviserID" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="supervisername" class="form-label">SuperViserName:</label> 
+                <InputText id="supervisername" @bind-Value="employee.SuperViserName" class="form-control" /> 
+                <ValidationMessage For="() => employee.SuperViserName" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="memail" class="form-label">MEMail:</label> 
+                <InputText id="memail" @bind-Value="employee.MEMail" class="form-control" /> 
+                <ValidationMessage For="() => employee.MEMail" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="emplevel" class="form-label">empLevel:</label> 
+                <InputText id="emplevel" @bind-Value="employee.empLevel" class="form-control" /> 
+                <ValidationMessage For="() => employee.empLevel" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="extensionno" class="form-label">extensionNo:</label> 
+                <InputText id="extensionno" @bind-Value="employee.extensionNo" class="form-control" /> 
+                <ValidationMessage For="() => employee.extensionNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="orgnameen" class="form-label">OrgNameEn:</label> 
+                <InputText id="orgnameen" @bind-Value="employee.OrgNameEn" class="form-control" /> 
+                <ValidationMessage For="() => employee.OrgNameEn" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="orgnameth" class="form-label">OrgNameTh:</label> 
+                <InputText id="orgnameth" @bind-Value="employee.OrgNameTh" class="form-control" /> 
+                <ValidationMessage For="() => employee.OrgNameTh" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="poscode" class="form-label">PosCode:</label> 
+                <InputText id="poscode" @bind-Value="employee.PosCode" class="form-control" /> 
+                <ValidationMessage For="() => employee.PosCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="costcentername" class="form-label">CostCenterName:</label> 
+                <InputText id="costcentername" @bind-Value="employee.CostCenterName" class="form-control" /> 
+                <ValidationMessage For="() => employee.CostCenterName" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="sex" class="form-label">sex:</label> 
+                <InputText id="sex" @bind-Value="employee.sex" class="form-control" /> 
+                <ValidationMessage For="() => employee.sex" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="hiringdate" class="form-label">hiringDate:</label> 
+                <InputDate id="hiringdate" @bind-Value="employee.hiringDate" class="form-control" /> 
+                <ValidationMessage For="() => employee.hiringDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="positionen" class="form-label">positionEN:</label> 
+                <InputText id="positionen" @bind-Value="employee.positionEN" class="form-control" /> 
+                <ValidationMessage For="() => employee.positionEN" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="positionth" class="form-label">positionTH:</label> 
+                <InputText id="positionth" @bind-Value="employee.positionTH" class="form-control" /> 
+                <ValidationMessage For="() => employee.positionTH" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="employeegroup" class="form-label">employeegroup:</label> 
+                <InputText id="employeegroup" @bind-Value="employee.employeegroup" class="form-control" /> 
+                <ValidationMessage For="() => employee.employeegroup" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="moddate" class="form-label">moddate:</label> 
+                <InputDate id="moddate" @bind-Value="employee.moddate" class="form-control" /> 
+                <ValidationMessage For="() => employee.moddate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="modby" class="form-label">modby:</label> 
+                <InputText id="modby" @bind-Value="employee.modby" class="form-control" /> 
+                <ValidationMessage For="() => employee.modby" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="startdate" class="form-label">startdate:</label> 
+                <InputDate id="startdate" @bind-Value="employee.startdate" class="form-control" /> 
+                <ValidationMessage For="() => employee.startdate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="enddate" class="form-label">enddate:</label> 
+                <InputDate id="enddate" @bind-Value="employee.enddate" class="form-control" /> 
+                <ValidationMessage For="() => employee.enddate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isactive" class="form-label">isActive:</label> 
+                <InputCheckbox id="isactive" @bind-Value="employee.isActive" class="form-check-input" /> 
+                <ValidationMessage For="() => employee.isActive" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="orgcode" class="form-label">OrgCode:</label> 
+                <InputText id="orgcode" @bind-Value="employee.OrgCode" class="form-control" /> 
+                <ValidationMessage For="() => employee.OrgCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="departmentname" class="form-label">departmentName:</label> 
+                <InputText id="departmentname" @bind-Value="employee.departmentName" class="form-control" /> 
+                <ValidationMessage For="() => employee.departmentName" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="departmentcode" class="form-label">departmentCode:</label> 
+                <InputText id="departmentcode" @bind-Value="employee.departmentCode" class="form-control" /> 
+                <ValidationMessage For="() => employee.departmentCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="comp_code_all" class="form-label">comp_code_all:</label> 
+                <InputText id="comp_code_all" @bind-Value="employee.comp_code_all" class="form-control" /> 
+                <ValidationMessage For="() => employee.comp_code_all" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="image" class="form-label">image:</label> 
+                <InputText id="image" @bind-Value="employee.image" class="form-control" /> 
+                <ValidationMessage For="() => employee.image" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="image_path" class="form-label">image_path:</label> 
+                <InputText id="image_path" @bind-Value="employee.image_path" class="form-control" /> 
+                <ValidationMessage For="() => employee.image_path" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="status" class="form-label">status:</label> 
+                <InputText id="status" @bind-Value="employee.status" class="form-control" /> 
+                <ValidationMessage For="() => employee.status" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isapprove" class="form-label">isApprove:</label> 
+                <InputCheckbox id="isapprove" @bind-Value="employee.isApprove" class="form-check-input" /> 
+                <ValidationMessage For="() => employee.isApprove" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="approveby" class="form-label">ApproveBy:</label> 
+                <InputText id="approveby" @bind-Value="employee.ApproveBy" class="form-control" /> 
+                <ValidationMessage For="() => employee.ApproveBy" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="approvedate" class="form-label">ApproveDate:</label> 
+                <InputDate id="approvedate" @bind-Value="employee.ApproveDate" class="form-control" /> 
+                <ValidationMessage For="() => employee.ApproveDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="last_name" class="form-label">last_name:</label> 
+                <InputText id="last_name" @bind-Value="employee.last_name" class="form-control" /> 
+                <ValidationMessage For="() => employee.last_name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="mobile" class="form-label">mobile:</label> 
+                <InputText id="mobile" @bind-Value="employee.mobile" class="form-control" /> 
+                <ValidationMessage For="() => employee.mobile" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="marital" class="form-label">marital:</label> 
+                <InputText id="marital" @bind-Value="employee.marital" class="form-control" /> 
+                <ValidationMessage For="() => employee.marital" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="lastnameen" class="form-label">lastNameEn:</label> 
+                <InputText id="lastnameen" @bind-Value="employee.lastNameEn" class="form-control" /> 
+                <ValidationMessage For="() => employee.lastNameEn" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isregister" class="form-label">isRegister:</label> 
+                <InputCheckbox id="isregister" @bind-Value="employee.isRegister" class="form-check-input" /> 
+                <ValidationMessage For="() => employee.isRegister" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="registerdate" class="form-label">registerDate:</label> 
+                <InputDate id="registerdate" @bind-Value="employee.registerDate" class="form-control" /> 
+                <ValidationMessage For="() => employee.registerDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="asofdate" class="form-label">asOfDate:</label> 
+                <InputDate id="asofdate" @bind-Value="employee.asOfDate" class="form-control" /> 
+                <ValidationMessage For="() => employee.asOfDate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="job_grade" class="form-label">job_grade:</label> 
+                <InputText id="job_grade" @bind-Value="employee.job_grade" class="form-control" /> 
+                <ValidationMessage For="() => employee.job_grade" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="head_code" class="form-label">head_code:</label> 
+                <InputText id="head_code" @bind-Value="employee.head_code" class="form-control" /> 
+                <ValidationMessage For="() => employee.head_code" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="resign_by" class="form-label">resign_by:</label> 
+                <InputText id="resign_by" @bind-Value="employee.resign_by" class="form-control" /> 
+                <ValidationMessage For="() => employee.resign_by" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="resign_date" class="form-label">resign_date:</label> 
+                <InputDate id="resign_date" @bind-Value="employee.resign_date" class="form-control" /> 
+                <ValidationMessage For="() => employee.resign_date" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/employees">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private employee employee { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Addemployee()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.employees.Add(employee);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/employees");
+    }
+}

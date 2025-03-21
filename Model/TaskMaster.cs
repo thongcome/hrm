@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
-namespace LeaderDevelop.Model
+namespace HRM.Model
 {
     public class TaskMaster
     {

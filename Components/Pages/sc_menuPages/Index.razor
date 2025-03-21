@@ -1,0 +1,56 @@
+﻿@page "/sc_menus"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="sc_menus/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.sc_menus">
+    <PropertyColumn Property="sc_menu => sc_menu.menuname" />
+    <PropertyColumn Property="sc_menu => sc_menu.menulevel" />
+    <PropertyColumn Property="sc_menu => sc_menu.isfinal" />
+    <PropertyColumn Property="sc_menu => sc_menu.menuorder" />
+    <PropertyColumn Property="sc_menu => sc_menu.menucode" />
+    <PropertyColumn Property="sc_menu => sc_menu.langcode" />
+    <PropertyColumn Property="sc_menu => sc_menu.isshow" />
+    <PropertyColumn Property="sc_menu => sc_menu.tooltip" />
+    <PropertyColumn Property="sc_menu => sc_menu.startdate" />
+    <PropertyColumn Property="sc_menu => sc_menu.enddate" />
+    <PropertyColumn Property="sc_menu => sc_menu.programid" />
+    <PropertyColumn Property="sc_menu => sc_menu.icon" />
+    <PropertyColumn Property="sc_menu => sc_menu.small_icon" />
+    <PropertyColumn Property="sc_menu => sc_menu.url" />
+    <PropertyColumn Property="sc_menu => sc_menu.moddate" />
+    <PropertyColumn Property="sc_menu => sc_menu.modby" />
+    <PropertyColumn Property="sc_menu => sc_menu.uppermenucode" />
+    <PropertyColumn Property="sc_menu => sc_menu.menugroupid" />
+    <PropertyColumn Property="sc_menu => sc_menu.isactive" />
+    <PropertyColumn Property="sc_menu => sc_menu.method_action" />
+    <PropertyColumn Property="sc_menu => sc_menu.menuname_en" />
+
+    <TemplateColumn Context="sc_menu">
+        <a href="@($"sc_menus/edit?menuid={sc_menu.menuid}")">Edit</a> |
+        <a href="@($"sc_menus/details?menuid={sc_menu.menuid}")">Details</a> |
+        <a href="@($"sc_menus/delete?menuid={sc_menu.menuid}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

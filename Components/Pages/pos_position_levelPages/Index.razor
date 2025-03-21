@@ -1,0 +1,42 @@
+﻿@page "/pos_position_levels"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="pos_position_levels/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.pos_position_levels">
+    <PropertyColumn Property="pos_position_level => pos_position_level.name" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.pol_note" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.update_by" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.update_date" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.code" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.engname" />
+    <PropertyColumn Property="pos_position_level => pos_position_level.plevel" />
+
+    <TemplateColumn Context="pos_position_level">
+        <a href="@($"pos_position_levels/edit?id={pos_position_level.id}")">Edit</a> |
+        <a href="@($"pos_position_levels/details?id={pos_position_level.id}")">Details</a> |
+        <a href="@($"pos_position_levels/delete?id={pos_position_level.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

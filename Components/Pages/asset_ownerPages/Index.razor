@@ -1,0 +1,56 @@
+﻿@page "/asset_owners"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="asset_owners/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.asset_owners">
+    <PropertyColumn Property="asset_owner => asset_owner.location" />
+    <PropertyColumn Property="asset_owner => asset_owner.costCenter" />
+    <PropertyColumn Property="asset_owner => asset_owner.category" />
+    <PropertyColumn Property="asset_owner => asset_owner.assetNo" />
+    <PropertyColumn Property="asset_owner => asset_owner.comCode" />
+    <PropertyColumn Property="asset_owner => asset_owner.place" />
+    <PropertyColumn Property="asset_owner => asset_owner.tag" />
+    <PropertyColumn Property="asset_owner => asset_owner.description" />
+    <PropertyColumn Property="asset_owner => asset_owner.brand" />
+    <PropertyColumn Property="asset_owner => asset_owner.model" />
+    <PropertyColumn Property="asset_owner => asset_owner.serial" />
+    <PropertyColumn Property="asset_owner => asset_owner.year" />
+    <PropertyColumn Property="asset_owner => asset_owner.month" />
+    <PropertyColumn Property="asset_owner => asset_owner.inServiceDate" />
+    <PropertyColumn Property="asset_owner => asset_owner.qty" />
+    <PropertyColumn Property="asset_owner => asset_owner.currentCost" />
+    <PropertyColumn Property="asset_owner => asset_owner.AccDP" />
+    <PropertyColumn Property="asset_owner => asset_owner.nbv" />
+    <PropertyColumn Property="asset_owner => asset_owner.empName" />
+    <PropertyColumn Property="asset_owner => asset_owner.status" />
+    <PropertyColumn Property="asset_owner => asset_owner.empid" />
+
+    <TemplateColumn Context="asset_owner">
+        <a href="@($"asset_owners/edit?id={asset_owner.id}")">Edit</a> |
+        <a href="@($"asset_owners/details?id={asset_owner.id}")">Details</a> |
+        <a href="@($"asset_owners/delete?id={asset_owner.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

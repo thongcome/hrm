@@ -1,0 +1,56 @@
+﻿@page "/mas_titles/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>mas_title</h2>
+    <hr />
+    @if (mas_title is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">title</dt>
+            <dd class="col-sm-10">@mas_title.title</dd>
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@mas_title.code</dd>
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@mas_title.isActive</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@mas_title.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@mas_title.modby</dd>
+            <dt class="col-sm-2">title_en</dt>
+            <dd class="col-sm-10">@mas_title.title_en</dd>
+        </dl>
+        <div>
+            <a href="@($"/mas_titles/edit?id={mas_title.id}")">Edit</a> |
+            <a href="@($"/mas_titles")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private mas_title? mas_title;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        mas_title = await context.mas_titles.FirstOrDefaultAsync(m => m.id == id);
+
+        if (mas_title is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

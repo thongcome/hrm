@@ -1,0 +1,58 @@
+﻿@page "/pos_position_levels/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>pos_position_level</h2>
+    <hr />
+    @if (pos_position_level is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@pos_position_level.name</dd>
+            <dt class="col-sm-2">pol_note</dt>
+            <dd class="col-sm-10">@pos_position_level.pol_note</dd>
+            <dt class="col-sm-2">update_by</dt>
+            <dd class="col-sm-10">@pos_position_level.update_by</dd>
+            <dt class="col-sm-2">update_date</dt>
+            <dd class="col-sm-10">@pos_position_level.update_date</dd>
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@pos_position_level.code</dd>
+            <dt class="col-sm-2">engname</dt>
+            <dd class="col-sm-10">@pos_position_level.engname</dd>
+            <dt class="col-sm-2">plevel</dt>
+            <dd class="col-sm-10">@pos_position_level.plevel</dd>
+        </dl>
+        <div>
+            <a href="@($"/pos_position_levels/edit?id={pos_position_level.id}")">Edit</a> |
+            <a href="@($"/pos_position_levels")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private pos_position_level? pos_position_level;
+
+    [SupplyParameterFromQuery]
+    private int id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        pos_position_level = await context.pos_position_levels.FirstOrDefaultAsync(m => m.id == id);
+
+        if (pos_position_level is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

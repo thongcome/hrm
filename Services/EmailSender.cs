@@ -1,4 +1,4 @@
-﻿using LeaderDevelop.Services;
+﻿using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.Extensions.Options;
 using SendGrid;
@@ -6,7 +6,7 @@ using SendGrid.Helpers.Mail;
 using System.Net;
 using System.Net.Mail;
 
-namespace LeaderDevelop.Services;
+namespace HRM.Services;
 
 public class EmailSender : IEmailSender
 {

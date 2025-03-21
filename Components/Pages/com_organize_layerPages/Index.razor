@@ -1,0 +1,45 @@
+﻿@page "/com_organize_layers"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="com_organize_layers/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.com_organize_layers">
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.layercode" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.name" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.name_en" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.layer" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.modby" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.moddate" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.isActive" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.remark" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.group_layer" />
+    <PropertyColumn Property="com_organize_layer => com_organize_layer.abbr" />
+
+    <TemplateColumn Context="com_organize_layer">
+        <a href="@($"com_organize_layers/edit?id={com_organize_layer.id}")">Edit</a> |
+        <a href="@($"com_organize_layers/details?id={com_organize_layer.id}")">Details</a> |
+        <a href="@($"com_organize_layers/delete?id={com_organize_layer.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

@@ -1,0 +1,124 @@
+﻿@page "/sc_role_menus/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>sc_role_menu</h2>
+<hr />
+@if (sc_role_menu is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="sc_role_menu" OnValidSubmit="Updatesc_role_menu" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="sc_role_menu.rolemenuid" value="@sc_role_menu.rolemenuid" />
+                <div class="mb-3">
+                    <label for="menuid" class="form-label">menuid:</label>
+                    <InputNumber id="menuid" @bind-Value="sc_role_menu.menuid" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.menuid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="roleid" class="form-label">roleid:</label>
+                    <InputNumber id="roleid" @bind-Value="sc_role_menu.roleid" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.roleid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="startdate" class="form-label">startdate:</label>
+                    <InputDate id="startdate" @bind-Value="sc_role_menu.startdate" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.startdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="enddate" class="form-label">enddate:</label>
+                    <InputDate id="enddate" @bind-Value="sc_role_menu.enddate" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.enddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isactive" class="form-label">isactive:</label>
+                    <InputCheckbox id="isactive" @bind-Value="sc_role_menu.isactive" class="form-check-input" aria-required="true"/>
+                    <ValidationMessage For="() => sc_role_menu.isactive" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="remark" class="form-label">remark:</label>
+                    <InputText id="remark" @bind-Value="sc_role_menu.remark" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.remark" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">moddate:</label>
+                    <InputDate id="moddate" @bind-Value="sc_role_menu.moddate" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.moddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modby" class="form-label">modby:</label>
+                    <InputText id="modby" @bind-Value="sc_role_menu.modby" class="form-control" />
+                    <ValidationMessage For="() => sc_role_menu.modby" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/sc_role_menus">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long rolemenuid { get; set; }
+
+    [SupplyParameterFromForm]
+    private sc_role_menu? sc_role_menu { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_role_menu ??= await context.sc_role_menus.FirstOrDefaultAsync(m => m.rolemenuid == rolemenuid);
+
+        if (sc_role_menu is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updatesc_role_menu()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(sc_role_menu!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!sc_role_menuExists(sc_role_menu!.rolemenuid))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/sc_role_menus");
+    }
+
+    private bool sc_role_menuExists(long rolemenuid)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.sc_role_menus.Any(e => e.rolemenuid == rolemenuid);
+    }
+}

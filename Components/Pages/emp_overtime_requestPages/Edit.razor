@@ -1,0 +1,184 @@
+﻿@page "/emp_overtime_requests/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>emp_overtime_request</h2>
+<hr />
+@if (emp_overtime_request is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="emp_overtime_request" OnValidSubmit="Updateemp_overtime_request" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="emp_overtime_request.id" value="@emp_overtime_request.id" />
+                <div class="mb-3">
+                    <label for="empid" class="form-label">empid:</label>
+                    <InputText id="empid" @bind-Value="emp_overtime_request.empid" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.empid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="name" class="form-label">name:</label>
+                    <InputText id="name" @bind-Value="emp_overtime_request.name" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.name" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="requestdate" class="form-label">requestDate:</label>
+                    <InputDate id="requestdate" @bind-Value="emp_overtime_request.requestDate" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.requestDate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="starttime" class="form-label">starttime:</label>
+                    <InputDate id="starttime" @bind-Value="emp_overtime_request.starttime" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.starttime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="endtime" class="form-label">endtime:</label>
+                    <InputDate id="endtime" @bind-Value="emp_overtime_request.endtime" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.endtime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">moddate:</label>
+                    <InputDate id="moddate" @bind-Value="emp_overtime_request.moddate" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.moddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modby" class="form-label">modby:</label>
+                    <InputText id="modby" @bind-Value="emp_overtime_request.modby" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.modby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="workhour" class="form-label">workhour:</label>
+                    <InputNumber id="workhour" @bind-Value="emp_overtime_request.workhour" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.workhour" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="workminute" class="form-label">workminute:</label>
+                    <InputNumber id="workminute" @bind-Value="emp_overtime_request.workminute" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.workminute" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="ot_rate" class="form-label">ot_rate:</label>
+                    <InputNumber id="ot_rate" @bind-Value="emp_overtime_request.ot_rate" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.ot_rate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="status" class="form-label">status:</label>
+                    <InputText id="status" @bind-Value="emp_overtime_request.status" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.status" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="approveby" class="form-label">approveby:</label>
+                    <InputText id="approveby" @bind-Value="emp_overtime_request.approveby" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.approveby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="approvedate" class="form-label">approvedate:</label>
+                    <InputDate id="approvedate" @bind-Value="emp_overtime_request.approvedate" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.approvedate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="real_starttime" class="form-label">real_starttime:</label>
+                    <InputDate id="real_starttime" @bind-Value="emp_overtime_request.real_starttime" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.real_starttime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="real_endtime" class="form-label">real_endtime:</label>
+                    <InputDate id="real_endtime" @bind-Value="emp_overtime_request.real_endtime" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.real_endtime" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="objective" class="form-label">objective:</label>
+                    <InputText id="objective" @bind-Value="emp_overtime_request.objective" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.objective" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="remark" class="form-label">remark:</label>
+                    <InputText id="remark" @bind-Value="emp_overtime_request.remark" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.remark" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="orgcode" class="form-label">orgcode:</label>
+                    <InputText id="orgcode" @bind-Value="emp_overtime_request.orgcode" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.orgcode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="orgname" class="form-label">orgname:</label>
+                    <InputText id="orgname" @bind-Value="emp_overtime_request.orgname" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.orgname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="com_code_all" class="form-label">com_code_all:</label>
+                    <InputText id="com_code_all" @bind-Value="emp_overtime_request.com_code_all" class="form-control" />
+                    <ValidationMessage For="() => emp_overtime_request.com_code_all" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/emp_overtime_requests">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private emp_overtime_request? emp_overtime_request { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        emp_overtime_request ??= await context.emp_overtime_requests.FirstOrDefaultAsync(m => m.id == id);
+
+        if (emp_overtime_request is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updateemp_overtime_request()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(emp_overtime_request!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!emp_overtime_requestExists(emp_overtime_request!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/emp_overtime_requests");
+    }
+
+    private bool emp_overtime_requestExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.emp_overtime_requests.Any(e => e.id == id);
+    }
+}

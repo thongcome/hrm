@@ -1,0 +1,60 @@
+﻿@page "/sc_role_menus/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>sc_role_menu</h2>
+    <hr />
+    @if (sc_role_menu is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">menuid</dt>
+            <dd class="col-sm-10">@sc_role_menu.menuid</dd>
+            <dt class="col-sm-2">roleid</dt>
+            <dd class="col-sm-10">@sc_role_menu.roleid</dd>
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@sc_role_menu.startdate</dd>
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@sc_role_menu.enddate</dd>
+            <dt class="col-sm-2">isactive</dt>
+            <dd class="col-sm-10">@sc_role_menu.isactive</dd>
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@sc_role_menu.remark</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@sc_role_menu.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@sc_role_menu.modby</dd>
+        </dl>
+        <div>
+            <a href="@($"/sc_role_menus/edit?rolemenuid={sc_role_menu.rolemenuid}")">Edit</a> |
+            <a href="@($"/sc_role_menus")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private sc_role_menu? sc_role_menu;
+
+    [SupplyParameterFromQuery]
+    private long rolemenuid { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_role_menu = await context.sc_role_menus.FirstOrDefaultAsync(m => m.rolemenuid == rolemenuid);
+
+        if (sc_role_menu is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

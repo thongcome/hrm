@@ -1,0 +1,86 @@
+﻿@page "/asset_owners/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>asset_owner</h2>
+    <hr />
+    @if (asset_owner is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">location</dt>
+            <dd class="col-sm-10">@asset_owner.location</dd>
+            <dt class="col-sm-2">costCenter</dt>
+            <dd class="col-sm-10">@asset_owner.costCenter</dd>
+            <dt class="col-sm-2">category</dt>
+            <dd class="col-sm-10">@asset_owner.category</dd>
+            <dt class="col-sm-2">assetNo</dt>
+            <dd class="col-sm-10">@asset_owner.assetNo</dd>
+            <dt class="col-sm-2">comCode</dt>
+            <dd class="col-sm-10">@asset_owner.comCode</dd>
+            <dt class="col-sm-2">place</dt>
+            <dd class="col-sm-10">@asset_owner.place</dd>
+            <dt class="col-sm-2">tag</dt>
+            <dd class="col-sm-10">@asset_owner.tag</dd>
+            <dt class="col-sm-2">description</dt>
+            <dd class="col-sm-10">@asset_owner.description</dd>
+            <dt class="col-sm-2">brand</dt>
+            <dd class="col-sm-10">@asset_owner.brand</dd>
+            <dt class="col-sm-2">model</dt>
+            <dd class="col-sm-10">@asset_owner.model</dd>
+            <dt class="col-sm-2">serial</dt>
+            <dd class="col-sm-10">@asset_owner.serial</dd>
+            <dt class="col-sm-2">year</dt>
+            <dd class="col-sm-10">@asset_owner.year</dd>
+            <dt class="col-sm-2">month</dt>
+            <dd class="col-sm-10">@asset_owner.month</dd>
+            <dt class="col-sm-2">inServiceDate</dt>
+            <dd class="col-sm-10">@asset_owner.inServiceDate</dd>
+            <dt class="col-sm-2">qty</dt>
+            <dd class="col-sm-10">@asset_owner.qty</dd>
+            <dt class="col-sm-2">currentCost</dt>
+            <dd class="col-sm-10">@asset_owner.currentCost</dd>
+            <dt class="col-sm-2">AccDP</dt>
+            <dd class="col-sm-10">@asset_owner.AccDP</dd>
+            <dt class="col-sm-2">nbv</dt>
+            <dd class="col-sm-10">@asset_owner.nbv</dd>
+            <dt class="col-sm-2">empName</dt>
+            <dd class="col-sm-10">@asset_owner.empName</dd>
+            <dt class="col-sm-2">status</dt>
+            <dd class="col-sm-10">@asset_owner.status</dd>
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@asset_owner.empid</dd>
+        </dl>
+        <div>
+            <a href="@($"/asset_owners/edit?id={asset_owner.id}")">Edit</a> |
+            <a href="@($"/asset_owners")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private asset_owner? asset_owner;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        asset_owner = await context.asset_owners.FirstOrDefaultAsync(m => m.id == id);
+
+        if (asset_owner is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

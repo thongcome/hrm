@@ -1,4 +1,4 @@
-﻿namespace LeaderDevelop.Services
+﻿namespace HRM.Services
 {
     using Microsoft.AspNetCore.Identity.UI.Services;
     using System.Net;

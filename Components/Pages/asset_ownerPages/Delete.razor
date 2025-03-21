@@ -1,0 +1,135 @@
+﻿@page "/asset_owners/delete"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>asset_owner</h2>
+    <hr />
+    @if (asset_owner is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">location</dt>
+            <dd class="col-sm-10">@asset_owner.location</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">costCenter</dt>
+            <dd class="col-sm-10">@asset_owner.costCenter</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">category</dt>
+            <dd class="col-sm-10">@asset_owner.category</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">assetNo</dt>
+            <dd class="col-sm-10">@asset_owner.assetNo</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">comCode</dt>
+            <dd class="col-sm-10">@asset_owner.comCode</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">place</dt>
+            <dd class="col-sm-10">@asset_owner.place</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">tag</dt>
+            <dd class="col-sm-10">@asset_owner.tag</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">description</dt>
+            <dd class="col-sm-10">@asset_owner.description</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">brand</dt>
+            <dd class="col-sm-10">@asset_owner.brand</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">model</dt>
+            <dd class="col-sm-10">@asset_owner.model</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">serial</dt>
+            <dd class="col-sm-10">@asset_owner.serial</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">year</dt>
+            <dd class="col-sm-10">@asset_owner.year</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">month</dt>
+            <dd class="col-sm-10">@asset_owner.month</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">inServiceDate</dt>
+            <dd class="col-sm-10">@asset_owner.inServiceDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">qty</dt>
+            <dd class="col-sm-10">@asset_owner.qty</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">currentCost</dt>
+            <dd class="col-sm-10">@asset_owner.currentCost</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">AccDP</dt>
+            <dd class="col-sm-10">@asset_owner.AccDP</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">nbv</dt>
+            <dd class="col-sm-10">@asset_owner.nbv</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">empName</dt>
+            <dd class="col-sm-10">@asset_owner.empName</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">status</dt>
+            <dd class="col-sm-10">@asset_owner.status</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@asset_owner.empid</dd>
+        </dl>
+        <EditForm method="post" Model="asset_owner" OnValidSubmit="Deleteasset_owner" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(asset_owner is null)">Delete</button> |
+            <a href="/asset_owners">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private asset_owner? asset_owner;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        asset_owner = await context.asset_owners.FirstOrDefaultAsync(m => m.id == id);
+
+        if (asset_owner is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Deleteasset_owner()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.asset_owners.Remove(asset_owner!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/asset_owners");
+    }
+}

@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Security.Permissions;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeaderDevelop.Model
+namespace HRM.Model
 {
     public class GoalTask
     {

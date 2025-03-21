@@ -1,6 +1,6 @@
-using LeaderDevelop.Components.Account.Pages;
-using LeaderDevelop.Components.Account.Pages.Manage;
-using LeaderDevelop.Data;
+using HRM.Components.Account.Pages;
+using HRM.Components.Layout;
+using HRM.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;

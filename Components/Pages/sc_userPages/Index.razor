@@ -1,0 +1,82 @@
+﻿@page "/sc_users"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="sc_users/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.sc_users">
+    <PropertyColumn Property="sc_user => sc_user.firstname" />
+    <PropertyColumn Property="sc_user => sc_user.lastname" />
+    <PropertyColumn Property="sc_user => sc_user.loginname" />
+    <PropertyColumn Property="sc_user => sc_user.password" />
+    <PropertyColumn Property="sc_user => sc_user.phone" />
+    <PropertyColumn Property="sc_user => sc_user.mobilephone" />
+    <PropertyColumn Property="sc_user => sc_user.isforcechanged" />
+    <PropertyColumn Property="sc_user => sc_user.isdisable" />
+    <PropertyColumn Property="sc_user => sc_user.iscancel" />
+    <PropertyColumn Property="sc_user => sc_user.pwdexpdate" />
+    <PropertyColumn Property="sc_user => sc_user.lasttimelogin" />
+    <PropertyColumn Property="sc_user => sc_user.invalidpwcount" />
+    <PropertyColumn Property="sc_user => sc_user.lastinvalidpwd" />
+    <PropertyColumn Property="sc_user => sc_user.remark" />
+    <PropertyColumn Property="sc_user => sc_user.title" />
+    <PropertyColumn Property="sc_user => sc_user.upperuserid" />
+    <PropertyColumn Property="sc_user => sc_user.orgname" />
+    <PropertyColumn Property="sc_user => sc_user.orgcode" />
+    <PropertyColumn Property="sc_user => sc_user.startdate" />
+    <PropertyColumn Property="sc_user => sc_user.enddate" />
+    <PropertyColumn Property="sc_user => sc_user.remindpwd" />
+    <PropertyColumn Property="sc_user => sc_user.social" />
+    <PropertyColumn Property="sc_user => sc_user.langcode" />
+    <PropertyColumn Property="sc_user => sc_user.sex_sexid" />
+    <PropertyColumn Property="sc_user => sc_user.title_titleid" />
+    <PropertyColumn Property="sc_user => sc_user.moddate" />
+    <PropertyColumn Property="sc_user => sc_user.modby" />
+    <PropertyColumn Property="sc_user => sc_user.empid" />
+    <PropertyColumn Property="sc_user => sc_user.orgid" />
+    <PropertyColumn Property="sc_user => sc_user.isroot" />
+    <PropertyColumn Property="sc_user => sc_user.email" />
+    <PropertyColumn Property="sc_user => sc_user.isEmployee" />
+    <PropertyColumn Property="sc_user => sc_user.poscode" />
+    <PropertyColumn Property="sc_user => sc_user.pos_name" />
+    <PropertyColumn Property="sc_user => sc_user.isActivate" />
+    <PropertyColumn Property="sc_user => sc_user.vendorCode" />
+    <PropertyColumn Property="sc_user => sc_user.isVendor" />
+    <PropertyColumn Property="sc_user => sc_user.isAccept" />
+    <PropertyColumn Property="sc_user => sc_user.vendorid" />
+    <PropertyColumn Property="sc_user => sc_user.supervisor" />
+    <PropertyColumn Property="sc_user => sc_user.costcenter" />
+    <PropertyColumn Property="sc_user => sc_user.verifycode" />
+    <PropertyColumn Property="sc_user => sc_user.registerdate" />
+    <PropertyColumn Property="sc_user => sc_user.isHeader" />
+    <PropertyColumn Property="sc_user => sc_user.ref1" />
+    <PropertyColumn Property="sc_user => sc_user.ref2" />
+    <PropertyColumn Property="sc_user => sc_user.Companycode" />
+
+    <TemplateColumn Context="sc_user">
+        <a href="@($"sc_users/edit?userid={sc_user.userid}")">Edit</a> |
+        <a href="@($"sc_users/details?userid={sc_user.userid}")">Details</a> |
+        <a href="@($"sc_users/delete?userid={sc_user.userid}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

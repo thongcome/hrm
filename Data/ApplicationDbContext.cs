@@ -1,8 +1,8 @@
-﻿using LeaderDevelop.Model;
+﻿using HRM.Model;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeaderDevelop.Data
+namespace HRM.Data
 {
     //public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>

@@ -1,0 +1,118 @@
+﻿@page "/com_organizations/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>com_organization</h2>
+    <hr />
+    @if (com_organization is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@com_organization.code</dd>
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@com_organization.name</dd>
+            <dt class="col-sm-2">name_en</dt>
+            <dd class="col-sm-10">@com_organization.name_en</dd>
+            <dt class="col-sm-2">layer</dt>
+            <dd class="col-sm-10">@com_organization.layer</dd>
+            <dt class="col-sm-2">parent_code</dt>
+            <dd class="col-sm-10">@com_organization.parent_code</dd>
+            <dt class="col-sm-2">isCompany</dt>
+            <dd class="col-sm-10">@com_organization.isCompany</dd>
+            <dt class="col-sm-2">comp_code_all</dt>
+            <dd class="col-sm-10">@com_organization.comp_code_all</dd>
+            <dt class="col-sm-2">isBranch</dt>
+            <dd class="col-sm-10">@com_organization.isBranch</dd>
+            <dt class="col-sm-2">tax_id</dt>
+            <dd class="col-sm-10">@com_organization.tax_id</dd>
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@com_organization.isActive</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@com_organization.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@com_organization.modby</dd>
+            <dt class="col-sm-2">layer_code</dt>
+            <dd class="col-sm-10">@com_organization.layer_code</dd>
+            <dt class="col-sm-2">approver_userid</dt>
+            <dd class="col-sm-10">@com_organization.approver_userid</dd>
+            <dt class="col-sm-2">isManPowerCount</dt>
+            <dd class="col-sm-10">@com_organization.isManPowerCount</dd>
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@com_organization.startdate</dd>
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@com_organization.enddate</dd>
+            <dt class="col-sm-2">org_type</dt>
+            <dd class="col-sm-10">@com_organization.org_type</dd>
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@com_organization.remark</dd>
+            <dt class="col-sm-2">abbr</dt>
+            <dd class="col-sm-10">@com_organization.abbr</dd>
+            <dt class="col-sm-2">boss_emp_id</dt>
+            <dd class="col-sm-10">@com_organization.boss_emp_id</dd>
+            <dt class="col-sm-2">approver_empid</dt>
+            <dd class="col-sm-10">@com_organization.approver_empid</dd>
+            <dt class="col-sm-2">comp_code</dt>
+            <dd class="col-sm-10">@com_organization.comp_code</dd>
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@com_organization.companyid</dd>
+            <dt class="col-sm-2">org_level</dt>
+            <dd class="col-sm-10">@com_organization.org_level</dd>
+            <dt class="col-sm-2">asOfDate</dt>
+            <dd class="col-sm-10">@com_organization.asOfDate</dd>
+            <dt class="col-sm-2">orgCode</dt>
+            <dd class="col-sm-10">@com_organization.orgCode</dd>
+            <dt class="col-sm-2">orgLayerName</dt>
+            <dd class="col-sm-10">@com_organization.orgLayerName</dd>
+            <dt class="col-sm-2">orgLayerNameEn</dt>
+            <dd class="col-sm-10">@com_organization.orgLayerNameEn</dd>
+            <dt class="col-sm-2">refkeyParent</dt>
+            <dd class="col-sm-10">@com_organization.refkeyParent</dd>
+            <dt class="col-sm-2">ref1</dt>
+            <dd class="col-sm-10">@com_organization.ref1</dd>
+            <dt class="col-sm-2">parentID</dt>
+            <dd class="col-sm-10">@com_organization.parentID</dd>
+            <dt class="col-sm-2">boss_name</dt>
+            <dd class="col-sm-10">@com_organization.boss_name</dd>
+            <dt class="col-sm-2">approver_name</dt>
+            <dd class="col-sm-10">@com_organization.approver_name</dd>
+            <dt class="col-sm-2">approver_PosName</dt>
+            <dd class="col-sm-10">@com_organization.approver_PosName</dd>
+            <dt class="col-sm-2">node_level</dt>
+            <dd class="col-sm-10">@com_organization.node_level</dd>
+            <dt class="col-sm-2">istop</dt>
+            <dd class="col-sm-10">@com_organization.istop</dd>
+        </dl>
+        <div>
+            <a href="@($"/com_organizations/edit?id={com_organization.id}")">Edit</a> |
+            <a href="@($"/com_organizations")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private com_organization? com_organization;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        com_organization = await context.com_organizations.FirstOrDefaultAsync(m => m.id == id);
+
+        if (com_organization is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

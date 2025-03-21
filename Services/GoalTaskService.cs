@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Http;
 using System;
 using System.Threading.Tasks;
-using LeaderDevelop.Model; // Adjust the namespace to match your entity's namespace
+using HRM.Model; // Adjust the namespace to match your entity's namespace
 using Microsoft.EntityFrameworkCore;
-using LeaderDevelop.Data;  // Replace with your DbContext's namespace
+using HRM.Data;  // Replace with your DbContext's namespace
 
 public class GoalTaskService
 {

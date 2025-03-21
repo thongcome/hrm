@@ -1,0 +1,319 @@
+﻿@page "/sc_users/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>sc_user</h2>
+<hr />
+@if (sc_user is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="sc_user" OnValidSubmit="Updatesc_user" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="sc_user.userid" value="@sc_user.userid" />
+                <div class="mb-3">
+                    <label for="firstname" class="form-label">firstname:</label>
+                    <InputText id="firstname" @bind-Value="sc_user.firstname" class="form-control" />
+                    <ValidationMessage For="() => sc_user.firstname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lastname" class="form-label">lastname:</label>
+                    <InputText id="lastname" @bind-Value="sc_user.lastname" class="form-control" />
+                    <ValidationMessage For="() => sc_user.lastname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="loginname" class="form-label">loginname:</label>
+                    <InputText id="loginname" @bind-Value="sc_user.loginname" class="form-control" />
+                    <ValidationMessage For="() => sc_user.loginname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">password:</label>
+                    <InputText id="password" @bind-Value="sc_user.password" class="form-control" />
+                    <ValidationMessage For="() => sc_user.password" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="phone" class="form-label">phone:</label>
+                    <InputText id="phone" @bind-Value="sc_user.phone" class="form-control" />
+                    <ValidationMessage For="() => sc_user.phone" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="mobilephone" class="form-label">mobilephone:</label>
+                    <InputText id="mobilephone" @bind-Value="sc_user.mobilephone" class="form-control" />
+                    <ValidationMessage For="() => sc_user.mobilephone" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isforcechanged" class="form-label">isforcechanged:</label>
+                    <InputCheckbox id="isforcechanged" @bind-Value="sc_user.isforcechanged" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isforcechanged" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isdisable" class="form-label">isdisable:</label>
+                    <InputCheckbox id="isdisable" @bind-Value="sc_user.isdisable" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isdisable" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="iscancel" class="form-label">iscancel:</label>
+                    <InputCheckbox id="iscancel" @bind-Value="sc_user.iscancel" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.iscancel" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="pwdexpdate" class="form-label">pwdexpdate:</label>
+                    <InputDate id="pwdexpdate" @bind-Value="sc_user.pwdexpdate" class="form-control" />
+                    <ValidationMessage For="() => sc_user.pwdexpdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lasttimelogin" class="form-label">lasttimelogin:</label>
+                    <InputDate id="lasttimelogin" @bind-Value="sc_user.lasttimelogin" class="form-control" />
+                    <ValidationMessage For="() => sc_user.lasttimelogin" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="invalidpwcount" class="form-label">invalidpwcount:</label>
+                    <InputNumber id="invalidpwcount" @bind-Value="sc_user.invalidpwcount" class="form-control" />
+                    <ValidationMessage For="() => sc_user.invalidpwcount" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="lastinvalidpwd" class="form-label">lastinvalidpwd:</label>
+                    <InputDate id="lastinvalidpwd" @bind-Value="sc_user.lastinvalidpwd" class="form-control" />
+                    <ValidationMessage For="() => sc_user.lastinvalidpwd" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="remark" class="form-label">remark:</label>
+                    <InputText id="remark" @bind-Value="sc_user.remark" class="form-control" />
+                    <ValidationMessage For="() => sc_user.remark" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="title" class="form-label">title:</label>
+                    <InputText id="title" @bind-Value="sc_user.title" class="form-control" />
+                    <ValidationMessage For="() => sc_user.title" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="upperuserid" class="form-label">upperuserid:</label>
+                    <InputNumber id="upperuserid" @bind-Value="sc_user.upperuserid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.upperuserid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="orgname" class="form-label">orgname:</label>
+                    <InputText id="orgname" @bind-Value="sc_user.orgname" class="form-control" />
+                    <ValidationMessage For="() => sc_user.orgname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="orgcode" class="form-label">orgcode:</label>
+                    <InputText id="orgcode" @bind-Value="sc_user.orgcode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.orgcode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="startdate" class="form-label">startdate:</label>
+                    <InputDate id="startdate" @bind-Value="sc_user.startdate" class="form-control" />
+                    <ValidationMessage For="() => sc_user.startdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="enddate" class="form-label">enddate:</label>
+                    <InputDate id="enddate" @bind-Value="sc_user.enddate" class="form-control" />
+                    <ValidationMessage For="() => sc_user.enddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="remindpwd" class="form-label">remindpwd:</label>
+                    <InputText id="remindpwd" @bind-Value="sc_user.remindpwd" class="form-control" />
+                    <ValidationMessage For="() => sc_user.remindpwd" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="social" class="form-label">social:</label>
+                    <InputText id="social" @bind-Value="sc_user.social" class="form-control" />
+                    <ValidationMessage For="() => sc_user.social" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="langcode" class="form-label">langcode:</label>
+                    <InputText id="langcode" @bind-Value="sc_user.langcode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.langcode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="sex_sexid" class="form-label">sex_sexid:</label>
+                    <InputNumber id="sex_sexid" @bind-Value="sc_user.sex_sexid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.sex_sexid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="title_titleid" class="form-label">title_titleid:</label>
+                    <InputNumber id="title_titleid" @bind-Value="sc_user.title_titleid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.title_titleid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">moddate:</label>
+                    <InputDate id="moddate" @bind-Value="sc_user.moddate" class="form-control" />
+                    <ValidationMessage For="() => sc_user.moddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modby" class="form-label">modby:</label>
+                    <InputText id="modby" @bind-Value="sc_user.modby" class="form-control" />
+                    <ValidationMessage For="() => sc_user.modby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="empid" class="form-label">empid:</label>
+                    <InputText id="empid" @bind-Value="sc_user.empid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.empid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="orgid" class="form-label">orgid:</label>
+                    <InputNumber id="orgid" @bind-Value="sc_user.orgid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.orgid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isroot" class="form-label">isroot:</label>
+                    <InputCheckbox id="isroot" @bind-Value="sc_user.isroot" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isroot" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="email" class="form-label">email:</label>
+                    <InputText id="email" @bind-Value="sc_user.email" class="form-control" />
+                    <ValidationMessage For="() => sc_user.email" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isemployee" class="form-label">isEmployee:</label>
+                    <InputText id="isemployee" @bind-Value="sc_user.isEmployee" class="form-control" />
+                    <ValidationMessage For="() => sc_user.isEmployee" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="poscode" class="form-label">poscode:</label>
+                    <InputText id="poscode" @bind-Value="sc_user.poscode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.poscode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="pos_name" class="form-label">pos_name:</label>
+                    <InputText id="pos_name" @bind-Value="sc_user.pos_name" class="form-control" />
+                    <ValidationMessage For="() => sc_user.pos_name" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isactivate" class="form-label">isActivate:</label>
+                    <InputCheckbox id="isactivate" @bind-Value="sc_user.isActivate" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isActivate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="vendorcode" class="form-label">vendorCode:</label>
+                    <InputText id="vendorcode" @bind-Value="sc_user.vendorCode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.vendorCode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isvendor" class="form-label">isVendor:</label>
+                    <InputCheckbox id="isvendor" @bind-Value="sc_user.isVendor" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isVendor" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isaccept" class="form-label">isAccept:</label>
+                    <InputCheckbox id="isaccept" @bind-Value="sc_user.isAccept" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isAccept" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="vendorid" class="form-label">vendorid:</label>
+                    <InputText id="vendorid" @bind-Value="sc_user.vendorid" class="form-control" />
+                    <ValidationMessage For="() => sc_user.vendorid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="supervisor" class="form-label">supervisor:</label>
+                    <InputText id="supervisor" @bind-Value="sc_user.supervisor" class="form-control" />
+                    <ValidationMessage For="() => sc_user.supervisor" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="costcenter" class="form-label">costcenter:</label>
+                    <InputText id="costcenter" @bind-Value="sc_user.costcenter" class="form-control" />
+                    <ValidationMessage For="() => sc_user.costcenter" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="verifycode" class="form-label">verifycode:</label>
+                    <InputText id="verifycode" @bind-Value="sc_user.verifycode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.verifycode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="registerdate" class="form-label">registerdate:</label>
+                    <InputDate id="registerdate" @bind-Value="sc_user.registerdate" class="form-control" />
+                    <ValidationMessage For="() => sc_user.registerdate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isheader" class="form-label">isHeader:</label>
+                    <InputCheckbox id="isheader" @bind-Value="sc_user.isHeader" class="form-check-input" />
+                    <ValidationMessage For="() => sc_user.isHeader" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="ref1" class="form-label">ref1:</label>
+                    <InputText id="ref1" @bind-Value="sc_user.ref1" class="form-control" />
+                    <ValidationMessage For="() => sc_user.ref1" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="ref2" class="form-label">ref2:</label>
+                    <InputText id="ref2" @bind-Value="sc_user.ref2" class="form-control" />
+                    <ValidationMessage For="() => sc_user.ref2" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="companycode" class="form-label">Companycode:</label>
+                    <InputText id="companycode" @bind-Value="sc_user.Companycode" class="form-control" />
+                    <ValidationMessage For="() => sc_user.Companycode" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/sc_users">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long userid { get; set; }
+
+    [SupplyParameterFromForm]
+    private sc_user? sc_user { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_user ??= await context.sc_users.FirstOrDefaultAsync(m => m.userid == userid);
+
+        if (sc_user is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updatesc_user()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(sc_user!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!sc_userExists(sc_user!.userid))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/sc_users");
+    }
+
+    private bool sc_userExists(long userid)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.sc_users.Any(e => e.userid == userid);
+    }
+}

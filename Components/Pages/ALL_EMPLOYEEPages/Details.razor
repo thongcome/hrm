@@ -1,0 +1,100 @@
+﻿@page "/all_employees/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>ALL_EMPLOYEE</h2>
+    <hr />
+    @if (all_employee is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">DATASOURCE</dt>
+            <dd class="col-sm-10">@all_employee.DATASOURCE</dd>
+            <dt class="col-sm-2">PRS_NO</dt>
+            <dd class="col-sm-10">@all_employee.PRS_NO</dd>
+            <dt class="col-sm-2">EMP_INTL</dt>
+            <dd class="col-sm-10">@all_employee.EMP_INTL</dd>
+            <dt class="col-sm-2">EMP_SURNME</dt>
+            <dd class="col-sm-10">@all_employee.EMP_SURNME</dd>
+            <dt class="col-sm-2">EMP_E_NAME</dt>
+            <dd class="col-sm-10">@all_employee.EMP_E_NAME</dd>
+            <dt class="col-sm-2">PRS_SC_D</dt>
+            <dd class="col-sm-10">@all_employee.PRS_SC_D</dd>
+            <dt class="col-sm-2">JBT_THAIDESC</dt>
+            <dd class="col-sm-10">@all_employee.JBT_THAIDESC</dd>
+            <dt class="col-sm-2">COMPANY</dt>
+            <dd class="col-sm-10">@all_employee.COMPANY</dd>
+            <dt class="col-sm-2">DEPT1</dt>
+            <dd class="col-sm-10">@all_employee.DEPT1</dd>
+            <dt class="col-sm-2">DEPT2</dt>
+            <dd class="col-sm-10">@all_employee.DEPT2</dd>
+            <dt class="col-sm-2">DEPT3</dt>
+            <dd class="col-sm-10">@all_employee.DEPT3</dd>
+            <dt class="col-sm-2">SEX</dt>
+            <dd class="col-sm-10">@all_employee.SEX</dd>
+            <dt class="col-sm-2">EMP_MARITAL</dt>
+            <dd class="col-sm-10">@all_employee.EMP_MARITAL</dd>
+            <dt class="col-sm-2">EMP_BIRTH</dt>
+            <dd class="col-sm-10">@all_employee.EMP_BIRTH</dd>
+            <dt class="col-sm-2">EMP_ADDR_1</dt>
+            <dd class="col-sm-10">@all_employee.EMP_ADDR_1</dd>
+            <dt class="col-sm-2">EMP_ADDR_2</dt>
+            <dd class="col-sm-10">@all_employee.EMP_ADDR_2</dd>
+            <dt class="col-sm-2">EMP_ADDR_3</dt>
+            <dd class="col-sm-10">@all_employee.EMP_ADDR_3</dd>
+            <dt class="col-sm-2">EMP_POST</dt>
+            <dd class="col-sm-10">@all_employee.EMP_POST</dd>
+            <dt class="col-sm-2">EMP_TEL</dt>
+            <dd class="col-sm-10">@all_employee.EMP_TEL</dd>
+            <dt class="col-sm-2">EMP_EMAIL</dt>
+            <dd class="col-sm-10">@all_employee.EMP_EMAIL</dd>
+            <dt class="col-sm-2">EMP_I_CARD</dt>
+            <dd class="col-sm-10">@all_employee.EMP_I_CARD</dd>
+            <dt class="col-sm-2">EMP_I_EXPIRE</dt>
+            <dd class="col-sm-10">@all_employee.EMP_I_EXPIRE</dd>
+            <dt class="col-sm-2">EMP_I_ISSUE</dt>
+            <dd class="col-sm-10">@all_employee.EMP_I_ISSUE</dd>
+            <dt class="col-sm-2">STATUSEMP</dt>
+            <dd class="col-sm-10">@all_employee.STATUSEMP</dd>
+            <dt class="col-sm-2">DIPCHIP</dt>
+            <dd class="col-sm-10">@all_employee.DIPCHIP</dd>
+            <dt class="col-sm-2">LOAD_DATE</dt>
+            <dd class="col-sm-10">@all_employee.LOAD_DATE</dd>
+            <dt class="col-sm-2">EMP_NAME</dt>
+            <dd class="col-sm-10">@all_employee.EMP_NAME</dd>
+            <dt class="col-sm-2">DIPSHIP</dt>
+            <dd class="col-sm-10">@all_employee.DIPSHIP</dd>
+        </dl>
+        <div>
+            <a href="@($"/all_employees/edit?id={all_employee.id}")">Edit</a> |
+            <a href="@($"/all_employees")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private ALL_EMPLOYEE? all_employee;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        all_employee = await context.ALL_EMPLOYEEs.FirstOrDefaultAsync(m => m.id == id);
+
+        if (all_employee is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

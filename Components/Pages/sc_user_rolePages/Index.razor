@@ -1,0 +1,43 @@
+﻿@page "/sc_user_roles"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="sc_user_roles/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.sc_user_roles">
+    <PropertyColumn Property="sc_user_role => sc_user_role.roleid" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.modate" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.modby" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.isactive" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.startdate" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.enddate" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.userid" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.empid" />
+
+    <TemplateColumn Context="sc_user_role">
+        <a href="@($"sc_user_roles/edit?user_roleid={sc_user_role.user_roleID}")">Edit</a> |
+        <a href="@($"sc_user_roles/details?user_roleid={sc_user_role.user_roleID}")">Details</a> |
+        <a href="@($"sc_user_roles/delete?user_roleid={sc_user_role.user_roleID}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

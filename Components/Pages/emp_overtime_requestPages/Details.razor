@@ -1,0 +1,84 @@
+﻿@page "/emp_overtime_requests/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>emp_overtime_request</h2>
+    <hr />
+    @if (emp_overtime_request is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@emp_overtime_request.empid</dd>
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@emp_overtime_request.name</dd>
+            <dt class="col-sm-2">requestDate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.requestDate</dd>
+            <dt class="col-sm-2">starttime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.starttime</dd>
+            <dt class="col-sm-2">endtime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.endtime</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@emp_overtime_request.modby</dd>
+            <dt class="col-sm-2">workhour</dt>
+            <dd class="col-sm-10">@emp_overtime_request.workhour</dd>
+            <dt class="col-sm-2">workminute</dt>
+            <dd class="col-sm-10">@emp_overtime_request.workminute</dd>
+            <dt class="col-sm-2">ot_rate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.ot_rate</dd>
+            <dt class="col-sm-2">status</dt>
+            <dd class="col-sm-10">@emp_overtime_request.status</dd>
+            <dt class="col-sm-2">approveby</dt>
+            <dd class="col-sm-10">@emp_overtime_request.approveby</dd>
+            <dt class="col-sm-2">approvedate</dt>
+            <dd class="col-sm-10">@emp_overtime_request.approvedate</dd>
+            <dt class="col-sm-2">real_starttime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.real_starttime</dd>
+            <dt class="col-sm-2">real_endtime</dt>
+            <dd class="col-sm-10">@emp_overtime_request.real_endtime</dd>
+            <dt class="col-sm-2">objective</dt>
+            <dd class="col-sm-10">@emp_overtime_request.objective</dd>
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@emp_overtime_request.remark</dd>
+            <dt class="col-sm-2">orgcode</dt>
+            <dd class="col-sm-10">@emp_overtime_request.orgcode</dd>
+            <dt class="col-sm-2">orgname</dt>
+            <dd class="col-sm-10">@emp_overtime_request.orgname</dd>
+            <dt class="col-sm-2">com_code_all</dt>
+            <dd class="col-sm-10">@emp_overtime_request.com_code_all</dd>
+        </dl>
+        <div>
+            <a href="@($"/emp_overtime_requests/edit?id={emp_overtime_request.id}")">Edit</a> |
+            <a href="@($"/emp_overtime_requests")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private emp_overtime_request? emp_overtime_request;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        emp_overtime_request = await context.emp_overtime_requests.FirstOrDefaultAsync(m => m.id == id);
+
+        if (emp_overtime_request is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

@@ -1,0 +1,83 @@
+﻿@page "/sc_user_roles/delete"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>sc_user_role</h2>
+    <hr />
+    @if (sc_user_role is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">roleid</dt>
+            <dd class="col-sm-10">@sc_user_role.roleid</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">modate</dt>
+            <dd class="col-sm-10">@sc_user_role.modate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@sc_user_role.modby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">isactive</dt>
+            <dd class="col-sm-10">@sc_user_role.isactive</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@sc_user_role.startdate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@sc_user_role.enddate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">userid</dt>
+            <dd class="col-sm-10">@sc_user_role.userid</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@sc_user_role.empid</dd>
+        </dl>
+        <EditForm method="post" Model="sc_user_role" OnValidSubmit="Deletesc_user_role" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(sc_user_role is null)">Delete</button> |
+            <a href="/sc_user_roles">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private sc_user_role? sc_user_role;
+
+    [SupplyParameterFromQuery]
+    private long user_roleID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_user_role = await context.sc_user_roles.FirstOrDefaultAsync(m => m.user_roleID == user_roleID);
+
+        if (sc_user_role is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Deletesc_user_role()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.sc_user_roles.Remove(sc_user_role!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/sc_user_roles");
+    }
+}

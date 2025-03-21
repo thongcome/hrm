@@ -1,15 +1,15 @@
-using LeaderDevelop.Components;
-using LeaderDevelop.Components.Account;
-using LeaderDevelop.Data;
+using HRM.Components;
+using HRM.Components.Account;
+using HRM.Data;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Serilog;
-using LeaderDevelop.Services;
+using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
-using LeaderDevelop.Model;
+using HRM.Model;
 
 var builder = WebApplication.CreateBuilder(args);
 

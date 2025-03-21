@@ -1,0 +1,68 @@
+﻿@page "/pos_positions"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="pos_positions/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.pos_positions">
+    <PropertyColumn Property="pos_position => pos_position.pos_code" />
+    <PropertyColumn Property="pos_position => pos_position.code" />
+    <PropertyColumn Property="pos_position => pos_position.pos_exec_code" />
+    <PropertyColumn Property="pos_position => pos_position.sec_code" />
+    <PropertyColumn Property="pos_position => pos_position.name" />
+    <PropertyColumn Property="pos_position => pos_position.abbname" />
+    <PropertyColumn Property="pos_position => pos_position.dopaname" />
+    <PropertyColumn Property="pos_position => pos_position.startdate" />
+    <PropertyColumn Property="pos_position => pos_position.expiredate" />
+    <PropertyColumn Property="pos_position => pos_position.min_c_level" />
+    <PropertyColumn Property="pos_position => pos_position.max_c_level" />
+    <PropertyColumn Property="pos_position => pos_position.salary_level" />
+    <PropertyColumn Property="pos_position => pos_position.isvacancy" />
+    <PropertyColumn Property="pos_position => pos_position.status" />
+    <PropertyColumn Property="pos_position => pos_position.remark" />
+    <PropertyColumn Property="pos_position => pos_position.min_graduate" />
+    <PropertyColumn Property="pos_position => pos_position.normal_salary" />
+    <PropertyColumn Property="pos_position => pos_position.paymentrunid" />
+    <PropertyColumn Property="pos_position => pos_position.lperiodid" />
+    <PropertyColumn Property="pos_position => pos_position.paymentno" />
+    <PropertyColumn Property="pos_position => pos_position.ptp_code" />
+    <PropertyColumn Property="pos_position => pos_position.employeetype" />
+    <PropertyColumn Property="pos_position => pos_position.posid" />
+    <PropertyColumn Property="pos_position => pos_position.ismanpower" />
+    <PropertyColumn Property="pos_position => pos_position.max_salary" />
+    <PropertyColumn Property="pos_position => pos_position.jobsummary" />
+    <PropertyColumn Property="pos_position => pos_position.personid" />
+    <PropertyColumn Property="pos_position => pos_position.engname" />
+    <PropertyColumn Property="pos_position => pos_position.engabbname" />
+    <PropertyColumn Property="pos_position => pos_position.min_salary" />
+    <PropertyColumn Property="pos_position => pos_position.real_salary" />
+    <PropertyColumn Property="pos_position => pos_position.is_boss" />
+    <PropertyColumn Property="pos_position => pos_position.worklineid" />
+
+    <TemplateColumn Context="pos_position">
+        <a href="@($"pos_positions/edit?id={pos_position.id}")">Edit</a> |
+        <a href="@($"pos_positions/details?id={pos_position.id}")">Details</a> |
+        <a href="@($"pos_positions/delete?id={pos_position.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

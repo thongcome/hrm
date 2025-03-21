@@ -1,0 +1,55 @@
+﻿@page "/emp_overtime_requests"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="emp_overtime_requests/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.emp_overtime_requests">
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.empid" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.name" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.requestDate" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.starttime" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.endtime" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.moddate" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.modby" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.workhour" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.workminute" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.ot_rate" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.status" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.approveby" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.approvedate" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.real_starttime" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.real_endtime" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.objective" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.remark" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.orgcode" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.orgname" />
+    <PropertyColumn Property="emp_overtime_request => emp_overtime_request.com_code_all" />
+
+    <TemplateColumn Context="emp_overtime_request">
+        <a href="@($"emp_overtime_requests/edit?id={emp_overtime_request.id}")">Edit</a> |
+        <a href="@($"emp_overtime_requests/details?id={emp_overtime_request.id}")">Details</a> |
+        <a href="@($"emp_overtime_requests/delete?id={emp_overtime_request.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

@@ -1,5 +1,5 @@
-﻿using LeaderDevelop.Data;
-using LeaderDevelop.Model;
+﻿using HRM.Data;
+using HRM.Model;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System.Security.Claims;

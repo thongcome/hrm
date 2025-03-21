@@ -1,0 +1,63 @@
+﻿@page "/all_employees"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="all_employees/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.ALL_EMPLOYEEs">
+    <PropertyColumn Property="all_employee => all_employee.DATASOURCE" />
+    <PropertyColumn Property="all_employee => all_employee.PRS_NO" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_INTL" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_SURNME" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_E_NAME" />
+    <PropertyColumn Property="all_employee => all_employee.PRS_SC_D" />
+    <PropertyColumn Property="all_employee => all_employee.JBT_THAIDESC" />
+    <PropertyColumn Property="all_employee => all_employee.COMPANY" />
+    <PropertyColumn Property="all_employee => all_employee.DEPT1" />
+    <PropertyColumn Property="all_employee => all_employee.DEPT2" />
+    <PropertyColumn Property="all_employee => all_employee.DEPT3" />
+    <PropertyColumn Property="all_employee => all_employee.SEX" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_MARITAL" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_BIRTH" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_ADDR_1" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_ADDR_2" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_ADDR_3" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_POST" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_TEL" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_EMAIL" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_I_CARD" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_I_EXPIRE" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_I_ISSUE" />
+    <PropertyColumn Property="all_employee => all_employee.STATUSEMP" />
+    <PropertyColumn Property="all_employee => all_employee.DIPCHIP" />
+    <PropertyColumn Property="all_employee => all_employee.LOAD_DATE" />
+    <PropertyColumn Property="all_employee => all_employee.EMP_NAME" />
+    <PropertyColumn Property="all_employee => all_employee.DIPSHIP" />
+
+    <TemplateColumn Context="all_employee">
+        <a href="@($"all_employees/edit?id={all_employee.id}")">Edit</a> |
+        <a href="@($"all_employees/details?id={all_employee.id}")">Details</a> |
+        <a href="@($"all_employees/delete?id={all_employee.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

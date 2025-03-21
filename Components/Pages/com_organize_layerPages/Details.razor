@@ -1,0 +1,64 @@
+﻿@page "/com_organize_layers/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>com_organize_layer</h2>
+    <hr />
+    @if (com_organize_layer is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">layercode</dt>
+            <dd class="col-sm-10">@com_organize_layer.layercode</dd>
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@com_organize_layer.name</dd>
+            <dt class="col-sm-2">name_en</dt>
+            <dd class="col-sm-10">@com_organize_layer.name_en</dd>
+            <dt class="col-sm-2">layer</dt>
+            <dd class="col-sm-10">@com_organize_layer.layer</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@com_organize_layer.modby</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@com_organize_layer.moddate</dd>
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@com_organize_layer.isActive</dd>
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@com_organize_layer.remark</dd>
+            <dt class="col-sm-2">group_layer</dt>
+            <dd class="col-sm-10">@com_organize_layer.group_layer</dd>
+            <dt class="col-sm-2">abbr</dt>
+            <dd class="col-sm-10">@com_organize_layer.abbr</dd>
+        </dl>
+        <div>
+            <a href="@($"/com_organize_layers/edit?id={com_organize_layer.id}")">Edit</a> |
+            <a href="@($"/com_organize_layers")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private com_organize_layer? com_organize_layer;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        com_organize_layer = await context.com_organize_layers.FirstOrDefaultAsync(m => m.id == id);
+
+        if (com_organize_layer is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

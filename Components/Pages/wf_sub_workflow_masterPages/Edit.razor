@@ -1,0 +1,349 @@
+﻿@page "/wf_sub_workflow_masters/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>wf_sub_workflow_master</h2>
+<hr />
+@if (wf_sub_workflow_master is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="wf_sub_workflow_master" OnValidSubmit="Updatewf_sub_workflow_master" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="wf_sub_workflow_master.subworkflowid" value="@wf_sub_workflow_master.subworkflowid" />
+                <div class="mb-3">
+                    <label for="subject" class="form-label">subject:</label>
+                    <InputText id="subject" @bind-Value="wf_sub_workflow_master.subject" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.subject" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="workflowid" class="form-label">workflowid:</label>
+                    <InputNumber id="workflowid" @bind-Value="wf_sub_workflow_master.workflowid" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.workflowid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="wlevel" class="form-label">wlevel:</label>
+                    <InputNumber id="wlevel" @bind-Value="wf_sub_workflow_master.wlevel" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.wlevel" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isadhocuser" class="form-label">isAdhocUser:</label>
+                    <InputCheckbox id="isadhocuser" @bind-Value="wf_sub_workflow_master.isAdhocUser" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isAdhocUser" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="iscustomapprover" class="form-label">iscustomApprover:</label>
+                    <InputCheckbox id="iscustomapprover" @bind-Value="wf_sub_workflow_master.iscustomApprover" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.iscustomApprover" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isupperrole" class="form-label">isupperrole:</label>
+                    <InputCheckbox id="isupperrole" @bind-Value="wf_sub_workflow_master.isupperrole" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isupperrole" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isupperuser" class="form-label">isupperuser:</label>
+                    <InputCheckbox id="isupperuser" @bind-Value="wf_sub_workflow_master.isupperuser" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isupperuser" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="iscustomrole" class="form-label">iscustomRole:</label>
+                    <InputCheckbox id="iscustomrole" @bind-Value="wf_sub_workflow_master.iscustomRole" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.iscustomRole" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="iscustomuser" class="form-label">iscustomUser:</label>
+                    <InputCheckbox id="iscustomuser" @bind-Value="wf_sub_workflow_master.iscustomUser" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.iscustomUser" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="iscondition" class="form-label">iscondition:</label>
+                    <InputCheckbox id="iscondition" @bind-Value="wf_sub_workflow_master.iscondition" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.iscondition" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isorcondition" class="form-label">isorcondition:</label>
+                    <InputCheckbox id="isorcondition" @bind-Value="wf_sub_workflow_master.isorcondition" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isorcondition" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isandcondition" class="form-label">isandcondition:</label>
+                    <InputCheckbox id="isandcondition" @bind-Value="wf_sub_workflow_master.isandcondition" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isandcondition" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="andpercent" class="form-label">andpercent:</label>
+                    <InputNumber id="andpercent" @bind-Value="wf_sub_workflow_master.andpercent" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.andpercent" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="forwardstatus" class="form-label">forwardstatus:</label>
+                    <InputText id="forwardstatus" @bind-Value="wf_sub_workflow_master.forwardstatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.forwardstatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="standstatus" class="form-label">standstatus:</label>
+                    <InputText id="standstatus" @bind-Value="wf_sub_workflow_master.standstatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.standstatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="backwardstatus" class="form-label">backwardstatus:</label>
+                    <InputText id="backwardstatus" @bind-Value="wf_sub_workflow_master.backwardstatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.backwardstatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="approvedstatus" class="form-label">approvedstatus:</label>
+                    <InputText id="approvedstatus" @bind-Value="wf_sub_workflow_master.approvedstatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.approvedstatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="declinestatus" class="form-label">declinestatus:</label>
+                    <InputText id="declinestatus" @bind-Value="wf_sub_workflow_master.declinestatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.declinestatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="istop" class="form-label">istop:</label>
+                    <InputCheckbox id="istop" @bind-Value="wf_sub_workflow_master.istop" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.istop" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="remark" class="form-label">remark:</label>
+                    <InputText id="remark" @bind-Value="wf_sub_workflow_master.remark" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.remark" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="status" class="form-label">status:</label>
+                    <InputNumber id="status" @bind-Value="wf_sub_workflow_master.status" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.status" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isreturnsender" class="form-label">isReturnSender:</label>
+                    <InputCheckbox id="isreturnsender" @bind-Value="wf_sub_workflow_master.isReturnSender" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isReturnSender" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="emplevel" class="form-label">empLevel:</label>
+                    <InputNumber id="emplevel" @bind-Value="wf_sub_workflow_master.empLevel" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.empLevel" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isshow" class="form-label">isshow:</label>
+                    <InputCheckbox id="isshow" @bind-Value="wf_sub_workflow_master.isshow" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isshow" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isloa" class="form-label">isLOA:</label>
+                    <InputCheckbox id="isloa" @bind-Value="wf_sub_workflow_master.isLOA" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isLOA" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="loacode" class="form-label">loacode:</label>
+                    <InputText id="loacode" @bind-Value="wf_sub_workflow_master.loacode" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.loacode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="wfcode" class="form-label">wfcode:</label>
+                    <InputText id="wfcode" @bind-Value="wf_sub_workflow_master.wfcode" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.wfcode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isautoapproveallow" class="form-label">isAutoApproveAllow:</label>
+                    <InputCheckbox id="isautoapproveallow" @bind-Value="wf_sub_workflow_master.isAutoApproveAllow" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isAutoApproveAllow" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isneedbudgetapproval" class="form-label">isNeedBudgetApproval:</label>
+                    <InputCheckbox id="isneedbudgetapproval" @bind-Value="wf_sub_workflow_master.isNeedBudgetApproval" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isNeedBudgetApproval" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="ispool" class="form-label">isPool:</label>
+                    <InputCheckbox id="ispool" @bind-Value="wf_sub_workflow_master.isPool" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isPool" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="backwardlevel" class="form-label">backwardlevel:</label>
+                    <InputNumber id="backwardlevel" @bind-Value="wf_sub_workflow_master.backwardlevel" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.backwardlevel" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="sitinstatus" class="form-label">sitinstatus:</label>
+                    <InputText id="sitinstatus" @bind-Value="wf_sub_workflow_master.sitinstatus" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.sitinstatus" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="aa_id" class="form-label">aa_id:</label>
+                    <InputNumber id="aa_id" @bind-Value="wf_sub_workflow_master.aa_id" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.aa_id" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="aa_level" class="form-label">aa_level:</label>
+                    <InputNumber id="aa_level" @bind-Value="wf_sub_workflow_master.aa_level" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.aa_level" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="controller" class="form-label">controller:</label>
+                    <InputText id="controller" @bind-Value="wf_sub_workflow_master.controller" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.controller" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="action" class="form-label">action:</label>
+                    <InputText id="action" @bind-Value="wf_sub_workflow_master.action" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.action" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="displayname" class="form-label">displayName:</label>
+                    <InputText id="displayname" @bind-Value="wf_sub_workflow_master.displayName" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.displayName" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="userid1" class="form-label">userid1:</label>
+                    <InputNumber id="userid1" @bind-Value="wf_sub_workflow_master.userid1" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.userid1" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="userid2" class="form-label">userid2:</label>
+                    <InputNumber id="userid2" @bind-Value="wf_sub_workflow_master.userid2" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.userid2" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="userid3" class="form-label">userid3:</label>
+                    <InputNumber id="userid3" @bind-Value="wf_sub_workflow_master.userid3" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.userid3" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="subjectbiz" class="form-label">subjectBiz:</label>
+                    <InputText id="subjectbiz" @bind-Value="wf_sub_workflow_master.subjectBiz" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.subjectBiz" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="describebiz" class="form-label">describeBiz:</label>
+                    <InputText id="describebiz" @bind-Value="wf_sub_workflow_master.describeBiz" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.describeBiz" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="describe" class="form-label">describe:</label>
+                    <InputText id="describe" @bind-Value="wf_sub_workflow_master.describe" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.describe" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="actionedit" class="form-label">actionEdit:</label>
+                    <InputText id="actionedit" @bind-Value="wf_sub_workflow_master.actionEdit" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.actionEdit" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="subject_en" class="form-label">subject_en:</label>
+                    <InputText id="subject_en" @bind-Value="wf_sub_workflow_master.subject_en" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.subject_en" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="subjectbiz_en" class="form-label">subjectBiz_en:</label>
+                    <InputText id="subjectbiz_en" @bind-Value="wf_sub_workflow_master.subjectBiz_en" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.subjectBiz_en" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="describebiz_en" class="form-label">describeBiz_en:</label>
+                    <InputText id="describebiz_en" @bind-Value="wf_sub_workflow_master.describeBiz_en" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.describeBiz_en" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="describe_en" class="form-label">describe_en:</label>
+                    <InputText id="describe_en" @bind-Value="wf_sub_workflow_master.describe_en" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.describe_en" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isapproversameorg" class="form-label">isApproverSameOrg:</label>
+                    <InputCheckbox id="isapproversameorg" @bind-Value="wf_sub_workflow_master.isApproverSameOrg" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isApproverSameOrg" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isapproversamecostcenter" class="form-label">isApproverSameCostCenter:</label>
+                    <InputCheckbox id="isapproversamecostcenter" @bind-Value="wf_sub_workflow_master.isApproverSameCostCenter" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isApproverSameCostCenter" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="ismanualbutton" class="form-label">isManualButton:</label>
+                    <InputCheckbox id="ismanualbutton" @bind-Value="wf_sub_workflow_master.isManualButton" class="form-check-input" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.isManualButton" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="approvecontroller" class="form-label">ApproveController:</label>
+                    <InputText id="approvecontroller" @bind-Value="wf_sub_workflow_master.ApproveController" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.ApproveController" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="approveaction" class="form-label">ApproveAction:</label>
+                    <InputText id="approveaction" @bind-Value="wf_sub_workflow_master.ApproveAction" class="form-control" />
+                    <ValidationMessage For="() => wf_sub_workflow_master.ApproveAction" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/wf_sub_workflow_masters">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long subworkflowid { get; set; }
+
+    [SupplyParameterFromForm]
+    private wf_sub_workflow_master? wf_sub_workflow_master { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        wf_sub_workflow_master ??= await context.wf_sub_workflow_masters.FirstOrDefaultAsync(m => m.subworkflowid == subworkflowid);
+
+        if (wf_sub_workflow_master is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updatewf_sub_workflow_master()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(wf_sub_workflow_master!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!wf_sub_workflow_masterExists(wf_sub_workflow_master!.subworkflowid))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+    }
+
+    private bool wf_sub_workflow_masterExists(long subworkflowid)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.wf_sub_workflow_masters.Any(e => e.subworkflowid == subworkflowid);
+    }
+}

@@ -1,0 +1,49 @@
+﻿@page "/com_positions"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="com_positions/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.com_positions">
+    <PropertyColumn Property="com_position => com_position.code" />
+    <PropertyColumn Property="com_position => com_position.name" />
+    <PropertyColumn Property="com_position => com_position.name_en" />
+    <PropertyColumn Property="com_position => com_position.comp_code_all" />
+    <PropertyColumn Property="com_position => com_position.pos_type" />
+    <PropertyColumn Property="com_position => com_position.isActive" />
+    <PropertyColumn Property="com_position => com_position.startdate" />
+    <PropertyColumn Property="com_position => com_position.enddate" />
+    <PropertyColumn Property="com_position => com_position.moddate" />
+    <PropertyColumn Property="com_position => com_position.modby" />
+    <PropertyColumn Property="com_position => com_position.min_salary" />
+    <PropertyColumn Property="com_position => com_position.max_salary" />
+    <PropertyColumn Property="com_position => com_position.remark" />
+    <PropertyColumn Property="com_position => com_position.costcentercode" />
+
+    <TemplateColumn Context="com_position">
+        <a href="@($"com_positions/edit?id={com_position.id}")">Edit</a> |
+        <a href="@($"com_positions/details?id={com_position.id}")">Details</a> |
+        <a href="@($"com_positions/delete?id={com_position.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

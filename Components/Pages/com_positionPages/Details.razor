@@ -1,0 +1,72 @@
+﻿@page "/com_positions/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>com_position</h2>
+    <hr />
+    @if (com_position is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@com_position.code</dd>
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@com_position.name</dd>
+            <dt class="col-sm-2">name_en</dt>
+            <dd class="col-sm-10">@com_position.name_en</dd>
+            <dt class="col-sm-2">comp_code_all</dt>
+            <dd class="col-sm-10">@com_position.comp_code_all</dd>
+            <dt class="col-sm-2">pos_type</dt>
+            <dd class="col-sm-10">@com_position.pos_type</dd>
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@com_position.isActive</dd>
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@com_position.startdate</dd>
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@com_position.enddate</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@com_position.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@com_position.modby</dd>
+            <dt class="col-sm-2">min_salary</dt>
+            <dd class="col-sm-10">@com_position.min_salary</dd>
+            <dt class="col-sm-2">max_salary</dt>
+            <dd class="col-sm-10">@com_position.max_salary</dd>
+            <dt class="col-sm-2">remark</dt>
+            <dd class="col-sm-10">@com_position.remark</dd>
+            <dt class="col-sm-2">costcentercode</dt>
+            <dd class="col-sm-10">@com_position.costcentercode</dd>
+        </dl>
+        <div>
+            <a href="@($"/com_positions/edit?id={com_position.id}")">Edit</a> |
+            <a href="@($"/com_positions")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private com_position? com_position;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        com_position = await context.com_positions.FirstOrDefaultAsync(m => m.id == id);
+
+        if (com_position is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

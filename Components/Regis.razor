@@ -1,0 +1,180 @@
+﻿@page "/regis"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Logging
+@using HRM.Model
+@using HRM.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<Regis> Logger
+@inject ApplicationDbContext DbContext  // Inject Database Context
+
+<PageTitle>ลงทะเบียน/Register</PageTitle>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+
+
+<div class="container">
+    <h3>ลงทะเบียน/Register</h3>
+    <EditForm Model="Input" OnValidSubmit="RegisterUser">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" />
+
+        <div class="mb-3">
+            <label>Email</label>
+            <InputText @bind-Value="Input.Email" class="form-control" />
+            <ValidationMessage For="() => Input.Email" class="text-danger" />
+        </div>
+
+        <div class="mb-3">
+            <label>Password</label>
+            <div class="input-group">
+                <InputText @bind-Value="Input.Password" type="@passwordType" class="form-control" />
+                <button type="button" class="btn btn-outline-secondary" @onclick="TogglePassword">
+                    <i class="@eyeIcon"></i>
+                </button>
+            </div>
+            <ValidationMessage For="() => Input.Password" class="text-danger" />
+        </div>
+
+@*         <div class="mb-3">
+            <label>Confirm Password</label>
+            <InputText @bind-Value="Input.ConfirmPassword" type="password" class="form-control" />
+            <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+        </div> *@
+        <div class="form-floating mb-3">
+            <InputText type="@passwordType" @bind-Value="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
+            <label for="confirm-password">Confirm Password</label>
+            @*   <button type="button" class="btn btn-outline-secondary" @onclick="SeePwd">
+                    <i class="@eyeIcon"></i>
+                </button> *@
+            <button type="button" class="btn btn-outline-secondary" @onclick="SeePwd">
+                <i class="@eyeIcon"></i>
+            </button>
+
+            <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">ลงทะเบียน/Register</button>
+    </EditForm>
+
+    <hr />
+
+    <button @onclick="TestMethod" class="btn btn-success mt-3">Test</button>
+    <p>@message</p>
+</div>
+
+@code {
+    private string message = "";
+    private string passwordType = "password";
+    private string eyeIcon = "bi bi-eye-slash"; // ไอคอน Bootstrap
+     private string ConfirmPassword = "";
+     private void TogglePassword()
+    {
+        if (passwordType == "password")
+        {
+            passwordType = "text";
+            eyeIcon = "bi bi-eye";
+        }
+        else
+        {
+            passwordType = "password";
+            eyeIcon = "bi bi-eye-slash";
+        }
+    }
+
+    private async Task TestMethod()
+    {
+        message = "Test method executed!";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SeePwd()
+    {
+        Console.WriteLine("SeePwd() clicked!");
+
+        if (passwordType == "password")
+        {
+            passwordType = "text";
+            eyeIcon = "bi bi-eye";
+        }
+        else
+        {
+            passwordType = "password";
+            eyeIcon = "bi bi-eye-slash";
+        }
+
+        message = "SeePwd Clicked!";
+
+        await InvokeAsync(StateHasChanged); // Force UI Update
+    }
+    private async Task RegisterUser()
+    {
+        try
+        {
+            var user = new ApplicationUser
+                {
+                    UserName = Input.Email,
+                    Email = Input.Email
+                };
+
+            var result = await UserManager.CreateAsync(user, Input.Password);
+
+            if (!result.Succeeded)
+            {
+                message = string.Join(", ", result.Errors.Select(e => e.Description));
+                return;
+            }
+
+            Logger.LogInformation("User created: " + Input.Email);
+
+            // บันทึกข้อมูลลงในฐานข้อมูลเพิ่มเติม
+            var scUser = new ScUser
+                {
+                    Email = Input.Email,
+                    Loginname = Input.Email,
+                    Firstname = Input.Email.Split('@')[0],
+                    Lastname = Input.Email,
+                    Password = Input.Password,
+                    Id = user.Id,
+                    Registerdate = DateTime.Now,
+                    Iscancel = false,
+                    IsCoach = false
+                };
+
+            DbContext.ScUsers.Add(scUser);
+            await DbContext.SaveChangesAsync();
+
+            // Sign in user after registration
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            NavigationManager.NavigateTo("/");
+
+            message = "Registration Successful!";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Error during registration: {ex.Message}");
+            message = "Registration failed. Please try again.";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private class InputModel
+    {
+        [Required, EmailAddress, Display(Name = "Email")]
+        public string Email { get; set; } = "";
+
+        [Required, StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be at least 6 characters.")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [Required, DataType(DataType.Password), Compare("Password", ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+
+    private InputModel Input { get; set; } = new();
+}

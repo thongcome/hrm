@@ -1,0 +1,95 @@
+﻿@page "/sc_roles/delete"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>sc_role</h2>
+    <hr />
+    @if (sc_role is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">name</dt>
+            <dd class="col-sm-10">@sc_role.name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">abbr</dt>
+            <dd class="col-sm-10">@sc_role.abbr</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">rolelevel</dt>
+            <dd class="col-sm-10">@sc_role.rolelevel</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">upperrole</dt>
+            <dd class="col-sm-10">@sc_role.upperrole</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">rolecode</dt>
+            <dd class="col-sm-10">@sc_role.rolecode</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">isactive</dt>
+            <dd class="col-sm-10">@sc_role.isactive</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@sc_role.moddate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@sc_role.modby</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">isHeader</dt>
+            <dd class="col-sm-10">@sc_role.isHeader</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ref1</dt>
+            <dd class="col-sm-10">@sc_role.ref1</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ref2</dt>
+            <dd class="col-sm-10">@sc_role.ref2</dd>
+        </dl>
+        <EditForm method="post" Model="sc_role" OnValidSubmit="Deletesc_role" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(sc_role is null)">Delete</button> |
+            <a href="/sc_roles">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private sc_role? sc_role;
+
+    [SupplyParameterFromQuery]
+    private long roleid { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_role = await context.sc_roles.FirstOrDefaultAsync(m => m.roleid == roleid);
+
+        if (sc_role is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Deletesc_role()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.sc_roles.Remove(sc_role!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/sc_roles");
+    }
+}

@@ -1,10 +1,10 @@
 ﻿using Microsoft.AspNetCore.Http;
 using System;
 using System.Threading.Tasks;
-using LeaderDevelop.Model;  // Adjust the namespace to match your entity's namespace
+using HRM.Model;  // Adjust the namespace to match your entity's namespace
 using Microsoft.EntityFrameworkCore;
-using LeaderDevelop.Data;
-using static LeaderDevelop.Model.Activity;
+using HRM.Data;
+using static HRM.Model.Activity;
 
 public class ActivityService
 {

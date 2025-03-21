@@ -1,0 +1,60 @@
+﻿@page "/sc_user_roles/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>sc_user_role</h2>
+    <hr />
+    @if (sc_user_role is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">roleid</dt>
+            <dd class="col-sm-10">@sc_user_role.roleid</dd>
+            <dt class="col-sm-2">modate</dt>
+            <dd class="col-sm-10">@sc_user_role.modate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@sc_user_role.modby</dd>
+            <dt class="col-sm-2">isactive</dt>
+            <dd class="col-sm-10">@sc_user_role.isactive</dd>
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@sc_user_role.startdate</dd>
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@sc_user_role.enddate</dd>
+            <dt class="col-sm-2">userid</dt>
+            <dd class="col-sm-10">@sc_user_role.userid</dd>
+            <dt class="col-sm-2">empid</dt>
+            <dd class="col-sm-10">@sc_user_role.empid</dd>
+        </dl>
+        <div>
+            <a href="@($"/sc_user_roles/edit?user_roleid={sc_user_role.user_roleID}")">Edit</a> |
+            <a href="@($"/sc_user_roles")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private sc_user_role? sc_user_role;
+
+    [SupplyParameterFromQuery]
+    private long user_roleID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_user_role = await context.sc_user_roles.FirstOrDefaultAsync(m => m.user_roleID == user_roleID);
+
+        if (sc_user_role is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

@@ -1,0 +1,89 @@
+﻿@page "/employees"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="employees/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.employees">
+    <PropertyColumn Property="employee => employee.UserID" />
+    <PropertyColumn Property="employee => employee.UserName" />
+    <PropertyColumn Property="employee => employee.TitleTh" />
+    <PropertyColumn Property="employee => employee.TitleEn" />
+    <PropertyColumn Property="employee => employee.NameTh" />
+    <PropertyColumn Property="employee => employee.NameEn" />
+    <PropertyColumn Property="employee => employee.CardID" />
+    <PropertyColumn Property="employee => employee.CardType" />
+    <PropertyColumn Property="employee => employee.EmployeeID" />
+    <PropertyColumn Property="employee => employee.Email" />
+    <PropertyColumn Property="employee => employee.Companycode" />
+    <PropertyColumn Property="employee => employee.Company" />
+    <PropertyColumn Property="employee => employee.CostCenter" />
+    <PropertyColumn Property="employee => employee.Location" />
+    <PropertyColumn Property="employee => employee.MFName" />
+    <PropertyColumn Property="employee => employee.SuperviserID" />
+    <PropertyColumn Property="employee => employee.SuperViserName" />
+    <PropertyColumn Property="employee => employee.MEMail" />
+    <PropertyColumn Property="employee => employee.empLevel" />
+    <PropertyColumn Property="employee => employee.extensionNo" />
+    <PropertyColumn Property="employee => employee.OrgNameEn" />
+    <PropertyColumn Property="employee => employee.OrgNameTh" />
+    <PropertyColumn Property="employee => employee.PosCode" />
+    <PropertyColumn Property="employee => employee.CostCenterName" />
+    <PropertyColumn Property="employee => employee.sex" />
+    <PropertyColumn Property="employee => employee.hiringDate" />
+    <PropertyColumn Property="employee => employee.positionEN" />
+    <PropertyColumn Property="employee => employee.positionTH" />
+    <PropertyColumn Property="employee => employee.employeegroup" />
+    <PropertyColumn Property="employee => employee.moddate" />
+    <PropertyColumn Property="employee => employee.modby" />
+    <PropertyColumn Property="employee => employee.startdate" />
+    <PropertyColumn Property="employee => employee.enddate" />
+    <PropertyColumn Property="employee => employee.isActive" />
+    <PropertyColumn Property="employee => employee.OrgCode" />
+    <PropertyColumn Property="employee => employee.departmentName" />
+    <PropertyColumn Property="employee => employee.departmentCode" />
+    <PropertyColumn Property="employee => employee.comp_code_all" />
+    <PropertyColumn Property="employee => employee.image" />
+    <PropertyColumn Property="employee => employee.image_path" />
+    <PropertyColumn Property="employee => employee.status" />
+    <PropertyColumn Property="employee => employee.isApprove" />
+    <PropertyColumn Property="employee => employee.ApproveBy" />
+    <PropertyColumn Property="employee => employee.ApproveDate" />
+    <PropertyColumn Property="employee => employee.last_name" />
+    <PropertyColumn Property="employee => employee.mobile" />
+    <PropertyColumn Property="employee => employee.marital" />
+    <PropertyColumn Property="employee => employee.lastNameEn" />
+    <PropertyColumn Property="employee => employee.isRegister" />
+    <PropertyColumn Property="employee => employee.registerDate" />
+    <PropertyColumn Property="employee => employee.asOfDate" />
+    <PropertyColumn Property="employee => employee.job_grade" />
+    <PropertyColumn Property="employee => employee.head_code" />
+    <PropertyColumn Property="employee => employee.resign_by" />
+    <PropertyColumn Property="employee => employee.resign_date" />
+
+    <TemplateColumn Context="employee">
+        <a href="@($"employees/edit?id={employee.id}")">Edit</a> |
+        <a href="@($"employees/details?id={employee.id}")">Details</a> |
+        <a href="@($"employees/delete?id={employee.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

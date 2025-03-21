@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Components;
 using System.Diagnostics.CodeAnalysis;
 
-namespace LeaderDevelop.Components.Account
+namespace HRM.Components.Account
 {
-    internal sealed class IdentityRedirectManager(NavigationManager navigationManager)
+    public class IdentityRedirectManager(NavigationManager navigationManager)
     {
         public const string StatusCookieName = "Identity.StatusMessage";
 

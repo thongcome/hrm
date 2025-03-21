@@ -1,4 +1,4 @@
-﻿namespace LeaderDevelop.Model
+﻿namespace HRM.Model
 {
     public class SmtpSettings
     {

@@ -1,0 +1,89 @@
+﻿@page "/com_organize_layers/create"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>com_organize_layer</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="com_organize_layer" OnValidSubmit="Addcom_organize_layer" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="layercode" class="form-label">layercode:</label> 
+                <InputText id="layercode" @bind-Value="com_organize_layer.layercode" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.layercode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="name" class="form-label">name:</label> 
+                <InputText id="name" @bind-Value="com_organize_layer.name" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.name" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="name_en" class="form-label">name_en:</label> 
+                <InputText id="name_en" @bind-Value="com_organize_layer.name_en" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.name_en" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="layer" class="form-label">layer:</label> 
+                <InputNumber id="layer" @bind-Value="com_organize_layer.layer" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.layer" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="modby" class="form-label">modby:</label> 
+                <InputText id="modby" @bind-Value="com_organize_layer.modby" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.modby" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="moddate" class="form-label">moddate:</label> 
+                <InputDate id="moddate" @bind-Value="com_organize_layer.moddate" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.moddate" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="isactive" class="form-label">isActive:</label> 
+                <InputCheckbox id="isactive" @bind-Value="com_organize_layer.isActive" class="form-check-input" /> 
+                <ValidationMessage For="() => com_organize_layer.isActive" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="remark" class="form-label">remark:</label> 
+                <InputText id="remark" @bind-Value="com_organize_layer.remark" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.remark" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="group_layer" class="form-label">group_layer:</label> 
+                <InputText id="group_layer" @bind-Value="com_organize_layer.group_layer" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.group_layer" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="abbr" class="form-label">abbr:</label> 
+                <InputText id="abbr" @bind-Value="com_organize_layer.abbr" class="form-control" /> 
+                <ValidationMessage For="() => com_organize_layer.abbr" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/com_organize_layers">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private com_organize_layer com_organize_layer { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Addcom_organize_layer()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.com_organize_layers.Add(com_organize_layer);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/com_organize_layers");
+    }
+}

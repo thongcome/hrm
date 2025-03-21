@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace LeaderDevelop.Model;
+namespace HRM.Model;
 
 [Table("sc_user")]
 public partial class ScUser

@@ -1,0 +1,119 @@
+﻿@page "/pos_position_levels/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>pos_position_level</h2>
+<hr />
+@if (pos_position_level is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="pos_position_level" OnValidSubmit="Updatepos_position_level" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="pos_position_level.id" value="@pos_position_level.id" />
+                <div class="mb-3">
+                    <label for="name" class="form-label">name:</label>
+                    <InputText id="name" @bind-Value="pos_position_level.name" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.name" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="pol_note" class="form-label">pol_note:</label>
+                    <InputText id="pol_note" @bind-Value="pos_position_level.pol_note" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.pol_note" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="update_by" class="form-label">update_by:</label>
+                    <InputText id="update_by" @bind-Value="pos_position_level.update_by" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.update_by" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="update_date" class="form-label">update_date:</label>
+                    <InputDate id="update_date" @bind-Value="pos_position_level.update_date" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.update_date" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="code" class="form-label">code:</label>
+                    <InputText id="code" @bind-Value="pos_position_level.code" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.code" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="engname" class="form-label">engname:</label>
+                    <InputText id="engname" @bind-Value="pos_position_level.engname" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.engname" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="plevel" class="form-label">plevel:</label>
+                    <InputNumber id="plevel" @bind-Value="pos_position_level.plevel" class="form-control" />
+                    <ValidationMessage For="() => pos_position_level.plevel" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/pos_position_levels">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private int id { get; set; }
+
+    [SupplyParameterFromForm]
+    private pos_position_level? pos_position_level { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        pos_position_level ??= await context.pos_position_levels.FirstOrDefaultAsync(m => m.id == id);
+
+        if (pos_position_level is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updatepos_position_level()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(pos_position_level!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!pos_position_levelExists(pos_position_level!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/pos_position_levels");
+    }
+
+    private bool pos_position_levelExists(int id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.pos_position_levels.Any(e => e.id == id);
+    }
+}

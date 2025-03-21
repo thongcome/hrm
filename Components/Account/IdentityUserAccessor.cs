@@ -1,9 +1,9 @@
-using LeaderDevelop.Data;
+using HRM.Data;
 using Microsoft.AspNetCore.Identity;
 
-namespace LeaderDevelop.Components.Account
+namespace HRM.Components.Account
 {
-    internal sealed class IdentityUserAccessor(UserManager<ApplicationUser> userManager, IdentityRedirectManager redirectManager)
+   public class IdentityUserAccessor(UserManager<ApplicationUser> userManager, IdentityRedirectManager redirectManager)
     {
         public async Task<ApplicationUser> GetRequiredUserAsync(HttpContext context)
         {

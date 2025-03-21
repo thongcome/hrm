@@ -1,0 +1,114 @@
+﻿@page "/mas_titles/edit"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>mas_title</h2>
+<hr />
+@if (mas_title is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="mas_title" OnValidSubmit="Updatemas_title" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="mas_title.id" value="@mas_title.id" />
+                <div class="mb-3">
+                    <label for="title" class="form-label">title:</label>
+                    <InputText id="title" @bind-Value="mas_title.title" class="form-control" />
+                    <ValidationMessage For="() => mas_title.title" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="code" class="form-label">code:</label>
+                    <InputText id="code" @bind-Value="mas_title.code" class="form-control" />
+                    <ValidationMessage For="() => mas_title.code" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isactive" class="form-label">isActive:</label>
+                    <InputCheckbox id="isactive" @bind-Value="mas_title.isActive" class="form-check-input" />
+                    <ValidationMessage For="() => mas_title.isActive" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="moddate" class="form-label">moddate:</label>
+                    <InputDate id="moddate" @bind-Value="mas_title.moddate" class="form-control" />
+                    <ValidationMessage For="() => mas_title.moddate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modby" class="form-label">modby:</label>
+                    <InputText id="modby" @bind-Value="mas_title.modby" class="form-control" />
+                    <ValidationMessage For="() => mas_title.modby" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="title_en" class="form-label">title_en:</label>
+                    <InputText id="title_en" @bind-Value="mas_title.title_en" class="form-control" />
+                    <ValidationMessage For="() => mas_title.title_en" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/mas_titles">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private mas_title? mas_title { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        mas_title ??= await context.mas_titles.FirstOrDefaultAsync(m => m.id == id);
+
+        if (mas_title is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task Updatemas_title()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(mas_title!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!mas_titleExists(mas_title!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/mas_titles");
+    }
+
+    private bool mas_titleExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.mas_titles.Any(e => e.id == id);
+    }
+}

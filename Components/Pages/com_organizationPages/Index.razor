@@ -1,0 +1,71 @@
+﻿@page "/com_organizations"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="com_organizations/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.com_organizations">
+    <PropertyColumn Property="com_organization => com_organization.code" />
+    <PropertyColumn Property="com_organization => com_organization.name" />
+    <PropertyColumn Property="com_organization => com_organization.name_en" />
+    <PropertyColumn Property="com_organization => com_organization.layer" />
+    <PropertyColumn Property="com_organization => com_organization.parent_code" />
+    <PropertyColumn Property="com_organization => com_organization.isCompany" />
+    <PropertyColumn Property="com_organization => com_organization.comp_code_all" />
+    <PropertyColumn Property="com_organization => com_organization.isBranch" />
+    <PropertyColumn Property="com_organization => com_organization.tax_id" />
+    <PropertyColumn Property="com_organization => com_organization.isActive" />
+    <PropertyColumn Property="com_organization => com_organization.moddate" />
+    <PropertyColumn Property="com_organization => com_organization.modby" />
+    <PropertyColumn Property="com_organization => com_organization.layer_code" />
+    <PropertyColumn Property="com_organization => com_organization.approver_userid" />
+    <PropertyColumn Property="com_organization => com_organization.isManPowerCount" />
+    <PropertyColumn Property="com_organization => com_organization.startdate" />
+    <PropertyColumn Property="com_organization => com_organization.enddate" />
+    <PropertyColumn Property="com_organization => com_organization.org_type" />
+    <PropertyColumn Property="com_organization => com_organization.remark" />
+    <PropertyColumn Property="com_organization => com_organization.abbr" />
+    <PropertyColumn Property="com_organization => com_organization.boss_emp_id" />
+    <PropertyColumn Property="com_organization => com_organization.approver_empid" />
+    <PropertyColumn Property="com_organization => com_organization.comp_code" />
+    <PropertyColumn Property="com_organization => com_organization.companyid" />
+    <PropertyColumn Property="com_organization => com_organization.org_level" />
+    <PropertyColumn Property="com_organization => com_organization.asOfDate" />
+    <PropertyColumn Property="com_organization => com_organization.orgCode" />
+    <PropertyColumn Property="com_organization => com_organization.orgLayerName" />
+    <PropertyColumn Property="com_organization => com_organization.orgLayerNameEn" />
+    <PropertyColumn Property="com_organization => com_organization.refkeyParent" />
+    <PropertyColumn Property="com_organization => com_organization.ref1" />
+    <PropertyColumn Property="com_organization => com_organization.parentID" />
+    <PropertyColumn Property="com_organization => com_organization.boss_name" />
+    <PropertyColumn Property="com_organization => com_organization.approver_name" />
+    <PropertyColumn Property="com_organization => com_organization.approver_PosName" />
+    <PropertyColumn Property="com_organization => com_organization.node_level" />
+    <PropertyColumn Property="com_organization => com_organization.istop" />
+
+    <TemplateColumn Context="com_organization">
+        <a href="@($"com_organizations/edit?id={com_organization.id}")">Edit</a> |
+        <a href="@($"com_organizations/details?id={com_organization.id}")">Details</a> |
+        <a href="@($"com_organizations/delete?id={com_organization.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

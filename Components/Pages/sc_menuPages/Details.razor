@@ -1,0 +1,86 @@
+﻿@page "/sc_menus/details"
+@using Microsoft.EntityFrameworkCore
+@using hrm.Models
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>sc_menu</h2>
+    <hr />
+    @if (sc_menu is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">menuname</dt>
+            <dd class="col-sm-10">@sc_menu.menuname</dd>
+            <dt class="col-sm-2">menulevel</dt>
+            <dd class="col-sm-10">@sc_menu.menulevel</dd>
+            <dt class="col-sm-2">isfinal</dt>
+            <dd class="col-sm-10">@sc_menu.isfinal</dd>
+            <dt class="col-sm-2">menuorder</dt>
+            <dd class="col-sm-10">@sc_menu.menuorder</dd>
+            <dt class="col-sm-2">menucode</dt>
+            <dd class="col-sm-10">@sc_menu.menucode</dd>
+            <dt class="col-sm-2">langcode</dt>
+            <dd class="col-sm-10">@sc_menu.langcode</dd>
+            <dt class="col-sm-2">isshow</dt>
+            <dd class="col-sm-10">@sc_menu.isshow</dd>
+            <dt class="col-sm-2">tooltip</dt>
+            <dd class="col-sm-10">@sc_menu.tooltip</dd>
+            <dt class="col-sm-2">startdate</dt>
+            <dd class="col-sm-10">@sc_menu.startdate</dd>
+            <dt class="col-sm-2">enddate</dt>
+            <dd class="col-sm-10">@sc_menu.enddate</dd>
+            <dt class="col-sm-2">programid</dt>
+            <dd class="col-sm-10">@sc_menu.programid</dd>
+            <dt class="col-sm-2">icon</dt>
+            <dd class="col-sm-10">@sc_menu.icon</dd>
+            <dt class="col-sm-2">small_icon</dt>
+            <dd class="col-sm-10">@sc_menu.small_icon</dd>
+            <dt class="col-sm-2">url</dt>
+            <dd class="col-sm-10">@sc_menu.url</dd>
+            <dt class="col-sm-2">moddate</dt>
+            <dd class="col-sm-10">@sc_menu.moddate</dd>
+            <dt class="col-sm-2">modby</dt>
+            <dd class="col-sm-10">@sc_menu.modby</dd>
+            <dt class="col-sm-2">uppermenucode</dt>
+            <dd class="col-sm-10">@sc_menu.uppermenucode</dd>
+            <dt class="col-sm-2">menugroupid</dt>
+            <dd class="col-sm-10">@sc_menu.menugroupid</dd>
+            <dt class="col-sm-2">isactive</dt>
+            <dd class="col-sm-10">@sc_menu.isactive</dd>
+            <dt class="col-sm-2">method_action</dt>
+            <dd class="col-sm-10">@sc_menu.method_action</dd>
+            <dt class="col-sm-2">menuname_en</dt>
+            <dd class="col-sm-10">@sc_menu.menuname_en</dd>
+        </dl>
+        <div>
+            <a href="@($"/sc_menus/edit?menuid={sc_menu.menuid}")">Edit</a> |
+            <a href="@($"/sc_menus")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private sc_menu? sc_menu;
+
+    [SupplyParameterFromQuery]
+    private long menuid { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        sc_menu = await context.sc_menus.FirstOrDefaultAsync(m => m.menuid == menuid);
+
+        if (sc_menu is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

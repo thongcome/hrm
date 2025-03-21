@@ -1,0 +1,41 @@
+﻿@page "/mas_titles"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using hrm.Models
+@using hrm.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<hrm.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="mas_titles/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.mas_titles">
+    <PropertyColumn Property="mas_title => mas_title.title" />
+    <PropertyColumn Property="mas_title => mas_title.code" />
+    <PropertyColumn Property="mas_title => mas_title.isActive" />
+    <PropertyColumn Property="mas_title => mas_title.moddate" />
+    <PropertyColumn Property="mas_title => mas_title.modby" />
+    <PropertyColumn Property="mas_title => mas_title.title_en" />
+
+    <TemplateColumn Context="mas_title">
+        <a href="@($"mas_titles/edit?id={mas_title.id}")">Edit</a> |
+        <a href="@($"mas_titles/details?id={mas_title.id}")">Details</a> |
+        <a href="@($"mas_titles/delete?id={mas_title.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}
