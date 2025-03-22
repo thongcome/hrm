@@ -10,6 +10,7 @@ using Serilog;
 using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using HRM.Model;
+using hrm.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +40,11 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 
 //builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 //    options.UseSqlServer(builder.Configuration.GetConnectionString("SdlAppContext") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.")));
+
+builder.Services.AddDbContextFactory<HRMContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
 
 builder.Services.AddQuickGridEntityFrameworkAdapter();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
