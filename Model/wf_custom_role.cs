@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("wf_custom_role")]
 public partial class wf_custom_role

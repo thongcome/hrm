@@ -1,0 +1,154 @@
+﻿@page "/sc_user_roles/mapuser"
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+
+<h3 class="mt-4">Assign User to Role</h3>
+
+<div class="card p-4 mb-4 shadow-sm">
+    <EditForm Model="@model" OnValidSubmit="HandleValidSubmit">
+        <table class="table table-bordered align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Mod By</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
+                    <th>Emp ID</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <!-- Dropdown User -->
+                    <td>
+                        <InputSelect class="form-select" @bind-Value="model.userid">
+                            <option value="">-- Select User --</option>
+                            @foreach (var u in users)
+                            {
+                                <option value="@u.userid">@($"{u.firstname} {u.lastname}")</option>
+                            }
+                        </InputSelect>
+                    </td>
+
+                    <!-- Dropdown Role -->
+                    <td>
+                        <InputSelect class="form-select" @bind-Value="model.roleid">
+                            <option value="">-- Select Role --</option>
+                            @foreach (var r in roles)
+                            {
+                                <option value="@r.roleid">@r.name</option>
+                            }
+                        </InputSelect>
+                    </td>
+
+                    <!-- Text Inputs -->
+                    <td><InputText class="form-control" @bind-Value="model.modby" /></td>
+                    <td><InputDate class="form-control" @bind-Value="model.startdate" /></td>
+                    <td><InputDate class="form-control" @bind-Value="model.enddate" /></td>
+                    <td><InputText class="form-control" @bind-Value="model.empid" /></td>
+                    <td><button type="submit" class="btn btn-success">Save</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </EditForm>
+</div>
+
+<!-- 🔽 แสดงรายการด้านล่าง -->
+<h4>Current User-Role Mappings</h4>
+
+<table class="table table-striped table-hover">
+    <thead class="table-light">
+        <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Mod Date</th>
+            <th>Mod By</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Emp ID</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var ur in userRoles)
+        {
+            <tr>
+                <td>@GetUserName(ur.userid)</td>
+                <td>@GetRoleName(ur.roleid)</td>
+                <td>@ur.modate?.ToString("yyyy-MM-dd")</td>
+                <td>@ur.modby</td>
+                <td>@ur.startdate?.ToString("yyyy-MM-dd")</td>
+                <td>@ur.enddate?.ToString("yyyy-MM-dd")</td>
+                <td>@ur.empid</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteMapping(ur.user_roleID)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private HRMContext context = default!;
+    private sc_user_role model = new();
+    private List<sc_user_role> userRoles = new();
+    private List<sc_user> users = new();
+    private List<sc_role> roles = new();
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+
+        users = context.sc_users.Where(u => u.isActivate && !u.iscancel).ToList();
+        roles = context.sc_roles.Where(r => r.isactive).ToList();
+
+        LoadUserRoles();
+    }
+
+    private void LoadUserRoles()
+    {
+        userRoles = context.sc_user_roles
+            .Where(r => r.isactive)
+            .OrderByDescending(r => r.modate)
+            .ToList();
+    }
+
+    private void HandleValidSubmit()
+    {
+        model.modate = DateTime.Now;
+        model.isactive = true;
+
+        context.sc_user_roles.Add(model);
+        context.SaveChanges();
+
+        model = new sc_user_role();
+        LoadUserRoles();
+    }
+
+    private void DeleteMapping(long userRoleId)
+    {
+        var item = context.sc_user_roles.Find(userRoleId);
+        if (item != null)
+        {
+            context.sc_user_roles.Remove(item);
+            context.SaveChanges();
+            LoadUserRoles();
+        }
+    }
+
+    private string GetUserName(long userid)
+    {
+        var user = users.FirstOrDefault(u => u.userid == userid);
+        return user != null ? $"{user.firstname} {user.lastname}" : "(Unknown)";
+    }
+
+    private string GetRoleName(long roleid)
+    {
+        var role = roles.FirstOrDefault(r => r.roleid == roleid);
+        return role?.name ?? "(Unknown)";
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

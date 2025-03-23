@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("pr_po")]
 public partial class pr_po

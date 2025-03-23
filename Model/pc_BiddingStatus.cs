@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("pc_BiddingStatus")]
 public partial class pc_BiddingStatus

@@ -1,4 +1,10 @@
-﻿@inherits LayoutComponentBase
+﻿@using System.Security.Claims
+@using HRM.Services
+@inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject AuthenticationStateProvider AuthStateProvider
+@inject MenuStateService MenuService
+
 
 <link href="~/bootstrap/bootstrap.min.css" rel="stylesheet">
 <link href="css/app.css" rel="stylesheet">
@@ -19,18 +25,34 @@
                 <!-- เมนูนำทางอยู่ขวา -->
                 <div class="col text-end">
                     <nav class="d-inline-flex gap-4">
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/sc_roles">Role</NavLink>
+                        @foreach (var menu in MenuService.AllowedMenus.OrderBy(m => m.menuorder))
+                        {
+                            <NavLink class="nav-link" href="@menu.url">
+                                @if (!string.IsNullOrEmpty(menu.icon))
+                                {
+                                    <i class="@menu.icon me-2"></i>
+                                }
+                                @menu.menuname
+                            </NavLink>
+                        }
+
+
+                   @*    
+                       <NavLink class="nav-link custom-nav text-dark fw-bold" href="/sc_roles">Role</NavLink>
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/employees">Employee Management</NavLink>
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/payroll">Payroll</NavLink>
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/attendance">Attendance</NavLink>
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/leave">Leave Management</NavLink>
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/training">Training</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/reports">Reports</NavLink>
+                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/reports">Reports</NavLink> *@
+                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/sc_roles">Role</NavLink>
+
                         <NavLink class="nav-link custom-nav text-dark fw-bold" href="/logout">Log Out</NavLink>
                     </nav>
                 </div>
             </div>
         </div>
+       
 
         <!-- เนื้อหาหลัก -->
         <article class="content px-4">
@@ -42,3 +64,20 @@
 <footer class="bg-gray-900 text-black text-center py-4 mt-10">
     <p>© 2025 HumanOk. All rights reserved.</p>
 </footer>
+
+@code {
+    private List<string> allowedMenus = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        allowedMenus = user.Claims
+            .Where(c => c.Type == "menu")
+            .Select(c => c.Value)
+            .ToList();
+    }
+
+    private bool HasMenu(string code) => allowedMenus.Contains(code);
+}

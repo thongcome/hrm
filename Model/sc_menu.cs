@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("sc_menu")]
 public partial class sc_menu
@@ -76,7 +76,7 @@ public partial class sc_menu
 
     [ForeignKey("menugroupid")]
     [InverseProperty("sc_menus")]
-    public virtual sc_menugroup menugroup { get; set; } = null!;
+    public virtual sc_menugroup? menugroup { get; set; } = null!;
 
     [InverseProperty("menu")]
     public virtual ICollection<sc_program_access> sc_program_accesses { get; set; } = new List<sc_program_access>();

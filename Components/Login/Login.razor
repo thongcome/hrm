@@ -1,0 +1,64 @@
+﻿@page "/login"
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@using System.ComponentModel.DataAnnotations
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow rounded-4">
+                <div class="card-body p-4">
+                    <h3 class="text-center mb-4 text-primary fw-bold">Login</h3>
+
+                    <EditForm Model="loginModel" OnValidSubmit="HandleLogin">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="mb-3">
+                            <label for="loginname" class="form-label">Login Name</label>
+                            <InputText id="loginname" class="form-control" @bind-Value="loginModel.Loginname" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <InputText id="password" type="password" class="form-control" @bind-Value="loginModel.Password" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button class="btn btn-primary fw-bold" type="submit">Login</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginViewModel loginModel = new();
+
+    private async Task HandleLogin()
+    {
+
+        var user = await AuthService.AuthenticateAsync(loginModel.Loginname, loginModel.Password);
+        if (user != null)
+        {
+            await ((CustomAuthStateProvider)AuthProvider).SignInAsync(user);
+            Nav.NavigateTo("/");
+        }
+        else
+        {
+            // แจ้งเตือน login ผิด (สามารถใช้ toast หรือ alert ได้)
+        }
+    }
+
+    public class LoginViewModel
+    {
+        [Required]
+        public string Loginname { get; set; }
+
+        [Required]
+        public string Password { get; set; }
+    }
+}

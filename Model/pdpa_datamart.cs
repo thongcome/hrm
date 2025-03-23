@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("pdpa_datamart")]
 public partial class pdpa_datamart

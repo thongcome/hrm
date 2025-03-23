@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Index("RoleId", Name = "IX_AspNetRoleClaims_RoleId")]
 public partial class AspNetRoleClaim

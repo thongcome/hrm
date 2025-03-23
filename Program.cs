@@ -10,7 +10,7 @@ using Serilog;
 using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using HRM.Model;
-using hrm.Models;
+using HRM.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,6 +82,13 @@ builder.Services.Configure<AuthMessageSenderOptions>(builder.Configuration);
 builder.Services.AddSingleton<IEmailSender, EmailSender>();
 // Program.cs
 builder.Services.AddTransient<EmailSender>(); // Register the concrete type
+
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
+builder.Services.AddAuthorizationCore();
+
+builder.Services.AddScoped<MenuStateService>();// เก็บข้อมูลสถานะเมนู
+
 
 //builder.Services.AddSingleton(smtpSettings);
 

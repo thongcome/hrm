@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace hrm.Models;
+namespace HRM.Models;
 
 [Table("sc_program_group")]
 [Index("programgroupid", Name = "sc_programgroup$programgroupid_UNIQUE", IsUnique = true)]

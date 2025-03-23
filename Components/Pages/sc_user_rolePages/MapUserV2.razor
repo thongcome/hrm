@@ -1,0 +1,129 @@
+﻿@page "/mapuser2"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>User Role Mapping</PageTitle>
+
+<h3>User Role Mapping</h3>
+
+<div class="row">
+    <div class="col-md-6">
+        <label>Select User:</label>
+        <select class="form-select mb-3" @onchange="LoadUserRoles">
+            <option value="">-- Select User --</option>
+            @foreach (var u in users)
+            {
+                <option value="@u.userid">@($"{u.firstname} {u.lastname}")</option>
+            }
+        </select>
+
+        @if (selectedUser != null)
+        {
+            <h5 class="mt-3">Assign Roles to: <strong>@selectedUser.firstname @selectedUser.lastname</strong></h5>
+            @foreach (var role in roles)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="r@role.roleid"
+                           @bind="roleSelections[role.roleid]" />
+                    <label class="form-check-label" for="r@role.roleid">@role.name</label>
+                </div>
+            }
+
+            <button class="btn btn-primary mt-3" @onclick="SaveMapping">Save</button>
+        }
+    </div>
+</div>
+
+<hr class="my-4" />
+
+<h4 class="mt-4">Existing User-Role Mappings</h4>
+
+<QuickGrid Class="table table-striped" Items="context.sc_user_roles">
+    <PropertyColumn Property="sc_user_role => sc_user_role.roleid" Title="Role ID" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.modate" Title="Modified Date" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.modby" Title="Modified By" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.isactive" Title="Active" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.startdate" Title="Start" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.enddate" Title="End" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.userid" Title="User ID" />
+    <PropertyColumn Property="sc_user_role => sc_user_role.empid" Title="Emp ID" />
+
+    <TemplateColumn Context="sc_user_role">
+        <a href="@($"sc_user_roles/edit?user_roleid={sc_user_role.user_roleID}")">Edit</a> |
+        <a href="@($"sc_user_roles/details?user_roleid={sc_user_role.user_roleID}")">Details</a> |
+        <a href="@($"sc_user_roles/delete?user_roleid={sc_user_role.user_roleID}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+    private List<sc_user> users = new();
+    private List<sc_role> roles = new();
+    private Dictionary<long, bool> roleSelections = new();
+    private long? selectedUserId;
+    private sc_user? selectedUser;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+        users = context.sc_users.Where(u => u.isActivate && !u.iscancel).ToList();
+        roles = context.sc_roles.Where(r => r.isactive).ToList();
+    }
+
+    private void LoadUserRoles(ChangeEventArgs e)
+    {
+        if (long.TryParse(e.Value?.ToString(), out var uid))
+        {
+            selectedUserId = uid;
+            selectedUser = context.sc_users
+                .Include(u => u.sc_user_roles)
+                .FirstOrDefault(u => u.userid == uid);
+
+            var assignedRoleIds = selectedUser?.sc_user_roles
+                .Where(ur => ur.isactive)
+                .Select(ur => ur.roleid)
+                .ToHashSet() ?? new HashSet<long>();
+
+            roleSelections = roles.ToDictionary(r => r.roleid, r => assignedRoleIds.Contains(r.roleid));
+        }
+        else
+        {
+            selectedUserId = null;
+            selectedUser = null;
+            roleSelections.Clear();
+        }
+    }
+
+    private void SaveMapping()
+    {
+        if (selectedUserId == null) return;
+
+        var existingMappings = context.sc_user_roles
+            .Where(ur => ur.userid == selectedUserId)
+            .ToList();
+
+        context.sc_user_roles.RemoveRange(existingMappings);
+
+        foreach (var role in roleSelections)
+        {
+            if (role.Value)
+            {
+                context.sc_user_roles.Add(new sc_user_role
+                    {
+                        userid = selectedUserId.Value,
+                        roleid = role.Key,
+                        isactive = true,
+                        modate = DateTime.Now,
+                        modby = "admin" // 🔄 เปลี่ยนเป็นผู้ใช้งานจริงในภายหลัง
+                    });
+            }
+        }
+
+        context.SaveChanges();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}
