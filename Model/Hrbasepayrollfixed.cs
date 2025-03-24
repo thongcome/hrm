@@ -3,9 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 namespace HRM.Models
 {
-  
  
-
      [Table("HRBASEPAYROLLFIXED")]
     public partial class Hrbasepayrollfixed
     {
@@ -15,28 +13,25 @@ namespace HRM.Models
         [Column("ID")]
         public long id { get; set; }
 
-        [Column("compcode")]
+        [Column("companyid")]
         [StringLength(50)]
-      
-        public string CoopId { get; set; } = null!;
+        public string companyid { get; set; } = null!;
 
-        [Key]
         [Column("EMP_NO")]
         [StringLength(50)]
-        [Unicode(false)]
+        
         public string EmpNo { get; set; } = null!;
 
-        [Key]
         [Column("SEQ_NO")]
         [Precision(3)]
         public Int32 SeqNo { get; set; }
 
         [Column("SALITEM_CODE")]
         [StringLength(3)]
-        [Unicode(false)]
+        
         public string? SalitemCode { get; set; }
 
-        [Column("ITEM_AMT", TypeName = "NUMBER(9,2)")]
+        [Column("ITEM_AMT", TypeName = "NUMBER(15,2)")]
         public decimal? ItemAmt { get; set; }
     }
 

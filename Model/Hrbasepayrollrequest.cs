@@ -18,14 +18,14 @@ namespace HRM.Models
         [Key]
         [Column("CompCode")]
         [StringLength(50)]
-        [Unicode(false)]
+        
         public string CompCode { get; set; } = null!;
 
 
         [Key]
         [Column("EMP_NO")]
         [StringLength(50)]
-        [Unicode(false)]
+        
         public string EmpNo { get; set; } = null!;
 
 
@@ -40,7 +40,7 @@ namespace HRM.Models
 
 
 
-        [Column("ITEM_AMT", TypeName = "NUMBER(9,2)")]
+        [Column("ITEM_AMT", TypeName = "NUMBER(15,2)")]
         public decimal? ItemAmt { get; set; }
 
         [Column("Reason_Pay")]
@@ -84,7 +84,7 @@ namespace HRM.Models
 
         [Column("REMARK")]
         [StringLength(150)]
-        [Unicode(false)]
+        
         public string? REMARK { get; set; }
 
         [Column("MODIFIED_DATE", TypeName = "DATE")]
@@ -92,7 +92,7 @@ namespace HRM.Models
 
         [Column("MODIFIED_BY")]
         [StringLength(50)]
-        [Unicode(false)]
+        
         public string? MODIFIED_BY { get; set; }
 
     }

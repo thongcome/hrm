@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Models;
@@ -14,6 +15,31 @@ public partial class HRMContext : DbContext
         : base(options)
     {
     }
+
+
+    public virtual DbSet<Hrbasepayrollfixed> Hrbasepayrollfixed { get; set; }
+    public virtual DbSet<Hrucfsecurity> Hrucfsecuritys { get; set; }
+
+    public virtual DbSet<HRUcfTaxRate> HRUcfTaxRates { get; set; }
+
+    public virtual DbSet<Kptempreceive> Kptempreceives { get; set; }
+
+
+    public virtual DbSet<Kptempreceivedet> Kptempreceivedets { get; set; }
+
+    public virtual DbSet<Hrextenuatetax> Hrextenuatetaxs { get; set; }
+
+    public virtual DbSet<HrwOt> HrwOts { get; set; }
+
+
+    public virtual DbSet<HRPayAccum> HRPayAccums { get; set; }
+    public virtual DbSet<Hremployee> Hremployee { get; set; }
+    public virtual DbSet<Hrpayroll> Hrpayroll { get; set; }
+    public virtual DbSet<Hrpayrolldet> Hrpayrolldet { get; set; }
+
+    public virtual DbSet<Hrbasepayrollfixed> hrbasepayrollfixeds { get; set; }
+
+    public virtual DbSet<Hrucfsalaryitem> hrucfsalaryitems { get; set; }
 
     public virtual DbSet<ALL_EMPLOYEE> ALL_EMPLOYEEs { get; set; }
 
