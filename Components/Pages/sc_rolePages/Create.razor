@@ -86,9 +86,15 @@
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addsc_role()
     {
+        try{
         using var context = DbFactory.CreateDbContext();
         context.sc_roles.Add(sc_role);
         await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/sc_roles");
+        }
+        catch (Exception ex)
+        {
+            System.Console.WriteLine(ex.Message);
+        }
     }
 }

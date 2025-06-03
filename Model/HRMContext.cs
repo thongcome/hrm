@@ -31,13 +31,16 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<HrwOt> HrwOts { get; set; }
 
-
+    
     public virtual DbSet<HRPayAccum> HRPayAccums { get; set; }
     public virtual DbSet<Hremployee> Hremployee { get; set; }
     public virtual DbSet<Hrpayroll> Hrpayroll { get; set; }
     public virtual DbSet<Hrpayrolldet> Hrpayrolldet { get; set; }
 
     public virtual DbSet<Hrbasepayrollfixed> hrbasepayrollfixeds { get; set; }
+
+    public virtual DbSet<Hrbasepayrollrequest> Hrbasepayrollrequests { get; set; }
+
 
     public virtual DbSet<Hrucfsalaryitem> hrucfsalaryitems { get; set; }
 
@@ -247,8 +250,7 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<sc_program> sc_programs { get; set; }
 
-    public virtual DbSet<sc_program_access> sc_program_accesses { get; set; }
-
+ 
     public virtual DbSet<sc_program_group> sc_program_groups { get; set; }
 
     public virtual DbSet<sc_role> sc_roles { get; set; }
@@ -828,26 +830,7 @@ public partial class HRMContext : DbContext
             entity.Property(e => e.progmastercode).HasDefaultValueSql("(NULL)");
         });
 
-        modelBuilder.Entity<sc_program_access>(entity =>
-        {
-            entity.HasKey(e => e.accessid).HasName("PK_sc_programaccess_accessid");
-
-            entity.Property(e => e.isCreate).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.isDelete).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.isRead).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.isSearch).HasDefaultValue(true);
-            entity.Property(e => e.isUpdate).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.isactive).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.menucode).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.menuid).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.programcode).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.rolecode).HasDefaultValueSql("(NULL)");
-            entity.Property(e => e.roleid).HasDefaultValueSql("(NULL)");
-
-            entity.HasOne(d => d.menu).WithMany(p => p.sc_program_accesses).HasConstraintName("FK_sc_programaccess_SC_Menu");
-
-            entity.HasOne(d => d.role).WithMany(p => p.sc_program_accesses).HasConstraintName("FK_sc_programaccess_SC_Role");
-        });
+    
 
         modelBuilder.Entity<sc_program_group>(entity =>
         {

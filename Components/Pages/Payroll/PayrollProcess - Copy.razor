@@ -1,157 +1,251 @@
-﻿@page "/payrollprocess"
+﻿@page "/payrollprocess2"
 @using HRM.Data
 @using HRM.Models
 @using Microsoft.EntityFrameworkCore
 @using HRM.BusinessModel;
+@using Radzen.Blazor
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
-@using MudBlazor
-@using System.ComponentModel.DataAnnotations
+@using Radzen
 
 
 
-<MudPaper Class="pa-4" Elevation="4">
-    <MudText Color="Color.Error">@message</MudText>
-    <MudStepper @bind-ActiveStep="_currentStep" Linear="false">
+@message;
+<RadzenSteps @bind-Value="currentStep">
+    <Steps>
+        <RadzenStepsItem Text="กำหนดงวดการจ่าย">
+            <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H3" class="rz-my-6">Create Payment</RadzenText>
 
-        <!-- STEP 1: กำหนดงวดการจ่าย -->
-        <MudStep Label="กำหนดงวดการจ่าย">
-            <EditForm Model="@formModel" OnValidSubmit="GetEmployee">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
+            <EditForm Model="formModel">
+                <div class="container">
+                    <div class="row g-3">
 
-                <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">งวดที่</label>
-                        <InputNumber class="form-control" @bind-Value="formModel.TermOfPay" />
+                        <div class="col-md-6">
+                            <label for="termofpay" class="form-label">งวดที่:</label>
+                            <RadzenNumeric id="termofpay" @bind-Value="formModel.TermOfPay" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label for="employeeType" class="form-label">ประเภท:</label>
+                            <RadzenDropDown id="employeeType" @bind-Value="formModel.EmployeeType" Class="form-control"
+                            Data="@(new List<dynamic>{new {Value="01",Text="พนักงานประจำ"},new {Value="02",Text="พนักงานชั่วคราว"}})"
+                            TextProperty="Text" ValueProperty="Value" />
+                        </div>
+                        <div class="col-md-6">
+                            <label for="year" class="form-label">ปี:</label>
+                            <RadzenTextBox id="year" @bind-Value="formModel.Year" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label for="month" class="form-label">เดือน:</label>
+                            <RadzenDropDown id="month" @bind-Value="formModel.Month" Class="form-control"
+                            Data="@(new List<dynamic>{new {Value="01",Text="มกราคม"}, new {Value="02",Text="กุมภาพันธ์"}, new {Value="03",Text="มีนาคม"},
+                    new {Value="04",Text="เมษายน"}, new {Value="05",Text="พฤษภาคม"}, new {Value="06",Text="มิถุนายน"},
+                    new {Value="07",Text="กรกฎาคม"}, new {Value="08",Text="สิงหาคม"}, new {Value="09",Text="กันยายน"},
+                    new {Value="10",Text="ตุลาคม"}, new {Value="11",Text="พฤศจิกายน"}, new {Value="12",Text="ธันวาคม"}})"
+                            TextProperty="Text" ValueProperty="Value" />
+                        </div>
+                        <div class="col-md-3">
+                            @*                             <RadzenButton Text="ดูรายชื่อพนักงาน" Class="btn btn-primary w-100" />
+ *@                            <RadzenButton Text="ตรวจสอบรายชื่อพนักงาน" Click="GetEmployee" Class="btn btn-primary w-100" />
+
+                        </div>
+                        @*   <div class="col-md-3">
+                            <RadzenButton Text="ต่อไป >>" Class="btn btn-info w-50" Click="@GoToNextStep" />
+                        </div> *@
+                        <RadzenDataGrid @ref="hremployeeGrid" AllowPaging="true" AllowSorting="true" Data="@hrEmployeeList"
+                        ColumnWidth="200px" PageSize="25" Style="height:400px"
+                        GridLines="Radzen.DataGridGridLines.Both">
+                            <Columns>
+
+                                <RadzenDataGridColumn Property="@nameof(hremployee.EmpNo)" Title="เลขที่พนักงาน" />
+                                <RadzenDataGridColumn Property="@nameof(hremployee.EmpName)" Title="ชื่อ" />
+                                <RadzenDataGridColumn Property="@nameof(hremployee.SalaryAmt)" Title="เงินเดือน" />
+                                <RadzenDataGridColumn Property="@nameof(hremployee.DeptgrpCode)" Title="Dept Code" />
+                                <RadzenDataGridColumn Property="@nameof(hremployee.EmpStatus)" Title="Emp Status" />
+                                <RadzenDataGridColumn Property="@nameof(hremployee.ResignDate)" Title="Resign Date">
+
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+
                     </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">ประเภทพนักงาน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.EmployeeType">
-                            <option value="">-- เลือกประเภท --</option>
-                            <option value="01">พนักงานประจำ</option>
-                            <option value="02">พนักงานชั่วคราว</option>
-                        </InputSelect>
-                    </div>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">ปี</label>
-                        <InputText class="form-control" @bind-Value="formModel.Year" />
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">เดือน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.Month">
-                            <option value="">-- เลือกเดือน --</option>
-                            <option value="01">มกราคม</option>
-                            <option value="02">กุมภาพันธ์</option>
-                            <option value="03">มีนาคม</option>
-                            <option value="04">เมษายน</option>
-                            <option value="05">พฤษภาคม</option>
-                            <option value="06">มิถุนายน</option>
-                            <option value="07">กรกฎาคม</option>
-                            <option value="08">สิงหาคม</option>
-                            <option value="09">กันยายน</option>
-                            <option value="10">ตุลาคม</option>
-                            <option value="11">พฤศจิกายน</option>
-                            <option value="12">ธันวาคม</option>
-                        </InputSelect>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <button type="submit" class="btn btn-primary">ตรวจสอบรายชื่อพนักงาน</button>
                 </div>
             </EditForm>
+        </RadzenStepsItem>
+        @*     <RadzenStepsItem Text="รายชื่อพนักงาน">
+            <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H3" class="rz-my-6">2. Review Employees to continue</RadzenText>
+            <div class="col-md-6">
+                <RadzenButton Text="2. ตรวจสอบรายชื่อพนักงาน" Click="GetEmployee" Class="btn btn-primary w-100" />
+            </div>
+            <RadzenDataGrid @ref="hremployeeGrid" AllowPaging="true" AllowSorting="true" Data="@hrEmployeeList"
+            ColumnWidth="200px" PageSize="5" Style="height:300px"
+            GridLines="Radzen.DataGridGridLines.Both">
+                <Columns>
+                    <RadzenDataGridColumn Property="@nameof(hremployee.EmpNo)" Title="EmpNo" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.EmpName)" Title="EmpName" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.SalaryAmt)" Title="Salary" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.DeptgrpCode)" Title="Dept Code" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.DeptFirst)" Title="DeptFirst" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.EmpStatus)" Title="Emp Status" />
+                    <RadzenDataGridColumn Property="@nameof(hremployee.ResignDate)" Title="Resign Date">
 
-            <MudTable Items="@hrEmployeeList" Dense="true" Hover="true" Elevation="0">
-                <HeaderContent>
-                    <MudTh>รหัสพนักงาน</MudTh>
-                    <MudTh>ชื่อ</MudTh>
-                    <MudTh>เงินเดือน</MudTh>
-                    <MudTh>สถานะ</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.EmpNo</MudTd>
-                    <MudTd>@context.EmpName</MudTd>
-                    <MudTd>@context.SalaryAmt?.ToString("N2")</MudTd>
-                    <MudTd>@context.EmpStatus</MudTd>
-                </RowTemplate>
-            </MudTable>
-        </MudStep>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
 
-        <!-- STEP 2: ประมวลผล -->
-        <MudStep Label="ประมวลผลเงินเดือน">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CalculatePayroll">ประมวลผล</MudButton>
+        </RadzenStepsItem>
 
-            <MudText Class="mt-4">พนักงานจำนวน @hrpayrollsList.Count คน</MudText>
+ *@
 
-            <MudTable Items="@hrpayrollsList" Dense="true" Hover="true" Elevation="0">
-                <HeaderContent>
-                    <MudTh>รหัสพนักงาน</MudTh>
-                    <MudTh>เงินเดือน</MudTh>
-                    <MudTh>รวมได้อื่น</MudTh>
-                    <MudTh>รวมหัก</MudTh>
-                    <MudTh>สุทธิ</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.EmpNo</MudTd>
-                    <MudTd>@context.SalarybaseAmt?.ToString("N2")</MudTd>
-                    <MudTd>@context.SalaryothAmt?.ToString("N2")</MudTd>
-                    <MudTd>@context.SalarysubtAmt?.ToString("N2")</MudTd>
-                    <MudTd>@context.SalarynetAmt?.ToString("N2")</MudTd>
-                </RowTemplate>
-            </MudTable>
+        <RadzenStepsItem Text="ประมวลผล">
+            <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H3" class="rz-my-6">2. Review an Payment Detail to continue</RadzenText>
+            <RadzenButton Text="ประมวลผล" Click="CalculatePayroll" Class="btn btn-primary w-100" />
 
-            <MudText Class="mt-4">รายละเอียดหัก/ได้: @hrpayrollsDetList.Count รายการ</MudText>
 
-            <MudExpansionPanels>
-                <MudExpansionPanel Text="รายละเอียดทั้งหมด">
-                    <MudTable Items="@hrpayrollsDetList" Dense="true" Hover="true">
-                        <HeaderContent>
-                            <MudTh>Slip No</MudTh>
-                            <MudTh>รหัสพนักงาน</MudTh>
-                            <MudTh>จำนวนเงิน</MudTh>
-                            <MudTh>รายการ</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd>@context.PayrollslipNo</MudTd>
-                            <MudTd>@context.EmpNo</MudTd>
-                            <MudTd>@context.ItemAmt?.ToString("N2")</MudTd>
-                            <MudTd>@context.Description</MudTd>
-                        </RowTemplate>
-                    </MudTable>
-                </MudExpansionPanel>
-            </MudExpansionPanels>
-        </MudStep>
+            พนักงานจำนวน @hrpayrollsList.Count คน <br />
 
-        <!-- STEP 3: สรุปและบันทึก -->
-        <MudStep Label="สรุปผลและบันทึก">
-            <MudGrid Class="mb-2">
-                <MudItem xs="12" sm="6">
-                    <MudText>งวด: @period</MudText>
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudText>จำนวนพนักงาน: @hrpayrollsList.Count คน</MudText>
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudText>จำนวนเงินรวม: @hrpayrollsList.Sum(x => x.SalarynetAmt ?? 0).ToString("N2")</MudText>
-                </MudItem>
-            </MudGrid>
-            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="Save">บันทึก</MudButton>
-        </MudStep>
-    </MudStepper>
-</MudPaper>
 
+            @*   <RadzenDataGrid @ref="hrPayRollsGrid" AllowPaging="true" AllowSorting="true" Data="@hrpayrollsList"
+            ColumnWidth="200px" PageSize="5" Style="height:300px">
+                <Columns>
+                     <RadzenDataGridColumn Property="@nameof(Hrpayroll.EmpNo)" Title="EmpNo" />
+                     <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarynetAmt)" Title="สุทธิ" >
+
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid> *@
+
+            <RadzenDataGrid @ref="hrPayRollsGrid" AllowPaging="true" AllowSorting="true" Data="@hrpayrollsList"
+            ColumnWidth="100px" PageSize="25" Style="height:400px">
+                <Columns>
+
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.EmpNo)" Title="รหัสพนักงาน">
+                        <Template Context="data">
+                            <RadzenLink Click="() => FilterByEmployee(data.EmpNo)" Text="@data.EmpNo" Style="cursor:pointer; text-decoration:underline; color:blue;" />
+
+                        </Template>
+
+                    </RadzenDataGridColumn>
+                    @*        <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarybaseAmt)" Title="เงินเดือน" />
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalaryothAmt)" Title="รวมเงินได้อื่น" />
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarysubtAmt)" Title="รวมเงินหักอื่น" />
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarynetAmt)" Title="ได้รับสุทธิ" /> 
+                    *@
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarybaseAmt)" Title="เงินเดือน">
+                        <Template Context="data">
+                            @($"{data.SalarybaseAmt:N2}")
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalaryothAmt)" Title="รวมเงินได้อื่น">
+                        <Template Context="data">
+                            @($"{data.SalaryothAmt:N2}")
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarysubtAmt)" Title="รวมเงินหักอื่น">
+                        <Template Context="data">
+                            @($"{data.SalarysubtAmt:N2}")
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn Property="@nameof(Hrpayroll.SalarynetAmt)" Title="ได้รับสุทธิ">
+                        <Template Context="data">
+                            @($"{data.SalarynetAmt:N2}")
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                </Columns>
+            </RadzenDataGrid>
+            @* 
+            @if (hrpayrollsDetListOneEmp.Count > 0)
+            {
+                <RadzenDataGrid @ref="hrPayRollDetGrid" AllowPaging="true" AllowSorting="true" Data="@hrpayrollsDetList"
+                ColumnWidth="100px" PageSize="5" Style="height:400px">
+                    <Columns>
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.PayrollslipNo)" Title="Slip No" />
+
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.EmpNo)" Title="รหัสพนักงาน" />
+
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.ItemAmt)" Title="จำนวนเงิน">
+                            <Template Context="data">
+                                @((data.ItemAmt ?? 0).ToString("F2"))
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            } *@
+            <br /> รายละเอียดเงินได้เงินหัก @hrpayrollsDetList.Count() รายการ
+
+            @if (hrpayrollsDetList.Any(x => x.ItemAmt > 0))
+            {
+                <RadzenDataGrid @ref="hrPayRollDetGrid" AllowPaging="true" AllowSorting="true" Data="@hrpayrollsDetList"
+                ColumnWidth="200px" PageSize="5" Style="height:300px">
+                    <Columns>
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.PayrollslipNo)" Title="Slip No" />
+
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.EmpNo)" Title="รหัสพนักงาน" />
+
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.ItemAmt)" Title="จำนวนเงิน">
+                            <Template Context="data">
+                                @((data.ItemAmt ?? 0).ToString("F2"))
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn Property="@nameof(Hrpayrolldet.Description)" Title="รายการ" />
+
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenStepsItem>
+        <RadzenStepsItem Text="สรุป">
+            <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H3" class="rz-my-6">3.สรุปผลและบันทึก</RadzenText>
+            <div class="container">
+                <div class="row g-3">
+
+                    <div class="col-md-6">
+                        <label class="form-label">งวด: @period  </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">จำนวนพนักงาน: @hrpayrollsList.Count คน</label>
+
+                    </div>
+                </div>
+                <div class="row g-3">
+
+                    <div class="col-md-6">
+                        <label for="termofpay" class="form-label">วันที่จ่าย  :   สถานะ: </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">จำนวนเงิน:@hrpayrollsList.Sum(x => x.SalarynetAmt)  </label>
+
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" @onclick="Save">บันทึก</button>
+
+        </RadzenStepsItem>
+    </Steps>
+</RadzenSteps>
+@* <RadzenButton Text="GettaxRate" Click="GetTaxRate" Class="btn btn-primary w-100" />
+ *@
+
+@* <RadzenDataGrid @ref="HRBaseSalaryFixWithSignModelGrid" AllowPaging="true" AllowSorting="true" Data="@hrBaseSalaryFixWithSignModelList"
+                ColumnWidth="200px" PageSize="5" Style="height:300px">
+    <Columns>
+        <RadzenDataGridColumn Title="Emp No">
+            <Template Context="data">
+                <RadzenLink Click="() => FilterByEmployee(data.EmpNo)" Text="@data.EmpNo" Style="cursor:pointer; text-decoration:underline; color:blue;" />
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Property="@nameof(HRBaseSalaryFixWithSignModel.SalitemCode)" Title="Type Code" />
+        <RadzenDataGridColumn Property="@nameof(HRBaseSalaryFixWithSignModel.description)" Title="Type" />
+        <RadzenDataGridColumn Property="@nameof(HRBaseSalaryFixWithSignModel.ItemAmt)" Title="Amount" />
+    </Columns>
+</RadzenDataGrid> *@
 
 
 
 @code {
     private HRMContext context = default!;
     private FormModel formModel = new FormModel();
-    private MudForm _form = new();
-
-
     private List<Hremployee> hrEmployeeList = new();
     private List<Hrpayroll> hrpayrollsList = new();
     private List<Hrpayrolldet> hrpayrollsDetList = new();
@@ -161,8 +255,13 @@
     private string period = "";
     private String empSelect = "";
 
-    private int _currentStep = 0; // ค่าเริ่มต้นควรเป็น 0 (Step แรก)
-    private string message = "กรุณากรอกข้อมูลให้ครบถ้วนก่อนดำเนินการต่อ";
+    private String message = "";
+    private RadzenDataGrid<Hremployee> hremployeeGrid = new();
+    private RadzenDataGrid<Hrpayroll>? hrPayRollsGrid;
+
+
+    private RadzenDataGrid<Hrpayrolldet> hrPayRollDetGrid = new();
+    private RadzenDataGrid<HRBaseSalaryFixWithSignModel> HRBaseSalaryFixWithSignModelGrid = new();
 
     private Hremployee hremployee = new();
 
@@ -171,13 +270,13 @@
 
     private int totalMonthCal = 12; // ค่าดีฟอลต์คือ 12 เดือน เพื่อหาร ภาษี 1 ปี
 
-    // private int currentStep = 0; // ค่าดีฟอลต์คือ Step 1
+    private int currentStep = 0; // ค่าดีฟอลต์คือ Step 1
 
     private void GoToNextStep()
     {
-        if (_currentStep < 3) // ตรวจสอบไม่ให้เกิน Step ที่มีอยู่
+        if (currentStep < 2) // ตรวจสอบไม่ให้เกิน Step ที่มีอยู่
         {
-            _currentStep++;
+            currentStep++;
         }
     }
     private async Task Calculate()
@@ -354,7 +453,8 @@
 
         }
         StateHasChanged();
-
+        hrPayRollsGrid.Reload();
+        hrPayRollDetGrid.Reload();
 
 
     }
@@ -848,7 +948,7 @@
             try
             {
                 int month = int.Parse(formModel.Month);
-
+               
                 try
                 {
                     amttax = await CalculateTax(formModel.Year, month, totalMonthCal, item, deductTax);
@@ -876,7 +976,7 @@
                 {
                     // hrpayroll.SalarynetAmt -= amttax;
                     hrpayroll.SalarynetAmt -= paydet_taxcal.ItemAmt;
-
+                    
                 }
                 catch (Exception e)
                 {
@@ -905,7 +1005,8 @@
 
         }
         hrpayrollsDetList.RemoveAll(x => x.ItemAmt == 0.00m);
-
+        hrPayRollsGrid.Reload();
+        hrPayRollDetGrid.Reload();
     }
 
 
@@ -1692,66 +1793,99 @@
         }
     }
 
+
     private class FormModel
     {
-        [Required(ErrorMessage = "กรุณาเลือกประเภทพนักงาน")]
-
-        public string EmployeeType { get; set; } = "01";
-
-        [Required]
+        public DateTime CalculationDate { get; set; } = DateTime.Now;
+        public string EmployeeType { get; set; } = "";
         public string Year { get; set; } = "2568";
-
-        [Required]
         public string Month { get; set; } = "01";
-
-        [Required]
         public int TermOfPay { get; set; } = 1;
-
         public int TotalTerm { get; set; } = 1;
         public string CalPerson { get; set; } = "Thong";
         public string ApprovePerson { get; set; } = "Thong";
         public string status = "0";
         public decimal totalAmount = 0.00M;
     }
-
-    private string _value;
-    private Margin _margin;
-    private bool _dense;
-    private bool _disabled;
-    private bool _readonly;
-    private bool _placeholder;
-    private bool _helperText;
-    private bool _helperTextOnFocus;
-    private bool _clearable;
-    private bool _fitContent;
-    private bool _modal = true;
-
-    private readonly string[] _states =
-    {
-        "Alabama", "Alaska", "Arizona", "Arkansas", "California",
-        "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
-        "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas",
-        "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
-        "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana",
-        "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
-        "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma",
-        "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
-        "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
-        "Washington", "West Virginia", "Wisconsin", "Wyoming"
-    };
-    // private class FormModel
-    // {
-    //     public DateTime CalculationDate { get; set; } = DateTime.Now;
-    //     public string EmployeeType { get; set; } = "";
-    //     public string Year { get; set; } = "2568";
-    //     public string Month { get; set; } = "01";
-    //     public int TermOfPay { get; set; } = 1;
-    //     public int TotalTerm { get; set; } = 1;
-    //     public string CalPerson { get; set; } = "Thong";
-    //     public string ApprovePerson { get; set; } = "Thong";
-    //     public string status = "0";
-    //     public decimal totalAmount = 0.00M;
-    // }
 }
 
 
+   @* 
+
+@if (HasError)
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+else
+{
+
+    <div class="page-card pb-2">
+        <div class="form-viwe">
+            <div class="form-obj">
+                <div class="row">
+                    <div style="overflow-x: auto; width: 100%;" class="px-1 mt-1">
+                        <RadzenDataGrid @ref="AccyearListGrid"
+                                        Data="@AccyearList"
+                                        Style="min-width: 700px;"
+                                        GridLines="Radzen.DataGridGridLines.Both"
+                                        TItem="Models.Applications.Account.UcfAccyear"
+                                        IsLoading="@isLoadingModals"
+                                        ColumnWidth="200px"
+                                        AllowFiltering="false"
+                                        FilterPopupRenderMode="PopupRenderMode.OnDemand"
+                                        FilterMode="FilterMode.Advanced"
+                                        SelectionMode="DataGridSelectionMode.Single"
+                                        @bind-Value="@selected"
+                                        PageSize="10"
+                                        AllowPaging="true"
+                                        AllowSorting="true"
+                                        PagerHorizontalAlign="HorizontalAlign.Left"
+                                        ShowPagingSummary="true"
+                                        AllowColumnResize="true">
+                            <EmptyTemplate>
+                                <p style="color: lightgrey; font-size: 24px; text-align: center; margin: 2rem;">ไม่พบข้อมูล.</p>
+                            </EmptyTemplate>
+                            <Columns>
+                                <RadzenDataGridColumn TItem="Models.Applications.Account.UcfAccyear" Title="ปีบัญชี" Width="25%" TextAlign="TextAlign.Center">
+                                    <Template Context="item">
+                                        <div class="text-center pointer" @onclick="@(() => EventClick("select_Accyear", AccyearList.IndexOf(item)))">
+                                            @(item.account_year + 543)
+                                        </div>
+
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="Models.Applications.Account.UcfAccyear" Title="วันที่เริ่มต้นรอบปี" Width="25%" TextAlign="TextAlign.Center">
+                                    <Template Context="item">
+                                        <div class="text-center pointer" @onclick="@(() => EventClick("select_Accyear", AccyearList.IndexOf(item)))">
+                                            @item.beginning_of_account.ToString("dd/MM/yyyy")
+                                        </div>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="Models.Applications.Account.UcfAccyear" Title="วันที่สิ้นสุดรอบบัญชี" Width="25%" TextAlign="TextAlign.Center">
+                                    <Template Context="item">
+                                        <div class="text-center pointer" @onclick="@(() => EventClick("select_Accyear", AccyearList.IndexOf(item)))">
+                                            @item.ending_of_account.ToString("dd/MM/yyyy")
+                                        </div>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="Models.Applications.Account.UcfAccyear" Title="สถานะปิดสิ้นปี" Width="25%" TextAlign="TextAlign.Center">
+                                    <Template Context="item">
+                                        <div class="text-center pointer" @onclick="@(() => EventClick("select_Accyear", AccyearList.IndexOf(item)))">
+                                            <RadzenCheckBox TValue="bool?"
+                                                            Value="@(item.close_account_stat != 1 ? false : true)"
+                                                            Disabled="true" />
+                                        </div>
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                            </Columns>
+                        </RadzenDataGrid>
+                    </div>
+
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+} *@

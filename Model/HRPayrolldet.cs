@@ -51,6 +51,6 @@ public partial class Hrpayrolldet
     
     public string? Description { get; set; }
 
-    [Column("ITEM_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("ITEM_AMT", TypeName = "decimal(15,2)")]
     public decimal? ItemAmt { get; set; }
 }

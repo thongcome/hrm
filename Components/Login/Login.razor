@@ -3,62 +3,172 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
 @using System.ComponentModel.DataAnnotations
+@inject IPasswordHasher<sc_user> PasswordHasher
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card shadow rounded-4">
-                <div class="card-body p-4">
-                    <h3 class="text-center mb-4 text-primary fw-bold">Login</h3>
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ILogger<Login> Logger
+@inject IDbContextFactory<HRMContext> DbFactory
 
-                    <EditForm Model="loginModel" OnValidSubmit="HandleLogin">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary class="text-danger" />
+<h3>Login</h3>
 
-                        <div class="mb-3">
-                            <label for="loginname" class="form-label">Login Name</label>
-                            <InputText id="loginname" class="form-control" @bind-Value="loginModel.Loginname" />
-                        </div>
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
 
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <InputText id="password" type="password" class="form-control" @bind-Value="loginModel.Password" />
-                        </div>
+<EditForm Model="loginModel" OnValidSubmit="HandleLogin">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
 
-                        <div class="d-grid">
-                            <button class="btn btn-primary fw-bold" type="submit">Login</button>
-                        </div>
-                    </EditForm>
-                </div>
-            </div>
-        </div>
+    <div class="mb-3">
+        <label>Username</label>
+        <InputText class="form-control" @bind-Value="loginModel.Username" />
     </div>
-</div>
+    <div class="mb-3">
+        <label>Password</label>
+        <InputText class="form-control" @bind-Value="loginModel.Password" type="password" />
+    </div>
+    <button type="submit" class="btn btn-primary">Login</button>
+</EditForm>
 
 @code {
-    private LoginViewModel loginModel = new();
+    private LoginModel loginModel = new();
+    private string? errorMessage;
+    private HRMContext context = default!;
+
+    // private async Task HandleLogin()
+    // {
+    //     context = DbFactory.CreateDbContext();
+    //     var user = await context.sc_users
+    //         .FirstOrDefaultAsync(u =>
+    //             u.loginname == loginModel.Username &&
+    //             u.password == loginModel.Password && // ✅ แนะนำใช้ Hash Password ภายหลัง
+    //             u.isdisable == false &&
+    //             u.iscancel == false &&
+    //             u.isActivate == true);
+
+    //     if (user != null)
+    //     {
+    //         var claims = new List<Claim>
+    //         {
+    //             new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
+    //             new Claim("userid", user.userid.ToString()),
+    //             new Claim("username", user.loginname),
+    //             new Claim("company_id", user.company_id.ToString())
+    //         };
+
+    //         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    //         var principal = new ClaimsPrincipal(identity);
+
+    //         await HttpContextAccessor.HttpContext!.SignInAsync(
+    //             CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+    //         Logger.LogInformation("Login success for: {Username}", user.loginname);
+    //         Navigation.NavigateTo("/");
+    //     }
+    //     else
+    //     {
+    //         errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
+    //     }
+    // }
+
+
+    // private async Task HandleLogin()
+    // {
+    //     context = DbFactory.CreateDbContext();
+
+    //     // 1. ดึง user ตาม loginname
+    //     var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == loginModel.Username);
+
+    //     if (user != null && !user.isdisable && !user.iscancel && user.isActivate)
+    //     {
+    //         // 2. ใช้ PasswordHasher ตรวจสอบความถูกต้องของรหัสผ่าน
+    //         var result = PasswordHasher.VerifyHashedPassword(user, user.password ?? "", loginModel.Password);
+
+    //         if (result == PasswordVerificationResult.Success)
+    //         {
+    //             var claims = new List<Claim>
+    //         {
+    //             new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
+    //             new Claim("userid", user.userid.ToString()),
+    //             new Claim("username", user.loginname),
+    //             new Claim("company_id", user.company_id.ToString())
+    //         };
+
+    //             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    //             var principal = new ClaimsPrincipal(identity);
+
+    //             await HttpContextAccessor.HttpContext!.SignInAsync(
+    //                 CookieAuthenticationDefaults.AuthenticationScheme, principal);
+    //             Logger.LogInformation("Check login for user: {Username}", loginModel.Username);
+    //             Logger.LogInformation("Stored hash: {Hash}", user.password);
+    //             Logger.LogInformation("Login input password: {Input}", loginModel.Password);
+
+    //             Logger.LogInformation("Login success for: {Username}", user.loginname);
+    //             Navigation.NavigateTo("/sc_users");
+    //             return;
+    //         }
+    //     }
+
+    //     errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
+    // }
+
+  
 
     private async Task HandleLogin()
     {
+        context = DbFactory.CreateDbContext();
 
-        var user = await AuthService.AuthenticateAsync(loginModel.Loginname, loginModel.Password);
-        if (user != null)
+        // 1. ดึง user ตาม loginname
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == loginModel.Username);
+
+        if (user != null && !user.isdisable && !user.iscancel && user.isActivate)
         {
-            await ((CustomAuthStateProvider)AuthProvider).SignInAsync(user);
-            Nav.NavigateTo("/");
+            // 2. ใช้ PasswordHasher ตรวจสอบความถูกต้องของรหัสผ่าน
+            var result = PasswordHasher.VerifyHashedPassword(user, user.password ?? "", loginModel.Password);
+
+            if (result == PasswordVerificationResult.Success)
+            {
+                var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
+                new Claim("userid", user.userid.ToString()),
+                new Claim("username", user.loginname),
+                new Claim("company_id", user.company_id.ToString())
+            };
+
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var principal = new ClaimsPrincipal(identity);
+
+                await HttpContextAccessor.HttpContext!.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme, principal);
+                Logger.LogInformation("Check login for user: {Username}", loginModel.Username);
+                Logger.LogInformation("Stored hash: {Hash}", user.password);
+                Logger.LogInformation("Login input password: {Input}", loginModel.Password);
+
+                Logger.LogInformation("Login success for: {Username}", user.loginname);
+                Navigation.NavigateTo("/sc_users");
+                return;
+            }
         }
-        else
-        {
-            // แจ้งเตือน login ผิด (สามารถใช้ toast หรือ alert ได้)
-        }
+
+        errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
     }
 
-    public class LoginViewModel
+
+    public class LoginModel
     {
         [Required]
-        public string Loginname { get; set; }
+        public string Username { get; set; } = string.Empty;
 
         [Required]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
     }
 }

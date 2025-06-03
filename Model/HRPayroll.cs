@@ -38,23 +38,23 @@ public partial class Hrpayroll
     
     public string? PayrollPeriod { get; set; }
 
-    [Column("SALARYBASE_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("SALARYBASE_AMT", TypeName = "decimal(15,2)")]
     public decimal? SalarybaseAmt { get; set; }
 
-    [Column("SALARYOTH_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("SALARYOTH_AMT", TypeName = "decimal(15,2)")]
     public decimal? SalaryothAmt { get; set; }
 
-    [Column("SALARYSUBT_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("SALARYSUBT_AMT", TypeName = "decimal(15,2)")]
     public decimal? SalarysubtAmt { get; set; }
 
-    [Column("SALARYNET_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("SALARYNET_AMT", TypeName = "decimal(15,2)")]
     public decimal? SalarynetAmt { get; set; }
 
     //[Column("PAYROLL_STATUS")]
     //[Precision(2)]
     //public decimal? PayrollStatus { get; set; }
 
-    [Column("PAYROLL_STATUS", TypeName = "NUMBER(2,0)")]
+    [Column("PAYROLL_STATUS", TypeName = "decimal(2,0)")]
     public int? PayrollStatus { get; set; }
 
 
@@ -87,20 +87,20 @@ public partial class Hrpayroll
     
     public string? MemberNo { get; set; }
 
-    [Column("PERCEN_SECURITY", TypeName = "NUMBER(3,2)")]
+    [Column("PERCEN_SECURITY", TypeName = "decimal(3,2)")]
     public decimal? PercenSecurity { get; set; }
 
-    [Column("PERCENMG_SECURITY", TypeName = "NUMBER(3,2)")]
+    [Column("PERCENMG_SECURITY", TypeName = "decimal(3,2)")]
     public decimal? PercenmgSecurity { get; set; }
 
-    [Column("SOFMG_SECURITY", TypeName = "NUMBER(10,2)")]
+    [Column("SOFMG_SECURITY", TypeName = "decimal(10,2)")]
     public decimal? SofmgSecurity { get; set; }
 
-    [Column("POST_SOF_STATUS", TypeName = "NUMBER(1)")]
+    [Column("POST_SOF_STATUS", TypeName = "decimal(1)")]
 
 
     public bool PostSofStatus { get; set; } = false;
 
-    [Column("POST_STA_STATUS", TypeName = "NUMBER(1)")]
+    [Column("POST_STA_STATUS", TypeName = "decimal(1)")]
     public bool PostStaStatus { get; set; } = false;
 }

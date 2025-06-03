@@ -78,9 +78,7 @@ public partial class sc_menu
     [InverseProperty("sc_menus")]
     public virtual sc_menugroup? menugroup { get; set; } = null!;
 
-    [InverseProperty("menu")]
-    public virtual ICollection<sc_program_access> sc_program_accesses { get; set; } = new List<sc_program_access>();
-
+  
     [InverseProperty("menu")]
     public virtual ICollection<sc_role_menu> sc_role_menus { get; set; } = new List<sc_role_menu>();
 }

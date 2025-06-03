@@ -1,0 +1,58 @@
+﻿@page "/payroll-home-employee"
+@using Microsoft.AspNetCore.Components
+@inject NavigationManager Navigation
+
+<PageTitle>Payroll Home</PageTitle>
+
+<div class="container mt-4">
+    <h3 class="text-orange">Welcome, @Username</h3>
+    <p class="text-muted">Here's your salary summary and recent actions.</p>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">ยอดเงินเดือนสุทธิ</h5>
+                    <p class="card-text fs-4">@NetSalary.ToString("C0")</p>
+                    <small>ประจำเดือน @CurrentMonth</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">สลิปเงินเดือน</h5>
+                    <p class="card-text">ดาวน์โหลดสลิปเงินเดือนย้อนหลัง 6 เดือน</p>
+                    <button class="btn btn-light btn-sm" @onclick="ViewPayslip">ดูรายละเอียด</button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">ประวัติการลา</h5>
+                    <p class="card-text">ลาทั้งหมด: @TotalLeaveDays วัน | ลาคงเหลือ: @RemainingLeaveDays วัน</p>
+                    <button class="btn btn-light btn-sm" @onclick="ViewLeaveHistory">ดูประวัติ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    public string Username { get; set; } = "John Doe";
+    public decimal NetSalary { get; set; } = 45000;
+    public string CurrentMonth { get; set; } = "พฤษภาคม 2025";
+    public int TotalLeaveDays { get; set; } = 3;
+    public int RemainingLeaveDays { get; set; } = 7;
+
+    private void ViewPayslip()
+    {
+        Navigation.NavigateTo("/payslip");
+    }
+
+    private void ViewLeaveHistory()
+    {
+        Navigation.NavigateTo("/leave-history");
+    }
+}

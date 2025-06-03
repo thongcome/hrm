@@ -64,7 +64,7 @@ namespace HRM.Models
         public Int32 isActive { get; set; } = 1; // 1 = true, 0 = false
 
 
-        //[Column("ISACTIVE", TypeName = "NUMBER(1)")]
+        //[Column("ISACTIVE", TypeName = "decimal(1)")]
         //public Int32 isActive { get; set; } = 1;
 
         //[Column("ISACTIVE")]

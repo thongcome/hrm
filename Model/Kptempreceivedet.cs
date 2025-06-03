@@ -86,22 +86,22 @@ public partial class Kptempreceivedet
     [Precision(5)]
     public Int32? Period { get; set; }
 
-    [Column("PRINCIPAL_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("PRINCIPAL_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? PrincipalPayment { get; set; }
 
-    [Column("INTEREST_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("INTEREST_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? InterestPayment { get; set; }
 
-    [Column("INTARREAR_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("INTARREAR_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? IntarrearPayment { get; set; }
 
-    [Column("ITEM_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("ITEM_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? ItemPayment { get; set; }
 
-    [Column("ITEM_BALANCE", TypeName = "NUMBER(15,2)")]
+    [Column("ITEM_BALANCE", TypeName = "decimal(15,2)")]
     public decimal? ItemBalance { get; set; }
 
-    [Column("PRINCIPAL_BALANCE", TypeName = "NUMBER(15,2)")]
+    [Column("PRINCIPAL_BALANCE", TypeName = "decimal(15,2)")]
     public decimal? PrincipalBalance { get; set; }
 
     [Column("CALINTFROM_DATE", TypeName = "DATE")]
@@ -110,13 +110,13 @@ public partial class Kptempreceivedet
     [Column("CALINTTO_DATE", TypeName = "DATE")]
     public DateTime? CalinttoDate { get; set; }
 
-    [Column("PRINCIPAL_PERIOD", TypeName = "NUMBER(15,2)")]
+    [Column("PRINCIPAL_PERIOD", TypeName = "decimal(15,2)")]
     public decimal? PrincipalPeriod { get; set; }
 
-    [Column("INTEREST_PERIOD", TypeName = "NUMBER(15,2)")]
+    [Column("INTEREST_PERIOD", TypeName = "decimal(15,2)")]
     public decimal? InterestPeriod { get; set; }
 
-    [Column("BFPRINBALANCE_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFPRINBALANCE_AMT", TypeName = "decimal(15,2)")]
     public decimal? BfprinbalanceAmt { get; set; }
 
     [Column("BFPERIOD")]
@@ -127,10 +127,10 @@ public partial class Kptempreceivedet
     [Precision(2)]
     public Int32? BfloanpaymentType { get; set; }
 
-    [Column("BFPERIOD_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("BFPERIOD_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? BfperiodPayment { get; set; }
 
-    [Column("BFMAXPERIOD_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("BFMAXPERIOD_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? BfmaxperiodPayment { get; set; }
 
     [Column("BFPAYMENT_STATUS")]
@@ -143,19 +143,19 @@ public partial class Kptempreceivedet
     [Column("BFLASTPAY_DATE", TypeName = "DATE")]
     public DateTime? BflastpayDate { get; set; }
 
-    [Column("BFINTEREST_ARREAR", TypeName = "NUMBER(15,2)")]
+    [Column("BFINTEREST_ARREAR", TypeName = "decimal(15,2)")]
     public decimal? BfinterestArrear { get; set; }
 
-    [Column("BFINTMONTH_ARREAR", TypeName = "NUMBER(15,2)")]
+    [Column("BFINTMONTH_ARREAR", TypeName = "decimal(15,2)")]
     public decimal? BfintmonthArrear { get; set; }
 
-    [Column("BFINTYEAR_ARREAR", TypeName = "NUMBER(15,2)")]
+    [Column("BFINTYEAR_ARREAR", TypeName = "decimal(15,2)")]
     public decimal? BfintyearArrear { get; set; }
 
-    [Column("BFPRINCIPAL_ARREAR", TypeName = "NUMBER(15,2)")]
+    [Column("BFPRINCIPAL_ARREAR", TypeName = "decimal(15,2)")]
     public decimal? BfprincipalArrear { get; set; }
 
-    [Column("BFINTEREST_RETURN", TypeName = "NUMBER(15,2)")]
+    [Column("BFINTEREST_RETURN", TypeName = "decimal(15,2)")]
     public decimal? BfinterestReturn { get; set; }
 
     [Column("BFCONTRACT_STATUS")]
@@ -185,19 +185,19 @@ public partial class Kptempreceivedet
     [Column("CANCEL_DATE", TypeName = "DATE")]
     public DateTime? CancelDate { get; set; }
 
-    [Column("BFADJUST_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFADJUST_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? BfadjustPrnamt { get; set; }
 
-    [Column("BFADJUST_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFADJUST_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? BfadjustIntamt { get; set; }
 
-    [Column("BFADJUST_ITEMAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFADJUST_ITEMAMT", TypeName = "decimal(15,2)")]
     public decimal? BfadjustItemamt { get; set; }
 
-    [Column("BFREAL_INTPAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("BFREAL_INTPAYMENT", TypeName = "decimal(15,2)")]
     public decimal? BfrealIntpayment { get; set; }
 
-    [Column("INTERESTRECAL_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("INTERESTRECAL_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? InterestrecalPayment { get; set; }
 
     [Column("KEPPAYMENT_TYPE")]
@@ -209,61 +209,61 @@ public partial class Kptempreceivedet
     [Precision(2)]
     public Int32? MisspayFlag { get; set; }
 
-    [Column("OVERPAY_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("OVERPAY_AMT", TypeName = "decimal(15,2)")]
     public decimal? OverpayAmt { get; set; }
 
-    [Column("OVERPAY_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("OVERPAY_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? OverpayPrnamt { get; set; }
 
-    [Column("OVERPAY_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("OVERPAY_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? OverpayIntamt { get; set; }
 
-    [Column("RETOVERPAY_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("RETOVERPAY_AMT", TypeName = "decimal(15,2)")]
     public decimal? RetoverpayAmt { get; set; }
 
-    [Column("RETOVERPAY_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("RETOVERPAY_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? RetoverpayPrnamt { get; set; }
 
-    [Column("RETOVERPAY_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("RETOVERPAY_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? RetoverpayIntamt { get; set; }
 
-    [Column("ADJUST_ITEMAMT", TypeName = "NUMBER(15,2)")]
+    [Column("ADJUST_ITEMAMT", TypeName = "decimal(15,2)")]
     public decimal? AdjustItemamt { get; set; }
 
-    [Column("ADJUST_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("ADJUST_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? AdjustPrnamt { get; set; }
 
-    [Column("ADJUST_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("ADJUST_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? AdjustIntamt { get; set; }
 
-    [Column("AFKEPPAY_ITEMAMT", TypeName = "NUMBER(15,2)")]
+    [Column("AFKEPPAY_ITEMAMT", TypeName = "decimal(15,2)")]
     public decimal? AfkeppayItemamt { get; set; }
 
-    [Column("AFKEPPAY_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("AFKEPPAY_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? AfkeppayPrnamt { get; set; }
 
-    [Column("AFKEPPAY_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("AFKEPPAY_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? AfkeppayIntamt { get; set; }
 
-    [Column("AFKEPPAY_INTRETAMT", TypeName = "NUMBER(15,2)")]
+    [Column("AFKEPPAY_INTRETAMT", TypeName = "decimal(15,2)")]
     public decimal? AfkeppayIntretamt { get; set; }
 
-    [Column("BFKPPOST_ITEMAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFKPPOST_ITEMAMT", TypeName = "decimal(15,2)")]
     public decimal? BfkppostItemamt { get; set; }
 
-    [Column("BFKPPOST_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFKPPOST_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? BfkppostPrnamt { get; set; }
 
-    [Column("BFKPPOST_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("BFKPPOST_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? BfkppostIntamt { get; set; }
 
-    [Column("KPRECAL_ITEMAMT", TypeName = "NUMBER(15,2)")]
+    [Column("KPRECAL_ITEMAMT", TypeName = "decimal(15,2)")]
     public decimal? KprecalItemamt { get; set; }
 
-    [Column("KPRECAL_PRNAMT", TypeName = "NUMBER(15,2)")]
+    [Column("KPRECAL_PRNAMT", TypeName = "decimal(15,2)")]
     public decimal? KprecalPrnamt { get; set; }
 
-    [Column("KPRECAL_INTAMT", TypeName = "NUMBER(15,2)")]
+    [Column("KPRECAL_INTAMT", TypeName = "decimal(15,2)")]
     public decimal? KprecalIntamt { get; set; }
 
     [Column("CASE_POST")]
@@ -271,10 +271,10 @@ public partial class Kptempreceivedet
     
     public string? CasePost { get; set; }
 
-    [Column("DIINT_PERIOD", TypeName = "NUMBER(15,2)")]
+    [Column("DIINT_PERIOD", TypeName = "decimal(15,2)")]
     public decimal? DiintPeriod { get; set; }
 
-    [Column("RECALINTAFKP_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("RECALINTAFKP_AMT", TypeName = "decimal(15,2)")]
     public decimal? RecalintafkpAmt { get; set; }
 
     [Column("ADJUST_ID")]
@@ -285,22 +285,22 @@ public partial class Kptempreceivedet
     [Column("ADJUST_DATE", TypeName = "DATE")]
     public DateTime? AdjustDate { get; set; }
 
-    [Column("REALITEM_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("REALITEM_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? RealitemPayment { get; set; }
 
-    [Column("REALPRINCIPAL_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("REALPRINCIPAL_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? RealprincipalPayment { get; set; }
 
-    [Column("REALINTEREST_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("REALINTEREST_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? RealinterestPayment { get; set; }
 
-    [Column("CCLKEPPRN_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("CCLKEPPRN_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? CclkepprnPayment { get; set; }
 
-    [Column("CCLKEPINT_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("CCLKEPINT_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? CclkepintPayment { get; set; }
 
-    [Column("CCLKEPITEM_PAYMENT", TypeName = "NUMBER(15,2)")]
+    [Column("CCLKEPITEM_PAYMENT", TypeName = "decimal(15,2)")]
     public decimal? CclkepitemPayment { get; set; }
 
     [Column("AFKEPPAY_REFSLIP")]

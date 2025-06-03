@@ -26,42 +26,42 @@ public partial class Hrextenuatetax
     
     public string EmpNo { get; set; } = null!;
 
-    [Column("PAY_TRAVEL", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_TRAVEL", TypeName = "decimal(10,2)")]
     public decimal? PayTravel { get; set; }
 
-    [Column("PAY_CHILD", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_CHILD", TypeName = "decimal(10,2)")]
     public decimal? PayChild { get; set; }
 
-    [Column("PAY_PARENT", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_PARENT", TypeName = "decimal(10,2)")]
     public decimal? PayParent { get; set; }
 
-    [Column("PAY_INTADDR", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_INTADDR", TypeName = "decimal(10,2)")]
     public decimal? PayIntaddr { get; set; }
 
-    [Column("PAY_INSOTH", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_INSOTH", TypeName = "decimal(10,2)")]
     public decimal? PayInsoth { get; set; }
 
-    [Column("PAY_INSRETRY", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_INSRETRY", TypeName = "decimal(10,2)")]
     public decimal? PayInsretry { get; set; }
 
-    [Column("PAY_DISABLED", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_DISABLED", TypeName = "decimal(10,2)")]
     public decimal? PayDisabled { get; set; }
 
-    [Column("PAY_INSPARENT", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_INSPARENT", TypeName = "decimal(10,2)")]
     public decimal? PayInsparent { get; set; }
 
-    [Column("PAY_MATE", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_MATE", TypeName = "decimal(10,2)")]
     public decimal? PayMate { get; set; }
 
-    [Column("PAY_LTF", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_LTF", TypeName = "decimal(10,2)")]
     public decimal? PayLtf { get; set; }
 
-    [Column("PAY_RMF", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_RMF", TypeName = "decimal(10,2)")]
     public decimal? PayRmf { get; set; }
 
-    [Column("PAY_DONATEOTH", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_DONATEOTH", TypeName = "decimal(10,2)")]
     public decimal? PayDonateoth { get; set; }
 
-    [Column("PAY_DONATEEDU", TypeName = "NUMBER(10,2)")]
+    [Column("PAY_DONATEEDU", TypeName = "decimal(10,2)")]
     public decimal? PayDonateedu { get; set; }
 }

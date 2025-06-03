@@ -26,39 +26,39 @@ namespace HRM.Models
         [StringLength(6)]
         public string? EmpNo { get; set; }
 
-        [Column("SALARYBASE", TypeName = "NUMBER(15,2)")]
+        [Column("SALARYBASE", TypeName = "decimal(15,2)")]
         public decimal? Salary { get; set; }
 
 
-        [Column("OTHERINCOME", TypeName = "NUMBER(15,2)")]
+        [Column("OTHERINCOME", TypeName = "decimal(15,2)")]
         public decimal? OtherIncome { get; set; }
 
-        [Column("INCOMEPREDICTAMT", TypeName = "NUMBER(15,2)")]
+        [Column("INCOMEPREDICTAMT", TypeName = "decimal(15,2)")]
         public decimal? IncomePredictAmt { get; set; }
 
-        [Column("INCOMEYEARAMT", TypeName = "NUMBER(15,2)")]
+        [Column("INCOMEYEARAMT", TypeName = "decimal(15,2)")]
         public decimal? IncomeYearAmt { get; set; }
 
-        [Column("TAXYEARAMT", TypeName = "NUMBER(15,2)")]  // equal TaxYearAmt when start working
+        [Column("TAXYEARAMT", TypeName = "decimal(15,2)")]  // equal TaxYearAmt when start working
         public decimal? TaxYearAmt { get; set; }
 
-        [Column("INCOMEFORWARDAMT", TypeName = "NUMBER(15,2)")] // last workplace 
+        [Column("INCOMEFORWARDAMT", TypeName = "decimal(15,2)")] // last workplace 
         public decimal? IncomeForwardAmt { get; set; }
 
 
 
 
-        [Column("STARTMONTH", TypeName = "NUMBER(2)")]
+        [Column("STARTMONTH", TypeName = "decimal(2)")]
         public decimal? StartMonth { get; set; }
 
-        [Column("ENDMONTH", TypeName = "NUMBER(2)")]
+        [Column("ENDMONTH", TypeName = "decimal(2)")]
         public decimal? EndMonth { get; set; }
 
-        [Column("WORKMONTH", TypeName = "NUMBER(5,2)")] // last workplace 
+        [Column("WORKMONTH", TypeName = "decimal(5,2)")] // last workplace 
         public decimal? WORKMONTH { get; set; }
 
 
-        [Column("LASTMONTHCAL", TypeName = "NUMBER(2)")]
+        [Column("LASTMONTHCAL", TypeName = "decimal(2)")]
         public decimal LastMonthCal { get; set; }
 
 

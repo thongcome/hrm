@@ -13,7 +13,6 @@ public partial class com_company
     public long id { get; set; }
 
     [StringLength(50)]
-    
     public string code { get; set; } = null!;
 
     [StringLength(500)]

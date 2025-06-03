@@ -1,0 +1,126 @@
+﻿@page "/payslip"
+@using System.Globalization
+
+<style>
+    .card-header {
+        font-weight: bold;
+        background: #f5f5f5;
+    }
+
+    .card {
+        border-radius: 8px;
+    }
+
+    .badge-salary {
+        font-size: 1.2rem;
+        background: #2196f3;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+    }
+
+</style>
+<div class="container my-4">
+    <!-- Header -->
+    <div class="rounded shadow-sm p-3 mb-4" style="background-color: #ffca28;">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="fw-bold mb-1">🧾 ใบแสดงผลเงินเดือน</h5>
+                <small>เดือน: พฤษภาคม 2568 | พนักงาน: นายสมชาย ใจดี | ตำแหน่ง: เจ้าหน้าที่บัญชี</small>
+            </div>
+            <button class="btn btn-outline-dark btn-sm">⬇ ดาวน์โหลด PDF</button>
+        </div>
+    </div>
+
+    <!-- รายได้ & รายการหัก -->
+    <div class="row">
+        <!-- รายได้ -->
+        <div class="col-md-6 mb-3">
+            <div class="card border-light shadow-sm">
+                <div class="card-header bg-light fw-bold">📈 รายการรายได้</div>
+                <ul class="list-group list-group-flush">
+                    @foreach (var i in Incomes)
+                    {
+                        <li class="list-group-item d-flex justify-content-between">
+                            @i.Title <span class="text-end">@i.Amount.ToString("N0") บาท</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+
+        <!-- รายการหัก -->
+        <div class="col-md-6 mb-3">
+            <div class="card border-light shadow-sm">
+                <div class="card-header bg-light fw-bold">📉 รายการหัก</div>
+                <ul class="list-group list-group-flush">
+                    @foreach (var d in Deductions)
+                    {
+                        <li class="list-group-item d-flex justify-content-between">
+                            @d.Title <span class="text-end">@d.Amount.ToString("N0") บาท</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- สรุปยอดสุทธิ -->
+    <div class="row mt-3">
+        <div class="col-md-4 text-success fw-bold text-center">
+            รายได้รวม: @TotalIncome.ToString("N0") บาท
+        </div>
+        <div class="col-md-4 text-danger fw-bold text-center">
+            หักรวม: @TotalDeduction.ToString("N0") บาท
+        </div>
+        <div class="col-md-4 text-primary fw-bold text-center">
+            รับสุทธิ: @NetPay.ToString("N0") บาท
+        </div>
+    </div>
+</div>
+
+@code {
+    private string Month = "พฤษภาคม 2568";
+    private EmployeeInfo Employee = new()
+        {
+            FullName = "นายสมชาย ใจดี",
+            Position = "เจ้าหน้าที่บัญชี"
+        };
+
+    private List<Item> Incomes = new()
+    {
+        new Item("เงินเดือน", 30000),
+        new Item("ค่าล่วงเวลา (OT)", 2500),
+        new Item("เบี้ยขยัน", 1000),
+        new Item("โบนัสพิเศษ", 3000)
+    };
+
+    private List<Item> Deductions = new()
+    {
+        new Item("ภาษี ณ ที่จ่าย", 1200),
+        new Item("ประกันสังคม", 750),
+        new Item("เงินกู้พนักงาน", 2000)
+    };
+
+    private decimal TotalIncome => Incomes.Sum(i => i.Amount);
+    private decimal TotalDeduction => Deductions.Sum(d => d.Amount);
+    private decimal NetPay => TotalIncome - TotalDeduction;
+
+    public class Item
+    {
+        public string Title { get; set; }
+        public decimal Amount { get; set; }
+
+        public Item(string title, decimal amount)
+        {
+            Title = title;
+            Amount = amount;
+        }
+    }
+
+    public class EmployeeInfo
+    {
+        public string FullName { get; set; } = "";
+        public string Position { get; set; } = "";
+    }
+}

@@ -136,9 +136,16 @@
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addsc_menu()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.sc_menus.Add(sc_menu);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/sc_menus");
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+            context.sc_menus.Add(sc_menu);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/sc_menus");
+        }
+        catch (Exception ex)
+        {
+            System.Console.WriteLine(ex.Message);
+        }
     }
 }

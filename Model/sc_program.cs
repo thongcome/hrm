@@ -17,10 +17,10 @@ public partial class sc_program
     public string progname { get; set; } = null!;
 
     [Column(TypeName = "text")]
-    public string templatename { get; set; } = null!;
+    public string? templatename { get; set; } = null!;
 
     [Column(TypeName = "text")]
-    public string filename { get; set; } = null!;
+    public string? filename { get; set; } = null!;
 
     [StringLength(50)]
     

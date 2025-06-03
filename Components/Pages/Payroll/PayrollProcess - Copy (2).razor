@@ -1,4 +1,4 @@
-﻿@page "/payrollprocess"
+﻿@page "/payrollprocessTest"
 @using HRM.Data
 @using HRM.Models
 @using Microsoft.EntityFrameworkCore
@@ -15,54 +15,75 @@
 
         <!-- STEP 1: กำหนดงวดการจ่าย -->
         <MudStep Label="กำหนดงวดการจ่าย">
-            <EditForm Model="@formModel" OnValidSubmit="GetEmployee">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
+            <MudForm @ref="_form" Model="@formModel" OnValidSubmit="GetEmployee">
+                <MudGrid>
 
-                <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">งวดที่</label>
-                        <InputNumber class="form-control" @bind-Value="formModel.TermOfPay" />
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">ประเภทพนักงาน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.EmployeeType">
-                            <option value="">-- เลือกประเภท --</option>
-                            <option value="01">พนักงานประจำ</option>
-                            <option value="02">พนักงานชั่วคราว</option>
-                        </InputSelect>
-                    </div>
-                </div>
 
-                <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">ปี</label>
-                        <InputText class="form-control" @bind-Value="formModel.Year" />
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">เดือน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.Month">
-                            <option value="">-- เลือกเดือน --</option>
-                            <option value="01">มกราคม</option>
-                            <option value="02">กุมภาพันธ์</option>
-                            <option value="03">มีนาคม</option>
-                            <option value="04">เมษายน</option>
-                            <option value="05">พฤษภาคม</option>
-                            <option value="06">มิถุนายน</option>
-                            <option value="07">กรกฎาคม</option>
-                            <option value="08">สิงหาคม</option>
-                            <option value="09">กันยายน</option>
-                            <option value="10">ตุลาคม</option>
-                            <option value="11">พฤศจิกายน</option>
-                            <option value="12">ธันวาคม</option>
-                        </InputSelect>
-                    </div>
-                </div>
+                    <MudStack Row Class="justify-space-between mud-width-full">
+                        <MudStack Style="width: 300px">
+                            @foreach (var variant in Enum.GetValues(typeof(Variant)).Cast<Variant>())
+                            {
+                                <MudSelect @bind-Value="_value"
+                                           Variant="variant"
+                                           Label="@variant.ToString()"
+                                           Margin="_margin"
+                                           Dense="_dense"
+                                           FitContent="_fitContent"
+                                           Disabled="_disabled"
+                                           ReadOnly="_readonly"
+                                           Placeholder="@(_placeholder ? "Placeholder" : null)"
+                                           HelperText="@(_helperText ? "Helper Text" : null)"
+                                           HelperTextOnFocus="_helperTextOnFocus"
+                                           Clearable="_clearable"
+                                           Modal="_modal">
+                                    @foreach (var state in _states)
+                                    {
+                                        <MudSelectItem Value="state">@state</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        </MudStack>
 
-                <div class="mb-3">
-                    <button type="submit" class="btn btn-primary">ตรวจสอบรายชื่อพนักงาน</button>
-                </div>
-            </EditForm>
+                        <MudStack>
+                            <MudSelect @bind-Value="_margin" Label="Margin">
+                                @foreach (var margin in Enum.GetValues(typeof(Margin)).Cast<Margin>())
+                                {
+                                    <MudSelectItem Value="margin">@margin</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <MudSwitch @bind-Value="_dense" Label="Dense" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_readonly" Label="ReadOnly" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_disabled" Label="Disabled" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_placeholder" Label="Placeholder" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_helperText" Label="HelperText" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_helperTextOnFocus" Label="HelperTextOnFocus" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_clearable" Label="Clearable" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_fitContent" Label="FitContent" Color="Color.Primary" />
+                            <MudSwitch @bind-Value="_modal" Label="Modal" Color="Color.Primary" />
+                        </MudStack>
+                    </MudStack>
+                    @*        <MudItem xs="12" sm="6">
+                        <MudSelect T="string" Label="เดือน" @bind-Value="formModel.Month" Required="true">
+                            <MudSelectItem Value="01">มกราคม</MudSelectItem>
+                            <MudSelectItem Value="02">กุมภาพันธ์</MudSelectItem>
+                            ...
+                        </MudSelect>
+                    </MudItem> *@
+
+                    <MudItem xs="12" sm="6">
+                        <MudTextField T="string" Label="ปี" @bind-Value="formModel.Year" Required="true" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField T="int" Label="งวดที่" @bind-Value="formModel.TermOfPay" Immediate="true" Required="true" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudButton ButtonType="ButtonType.Submit" Color="Color.Primary">ตรวจสอบรายชื่อพนักงาน</MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
 
             <MudTable Items="@hrEmployeeList" Dense="true" Hover="true" Elevation="0">
                 <HeaderContent>
@@ -1696,7 +1717,7 @@
     {
         [Required(ErrorMessage = "กรุณาเลือกประเภทพนักงาน")]
 
-        public string EmployeeType { get; set; } = "01";
+        public string EmployeeType { get; set; } = "";
 
         [Required]
         public string Year { get; set; } = "2568";

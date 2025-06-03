@@ -15,14 +15,14 @@ namespace HRM.Models
         [Column("ID")]
         public long id { get; set; }
 
-        [Key]
+       
         [Column("CompCode")]
         [StringLength(50)]
         
         public string CompCode { get; set; } = null!;
 
 
-        [Key]
+     
         [Column("EMP_NO")]
         [StringLength(50)]
         
@@ -40,7 +40,7 @@ namespace HRM.Models
 
 
 
-        [Column("ITEM_AMT", TypeName = "NUMBER(15,2)")]
+        [Column("ITEM_AMT", TypeName = "decimal(15,2)")]
         public decimal? ItemAmt { get; set; }
 
         [Column("Reason_Pay")]

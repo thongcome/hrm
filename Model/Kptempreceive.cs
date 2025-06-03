@@ -125,19 +125,19 @@ public partial class Kptempreceive
     /// <summary>
     /// หุ้นยกมาสะสม
     /// </summary>
-    [Column("SHARESTKBF_VALUE", TypeName = "NUMBER(15,2)")]
+    [Column("SHARESTKBF_VALUE", TypeName = "decimal(15,2)")]
     public decimal? SharestkbfValue { get; set; }
 
     /// <summary>
     /// หุ้นสะสม
     /// </summary>
-    [Column("SHARESTK_VALUE", TypeName = "NUMBER(15,2)")]
+    [Column("SHARESTK_VALUE", TypeName = "decimal(15,2)")]
     public decimal? SharestkValue { get; set; }
 
     /// <summary>
     /// ดอกเบี้ยสะสม
     /// </summary>
-    [Column("INTEREST_ACCUM", TypeName = "NUMBER(15,2)")]
+    [Column("INTEREST_ACCUM", TypeName = "decimal(15,2)")]
     public decimal? InterestAccum { get; set; }
 
     /// <summary>
@@ -150,7 +150,7 @@ public partial class Kptempreceive
     /// <summary>
     /// จำนวนเงินที่เก็บได้
     /// </summary>
-    [Column("RECEIVE_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("RECEIVE_AMT", TypeName = "decimal(15,2)")]
     public decimal? ReceiveAmt { get; set; }
 
     /// <summary>

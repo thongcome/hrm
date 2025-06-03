@@ -1,0 +1,99 @@
+﻿@page "/payroll-calculate"
+@using System.Globalization
+@using MudBlazor
+
+<PageTitle>ประมวลผลเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="4">
+    <MudText Typo="Typo.h5" Color="Color.Primary">ประมวลผลเงินเดือน</MudText>
+    <MudDivider Class="my-2" />
+
+    <!-- Step 1: เลือกรอบเดือน/ปี -->
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudSelect @bind-Value="_selectedMonth" Label="เลือกเดือน" Required>
+                @foreach (var month in _months)
+                {
+                    <MudSelectItem Value="@month">@month</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect @bind-Value="_selectedYear" Label="เลือกปี" Required>
+                @foreach (var year in _years)
+                {
+                    <MudSelectItem Value="@year">@year</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Step 2: เลือกพนักงาน -->
+    <MudText Class="mt-4" Typo="Typo.subtitle1">เลือกพนักงาน</MudText>
+    <MudTable Items="_employees" MultiSelection="true" @bind-SelectedItems="_selectedEmployees" Hover="true">
+        <HeaderContent>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>ตำแหน่ง</MudTh>
+            <MudTh>เงินเดือนพื้นฐาน</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ชื่อ">@context.Name</MudTd>
+            <MudTd DataLabel="ตำแหน่ง">@context.Position</MudTd>
+            <MudTd DataLabel="เงินเดือนพื้นฐาน">@context.BaseSalary.ToString("C0", CultureInfo.GetCultureInfo("th-TH"))</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <!-- Step 3: ปุ่มประมวลผล -->
+    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ProcessPayroll" Class="mt-4" Disabled="@(!_selectedEmployees.Any() || string.IsNullOrEmpty(_selectedMonth) || string.IsNullOrEmpty(_selectedYear))">
+        <MudIcon Icon="@Icons.Material.Filled.Calculate" Class="me-2" />
+        ประมวลผลเงินเดือน
+    </MudButton>
+
+    <!-- Step 4: แสดงผลลัพธ์ -->
+    @if (_processingResult is not null)
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">
+            @($"ประมวลผลสำเร็จ {DateTime.Now.ToString("dd MMM yyyy HH:mm:ss")} - รายการ: {_processingResult.TotalEmployees} คน")
+        </MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private string? _selectedMonth;
+    private string? _selectedYear;
+    private List<string> _months = CultureInfo.GetCultureInfo("th-TH").DateTimeFormat.MonthNames.Where(m => !string.IsNullOrEmpty(m)).ToList();
+    private List<string> _years = new() { "2024", "2025" };
+ 
+    private List<Employee> _employees = new()
+    {
+        new Employee { Name = "สมชาย", Position = "พนักงานบัญชี", BaseSalary = 30000 },
+        new Employee { Name = "สุนีย์", Position = "HR", BaseSalary = 35000 }
+    };
+
+    private HashSet<Employee> _selectedEmployees = new();
+    private PayrollResult? _processingResult;
+
+    private void ProcessPayroll()
+    {
+        _processingResult = new PayrollResult
+            {
+                TotalEmployees = _selectedEmployees.Count,
+                TotalAmount = _selectedEmployees.Sum(e => e.BaseSalary)
+            };
+
+        // ในระบบจริงจะเรียก Service / Database / Calculation logic
+    }
+
+    public class Employee
+    {
+        public string Name { get; set; } = "";
+        public string Position { get; set; } = "";
+        public decimal BaseSalary { get; set; }
+    }
+
+    public class PayrollResult
+    {
+        public int TotalEmployees { get; set; }
+        public decimal TotalAmount { get; set; }
+    }
+}

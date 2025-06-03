@@ -77,7 +77,7 @@ public partial class Hremployee
     
     public string? Sex { get; set; }
 
-    [Column("WEIGHT", TypeName = "NUMBER(5,2)")]
+    [Column("WEIGHT", TypeName = "decimal(5,2)")]
     public decimal? Weight { get; set; }
 
     [Column("HEIGHT")]
@@ -174,10 +174,10 @@ public partial class Hremployee
     [Column("TERM_DATE", TypeName = "DATE")]
     public DateTime? TermDate { get; set; }
 
-    [Column("SALARY_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("SALARY_AMT", TypeName = "decimal(15,2)")]
     public decimal? SalaryAmt { get; set; }
 
-    [Column("DAILY_WAGE", TypeName = "NUMBER(10,2)")]
+    [Column("DAILY_WAGE", TypeName = "decimal(10,2)")]
     public decimal? DailyWage { get; set; }
 
     [Column("SALEXP_CODE")]
@@ -205,7 +205,7 @@ public partial class Hremployee
     
     public string? TaxCalcode { get; set; }
 
-    [Column("TAX_BFAMT", TypeName = "NUMBER(15,2)")]
+    [Column("TAX_BFAMT", TypeName = "decimal(15,2)")]
     public decimal? TaxBfamt { get; set; }
 
     [Column("SS_STATUS")]
@@ -216,13 +216,13 @@ public partial class Hremployee
     [Precision(2)]
     public decimal? SsAppfirststs { get; set; }
 
-    [Column("SS_BFAMT", TypeName = "NUMBER(15,2)")]
+    [Column("SS_BFAMT", TypeName = "decimal(15,2)")]
     public decimal? SsBfamt { get; set; }
 
     [Column("SS_APPDATE", TypeName = "DATE")]
     public DateTime? SsAppdate { get; set; }
 
-    [Column("SS_RATE", TypeName = "NUMBER(5,2)")]
+    [Column("SS_RATE", TypeName = "decimal(5,2)")]
     public decimal? SsRate { get; set; }
 
     [Column("SS_HOSPITAL")]
@@ -234,10 +234,10 @@ public partial class Hremployee
     [Precision(2)]
     public decimal? ProvfStatus { get; set; }
 
-    [Column("PROVF_CORPRATE", TypeName = "NUMBER(5,2)")]
+    [Column("PROVF_CORPRATE", TypeName = "decimal(5,2)")]
     public decimal? ProvfCorprate { get; set; }
 
-    [Column("PROVF_EMPRATE", TypeName = "NUMBER(5,2)")]
+    [Column("PROVF_EMPRATE", TypeName = "decimal(5,2)")]
     public decimal? ProvfEmprate { get; set; }
 
     [Column("PROVF_APPDATE", TypeName = "DATE")]
@@ -246,7 +246,7 @@ public partial class Hremployee
     [Column("PROVF_RESIGNDATE", TypeName = "DATE")]
     public DateTime? ProvfResigndate { get; set; }
 
-    [Column("PROVF_BFAMT", TypeName = "NUMBER(15,2)")]
+    [Column("PROVF_BFAMT", TypeName = "decimal(15,2)")]
     public decimal? ProvfBfamt { get; set; }
 
     [Column("REF_MEMBNO")]
@@ -268,13 +268,13 @@ public partial class Hremployee
     
     public string? EmplevelCode { get; set; }
 
-    [Column("PROFESSIONAL_AMT", TypeName = "NUMBER(10,2)")]
+    [Column("PROFESSIONAL_AMT", TypeName = "decimal(10,2)")]
     public decimal? ProfessionalAmt { get; set; }
 
-    [Column("COMPENSATION_AMT1", TypeName = "NUMBER(10,2)")]
+    [Column("COMPENSATION_AMT1", TypeName = "decimal(10,2)")]
     public decimal? CompensationAmt1 { get; set; }
 
-    [Column("COMPENSATION_AMT2", TypeName = "NUMBER(10,2)")]
+    [Column("COMPENSATION_AMT2", TypeName = "decimal(10,2)")]
     public decimal? CompensationAmt2 { get; set; }
 
     [Column("EMER_NAME")]
@@ -312,7 +312,7 @@ public partial class Hremployee
     
     public string? WorktimeCode { get; set; }
 
-    [Column("LEAVE_BF", TypeName = "NUMBER(10,2)")]
+    [Column("LEAVE_BF", TypeName = "decimal(10,2)")]
     public decimal? LeaveBf { get; set; }
 
     [Column("OVERLEAVE_FLAG")]
@@ -333,7 +333,7 @@ public partial class Hremployee
     
     public string? UpdateByentryip { get; set; }
 
-    [Column("DEPT_FIRST", TypeName = "NUMBER(10,2)")]
+    [Column("DEPT_FIRST", TypeName = "decimal(10,2)")]
     public decimal? DeptFirst { get; set; }
 
     [Column("SCAN_NO")]
@@ -352,13 +352,13 @@ public partial class Hremployee
     [Column("CONTRACT_DATE", TypeName = "DATE")]
     public DateTime? ContractDate { get; set; }
 
-    [Column("HEALTH_CHECK1", TypeName = "NUMBER(12,2)")]
+    [Column("HEALTH_CHECK1", TypeName = "decimal(12,2)")]
     public decimal? HealthCheck1 { get; set; }
 
-    [Column("HEALTH_CHECK2", TypeName = "NUMBER(12,2)")]
+    [Column("HEALTH_CHECK2", TypeName = "decimal(12,2)")]
     public decimal? HealthCheck2 { get; set; }
 
-    [Column("VACCINE_AMT", TypeName = "NUMBER(12,2)")]
+    [Column("VACCINE_AMT", TypeName = "decimal(12,2)")]
     public decimal? VaccineAmt { get; set; }
 
     [Column("MATE_CODE")]
@@ -371,15 +371,15 @@ public partial class Hremployee
     
     public string? HrType { get; set; }
 
-    [Column("PROVFCORP_BFAMT", TypeName = "NUMBER(15,2)")]
+    [Column("PROVFCORP_BFAMT", TypeName = "decimal(15,2)")]
     public decimal? ProvfcorpBfamt { get; set; }
 
-    [Column("PROVF_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("PROVF_AMT", TypeName = "decimal(15,2)")]
     public decimal? ProvfAmt { get; set; }
 
-    [Column("PROVFCORP_AMT", TypeName = "NUMBER(15,2)")]
+    [Column("PROVFCORP_AMT", TypeName = "decimal(15,2)")]
     public decimal? ProvfcorpAmt { get; set; }
 
-    [Column("ASSIST_BF", TypeName = "NUMBER(15,2)")]
+    [Column("ASSIST_BF", TypeName = "decimal(15,2)")]
     public decimal? AssistBf { get; set; }
 }

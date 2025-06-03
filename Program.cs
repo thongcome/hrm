@@ -11,6 +11,10 @@ using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using HRM.Model;
 using HRM.Models;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using MudBlazor.Services;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,6 +60,8 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 
 
 builder.Services.AddRazorPages();  // เพิ่มการใช้งาน Razor Pages
+                                   // bootstrap blazor
+
 
 
 //// Register DbContextFactory for Blazor component and background task usage
@@ -89,6 +95,16 @@ builder.Services.AddAuthorizationCore();
 
 builder.Services.AddScoped<MenuStateService>();// เก็บข้อมูลสถานะเมนู
 
+// Add Company services to the container.
+// Program.cs
+builder.Services.AddScoped(typeof(IBaseService<>), typeof(BaseService<>));
+builder.Services.AddScoped(typeof(ISearchableService<>), typeof(BaseService<>));
+
+builder.Services.AddScoped<ICompanyContext, CompanyContext>();
+builder.Services.AddHttpContextAccessor();
+
+
+builder.Services.AddMudServices();
 
 //builder.Services.AddSingleton(smtpSettings);
 
@@ -104,6 +120,19 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();  // ใช้ Serilog เป็น logging provider
 builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Information);
+builder.Services.AddScoped<IPasswordHasher<sc_user>, PasswordHasher<sc_user>>();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.LogoutPath = "/logout";
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+    });
+
+builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+
 
 var app = builder.Build();
 
@@ -149,10 +178,12 @@ app.MapAdditionalIdentityEndpoints();
 //app.UseAuthentication();
 //app.UseAuthorization();
 
+app.UseAuthentication();
+app.UseAuthorization();
 
 
 //app.UseRouting();
 
- app.MapRazorPages();  // เปิดใช้งานเส้นทาง Razor Pages ของ Identity
+app.MapRazorPages();  // เปิดใช้งานเส้นทาง Razor Pages ของ Identity
 
 app.Run();

@@ -84,16 +84,16 @@ public partial class HrwOt
     [Column("OT_DOCNO_DATE", TypeName = "DATE")]
     public DateTime? OtDocnoDate { get; set; }
 
-    [Column("OT_AMT", TypeName = "NUMBER(10,2)")]
+    [Column("OT_AMT", TypeName = "decimal(10,2)")]
     public decimal? OtAmt { get; set; }
 
-    [Column("MONEY_HOUR", TypeName = "NUMBER(12,2)")]
+    [Column("MONEY_HOUR", TypeName = "decimal(12,2)")]
     public decimal? MoneyHour { get; set; }
 
-    [Column("MONEY_MINUTE", TypeName = "NUMBER(12,2)")]
+    [Column("MONEY_MINUTE", TypeName = "decimal(12,2)")]
     public decimal? MoneyMinute { get; set; }
 
-    [Column("OT_P_MINUTE", TypeName = "NUMBER(12,2)")]
+    [Column("OT_P_MINUTE", TypeName = "decimal(12,2)")]
     public decimal? OtPMinute { get; set; }
 
     [Column("DEPTGRP_CODE")]

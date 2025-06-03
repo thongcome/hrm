@@ -1,52 +1,84 @@
 ﻿@page "/sc_roles"
+@using HRM.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.QuickGrid
 @using HRM.Models
 @implements IAsyncDisposable
-@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISearchableService<sc_role> RoleService
 
-<PageTitle>Index</PageTitle>
+<PageTitle>Roles</PageTitle>
 
-<h1>Index</h1>
+<h1>Roles</h1>
 
 <p>
     <a href="sc_roles/create">Create New</a>
 </p>
 
 <p>
-    <a href="/sc_user_roles/mapuser"> Assign Role</a>
+    <a href="/sc_user_roles/mapuser">Assign Role</a>
 </p>
-<QuickGrid Items="context.sc_roles"
-           Class="table table-hover table-striped border shadow-sm rounded"
-           RowClass="bg-white align-middle"
-           Style="border-radius: 12px;">
 
-    <PropertyColumn Property="sc_role => sc_role.roleid" Title="Role ID" />
-    <PropertyColumn Property="sc_role => sc_role.name" Title="Name" />
-    <PropertyColumn Property="sc_role => sc_role.abbr" Title="Abbreviation" />
-    <PropertyColumn Property="sc_role => sc_role.rolelevel" Title="Level" />   
-    <PropertyColumn Property="sc_role => sc_role.upperrole" Title="Upper Role" />
-    <PropertyColumn Property="sc_role => sc_role.rolecode" Title="Role Code" />
-    <PropertyColumn Property="sc_role => sc_role.isactive" Title="Active" />
-    <PropertyColumn Property="sc_role => sc_role.moddate" Title="Modified" />
-    <PropertyColumn Property="sc_role => sc_role.modby" Title="Modified By" />
-    <PropertyColumn Property="sc_role => sc_role.isHeader" Title="Header?" />
-    <PropertyColumn Property="sc_role => sc_role.ref1" Title="Ref 1" />
-    <PropertyColumn Property="sc_role => sc_role.ref2" Title="Ref 2" />
+<InputText @bind-Value="keyword"
+           Placeholder="🔍 Search..."
+           class="form-control mb-3"
+           @oninput="OnSearchChanged" />
 
-    <TemplateColumn Context="sc_role" Title="Actions">
-        <a class="btn btn-sm btn-outline-primary me-1" href="@($"sc_roles/edit?roleid={sc_role.roleid}")">Edit</a>
-        <a class="btn btn-sm btn-outline-info me-1" href="@($"sc_roles/details?roleid={sc_role.roleid}")">Details</a>
-        <a class="btn btn-sm btn-outline-danger" href="@($"sc_roles/delete?roleid={sc_role.roleid}")">Delete</a>
-    </TemplateColumn>
-</QuickGrid>
+@if (roles == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <QuickGrid TItem="sc_role"
+               Items="roles.AsQueryable()"
+               Class="table table-hover table-striped border shadow-sm rounded"
+               RowClass="bg-white align-middle"
+               Style="border-radius: 12px;">
+        <PropertyColumn Property="sc_role => sc_role.roleid" Title="Role ID" />
+        <PropertyColumn Property="sc_role => sc_role.name" Title="Name" />
+        <PropertyColumn Property="sc_role => sc_role.abbr" Title="Abbreviation" />
+        <PropertyColumn Property="sc_role => sc_role.rolelevel" Title="Level" />
+        <PropertyColumn Property="sc_role => sc_role.upperrole" Title="Upper Role" />
+        <PropertyColumn Property="sc_role => sc_role.rolecode" Title="Role Code" />
+        <PropertyColumn Property="sc_role => sc_role.isactive" Title="Active" />
+        <PropertyColumn Property="sc_role => sc_role.moddate" Title="Modified" />
+        <PropertyColumn Property="sc_role => sc_role.modby" Title="Modified By" />
+        <PropertyColumn Property="sc_role => sc_role.isHeader" Title="Header?" />
+        <PropertyColumn Property="sc_role => sc_role.ref1" Title="Ref 1" />
+        <PropertyColumn Property="sc_role => sc_role.ref2" Title="Ref 2" />
+
+        <TemplateColumn Context="sc_role" Title="Actions">
+            <a class="btn btn-sm btn-outline-primary me-1" href="@($"sc_roles/edit?roleid={sc_role.roleid}")">Edit</a>
+            <a class="btn btn-sm btn-outline-info me-1" href="@($"sc_roles/details?roleid={sc_role.roleid}")">Details</a>
+            <a class="btn btn-sm btn-outline-danger" href="@($"sc_roles/delete?roleid={sc_role.roleid}")">Delete</a>
+        </TemplateColumn>
+    </QuickGrid>
+}
 
 @code {
     private HRMContext context = default!;
+    private List<sc_role> roles = new();  // ✅ เก็บผลลัพธ์ที่แสดงในตาราง
+    private string keyword = "";          // ✅ คำค้นหาจาก textbox
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         context = DbFactory.CreateDbContext();
+        roles = await RoleService.GetAllAsync(); // เริ่มต้นโหลดข้อมูลทั้งหมด
+    }
+
+    private async Task SearchRoles()
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+            roles = await RoleService.GetAllAsync();
+        else
+            roles = await RoleService.SearchAsync(keyword, "name", "abbr", "rolecode");
+    }
+
+    private async Task OnSearchChanged(ChangeEventArgs e)
+    {
+        keyword = e.Value?.ToString() ?? "";
+        await SearchRoles();
     }
 
     public async ValueTask DisposeAsync() => await context.DisposeAsync();
