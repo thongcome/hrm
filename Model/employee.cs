@@ -10,7 +10,7 @@ namespace HRM.Models;
 [Index("Companycode", Name = "companycode")]
 [Index("id", Name = "employeeID")]
 [Index("EmployeeID", "Companycode", Name = "employeeID_CompanyCode")]
-public partial class employee
+public partial class Employee
 {
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public int id { get; set; }
@@ -30,11 +30,13 @@ public partial class employee
     public string? TitleEn { get; set; }
 
     [StringLength(250)]
-    
+
+    [Required(ErrorMessage = "กรุณาระบุชื่อพนักงาน")]
+
     public string NameTh { get; set; } = null!;
 
     [StringLength(250)]
-    
+    [Required(ErrorMessage = "Please specific English Name")]
     public string? NameEn { get; set; }
 
     [StringLength(50)]
@@ -46,7 +48,8 @@ public partial class employee
     public string? CardType { get; set; }
 
     [StringLength(50)]
-    
+    [Required(ErrorMessage = "Please specific Employe ID")]
+
     public string EmployeeID { get; set; } = null!;
 
     [StringLength(250)]

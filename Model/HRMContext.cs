@@ -124,7 +124,7 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<emp_overtime_request> emp_overtime_requests { get; set; }
 
-    public virtual DbSet<employee> employees { get; set; }
+    public virtual DbSet<Employee> employees { get; set; }
 
     public virtual DbSet<Employeetype> employeetypes { get; set; }
 
@@ -471,7 +471,7 @@ public partial class HRMContext : DbContext
                 .HasConstraintName("FK_emp_checkin_sc_user");
         });
 
-        modelBuilder.Entity<employee>(entity =>
+        modelBuilder.Entity<Employee>(entity =>
         {
             entity.HasKey(e => e.id).HasName("PK_EMPLOYEE");
         });

@@ -1,0 +1,108 @@
+﻿@page "/hrpayrolldasboard"
+@inject NavigationManager Navigation
+
+<PageTitle>HR Payroll Dashboard</PageTitle>
+
+
+<div class="container mt-4">
+    <h3 class="text-orange">HR Payroll Dashboard</h3>
+    <p class="text-muted">สรุปข้อมูลระบบเงินเดือน (เฉพาะฝ่าย HR)</p>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">พนักงานทั้งหมด</h5>
+                    <p class="card-text fs-4">@TotalEmployees คน</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">ยอดรวมเงินเดือน</h5>
+                    <p class="card-text fs-4">@TotalSalary.ToString("C0")</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-orange shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">รออนุมัติ</h5>
+                    <p class="card-text fs-4">@PendingApproval รายการ</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5">
+        <h5>ประวัติรอบการจ่ายเงินเดือน</h5>
+        <table class="table table-bordered mt-3">
+            <thead class="table-warning">
+                <tr>
+                    <th>เดือน</th>
+                    <th>จำนวนพนักงาน</th>
+                    <th>ยอดสุทธิ</th>
+                    <th>สถานะ</th>
+                    <th>ดำเนินการ</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in PayrollHistory)
+                {
+                    <tr>
+                        <td>@item.Month</td>
+                        <td>@item.EmployeeCount</td>
+                        <td>@item.TotalAmount.ToString("C0")</td>
+                        <td><span class="badge bg-@(item.Status == "อนุมัติแล้ว" ? "success" : "secondary")">@item.Status</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-dark" @onclick="() => ViewDetails(item.Id)">ดู</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4">
+        @*         <button class="btn btn-warning me-2" @onclick="AddNewPeriod">+ เพิ่มรอบเงินเดือน</button>
+ *@     
+        <button class="btn btn-warning me-2" @onclick="AddNewPeriod">+ ประมวลผลเงินเดือน Gpt</button>
+        <button class="btn btn-warning me-2" @onclick="CalNewPeriod">+ ประมวลผลเงินเดือน</button>
+
+        <button class="btn btn-outline-orange me-2" @onclick="UploadExcel">อัปโหลด Excel</button>
+        <button class="btn btn-outline-dark" @onclick="GoToReport">เข้าสู่รายงาน</button>
+    </div>
+</div>
+
+@code {
+    public int TotalEmployees { get; set; } = 123;
+    public decimal TotalSalary { get; set; } = 540000;
+    public int PendingApproval { get; set; } = 2;
+
+    public List<PayrollPeriod> PayrollHistory { get; set; } = new()
+    {
+        new PayrollPeriod { Id = 1, Month = "พฤษภาคม 2025", EmployeeCount = 120, TotalAmount = 530000, Status = "อนุมัติแล้ว" },
+        new PayrollPeriod { Id = 2, Month = "เมษายน 2025", EmployeeCount = 118, TotalAmount = 520000, Status = "รออนุมัติ" }
+    };
+
+    private void ViewDetails(int id)
+    {
+        Navigation.NavigateTo($"/hr/payroll-detail/{id}");
+    }
+
+    private void AddNewPeriod() => Navigation.NavigateTo("/payroll-calculate");
+    private void CalNewPeriod() => Navigation.NavigateTo("/payrollprocess");
+
+    private void UploadExcel() => Navigation.NavigateTo("/hr/upload-payroll");
+    private void GoToReport() => Navigation.NavigateTo("/hr/report");
+
+    public class PayrollPeriod
+    {
+        public int Id { get; set; }
+        public string Month { get; set; } = "";
+        public int EmployeeCount { get; set; }
+        public decimal TotalAmount { get; set; }
+        public string Status { get; set; } = "";
+    }
+}
