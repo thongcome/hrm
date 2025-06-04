@@ -1,0 +1,107 @@
+﻿@page "/hrtaxrates/delete"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>HRTaxRate</h2>
+    <hr />
+    @if (hrtaxrate is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">CoopId</dt>
+            <dd class="col-sm-10">@hrtaxrate.CoopId</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@hrtaxrate.code</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@hrtaxrate.Name</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">NameEn</dt>
+            <dd class="col-sm-10">@hrtaxrate.NameEn</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">minRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.minRate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">maxRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.maxRate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">PercentRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.PercentRate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">taxLevelRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.taxLevelRate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">taxAccumLevelRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.taxAccumLevelRate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@hrtaxrate.isActive</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">year</dt>
+            <dd class="col-sm-10">@hrtaxrate.year</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">step</dt>
+            <dd class="col-sm-10">@hrtaxrate.step</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MODIFIED_DATE</dt>
+            <dd class="col-sm-10">@hrtaxrate.MODIFIED_DATE</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MODIFIED_BY</dt>
+            <dd class="col-sm-10">@hrtaxrate.MODIFIED_BY</dd>
+        </dl>
+        <EditForm method="post" Model="hrtaxrate" OnValidSubmit="DeleteHRTaxRate" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(hrtaxrate is null)">Delete</button> |
+            <a href="/hrtaxrates">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private HRTaxRate? hrtaxrate;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrtaxrate = await context.HRTaxRate.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrtaxrate is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task DeleteHRTaxRate()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.HRTaxRate.Remove(hrtaxrate!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/hrtaxrates");
+    }
+}

@@ -1,0 +1,49 @@
+﻿@page "/hrtaxrates"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="hrtaxrates/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.HRTaxRate">
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.CoopId" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.code" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.Name" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.NameEn" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.minRate" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.maxRate" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.PercentRate" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.taxLevelRate" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.taxAccumLevelRate" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.isActive" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.year" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.step" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.MODIFIED_DATE" />
+    <PropertyColumn Property="hrtaxrate => hrtaxrate.MODIFIED_BY" />
+
+    <TemplateColumn Context="hrtaxrate">
+        <a href="@($"hrtaxrates/edit?id={hrtaxrate.id}")">Edit</a> |
+        <a href="@($"hrtaxrates/details?id={hrtaxrate.id}")">Details</a> |
+        <a href="@($"hrtaxrates/delete?id={hrtaxrate.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

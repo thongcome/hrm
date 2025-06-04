@@ -1,0 +1,72 @@
+﻿@page "/hrtaxrates/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>HRTaxRate</h2>
+    <hr />
+    @if (hrtaxrate is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">CoopId</dt>
+            <dd class="col-sm-10">@hrtaxrate.CoopId</dd>
+            <dt class="col-sm-2">code</dt>
+            <dd class="col-sm-10">@hrtaxrate.code</dd>
+            <dt class="col-sm-2">Name</dt>
+            <dd class="col-sm-10">@hrtaxrate.Name</dd>
+            <dt class="col-sm-2">NameEn</dt>
+            <dd class="col-sm-10">@hrtaxrate.NameEn</dd>
+            <dt class="col-sm-2">minRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.minRate</dd>
+            <dt class="col-sm-2">maxRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.maxRate</dd>
+            <dt class="col-sm-2">PercentRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.PercentRate</dd>
+            <dt class="col-sm-2">taxLevelRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.taxLevelRate</dd>
+            <dt class="col-sm-2">taxAccumLevelRate</dt>
+            <dd class="col-sm-10">@hrtaxrate.taxAccumLevelRate</dd>
+            <dt class="col-sm-2">isActive</dt>
+            <dd class="col-sm-10">@hrtaxrate.isActive</dd>
+            <dt class="col-sm-2">year</dt>
+            <dd class="col-sm-10">@hrtaxrate.year</dd>
+            <dt class="col-sm-2">step</dt>
+            <dd class="col-sm-10">@hrtaxrate.step</dd>
+            <dt class="col-sm-2">MODIFIED_DATE</dt>
+            <dd class="col-sm-10">@hrtaxrate.MODIFIED_DATE</dd>
+            <dt class="col-sm-2">MODIFIED_BY</dt>
+            <dd class="col-sm-10">@hrtaxrate.MODIFIED_BY</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrtaxrates/edit?id={hrtaxrate.id}")">Edit</a> |
+            <a href="@($"/hrtaxrates")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private HRTaxRate? hrtaxrate;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrtaxrate = await context.HRTaxRate.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrtaxrate is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

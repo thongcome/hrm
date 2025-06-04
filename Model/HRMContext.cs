@@ -1135,4 +1135,6 @@ public partial class HRMContext : DbContext
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
+
+public DbSet<HRM.Models.HRTaxRate> HRTaxRate { get; set; } = default!;
 }

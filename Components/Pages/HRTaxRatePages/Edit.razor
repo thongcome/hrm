@@ -1,0 +1,154 @@
+﻿@page "/hrtaxrates/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>HRTaxRate</h2>
+<hr />
+@if (HRTaxRate is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="HRTaxRate" OnValidSubmit="UpdateHRTaxRate" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="HRTaxRate.id" value="@HRTaxRate.id" />
+                <div class="mb-3">
+                    <label for="coopid" class="form-label">CoopId:</label>
+                    <InputText id="coopid" @bind-Value="HRTaxRate.CoopId" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.CoopId" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="code" class="form-label">code:</label>
+                    <InputText id="code" @bind-Value="HRTaxRate.code" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.code" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="name" class="form-label">Name:</label>
+                    <InputText id="name" @bind-Value="HRTaxRate.Name" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.Name" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="nameen" class="form-label">NameEn:</label>
+                    <InputText id="nameen" @bind-Value="HRTaxRate.NameEn" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.NameEn" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="minrate" class="form-label">minRate:</label>
+                    <InputNumber id="minrate" @bind-Value="HRTaxRate.minRate" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.minRate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="maxrate" class="form-label">maxRate:</label>
+                    <InputNumber id="maxrate" @bind-Value="HRTaxRate.maxRate" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.maxRate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="percentrate" class="form-label">PercentRate:</label>
+                    <InputNumber id="percentrate" @bind-Value="HRTaxRate.PercentRate" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.PercentRate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="taxlevelrate" class="form-label">taxLevelRate:</label>
+                    <InputNumber id="taxlevelrate" @bind-Value="HRTaxRate.taxLevelRate" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.taxLevelRate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="taxaccumlevelrate" class="form-label">taxAccumLevelRate:</label>
+                    <InputNumber id="taxaccumlevelrate" @bind-Value="HRTaxRate.taxAccumLevelRate" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.taxAccumLevelRate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="isactive" class="form-label">isActive:</label>
+                    <InputCheckbox id="isactive" @bind-Value="HRTaxRate.isActive" class="form-check-input" />
+                    <ValidationMessage For="() => HRTaxRate.isActive" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="year" class="form-label">year:</label>
+                    <InputText id="year" @bind-Value="HRTaxRate.year" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.year" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="step" class="form-label">step:</label>
+                    <InputNumber id="step" @bind-Value="HRTaxRate.step" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.step" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modified_date" class="form-label">MODIFIED_DATE:</label>
+                    <InputDate id="modified_date" @bind-Value="HRTaxRate.MODIFIED_DATE" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.MODIFIED_DATE" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="modified_by" class="form-label">MODIFIED_BY:</label>
+                    <InputText id="modified_by" @bind-Value="HRTaxRate.MODIFIED_BY" class="form-control" />
+                    <ValidationMessage For="() => HRTaxRate.MODIFIED_BY" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/hrtaxrates">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private HRTaxRate? HRTaxRate { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        HRTaxRate ??= await context.HRTaxRate.FirstOrDefaultAsync(m => m.id == id);
+
+        if (HRTaxRate is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateHRTaxRate()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(HRTaxRate!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!HRTaxRateExists(HRTaxRate!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/hrtaxrates");
+    }
+
+    private bool HRTaxRateExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.HRTaxRate.Any(e => e.id == id);
+    }
+}
