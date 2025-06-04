@@ -1,0 +1,74 @@
+﻿@page "/hrucfsecurities/create"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>Hrucfsecurity</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="Hrucfsecurity" OnValidSubmit="AddHrucfsecurity" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="companyid" class="form-label">companyid:</label> 
+                <InputText id="companyid" @bind-Value="Hrucfsecurity.companyid" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.companyid" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="securitycode" class="form-label">SecurityCode:</label> 
+                <InputText id="securitycode" @bind-Value="Hrucfsecurity.SecurityCode" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.SecurityCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="securitydesc" class="form-label">SecurityDesc:</label> 
+                <InputText id="securitydesc" @bind-Value="Hrucfsecurity.SecurityDesc" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.SecurityDesc" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="percensecurity" class="form-label">PercenSecurity:</label> 
+                <InputNumber id="percensecurity" @bind-Value="Hrucfsecurity.PercenSecurity" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.PercenSecurity" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="securitymoney" class="form-label">SecurityMoney:</label> 
+                <InputNumber id="securitymoney" @bind-Value="Hrucfsecurity.SecurityMoney" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.SecurityMoney" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="oversecuritymoney" class="form-label">OverSecurityMoney:</label> 
+                <InputNumber id="oversecuritymoney" @bind-Value="Hrucfsecurity.OverSecurityMoney" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.OverSecurityMoney" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="percenmgsecurity" class="form-label">PercenmgSecurity:</label> 
+                <InputNumber id="percenmgsecurity" @bind-Value="Hrucfsecurity.PercenmgSecurity" class="form-control" /> 
+                <ValidationMessage For="() => Hrucfsecurity.PercenmgSecurity" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/hrucfsecurities">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private Hrucfsecurity Hrucfsecurity { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task AddHrucfsecurity()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Hrucfsecuritys.Add(Hrucfsecurity);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/hrucfsecurities");
+    }
+}

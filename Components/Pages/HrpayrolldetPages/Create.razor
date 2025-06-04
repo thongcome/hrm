@@ -1,0 +1,79 @@
+﻿@page "/hrpayrolldets/create"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>Hrpayrolldet</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="Hrpayrolldet" OnValidSubmit="AddHrpayrolldet" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="companyid" class="form-label">companyid:</label> 
+                <InputText id="companyid" @bind-Value="Hrpayrolldet.companyid" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.companyid" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="payrollslipno" class="form-label">PayrollslipNo:</label> 
+                <InputText id="payrollslipno" @bind-Value="Hrpayrolldet.PayrollslipNo" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.PayrollslipNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="seqno" class="form-label">SeqNo:</label> 
+                <InputNumber id="seqno" @bind-Value="Hrpayrolldet.SeqNo" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.SeqNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="empno" class="form-label">EmpNo:</label> 
+                <InputText id="empno" @bind-Value="Hrpayrolldet.EmpNo" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.EmpNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="payrollperiod" class="form-label">PayrollPeriod:</label> 
+                <InputText id="payrollperiod" @bind-Value="Hrpayrolldet.PayrollPeriod" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.PayrollPeriod" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="salitemcode" class="form-label">SalitemCode:</label> 
+                <InputText id="salitemcode" @bind-Value="Hrpayrolldet.SalitemCode" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.SalitemCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="description" class="form-label">Description:</label> 
+                <InputText id="description" @bind-Value="Hrpayrolldet.Description" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.Description" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="itemamt" class="form-label">ItemAmt:</label> 
+                <InputNumber id="itemamt" @bind-Value="Hrpayrolldet.ItemAmt" class="form-control" /> 
+                <ValidationMessage For="() => Hrpayrolldet.ItemAmt" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/hrpayrolldets">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private Hrpayrolldet Hrpayrolldet { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task AddHrpayrolldet()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Hrpayrolldet.Add(Hrpayrolldet);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/hrpayrolldets");
+    }
+}

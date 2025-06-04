@@ -1,0 +1,74 @@
+﻿@page "/hrextenuatetaxes/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Hrextenuatetax</h2>
+    <hr />
+    @if (hrextenuatetax is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrextenuatetax.companyid</dd>
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrextenuatetax.EmpNo</dd>
+            <dt class="col-sm-2">PayTravel</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayTravel</dd>
+            <dt class="col-sm-2">PayChild</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayChild</dd>
+            <dt class="col-sm-2">PayParent</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayParent</dd>
+            <dt class="col-sm-2">PayIntaddr</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayIntaddr</dd>
+            <dt class="col-sm-2">PayInsoth</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayInsoth</dd>
+            <dt class="col-sm-2">PayInsretry</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayInsretry</dd>
+            <dt class="col-sm-2">PayDisabled</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayDisabled</dd>
+            <dt class="col-sm-2">PayInsparent</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayInsparent</dd>
+            <dt class="col-sm-2">PayMate</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayMate</dd>
+            <dt class="col-sm-2">PayLtf</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayLtf</dd>
+            <dt class="col-sm-2">PayRmf</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayRmf</dd>
+            <dt class="col-sm-2">PayDonateoth</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayDonateoth</dd>
+            <dt class="col-sm-2">PayDonateedu</dt>
+            <dd class="col-sm-10">@hrextenuatetax.PayDonateedu</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrextenuatetaxes/edit?id={hrextenuatetax.id}")">Edit</a> |
+            <a href="@($"/hrextenuatetaxes")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private Hrextenuatetax? hrextenuatetax;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrextenuatetax = await context.Hrextenuatetaxs.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrextenuatetax is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

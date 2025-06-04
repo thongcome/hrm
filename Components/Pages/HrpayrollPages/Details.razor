@@ -1,0 +1,86 @@
+﻿@page "/hrpayrolls/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Hrpayroll</h2>
+    <hr />
+    @if (hrpayroll is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrpayroll.companyid</dd>
+            <dt class="col-sm-2">PayrollslipNo</dt>
+            <dd class="col-sm-10">@hrpayroll.PayrollslipNo</dd>
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrpayroll.EmpNo</dd>
+            <dt class="col-sm-2">PayrollDate</dt>
+            <dd class="col-sm-10">@hrpayroll.PayrollDate</dd>
+            <dt class="col-sm-2">PayrollPeriod</dt>
+            <dd class="col-sm-10">@hrpayroll.PayrollPeriod</dd>
+            <dt class="col-sm-2">SalarybaseAmt</dt>
+            <dd class="col-sm-10">@hrpayroll.SalarybaseAmt</dd>
+            <dt class="col-sm-2">SalaryothAmt</dt>
+            <dd class="col-sm-10">@hrpayroll.SalaryothAmt</dd>
+            <dt class="col-sm-2">SalarysubtAmt</dt>
+            <dd class="col-sm-10">@hrpayroll.SalarysubtAmt</dd>
+            <dt class="col-sm-2">SalarynetAmt</dt>
+            <dd class="col-sm-10">@hrpayroll.SalarynetAmt</dd>
+            <dt class="col-sm-2">PayrollStatus</dt>
+            <dd class="col-sm-10">@hrpayroll.PayrollStatus</dd>
+            <dt class="col-sm-2">ExpenseCode</dt>
+            <dd class="col-sm-10">@hrpayroll.ExpenseCode</dd>
+            <dt class="col-sm-2">ExpenseBank</dt>
+            <dd class="col-sm-10">@hrpayroll.ExpenseBank</dd>
+            <dt class="col-sm-2">ExpenseBranch</dt>
+            <dd class="col-sm-10">@hrpayroll.ExpenseBranch</dd>
+            <dt class="col-sm-2">ExpenseAccid</dt>
+            <dd class="col-sm-10">@hrpayroll.ExpenseAccid</dd>
+            <dt class="col-sm-2">PostStatus</dt>
+            <dd class="col-sm-10">@hrpayroll.PostStatus</dd>
+            <dt class="col-sm-2">MemberNo</dt>
+            <dd class="col-sm-10">@hrpayroll.MemberNo</dd>
+            <dt class="col-sm-2">PercenSecurity</dt>
+            <dd class="col-sm-10">@hrpayroll.PercenSecurity</dd>
+            <dt class="col-sm-2">PercenmgSecurity</dt>
+            <dd class="col-sm-10">@hrpayroll.PercenmgSecurity</dd>
+            <dt class="col-sm-2">SofmgSecurity</dt>
+            <dd class="col-sm-10">@hrpayroll.SofmgSecurity</dd>
+            <dt class="col-sm-2">PostSofStatus</dt>
+            <dd class="col-sm-10">@hrpayroll.PostSofStatus</dd>
+            <dt class="col-sm-2">PostStaStatus</dt>
+            <dd class="col-sm-10">@hrpayroll.PostStaStatus</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrpayrolls/edit?id={hrpayroll.id}")">Edit</a> |
+            <a href="@($"/hrpayrolls")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private Hrpayroll? hrpayroll;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrpayroll = await context.Hrpayroll.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrpayroll is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

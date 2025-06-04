@@ -1,0 +1,54 @@
+﻿@page "/hrbasepayrollfixeds/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Hrbasepayrollfixed</h2>
+    <hr />
+    @if (hrbasepayrollfixed is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrbasepayrollfixed.companyid</dd>
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrbasepayrollfixed.EmpNo</dd>
+            <dt class="col-sm-2">SeqNo</dt>
+            <dd class="col-sm-10">@hrbasepayrollfixed.SeqNo</dd>
+            <dt class="col-sm-2">SalitemCode</dt>
+            <dd class="col-sm-10">@hrbasepayrollfixed.SalitemCode</dd>
+            <dt class="col-sm-2">ItemAmt</dt>
+            <dd class="col-sm-10">@hrbasepayrollfixed.ItemAmt</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrbasepayrollfixeds/edit?id={hrbasepayrollfixed.id}")">Edit</a> |
+            <a href="@($"/hrbasepayrollfixeds")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private Hrbasepayrollfixed? hrbasepayrollfixed;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrbasepayrollfixed = await context.Hrbasepayrollfixed.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrbasepayrollfixed is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

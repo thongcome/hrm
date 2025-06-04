@@ -1,0 +1,119 @@
+﻿@page "/hrucfsecurities/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>Hrucfsecurity</h2>
+<hr />
+@if (Hrucfsecurity is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="Hrucfsecurity" OnValidSubmit="UpdateHrucfsecurity" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="Hrucfsecurity.id" value="@Hrucfsecurity.id" />
+                <div class="mb-3">
+                    <label for="companyid" class="form-label">companyid:</label>
+                    <InputText id="companyid" @bind-Value="Hrucfsecurity.companyid" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.companyid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="securitycode" class="form-label">SecurityCode:</label>
+                    <InputText id="securitycode" @bind-Value="Hrucfsecurity.SecurityCode" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.SecurityCode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="securitydesc" class="form-label">SecurityDesc:</label>
+                    <InputText id="securitydesc" @bind-Value="Hrucfsecurity.SecurityDesc" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.SecurityDesc" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="percensecurity" class="form-label">PercenSecurity:</label>
+                    <InputNumber id="percensecurity" @bind-Value="Hrucfsecurity.PercenSecurity" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.PercenSecurity" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="securitymoney" class="form-label">SecurityMoney:</label>
+                    <InputNumber id="securitymoney" @bind-Value="Hrucfsecurity.SecurityMoney" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.SecurityMoney" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="oversecuritymoney" class="form-label">OverSecurityMoney:</label>
+                    <InputNumber id="oversecuritymoney" @bind-Value="Hrucfsecurity.OverSecurityMoney" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.OverSecurityMoney" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="percenmgsecurity" class="form-label">PercenmgSecurity:</label>
+                    <InputNumber id="percenmgsecurity" @bind-Value="Hrucfsecurity.PercenmgSecurity" class="form-control" />
+                    <ValidationMessage For="() => Hrucfsecurity.PercenmgSecurity" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/hrucfsecurities">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private Hrucfsecurity? Hrucfsecurity { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrucfsecurity ??= await context.Hrucfsecuritys.FirstOrDefaultAsync(m => m.id == id);
+
+        if (Hrucfsecurity is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateHrucfsecurity()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(Hrucfsecurity!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!HrucfsecurityExists(Hrucfsecurity!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/hrucfsecurities");
+    }
+
+    private bool HrucfsecurityExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Hrucfsecuritys.Any(e => e.id == id);
+    }
+}

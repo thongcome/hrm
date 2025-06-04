@@ -1,0 +1,51 @@
+﻿@page "/hrpayaccums"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="hrpayaccums/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.HRPayAccums">
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.companyid" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.YEAR" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.EmpNo" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.Salary" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.OtherIncome" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.IncomePredictAmt" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.IncomeYearAmt" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.TaxYearAmt" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.IncomeForwardAmt" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.StartMonth" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.EndMonth" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.WORKMONTH" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.LastMonthCal" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.LastPeriodCode" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.MODIFIED_BY" />
+    <PropertyColumn Property="hrpayaccum => hrpayaccum.MODIFIED_DATE" />
+
+    <TemplateColumn Context="hrpayaccum">
+        <a href="@($"hrpayaccums/edit?id={hrpayaccum.id}")">Edit</a> |
+        <a href="@($"hrpayaccums/details?id={hrpayaccum.id}")">Details</a> |
+        <a href="@($"hrpayaccums/delete?id={hrpayaccum.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

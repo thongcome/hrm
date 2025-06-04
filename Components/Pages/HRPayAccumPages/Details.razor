@@ -1,0 +1,76 @@
+﻿@page "/hrpayaccums/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>HRPayAccum</h2>
+    <hr />
+    @if (hrpayaccum is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrpayaccum.companyid</dd>
+            <dt class="col-sm-2">YEAR</dt>
+            <dd class="col-sm-10">@hrpayaccum.YEAR</dd>
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrpayaccum.EmpNo</dd>
+            <dt class="col-sm-2">Salary</dt>
+            <dd class="col-sm-10">@hrpayaccum.Salary</dd>
+            <dt class="col-sm-2">OtherIncome</dt>
+            <dd class="col-sm-10">@hrpayaccum.OtherIncome</dd>
+            <dt class="col-sm-2">IncomePredictAmt</dt>
+            <dd class="col-sm-10">@hrpayaccum.IncomePredictAmt</dd>
+            <dt class="col-sm-2">IncomeYearAmt</dt>
+            <dd class="col-sm-10">@hrpayaccum.IncomeYearAmt</dd>
+            <dt class="col-sm-2">TaxYearAmt</dt>
+            <dd class="col-sm-10">@hrpayaccum.TaxYearAmt</dd>
+            <dt class="col-sm-2">IncomeForwardAmt</dt>
+            <dd class="col-sm-10">@hrpayaccum.IncomeForwardAmt</dd>
+            <dt class="col-sm-2">StartMonth</dt>
+            <dd class="col-sm-10">@hrpayaccum.StartMonth</dd>
+            <dt class="col-sm-2">EndMonth</dt>
+            <dd class="col-sm-10">@hrpayaccum.EndMonth</dd>
+            <dt class="col-sm-2">WORKMONTH</dt>
+            <dd class="col-sm-10">@hrpayaccum.WORKMONTH</dd>
+            <dt class="col-sm-2">LastMonthCal</dt>
+            <dd class="col-sm-10">@hrpayaccum.LastMonthCal</dd>
+            <dt class="col-sm-2">LastPeriodCode</dt>
+            <dd class="col-sm-10">@hrpayaccum.LastPeriodCode</dd>
+            <dt class="col-sm-2">MODIFIED_BY</dt>
+            <dd class="col-sm-10">@hrpayaccum.MODIFIED_BY</dd>
+            <dt class="col-sm-2">MODIFIED_DATE</dt>
+            <dd class="col-sm-10">@hrpayaccum.MODIFIED_DATE</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrpayaccums/edit?id={hrpayaccum.id}")">Edit</a> |
+            <a href="@($"/hrpayaccums")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private HRPayAccum? hrpayaccum;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrpayaccum = await context.HRPayAccums.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrpayaccum is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

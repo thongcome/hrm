@@ -1,0 +1,58 @@
+﻿@page "/hrucfsecurities/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>Hrucfsecurity</h2>
+    <hr />
+    @if (hrucfsecurity is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrucfsecurity.companyid</dd>
+            <dt class="col-sm-2">SecurityCode</dt>
+            <dd class="col-sm-10">@hrucfsecurity.SecurityCode</dd>
+            <dt class="col-sm-2">SecurityDesc</dt>
+            <dd class="col-sm-10">@hrucfsecurity.SecurityDesc</dd>
+            <dt class="col-sm-2">PercenSecurity</dt>
+            <dd class="col-sm-10">@hrucfsecurity.PercenSecurity</dd>
+            <dt class="col-sm-2">SecurityMoney</dt>
+            <dd class="col-sm-10">@hrucfsecurity.SecurityMoney</dd>
+            <dt class="col-sm-2">OverSecurityMoney</dt>
+            <dd class="col-sm-10">@hrucfsecurity.OverSecurityMoney</dd>
+            <dt class="col-sm-2">PercenmgSecurity</dt>
+            <dd class="col-sm-10">@hrucfsecurity.PercenmgSecurity</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrucfsecurities/edit?id={hrucfsecurity.id}")">Edit</a> |
+            <a href="@($"/hrucfsecurities")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private Hrucfsecurity? hrucfsecurity;
+
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrucfsecurity = await context.Hrucfsecuritys.FirstOrDefaultAsync(m => m.id == id);
+
+        if (hrucfsecurity is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

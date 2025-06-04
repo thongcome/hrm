@@ -1,0 +1,64 @@
+﻿@page "/hrbasepayrollfixeds/create"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create</PageTitle>
+
+<h1>Create</h1>
+
+<h2>Hrbasepayrollfixed</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+        <EditForm method="post" Model="Hrbasepayrollfixed" OnValidSubmit="AddHrbasepayrollfixed" FormName="create" Enhance>
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert"/>
+            <div class="mb-3">
+                <label for="companyid" class="form-label">companyid:</label> 
+                <InputText id="companyid" @bind-Value="Hrbasepayrollfixed.companyid" class="form-control" /> 
+                <ValidationMessage For="() => Hrbasepayrollfixed.companyid" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="empno" class="form-label">EmpNo:</label> 
+                <InputText id="empno" @bind-Value="Hrbasepayrollfixed.EmpNo" class="form-control" /> 
+                <ValidationMessage For="() => Hrbasepayrollfixed.EmpNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="seqno" class="form-label">SeqNo:</label> 
+                <InputNumber id="seqno" @bind-Value="Hrbasepayrollfixed.SeqNo" class="form-control" /> 
+                <ValidationMessage For="() => Hrbasepayrollfixed.SeqNo" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="salitemcode" class="form-label">SalitemCode:</label> 
+                <InputText id="salitemcode" @bind-Value="Hrbasepayrollfixed.SalitemCode" class="form-control" /> 
+                <ValidationMessage For="() => Hrbasepayrollfixed.SalitemCode" class="text-danger" /> 
+            </div>        
+            <div class="mb-3">
+                <label for="itemamt" class="form-label">ItemAmt:</label> 
+                <InputNumber id="itemamt" @bind-Value="Hrbasepayrollfixed.ItemAmt" class="form-control" /> 
+                <ValidationMessage For="() => Hrbasepayrollfixed.ItemAmt" class="text-danger" /> 
+            </div>        
+            <button type="submit" class="btn btn-primary">Create</button>
+        </EditForm>
+    </div>
+</div>
+
+<div>
+    <a href="/hrbasepayrollfixeds">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private Hrbasepayrollfixed Hrbasepayrollfixed { get; set; } = new();
+
+    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task AddHrbasepayrollfixed()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Hrbasepayrollfixed.Add(Hrbasepayrollfixed);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/hrbasepayrollfixeds");
+    }
+}

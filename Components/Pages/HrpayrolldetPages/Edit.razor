@@ -1,0 +1,124 @@
+﻿@page "/hrpayrolldets/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>Hrpayrolldet</h2>
+<hr />
+@if (Hrpayrolldet is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="Hrpayrolldet" OnValidSubmit="UpdateHrpayrolldet" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="Hrpayrolldet.id" value="@Hrpayrolldet.id" />
+                <div class="mb-3">
+                    <label for="companyid" class="form-label">companyid:</label>
+                    <InputText id="companyid" @bind-Value="Hrpayrolldet.companyid" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.companyid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payrollslipno" class="form-label">PayrollslipNo:</label>
+                    <InputText id="payrollslipno" @bind-Value="Hrpayrolldet.PayrollslipNo" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.PayrollslipNo" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="seqno" class="form-label">SeqNo:</label>
+                    <InputNumber id="seqno" @bind-Value="Hrpayrolldet.SeqNo" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.SeqNo" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="empno" class="form-label">EmpNo:</label>
+                    <InputText id="empno" @bind-Value="Hrpayrolldet.EmpNo" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.EmpNo" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payrollperiod" class="form-label">PayrollPeriod:</label>
+                    <InputText id="payrollperiod" @bind-Value="Hrpayrolldet.PayrollPeriod" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.PayrollPeriod" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="salitemcode" class="form-label">SalitemCode:</label>
+                    <InputText id="salitemcode" @bind-Value="Hrpayrolldet.SalitemCode" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.SalitemCode" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description:</label>
+                    <InputText id="description" @bind-Value="Hrpayrolldet.Description" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.Description" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="itemamt" class="form-label">ItemAmt:</label>
+                    <InputNumber id="itemamt" @bind-Value="Hrpayrolldet.ItemAmt" class="form-control" />
+                    <ValidationMessage For="() => Hrpayrolldet.ItemAmt" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/hrpayrolldets">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private Hrpayrolldet? Hrpayrolldet { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrpayrolldet ??= await context.Hrpayrolldet.FirstOrDefaultAsync(m => m.id == id);
+
+        if (Hrpayrolldet is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateHrpayrolldet()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(Hrpayrolldet!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!HrpayrolldetExists(Hrpayrolldet!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/hrpayrolldets");
+    }
+
+    private bool HrpayrolldetExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Hrpayrolldet.Any(e => e.id == id);
+    }
+}

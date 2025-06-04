@@ -1,0 +1,159 @@
+﻿@page "/hrwots/delete"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete</PageTitle>
+
+<h1>Delete</h1>
+
+<p>Are you sure you want to delete this?</p>
+<div>
+    <h2>HrwOt</h2>
+    <hr />
+    @if (hrwot is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrwot.companyid</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrwot.EmpNo</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">SeqNo</dt>
+            <dd class="col-sm-10">@hrwot.SeqNo</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Remark</dt>
+            <dd class="col-sm-10">@hrwot.Remark</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">DateWork</dt>
+            <dd class="col-sm-10">@hrwot.DateWork</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkIn</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkOut</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkotIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkotIn</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkotOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkotOut</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtP</dt>
+            <dd class="col-sm-10">@hrwot.OtP</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">ApvOtStatus</dt>
+            <dd class="col-sm-10">@hrwot.ApvOtStatus</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtCode</dt>
+            <dd class="col-sm-10">@hrwot.OtCode</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtDocno</dt>
+            <dd class="col-sm-10">@hrwot.OtDocno</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtDocnoDate</dt>
+            <dd class="col-sm-10">@hrwot.OtDocnoDate</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtAmt</dt>
+            <dd class="col-sm-10">@hrwot.OtAmt</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MoneyHour</dt>
+            <dd class="col-sm-10">@hrwot.MoneyHour</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">MoneyMinute</dt>
+            <dd class="col-sm-10">@hrwot.MoneyMinute</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">OtPMinute</dt>
+            <dd class="col-sm-10">@hrwot.OtPMinute</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">DeptgrpCode</dt>
+            <dd class="col-sm-10">@hrwot.DeptgrpCode</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkdefaultIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkdefaultIn</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">WorkdefaultOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkdefaultOut</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">PostStatus</dt>
+            <dd class="col-sm-10">@hrwot.PostStatus</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">DateWorkTo</dt>
+            <dd class="col-sm-10">@hrwot.DateWorkTo</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Signature1</dt>
+            <dd class="col-sm-10">@hrwot.Signature1</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Signature2</dt>
+            <dd class="col-sm-10">@hrwot.Signature2</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">Signature3</dt>
+            <dd class="col-sm-10">@hrwot.Signature3</dd>
+        </dl>
+        <dl class="row">
+            <dt class="col-sm-2">SalaryCalSeq</dt>
+            <dd class="col-sm-10">@hrwot.SalaryCalSeq</dd>
+        </dl>
+        <EditForm method="post" Model="hrwot" OnValidSubmit="DeleteHrwOt" FormName="delete" Enhance>
+            <button type="submit" class="btn btn-danger" disabled="@(hrwot is null)">Delete</button> |
+            <a href="/hrwots">Back to List</a>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private HrwOt? hrwot;
+
+    [SupplyParameterFromQuery]
+    private long ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrwot = await context.HrwOts.FirstOrDefaultAsync(m => m.ID == ID);
+
+        if (hrwot is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task DeleteHrwOt()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.HrwOts.Remove(hrwot!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/hrwots");
+    }
+}

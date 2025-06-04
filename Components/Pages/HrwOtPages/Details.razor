@@ -1,0 +1,98 @@
+﻿@page "/hrwots/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h2>HrwOt</h2>
+    <hr />
+    @if (hrwot is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            <dt class="col-sm-2">companyid</dt>
+            <dd class="col-sm-10">@hrwot.companyid</dd>
+            <dt class="col-sm-2">EmpNo</dt>
+            <dd class="col-sm-10">@hrwot.EmpNo</dd>
+            <dt class="col-sm-2">SeqNo</dt>
+            <dd class="col-sm-10">@hrwot.SeqNo</dd>
+            <dt class="col-sm-2">Remark</dt>
+            <dd class="col-sm-10">@hrwot.Remark</dd>
+            <dt class="col-sm-2">DateWork</dt>
+            <dd class="col-sm-10">@hrwot.DateWork</dd>
+            <dt class="col-sm-2">WorkIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkIn</dd>
+            <dt class="col-sm-2">WorkOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkOut</dd>
+            <dt class="col-sm-2">WorkotIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkotIn</dd>
+            <dt class="col-sm-2">WorkotOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkotOut</dd>
+            <dt class="col-sm-2">OtP</dt>
+            <dd class="col-sm-10">@hrwot.OtP</dd>
+            <dt class="col-sm-2">ApvOtStatus</dt>
+            <dd class="col-sm-10">@hrwot.ApvOtStatus</dd>
+            <dt class="col-sm-2">OtCode</dt>
+            <dd class="col-sm-10">@hrwot.OtCode</dd>
+            <dt class="col-sm-2">OtDocno</dt>
+            <dd class="col-sm-10">@hrwot.OtDocno</dd>
+            <dt class="col-sm-2">OtDocnoDate</dt>
+            <dd class="col-sm-10">@hrwot.OtDocnoDate</dd>
+            <dt class="col-sm-2">OtAmt</dt>
+            <dd class="col-sm-10">@hrwot.OtAmt</dd>
+            <dt class="col-sm-2">MoneyHour</dt>
+            <dd class="col-sm-10">@hrwot.MoneyHour</dd>
+            <dt class="col-sm-2">MoneyMinute</dt>
+            <dd class="col-sm-10">@hrwot.MoneyMinute</dd>
+            <dt class="col-sm-2">OtPMinute</dt>
+            <dd class="col-sm-10">@hrwot.OtPMinute</dd>
+            <dt class="col-sm-2">DeptgrpCode</dt>
+            <dd class="col-sm-10">@hrwot.DeptgrpCode</dd>
+            <dt class="col-sm-2">WorkdefaultIn</dt>
+            <dd class="col-sm-10">@hrwot.WorkdefaultIn</dd>
+            <dt class="col-sm-2">WorkdefaultOut</dt>
+            <dd class="col-sm-10">@hrwot.WorkdefaultOut</dd>
+            <dt class="col-sm-2">PostStatus</dt>
+            <dd class="col-sm-10">@hrwot.PostStatus</dd>
+            <dt class="col-sm-2">DateWorkTo</dt>
+            <dd class="col-sm-10">@hrwot.DateWorkTo</dd>
+            <dt class="col-sm-2">Signature1</dt>
+            <dd class="col-sm-10">@hrwot.Signature1</dd>
+            <dt class="col-sm-2">Signature2</dt>
+            <dd class="col-sm-10">@hrwot.Signature2</dd>
+            <dt class="col-sm-2">Signature3</dt>
+            <dd class="col-sm-10">@hrwot.Signature3</dd>
+            <dt class="col-sm-2">SalaryCalSeq</dt>
+            <dd class="col-sm-10">@hrwot.SalaryCalSeq</dd>
+        </dl>
+        <div>
+            <a href="@($"/hrwots/edit?id={hrwot.ID}")">Edit</a> |
+            <a href="@($"/hrwots")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    private HrwOt? hrwot;
+
+    [SupplyParameterFromQuery]
+    private long ID { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        hrwot = await context.HrwOts.FirstOrDefaultAsync(m => m.ID == ID);
+
+        if (hrwot is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

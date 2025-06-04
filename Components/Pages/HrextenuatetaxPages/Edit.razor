@@ -1,0 +1,159 @@
+﻿@page "/hrextenuatetaxes/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit</PageTitle>
+
+<h1>Edit</h1>
+
+<h2>Hrextenuatetax</h2>
+<hr />
+@if (Hrextenuatetax is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4">
+            <EditForm method="post" Model="Hrextenuatetax" OnValidSubmit="UpdateHrextenuatetax" FormName="edit" Enhance>
+                <DataAnnotationsValidator />
+                <ValidationSummary role="alert"/>
+                <input type="hidden" name="Hrextenuatetax.id" value="@Hrextenuatetax.id" />
+                <div class="mb-3">
+                    <label for="companyid" class="form-label">companyid:</label>
+                    <InputText id="companyid" @bind-Value="Hrextenuatetax.companyid" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.companyid" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="empno" class="form-label">EmpNo:</label>
+                    <InputText id="empno" @bind-Value="Hrextenuatetax.EmpNo" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.EmpNo" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paytravel" class="form-label">PayTravel:</label>
+                    <InputNumber id="paytravel" @bind-Value="Hrextenuatetax.PayTravel" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayTravel" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paychild" class="form-label">PayChild:</label>
+                    <InputNumber id="paychild" @bind-Value="Hrextenuatetax.PayChild" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayChild" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payparent" class="form-label">PayParent:</label>
+                    <InputNumber id="payparent" @bind-Value="Hrextenuatetax.PayParent" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayParent" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payintaddr" class="form-label">PayIntaddr:</label>
+                    <InputNumber id="payintaddr" @bind-Value="Hrextenuatetax.PayIntaddr" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayIntaddr" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payinsoth" class="form-label">PayInsoth:</label>
+                    <InputNumber id="payinsoth" @bind-Value="Hrextenuatetax.PayInsoth" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayInsoth" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payinsretry" class="form-label">PayInsretry:</label>
+                    <InputNumber id="payinsretry" @bind-Value="Hrextenuatetax.PayInsretry" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayInsretry" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paydisabled" class="form-label">PayDisabled:</label>
+                    <InputNumber id="paydisabled" @bind-Value="Hrextenuatetax.PayDisabled" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayDisabled" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payinsparent" class="form-label">PayInsparent:</label>
+                    <InputNumber id="payinsparent" @bind-Value="Hrextenuatetax.PayInsparent" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayInsparent" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paymate" class="form-label">PayMate:</label>
+                    <InputNumber id="paymate" @bind-Value="Hrextenuatetax.PayMate" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayMate" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payltf" class="form-label">PayLtf:</label>
+                    <InputNumber id="payltf" @bind-Value="Hrextenuatetax.PayLtf" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayLtf" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="payrmf" class="form-label">PayRmf:</label>
+                    <InputNumber id="payrmf" @bind-Value="Hrextenuatetax.PayRmf" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayRmf" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paydonateoth" class="form-label">PayDonateoth:</label>
+                    <InputNumber id="paydonateoth" @bind-Value="Hrextenuatetax.PayDonateoth" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayDonateoth" class="text-danger" />
+                </div>
+                <div class="mb-3">
+                    <label for="paydonateedu" class="form-label">PayDonateedu:</label>
+                    <InputNumber id="paydonateedu" @bind-Value="Hrextenuatetax.PayDonateedu" class="form-control" />
+                    <ValidationMessage For="() => Hrextenuatetax.PayDonateedu" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<div>
+    <a href="/hrextenuatetaxes">Back to List</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private Hrextenuatetax? Hrextenuatetax { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrextenuatetax ??= await context.Hrextenuatetaxs.FirstOrDefaultAsync(m => m.id == id);
+
+        if (Hrextenuatetax is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    // To protect from overposting attacks, enable the specific properties you want to bind to.
+    // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
+    private async Task UpdateHrextenuatetax()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(Hrextenuatetax!).State = EntityState.Modified;
+
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (!HrextenuatetaxExists(Hrextenuatetax!.id))
+            {
+                NavigationManager.NavigateTo("notfound");
+            }
+            else
+            {
+                throw;
+            }
+        }
+
+        NavigationManager.NavigateTo("/hrextenuatetaxes");
+    }
+
+    private bool HrextenuatetaxExists(long id)
+    {
+        using var context = DbFactory.CreateDbContext();
+        return context.Hrextenuatetaxs.Any(e => e.id == id);
+    }
+}

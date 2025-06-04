@@ -1,0 +1,42 @@
+﻿@page "/hrucfsecurities"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="hrucfsecurities/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.Hrucfsecuritys">
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.companyid" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.SecurityCode" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.SecurityDesc" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.PercenSecurity" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.SecurityMoney" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.OverSecurityMoney" />
+    <PropertyColumn Property="hrucfsecurity => hrucfsecurity.PercenmgSecurity" />
+
+    <TemplateColumn Context="hrucfsecurity">
+        <a href="@($"hrucfsecurities/edit?id={hrucfsecurity.id}")">Edit</a> |
+        <a href="@($"hrucfsecurities/details?id={hrucfsecurity.id}")">Details</a> |
+        <a href="@($"hrucfsecurities/delete?id={hrucfsecurity.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}

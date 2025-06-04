@@ -1,0 +1,50 @@
+﻿@page "/hrextenuatetaxes"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>Index</PageTitle>
+
+<h1>Index</h1>
+
+<p>
+    <a href="hrextenuatetaxes/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.Hrextenuatetaxs">
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.companyid" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.EmpNo" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayTravel" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayChild" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayParent" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayIntaddr" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayInsoth" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayInsretry" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayDisabled" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayInsparent" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayMate" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayLtf" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayRmf" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayDonateoth" />
+    <PropertyColumn Property="hrextenuatetax => hrextenuatetax.PayDonateedu" />
+
+    <TemplateColumn Context="hrextenuatetax">
+        <a href="@($"hrextenuatetaxes/edit?id={hrextenuatetax.id}")">Edit</a> |
+        <a href="@($"hrextenuatetaxes/details?id={hrextenuatetax.id}")">Details</a> |
+        <a href="@($"hrextenuatetaxes/delete?id={hrextenuatetax.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}
