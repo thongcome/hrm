@@ -23,14 +23,14 @@ namespace HRM.Models
 
         [Column("name")]
         [StringLength(250)]
-        public required string Name { get; set; }
+        public required string Name { get; set; } = null!;
 
         [Column("nameEn")]
         [StringLength(250)]
-        public required string NameEn { get; set; }
+        public required string NameEn { get; set; } = null!;
 
         [Column("minRate")]
-        public decimal minRate { get; set; }
+        public decimal minRate { get; set; } 
 
         [Column("maxRate")]
         public decimal maxRate { get; set; }
@@ -50,10 +50,10 @@ namespace HRM.Models
 
         [Column("year")]
         [StringLength(4)]
-        public required String year { get; set; }
+        public required String year { get; set; } = null!;
 
         [Column("step")]
-        public required int step { get; set; }
+        public required int step { get; set; } = 0;
 
         [Column("MODIFIED_DATE", TypeName = "DATE")]
         public DateTime? MODIFIED_DATE { get; set; }

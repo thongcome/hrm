@@ -13,6 +13,8 @@ using HRM.Model;
 using HRM.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using MudBlazor.Services;
+using HRM.Interface;
+using HRM.Services.Payroll;
 
 
 
@@ -30,7 +32,7 @@ builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuth
 builder.Services.AddScoped<ActivityService>();
 builder.Services.AddScoped<GoalTaskService>();
 builder.Services.AddScoped<UserService>();
-
+builder.Services.AddScoped<JsonLocalizationService>();
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = IdentityConstants.ApplicationScheme;
@@ -106,6 +108,10 @@ builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddMudServices();
 
+// Add localization service
+builder.Services.AddSingleton<LanguageState>();
+builder.Services.AddSingleton<IJsonLocalizationService, JsonLocalizationService>();
+
 //builder.Services.AddSingleton(smtpSettings);
 
 //builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
@@ -121,6 +127,8 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();  // ใช้ Serilog เป็น logging provider
 builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Information);
 builder.Services.AddScoped<IPasswordHasher<sc_user>, PasswordHasher<sc_user>>();
+builder.Services.AddScoped<PayrollCalculationService>();
+builder.Services.AddSingleton<PayrollAnalysisService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

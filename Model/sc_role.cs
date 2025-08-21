@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Models;
 
@@ -21,6 +18,8 @@ public partial class sc_role
     //public long CompanyId { get; set; } // ไม่ nullable = ต้องมี
     //[ForeignKey("CompanyId")]
     //public virtual com_company Company { get; set; } = null!;
+
+
 
     [StringLength(250)]
     public string? name { get; set; }

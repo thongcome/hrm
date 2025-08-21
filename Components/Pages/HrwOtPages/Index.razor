@@ -1,62 +1,55 @@
-﻿@page "/hrwots"
+@page "/hrwot/index"
+@inject HRMContext Db
+@using HRM.Models
 @using Microsoft.EntityFrameworkCore
-@using Microsoft.AspNetCore.Components.QuickGrid
-@using HRM.Models
-@using HRM.Models
-@implements IAsyncDisposable
-@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@using MudBlazor
 
-<PageTitle>Index</PageTitle>
+<PageTitle>OT Records</PageTitle>
 
-<h1>Index</h1>
-
-<p>
-    <a href="hrwots/create">Create New</a>
-</p>
-
-<QuickGrid Class="table" Items="context.HrwOts">
-    <PropertyColumn Property="hrwot => hrwot.companyid" />
-    <PropertyColumn Property="hrwot => hrwot.EmpNo" />
-    <PropertyColumn Property="hrwot => hrwot.SeqNo" />
-    <PropertyColumn Property="hrwot => hrwot.Remark" />
-    <PropertyColumn Property="hrwot => hrwot.DateWork" />
-    <PropertyColumn Property="hrwot => hrwot.WorkIn" />
-    <PropertyColumn Property="hrwot => hrwot.WorkOut" />
-    <PropertyColumn Property="hrwot => hrwot.WorkotIn" />
-    <PropertyColumn Property="hrwot => hrwot.WorkotOut" />
-    <PropertyColumn Property="hrwot => hrwot.OtP" />
-    <PropertyColumn Property="hrwot => hrwot.ApvOtStatus" />
-    <PropertyColumn Property="hrwot => hrwot.OtCode" />
-    <PropertyColumn Property="hrwot => hrwot.OtDocno" />
-    <PropertyColumn Property="hrwot => hrwot.OtDocnoDate" />
-    <PropertyColumn Property="hrwot => hrwot.OtAmt" />
-    <PropertyColumn Property="hrwot => hrwot.MoneyHour" />
-    <PropertyColumn Property="hrwot => hrwot.MoneyMinute" />
-    <PropertyColumn Property="hrwot => hrwot.OtPMinute" />
-    <PropertyColumn Property="hrwot => hrwot.DeptgrpCode" />
-    <PropertyColumn Property="hrwot => hrwot.WorkdefaultIn" />
-    <PropertyColumn Property="hrwot => hrwot.WorkdefaultOut" />
-    <PropertyColumn Property="hrwot => hrwot.PostStatus" />
-    <PropertyColumn Property="hrwot => hrwot.DateWorkTo" />
-    <PropertyColumn Property="hrwot => hrwot.Signature1" />
-    <PropertyColumn Property="hrwot => hrwot.Signature2" />
-    <PropertyColumn Property="hrwot => hrwot.Signature3" />
-    <PropertyColumn Property="hrwot => hrwot.SalaryCalSeq" />
-
-    <TemplateColumn Context="hrwot">
-        <a href="@($"hrwots/edit?id={hrwot.ID}")">Edit</a> |
-        <a href="@($"hrwots/details?id={hrwot.ID}")">Details</a> |
-        <a href="@($"hrwots/delete?id={hrwot.ID}")">Delete</a>
-    </TemplateColumn>
-</QuickGrid>
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5">OT Records</MudText>
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">Add New</MudButton>
+    <MudTable Items="_data" Hover="true" Dense="true">
+        <HeaderContent>
+            <MudTh>EmpNo</MudTh>
+            <MudTh>SeqNo</MudTh>
+            <MudTh>Remark</MudTh>
+            <MudTh>DateWork</MudTh>
+            <MudTh>Action</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@context.SeqNo</MudTd>
+            <MudTd>@context.Remark</MudTd>
+            <MudTd>@(context.DateWork?.ToString("yyyy-MM-dd"))</MudTd>
+            <MudTd>
+                <MudButton Color="Color.Info" OnClick="@(() => Edit(context.ID))">Edit</MudButton>
+                <MudButton Color="Color.Error" OnClick="@(() => Delete(context.ID))">Delete</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
 
 @code {
-    private HRMContext context = default!;
+    private List<HrwOt> _data = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        context = DbFactory.CreateDbContext();
+        _data = await Db.HrwOts.ToListAsync();
     }
 
-    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+    void Create() => NavTo.NavigateTo("/hrwot/create");
+    void Edit(long id) => NavTo.NavigateTo($"/hrwot/edit/{id}");
+    void Delete(long id)
+    {
+        var item = _data.FirstOrDefault(x => x.ID == id);
+        if (item != null)
+        {
+            Db.HrwOts.Remove(item);
+            Db.SaveChanges();
+            _data.Remove(item);
+        }
+    }
+
+    [Inject] NavigationManager NavTo { get; set; }
 }

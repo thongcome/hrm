@@ -1,13 +1,17 @@
-﻿@page "/payrollprocess"
+﻿@page "/AIpayrollprocess"
 @using HRM.Data
 @using HRM.Models
+@using HRM.Services.Payroll
 @using Microsoft.EntityFrameworkCore
 @using HRM.BusinessModel;
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject HRM.Services.Payroll.PayrollCalculationService PayrollService
+@inject HRM.Services.Payroll.PayrollAnalysisService AiAnalysisService
+
 @using MudBlazor
 @using System.ComponentModel.DataAnnotations
 
- 
+
 @*   <Dashboard />     *@ 
 <MudPaper Class="pa-4" Elevation="4">
     <MudText Color="Color.Error">@message</MudText>
@@ -61,7 +65,7 @@
 
                 <div class="mb-3">
                     <button type="submit" class="btn btn-primary" Click="GetEmployee">ตรวจสอบรายชื่อพนักงาน</button>
- 
+
                 </div>
             </EditForm>
 
@@ -84,6 +88,12 @@
         <!-- STEP 2: ประมวลผล -->
         <MudStep Label="ประมวลผลเงินเดือน">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CalculatePayroll">ประมวลผล</MudButton>
+@*                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CalculatePayrollAI" Class="mr-2">ประมวลผล</MudButton>
+ *@
+    @if (hrpayrollsList.Any())
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="RunAiAnalysis">ตรวจสอบด้วย AI</MudButton>
+    }
 
             <MudText Class="mt-4">พนักงานจำนวน @hrpayrollsList.Count คน</MudText>
 
@@ -144,14 +154,40 @@
     </MudStepper>
 </MudPaper>
 
-
-
+@if (_aiHasBeenRun)
+{
+    <MudText Typo="Typo.h6" Class="mt-4">ผลการตรวจสอบโดย AI</MudText>
+    @if (_anomalyResults.Any())
+    {
+        <MudTable Items="@_anomalyResults" Dense="true" Hover="true" Elevation="2">
+            <HeaderContent>
+                <MudTh>รหัสพนักงาน</MudTh>
+                <MudTh>รายการที่ผิดปกติ</MudTh>
+                <MudTh>ค่าที่ตรวจพบ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="รหัสพนักงาน">@context.EmpNo</MudTd>
+                <MudTd DataLabel="รายการที่ผิดปกติ">@context.FeatureName</MudTd>
+                <MudTd DataLabel="ค่าที่ตรวจพบ">@context.Value.ToString("N2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-2">ไม่พบรายการที่ผิดปกติ</MudAlert>
+    }
+}
 
 @code {
     private HRMContext context = default!;
     private FormModel formModel = new FormModel();
     private MudForm _form = new();
 
+    private HashSet<string> _anomalyEmployeeNos = new();
+    private bool _aiHasBeenRun = false;
+    // จากเดิม: private HashSet<string> _anomalyEmployeeNos = new();
+    // เปลี่ยนเป็น:
+    private List<AnomalyResult> _anomalyResults = new();
 
     private List<Hremployee> hrEmployeeList = new();
     private List<Hrpayroll> hrpayrollsList = new();
@@ -181,6 +217,16 @@
             _currentStep++;
         }
     }
+
+private void RunAiAnalysis()
+{
+    if (hrpayrollsList.Any())
+    {
+        _anomalyResults = AiAnalysisService.DetectAnomalies(hrpayrollsList);
+        _aiHasBeenRun = true;
+        message = $"AI ตรวจพบรายการที่อาจผิดปกติจำนวน {_anomalyResults.Count} รายการ";
+    }
+}
     private async Task Calculate()
     {
         // Logic for calculation goes here
@@ -1213,14 +1259,14 @@
         hrpayrollsList = new();
 
     }
-  
+
 
     private async Task GetEmployee()
     {
         await using var context = DbFactory.CreateDbContext();
         hrEmployeeList = new();
-        hrEmployeeList = await context.Hremployee.Where(e => e.EmpStatus == 1).ToListAsync();
-      //  hrEmployeeList = await context.Hremployee.ToListAsync();
+     //   hrEmployeeList = await context.Hremployee.Where(e => e.EmpStatus == 1).ToListAsync();
+          hrEmployeeList = await context.Hremployee.ToListAsync();
 
     }
 
@@ -1697,6 +1743,18 @@
         }
     }
 
+    private async Task CalculatePayrollAI()
+    {
+        period = formModel.Year + formModel.Month;
+        ClearCal();
+
+        var result = await PayrollService.ProcessPayrollAsync(hrEmployeeList, period);
+
+        hrpayrollsList = result.Payrolls;
+        hrpayrollsDetList = result.PayrollDetails;
+
+        StateHasChanged();
+    }
     private class FormModel
     {
         [Required(ErrorMessage = "กรุณาเลือกประเภทพนักงาน")]

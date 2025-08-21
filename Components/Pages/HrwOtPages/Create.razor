@@ -1,174 +1,28 @@
-﻿@page "/hrwots/create"
-@using Microsoft.EntityFrameworkCore
+@page "/hrwot/create"
+@inject HRMContext Db
+@inject NavigationManager NavTo
 @using HRM.Models
-@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
-@inject NavigationManager NavigationManager
+@using MudBlazor
 
-<PageTitle>Create</PageTitle>
-
-<h1>Create</h1>
-
-<h2>HrwOt</h2>
-<hr />
-<div class="row">
-    <div class="col-md-4">
-        <EditForm method="post" Model="HrwOt" OnValidSubmit="AddHrwOt" FormName="create" Enhance>
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert"/>
-            <div class="mb-3">
-                <label for="companyid" class="form-label">companyid:</label> 
-                <InputText id="companyid" @bind-Value="HrwOt.companyid" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.companyid" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="empno" class="form-label">EmpNo:</label> 
-                <InputText id="empno" @bind-Value="HrwOt.EmpNo" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.EmpNo" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="seqno" class="form-label">SeqNo:</label> 
-                <InputNumber id="seqno" @bind-Value="HrwOt.SeqNo" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.SeqNo" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="remark" class="form-label">Remark:</label> 
-                <InputText id="remark" @bind-Value="HrwOt.Remark" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.Remark" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="datework" class="form-label">DateWork:</label> 
-                <InputDate id="datework" @bind-Value="HrwOt.DateWork" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.DateWork" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workin" class="form-label">WorkIn:</label> 
-                <InputText id="workin" @bind-Value="HrwOt.WorkIn" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkIn" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workout" class="form-label">WorkOut:</label> 
-                <InputText id="workout" @bind-Value="HrwOt.WorkOut" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkOut" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workotin" class="form-label">WorkotIn:</label> 
-                <InputText id="workotin" @bind-Value="HrwOt.WorkotIn" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkotIn" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workotout" class="form-label">WorkotOut:</label> 
-                <InputText id="workotout" @bind-Value="HrwOt.WorkotOut" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkotOut" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otp" class="form-label">OtP:</label> 
-                <InputText id="otp" @bind-Value="HrwOt.OtP" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtP" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="apvotstatus" class="form-label">ApvOtStatus:</label> 
-                <InputText id="apvotstatus" @bind-Value="HrwOt.ApvOtStatus" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.ApvOtStatus" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otcode" class="form-label">OtCode:</label> 
-                <InputText id="otcode" @bind-Value="HrwOt.OtCode" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtCode" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otdocno" class="form-label">OtDocno:</label> 
-                <InputText id="otdocno" @bind-Value="HrwOt.OtDocno" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtDocno" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otdocnodate" class="form-label">OtDocnoDate:</label> 
-                <InputDate id="otdocnodate" @bind-Value="HrwOt.OtDocnoDate" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtDocnoDate" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otamt" class="form-label">OtAmt:</label> 
-                <InputNumber id="otamt" @bind-Value="HrwOt.OtAmt" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtAmt" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="moneyhour" class="form-label">MoneyHour:</label> 
-                <InputNumber id="moneyhour" @bind-Value="HrwOt.MoneyHour" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.MoneyHour" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="moneyminute" class="form-label">MoneyMinute:</label> 
-                <InputNumber id="moneyminute" @bind-Value="HrwOt.MoneyMinute" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.MoneyMinute" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="otpminute" class="form-label">OtPMinute:</label> 
-                <InputNumber id="otpminute" @bind-Value="HrwOt.OtPMinute" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.OtPMinute" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="deptgrpcode" class="form-label">DeptgrpCode:</label> 
-                <InputText id="deptgrpcode" @bind-Value="HrwOt.DeptgrpCode" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.DeptgrpCode" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workdefaultin" class="form-label">WorkdefaultIn:</label> 
-                <InputText id="workdefaultin" @bind-Value="HrwOt.WorkdefaultIn" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkdefaultIn" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="workdefaultout" class="form-label">WorkdefaultOut:</label> 
-                <InputText id="workdefaultout" @bind-Value="HrwOt.WorkdefaultOut" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.WorkdefaultOut" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="poststatus" class="form-label">PostStatus:</label> 
-                <InputNumber id="poststatus" @bind-Value="HrwOt.PostStatus" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.PostStatus" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="dateworkto" class="form-label">DateWorkTo:</label> 
-                <InputDate id="dateworkto" @bind-Value="HrwOt.DateWorkTo" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.DateWorkTo" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="signature1" class="form-label">Signature1:</label> 
-                <InputText id="signature1" @bind-Value="HrwOt.Signature1" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.Signature1" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="signature2" class="form-label">Signature2:</label> 
-                <InputText id="signature2" @bind-Value="HrwOt.Signature2" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.Signature2" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="signature3" class="form-label">Signature3:</label> 
-                <InputText id="signature3" @bind-Value="HrwOt.Signature3" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.Signature3" class="text-danger" /> 
-            </div>        
-            <div class="mb-3">
-                <label for="salarycalseq" class="form-label">SalaryCalSeq:</label> 
-                <InputNumber id="salarycalseq" @bind-Value="HrwOt.SalaryCalSeq" class="form-control" /> 
-                <ValidationMessage For="() => HrwOt.SalaryCalSeq" class="text-danger" /> 
-            </div>        
-            <button type="submit" class="btn btn-primary">Create</button>
-        </EditForm>
-    </div>
-</div>
-
-<div>
-    <a href="/hrwots">Back to List</a>
-</div>
+<EditForm Model="_item" OnValidSubmit="Save">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5">Create OT Record</MudText>
+        <MudTextField @bind-Value="_item.EmpNo" Label="Emp No" Required="true" />
+        <MudNumericField @bind-Value="_item.SeqNo" Label="Seq No" />
+        <MudTextField @bind-Value="_item.Remark" Label="Remark" />
+        <MudDatePicker @bind-Date="_item.DateWork" Label="Date Work" />
+        <MudButton Type="Submit" Color="Color.Primary">Save</MudButton>
+        <MudButton Color="Color.Secondary" OnClick="@(() => NavTo.NavigateTo("/hrwot"))">Cancel</MudButton>
+    </MudPaper>
+</EditForm>
 
 @code {
-    [SupplyParameterFromForm]
-    private HrwOt HrwOt { get; set; } = new();
+    private HrwOt _item = new();
 
-    // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
-    private async Task AddHrwOt()
+    async Task Save()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.HrwOts.Add(HrwOt);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/hrwots");
+        Db.HrwOts.Add(_item);
+        await Db.SaveChangesAsync();
+        NavTo.NavigateTo("/hrwot");
     }
 }
