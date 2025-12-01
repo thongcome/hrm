@@ -15,6 +15,25 @@
         <EditForm method="post" Model="sc_menu" OnValidSubmit="Addsc_menu" FormName="create" Enhance>
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert"/>
+
+            <!-- 🔽 Menu Group Dropdown -->
+            <div class="mb-3">
+                <label for="menugroupid" class="form-label">Menu Group:</label>
+                <InputSelect id="menugroupid"
+                             class="form-control"
+                             @bind-Value="sc_menu.menugroupid">
+                    <option value="menugroup">-- เลือกกลุ่มเมนู --</option>
+                    @if (Menugroup is not null)
+                    {
+                        @foreach (var c in Menugroup)
+                        {
+                            <option value="@c.menugroupid">@c.menugroupname</option>
+                        }
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => sc_menu.menugroupid" class="text-danger" />
+            </div>
+            <!-- 🔼 Company Dropdown -->
             <div class="mb-3">
                 <label for="menuname" class="form-label">menuname:</label> 
                 <InputText id="menuname" @bind-Value="sc_menu.menuname" class="form-control" /> 
@@ -132,6 +151,15 @@
 @code {
     [SupplyParameterFromForm]
     private sc_menu sc_menu { get; set; } = new();
+    private List<sc_menugroup> Menugroup { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+
+        Menugroup = await context.sc_menugroups.ToListAsync();
+    }
+
 
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addsc_menu()

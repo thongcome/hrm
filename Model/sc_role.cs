@@ -13,7 +13,7 @@ public partial class sc_role
     public long company_id { get; set; }
 
     [ForeignKey("company_id")]
-    public virtual com_company? company { get; set; }
+    public virtual com_company? company { get; set; } 
 
     //public long CompanyId { get; set; } // ไม่ nullable = ต้องมี
     //[ForeignKey("CompanyId")]

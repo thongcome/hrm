@@ -33,7 +33,7 @@ else
     <QuickGrid TItem="sc_role"
                Items="roles.AsQueryable()"
                Class="table table-hover table-striped border shadow-sm rounded"
-               RowClass="bg-white align-middle"
+             
                Style="border-radius: 12px;">
         <PropertyColumn Property="sc_role => sc_role.roleid" Title="Role ID" />
         <PropertyColumn Property="sc_role => sc_role.name" Title="Name" />
@@ -64,7 +64,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         context = DbFactory.CreateDbContext();
-        roles = await RoleService.GetAllAsync(); // เริ่มต้นโหลดข้อมูลทั้งหมด
+        roles = await context.sc_roles.ToListAsync();
+       // roles = await RoleService.GetAllAsync(); // เริ่มต้นโหลดข้อมูลทั้งหมด
     }
 
     private async Task SearchRoles()

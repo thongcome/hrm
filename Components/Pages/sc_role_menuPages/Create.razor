@@ -15,7 +15,7 @@
         <EditForm method="post" Model="sc_role_menu" OnValidSubmit="Addsc_role_menu" FormName="create" Enhance>
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert"/>
-            <div class="mb-3">
+           @*  <div class="mb-3">
                 <label for="menuid" class="form-label">menuid:</label> 
                 <InputNumber id="menuid" @bind-Value="sc_role_menu.menuid" class="form-control" /> 
                 <ValidationMessage For="() => sc_role_menu.menuid" class="text-danger" /> 
@@ -24,7 +24,44 @@
                 <label for="roleid" class="form-label">roleid:</label> 
                 <InputNumber id="roleid" @bind-Value="sc_role_menu.roleid" class="form-control" /> 
                 <ValidationMessage For="() => sc_role_menu.roleid" class="text-danger" /> 
-            </div>        
+            </div>         *@
+
+            <!-- 🔽 Dropdown เลือกเมนู (sc_menu) -->
+            <div class="mb-3">
+                <label for="menuid" class="form-label">Menu:</label>
+                <InputSelect id="menuid"
+                             class="form-control"
+                             @bind-Value="sc_role_menu.menuid">
+                    <option value="0">-- เลือกเมนู --</option>
+                    @if (Menus is not null)
+                    {
+                        @foreach (var m in Menus)
+                        {
+                            <option value="@m.menuid">@m.menuname</option>
+                        }
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => sc_role_menu.menuid" class="text-danger" /> 
+            </div>
+
+            <!-- 🔽 Dropdown เลือก role (sc_role) -->
+            <div class="mb-3">
+                <label for="roleid" class="form-label">Role:</label>
+                <InputSelect id="roleid"
+                             class="form-control"
+                             @bind-Value="sc_role_menu.roleid">
+                    <option value="0">-- เลือก Role --</option>
+                    @if (Roles is not null)
+                    {
+                        @foreach (var r in Roles)
+                        {
+                            <option value="@r.roleid">@r.name</option>
+                        }
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => sc_role_menu.roleid" class="text-danger" /> 
+            </div>
+
             <div class="mb-3">
                 <label for="startdate" class="form-label">startdate:</label> 
                 <InputDate id="startdate" @bind-Value="sc_role_menu.startdate" class="form-control" /> 
@@ -67,6 +104,22 @@
 @code {
     [SupplyParameterFromForm]
     private sc_role_menu sc_role_menu { get; set; } = new();
+
+    // list สำหรับ dropdown
+    private List<sc_role> Roles { get; set; } = new();
+    private List<sc_menu> Menus { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+
+        // 👇 โหลด sc_role
+        Roles = await context.sc_roles.ToListAsync();
+        
+
+        // 👇 โหลด sc_menu
+        Menus = await context.sc_menus.ToListAsync();
+    }
 
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addsc_role_menu()

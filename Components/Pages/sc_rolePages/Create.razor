@@ -15,6 +15,25 @@
         <EditForm method="post" Model="sc_role" OnValidSubmit="Addsc_role" FormName="create" Enhance>
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert"/>
+
+             <!-- 🔽 Company Dropdown -->
+            <div class="mb-3">
+                <label for="company_id" class="form-label">Company:</label>
+                <InputSelect id="company_id"
+                             class="form-control"
+                             @bind-Value="sc_role.company_id">
+                    <option value="">-- เลือกบริษัท --</option>
+                    @if (Companies is not null)
+                    {
+                        @foreach (var c in Companies)
+                        {
+                             <option value="@c.id">@c.name</option>
+                        }
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => sc_role.company_id" class="text-danger" />
+            </div>
+            <!-- 🔼 Company Dropdown -->
             <div class="mb-3">
                 <label for="name" class="form-label">name:</label> 
                 <InputText id="name" @bind-Value="sc_role.name" class="form-control" /> 
@@ -83,11 +102,23 @@
     [SupplyParameterFromForm]
     private sc_role sc_role { get; set; } = new();
 
+    // 👇 เก็บรายการบริษัทไว้ให้ dropdown
+    private List<com_company> Companies { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+
+        Companies = await context.com_companies.ToListAsync();
+    }
+
+
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addsc_role()
     {
         try{
         using var context = DbFactory.CreateDbContext();
+       
         context.sc_roles.Add(sc_role);
         await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/sc_roles");

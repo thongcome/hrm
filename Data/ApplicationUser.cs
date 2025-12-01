@@ -11,6 +11,8 @@ namespace HRM.Data
 
         [MaxLength(250)]
         public string? LastName { get; set; }
+		
+		public long userid { get; set; }
     }
 
 }

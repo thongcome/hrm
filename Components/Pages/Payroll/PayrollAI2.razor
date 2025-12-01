@@ -1,0 +1,1820 @@
+﻿@page "/AIpayrollprocess2"
+@using HRM.Data
+@using HRM.Models
+@using HRM.Services.Payroll
+@using Microsoft.EntityFrameworkCore
+@using HRM.BusinessModel;
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject HRM.Services.Payroll.PayrollCalculationService PayrollService
+@inject HRM.Services.Payroll.PayrollAnalysisService AiAnalysisService
+
+@using MudBlazor
+@using System.ComponentModel.DataAnnotations
+
+
+@*   <Dashboard />     *@ 
+<MudPaper Class="pa-4" Elevation="4">
+    <MudText Color="Color.Error">@message</MudText>
+    <MudStepper @bind-ActiveStep="_currentStep" Linear="false">
+
+        <!-- STEP 1: กำหนดงวดการจ่าย -->
+        <MudStep Label="กำหนดงวดการจ่าย">
+            <EditForm Model="@formModel" OnValidSubmit="GetEmployee">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row mb-3">
+                    <div class="col-sm-6">
+                        <label class="form-label">งวดที่</label>
+                        <InputNumber class="form-control" @bind-Value="formModel.TermOfPay" />
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label">ประเภทพนักงาน</label>
+                        <InputSelect class="form-select" @bind-Value="formModel.EmployeeType">
+                            <option value="">-- เลือกประเภท --</option>
+                            <option value="01">พนักงานประจำ</option>
+                            <option value="02">พนักงานชั่วคราว</option>
+                        </InputSelect>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-sm-6">
+                        <label class="form-label">ปี</label>
+                        <InputText class="form-control" @bind-Value="formModel.Year" />
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label">เดือน</label>
+                        <InputSelect class="form-select" @bind-Value="formModel.Month">
+                            <option value="">-- เลือกเดือน --</option>
+                            <option value="01">มกราคม</option>
+                            <option value="02">กุมภาพันธ์</option>
+                            <option value="03">มีนาคม</option>
+                            <option value="04">เมษายน</option>
+                            <option value="05">พฤษภาคม</option>
+                            <option value="06">มิถุนายน</option>
+                            <option value="07">กรกฎาคม</option>
+                            <option value="08">สิงหาคม</option>
+                            <option value="09">กันยายน</option>
+                            <option value="10">ตุลาคม</option>
+                            <option value="11">พฤศจิกายน</option>
+                            <option value="12">ธันวาคม</option>
+                        </InputSelect>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <button type="submit" class="btn btn-primary" Click="GetEmployee">ตรวจสอบรายชื่อพนักงาน</button>
+
+                </div>
+            </EditForm>
+
+            <MudTable Items="@hrEmployeeList" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>รหัสพนักงาน</MudTh>
+                    <MudTh>ชื่อ</MudTh>
+                    <MudTh>เงินเดือน</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.EmpNo</MudTd>
+                    <MudTd>@context.EmpName</MudTd>
+                    <MudTd>@context.SalaryAmt?.ToString("N2")</MudTd>
+                    <MudTd>@context.EmpStatus</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudStep>
+
+        <!-- STEP 2: ประมวลผล -->
+        <MudStep Label="ประมวลผลเงินเดือน">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CalculatePayroll">ประมวลผล</MudButton>
+            @*                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CalculatePayrollAI" Class="mr-2">ประมวลผล</MudButton>
+ *@
+            @if (hrpayrollsList.Any())
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="RunAiAnalysis">ตรวจสอบด้วย AI</MudButton>
+            }
+
+            <MudText Class="mt-4">พนักงานจำนวน @hrpayrollsList.Count คน</MudText>
+
+            <MudTable Items="@hrpayrollsList" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>รหัสพนักงาน</MudTh>
+                    <MudTh>เงินเดือน</MudTh>
+                    <MudTh>รวมได้อื่น</MudTh>
+                    <MudTh>รวมหัก</MudTh>
+                    <MudTh>สุทธิ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.EmpNo</MudTd>
+                    <MudTd>@context.SalarybaseAmt?.ToString("N2")</MudTd>
+                    <MudTd>@context.SalaryothAmt?.ToString("N2")</MudTd>
+                    <MudTd>@context.SalarysubtAmt?.ToString("N2")</MudTd>
+                    <MudTd>@context.SalarynetAmt?.ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudText Class="mt-4">รายละเอียดหัก/ได้: @hrpayrollsDetList.Count รายการ</MudText>
+
+            <MudExpansionPanels>
+                <MudExpansionPanel Text="รายละเอียดทั้งหมด">
+                    <MudTable Items="@hrpayrollsDetList" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Slip No</MudTh>
+                            <MudTh>รหัสพนักงาน</MudTh>
+                            <MudTh>จำนวนเงิน</MudTh>
+                            <MudTh>รายการ</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.PayrollslipNo</MudTd>
+                            <MudTd>@context.EmpNo</MudTd>
+                            <MudTd>@context.ItemAmt?.ToString("N2")</MudTd>
+                            <MudTd>@context.Description</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </MudStep>
+
+        <!-- STEP 3: สรุปและบันทึก -->
+        <MudStep Label="สรุปผลและบันทึก">
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" sm="6">
+                    <MudText>งวด: @period</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText>จำนวนพนักงาน: @hrpayrollsList.Count คน</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText>จำนวนเงินรวม: @hrpayrollsList.Sum(x => x.SalarynetAmt ?? 0).ToString("N2")</MudText>
+                </MudItem>
+            </MudGrid>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="Save">บันทึก</MudButton>
+        </MudStep>
+    </MudStepper>
+</MudPaper>
+
+@if (_aiHasBeenRun)
+{
+    <MudText Typo="Typo.h6" Class="mt-4">ผลการตรวจสอบโดย AI</MudText>
+    @if (_anomalyResults.Any())
+    {
+        <MudTable Items="@_anomalyResults" Dense="true" Hover="true" Elevation="2">
+            <HeaderContent>
+                <MudTh>รหัสพนักงาน</MudTh>
+                <MudTh>รายการที่ผิดปกติ</MudTh>
+                <MudTh>ค่าที่ตรวจพบ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="รหัสพนักงาน">@context.EmpNo</MudTd>
+                <MudTd DataLabel="รายการที่ผิดปกติ">@context.FeatureName</MudTd>
+                <MudTd DataLabel="ค่าที่ตรวจพบ">@context.Value.ToString("N2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-2">ไม่พบรายการที่ผิดปกติ</MudAlert>
+    }
+}
+
+@code {
+    private HRMContext context = default!;
+    private FormModel formModel = new FormModel();
+    private MudForm _form = new();
+
+    private HashSet<string> _anomalyEmployeeNos = new();
+    private bool _aiHasBeenRun = false;
+    // จากเดิม: private HashSet<string> _anomalyEmployeeNos = new();
+    // เปลี่ยนเป็น:
+    private List<AnomalyResult> _anomalyResults = new();
+
+    private List<Hremployee> hrEmployeeList = new();
+    private List<Hrpayroll> hrpayrollsList = new();
+    private List<Hrpayrolldet> hrpayrollsDetList = new();
+    private List<Hrpayrolldet> hrpayrollsDetListOneEmp = new();
+
+    private List<Hrbasepayrollfixed> fixIncomeList = new();
+    private string period = "";
+    private String empSelect = "";
+
+    private int _currentStep = 0; // ค่าเริ่มต้นควรเป็น 0 (Step แรก)
+    private string message = "กรุณากรอกข้อมูลให้ครบถ้วนก่อนดำเนินการต่อ";
+
+    private Hremployee hremployee = new();
+
+
+    List<HRBaseSalaryFixWithSignModel> hrBaseSalaryFixWithSignModelList = new();
+
+    private int totalMonthCal = 12; // ค่าดีฟอลต์คือ 12 เดือน เพื่อหาร ภาษี 1 ปี
+
+    // private int currentStep = 0; // ค่าดีฟอลต์คือ Step 1
+
+    private void GoToNextStep()
+    {
+        if (_currentStep < 3) // ตรวจสอบไม่ให้เกิน Step ที่มีอยู่
+        {
+            _currentStep++;
+        }
+    }
+
+    private void RunAiAnalysis()
+    {
+        if (hrpayrollsList.Any())
+        {
+            _anomalyResults = AiAnalysisService.DetectAnomalies(hrpayrollsList);
+            _aiHasBeenRun = true;
+            message = $"AI ตรวจพบรายการที่อาจผิดปกติจำนวน {_anomalyResults.Count} รายการ";
+        }
+    }
+    private async Task Calculate()
+    {
+        // Logic for calculation goes here
+        int i = 0;
+        period = formModel.Year + formModel.Month;
+        ClearCal();
+        foreach (var item in hrEmployeeList)
+        {
+            // 1.check employee and salary  ->  (EmpStatus == 1) resign date
+            // 2. check fix income /deduct
+            // 2.1 เงินกู้อยู่ในนี้
+            // 3. check not fix income/deduct
+            // 4. check ค่าล่วงเวลา
+            // 5. check ประกันสังคม
+            // 6. check กองทุน ต่างๆ
+            // 7. check ลดหย่อนภาษี
+            // 8. คำนวณ รายได้  คงเหลือ
+            // 9. คำนวณ ภาษี จ่าย
+            // 10. คงเหลือสุทธิ
+            // 11.บันทึก หรือ คำนวณใหม่ -> บันอทึก งวด payroll
+            // 12. แก้ไข หรือ ลบ รายการ แล้วทำใหม่
+
+            i++;
+            // เพิ่ม Hrpayroll 1.startdatepayment , 2.enddatepayment
+            // เพิ่ม Hrpayroll payment ratio  เช่น 20/31 กับ date/fulldate
+
+            //         COOP_ID CHAR(6 BYTE)	No  null    รหัสสหกรณ์
+            // PAYROLLSLIP_NO  VARCHAR2(12 BYTE)   No  null    เลขสลิปเงินเดือน
+            // EMP_NO  CHAR(6 BYTE)    Yes null    รหัสพนักงาน
+            // PAYROLL_DATE    DATE Yes null    วันที่ทำเงินเดือน
+            // PAYROLL_PERIOD  VARCHAR2(8 BYTE)    No  null    งวดเงินเดือน
+            // SALARYBASE_AMT  NUMBER(9, 2) Yes null    เงินเดือน
+            // SALARYOTH_AMT   NUMBER(9, 2) Yes null    รวมรายได้อื่นๆ
+            // SALARYSUBT_AMT  NUMBER(9, 2) Yes null    รวมรายจ่ายอื่นๆ
+            // SALARYNET_AMT   NUMBER(9, 2) Yes null    เงินเดือนคงเหลือ
+            // PAYROLL_STATUS  NUMBER(2, 0) Yes null    สถานะประมวลเงินดือน
+            // EXPENSE_CODE    CHAR(3 BYTE)    Yes null    วิธีจ่ายเงินเดือน
+            // EXPENSE_BANK    CHAR(3 BYTE)    Yes null    ธนาคาร
+            // EXPENSE_BRANCH  CHAR(4 BYTE)    Yes null    สาขาธนาคาร
+            // EXPENSE_ACCID   VARCHAR2(15 BYTE)   Yes null    เลขบัญชี
+            // POST_STATUS NUMBER(1, 0) Yes 0   สถานะผ่านรายการ 1 = ผ่านรายการ , 0 = ยังไม่ผ่านรายการ
+            // MEMBER_NO CHAR(8 BYTE)	Yes null    เลขสมาชิก
+            // PERCENMG_SECURITY   NUMBER(3, 2) Yes 0   เรทประกันสังคมนายจ้างสมทบ
+            // PERCEN_SECURITY NUMBER(3, 2) Yes 0   เรทประกัันสังคม
+            // SOFMG_SECURITY  NUMBER(10, 2)    Yes 0   ค่าประกันสังคมนายจ้างสมทบ
+            // POST_SOF_STATUS NUMBER(1, 0) Yes 0   สถานะ post เงินประกันสังคม 1 = ผ่านรายการ , 0 = ยังไม่ผ่านรายการ
+
+            Hrpayroll hrpayroll = new Hrpayroll();// set init value
+            hrpayroll.SalarysubtAmt = 0.00m;
+            hrpayroll.SalaryothAmt = 0.00m;
+            hrpayroll.companyid = item.companyid;
+            hrpayroll.EmpNo = item.EmpNo;
+            hrpayroll.PayrollPeriod = period;
+            hrpayroll.PostStatus = 0;//ยังไม่ผ่านรายการ
+            hrpayroll.PayrollStatus = 0;// check status
+            hrpayroll.ExpenseCode = item.SalexpCode;
+            hrpayroll.ExpenseBank = item.SalexpBank;
+            hrpayroll.ExpenseBranch = item.SalexpBranch;
+            hrpayroll.ExpenseAccid = item.SalexpAccid;
+            var dateget = DateTime.Now.ToString("HHmmss");
+            hrpayroll.PayrollslipNo = period + dateget;// not finished
+            hrpayroll.SalarybaseAmt = item.SalaryAmt; // not finished
+
+            hrpayroll.MemberNo = item.RefMembno;
+
+            try
+            {
+                hrpayroll.SalarynetAmt = item.SalaryAmt;// not finished
+            }
+            catch (Exception e)
+            {
+                e.Message.ToString();
+            }
+
+
+            // Do not  know 100% yet
+            hrpayroll.PercenmgSecurity = 3;
+            hrpayroll.PercenSecurity = 3;
+            hrpayroll.SofmgSecurity = 3;
+            hrpayroll.PostSofStatus = false;
+            hrpayroll.PostStaStatus = false;
+            string dateString = period + "";
+            if (DateTime.TryParseExact(dateString, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime date))
+            {
+                hrpayroll.PayrollDate = date;
+                System.Console.WriteLine(date);
+            }
+            else
+            {
+                System.Console.WriteLine("Invalid date format.");
+            }
+
+
+            await GetFixIncome();
+            // Payroll detail
+            foreach (var incomeItem in hrBaseSalaryFixWithSignModelList.Where(x => x.EmpNo == item.EmpNo))
+            {
+                Hrpayrolldet paydet = new Hrpayrolldet();
+                paydet.companyid = hrpayroll.companyid;
+                paydet.PayrollslipNo = hrpayroll.PayrollslipNo;
+                paydet.EmpNo = hrpayroll.EmpNo;
+                paydet.PayrollPeriod = hrpayroll.PayrollPeriod;
+                paydet.SeqNo = i;
+                paydet.SalitemCode = incomeItem.SalitemCode;
+                paydet.Description = incomeItem.description;
+
+                try
+                {
+                    paydet.ItemAmt = incomeItem.ItemAmt;
+                }
+                catch (Exception e)
+                {
+                    paydet.ItemAmt = 0.00m;
+                    e.Message.ToString();
+                }
+
+                try
+                {
+                    if (incomeItem.SignFlag == -1)
+                    {
+                        try
+                        {
+                            hrpayroll.SalarynetAmt -= incomeItem.ItemAmt;
+
+                        }
+                        catch (Exception e)
+                        {
+                            e.Message.ToString();
+                        }
+                        try
+                        {
+                            hrpayroll.SalarysubtAmt += incomeItem.ItemAmt;
+
+                        }
+                        catch (Exception e)
+                        {
+                            e.Message.ToString();
+                        }
+                    }
+                    else if (incomeItem.SignFlag == 1)
+                    {
+                        try
+                        {
+                            hrpayroll.SalarynetAmt += incomeItem.ItemAmt;
+
+                        }
+                        catch (Exception e)
+                        {
+                            e.Message.ToString();
+                        }
+
+                        try
+                        {
+                            hrpayroll.SalaryothAmt += incomeItem.ItemAmt;
+                        }
+                        catch (Exception e)
+                        {
+                            e.Message.ToString();
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    e.Message.ToString();
+                }
+
+                hrpayrollsDetList.Add(paydet);
+            }
+
+            hrpayrollsList.Add(hrpayroll);
+            // await hrPayRollsGrid.Reload();
+
+        }
+        StateHasChanged();
+
+
+
+    }
+
+    //
+    private async Task CalculatePayroll()
+    {
+        // Logic for calculation goes here
+        int i = 0;
+        period = formModel.Year + formModel.Month;
+        ClearCal();
+        context = DbFactory.CreateDbContext();
+        int detailSeq = 0;
+        Hrucfsecurity? socailContant = await context.Hrucfsecuritys.Where(x => x.SecurityCode == "01").FirstOrDefaultAsync();
+        foreach (var item in hrEmployeeList)
+        {
+            i++;
+            // 1.check employee and salary  ->  (EmpStatus == 1) resign date
+            // 2. check fix income /deduct
+            // 2.1 เงินกู้อยู่ในนี้
+            // 3. check not fix income/deduct
+            // 4. check ค่าล่วงเวลา
+            // 5. check ประกันสังคม
+            // 6. check กองทุน ต่างๆ
+            // 7. check ลดหย่อนภาษี select * from hrextenuatetax;
+            // 8. คำนวณ รายได้  คงเหลือ
+            // 9. คำนวณ ภาษี จ่าย
+            // 10. คงเหลือสุทธิ
+            // 11.บันทึก หรือ คำนวณใหม่ -> บันอทึก งวด payroll
+            // 12. แก้ไข หรือ ลบ รายการ แล้วทำใหม่
+
+
+            // เพิ่ม Hrpayroll 1.startdatepayment , 2.enddatepayment
+            // เพิ่ม Hrpayroll payment ratio  เช่น 20/31 กับ date/fulldate
+
+            //         COOP_ID CHAR(6 BYTE)	No  null    รหัสสหกรณ์
+            // PAYROLLSLIP_NO  VARCHAR2(12 BYTE)   No  null    เลขสลิปเงินเดือน
+            // EMP_NO  CHAR(6 BYTE)    Yes null    รหัสพนักงาน
+            // PAYROLL_DATE    DATE Yes null    วันที่ทำเงินเดือน
+            // PAYROLL_PERIOD  VARCHAR2(8 BYTE)    No  null    งวดเงินเดือน
+            // SALARYBASE_AMT  NUMBER(9, 2) Yes null    เงินเดือน
+            // SALARYOTH_AMT   NUMBER(9, 2) Yes null    รวมรายได้อื่นๆ
+            // SALARYSUBT_AMT  NUMBER(9, 2) Yes null    รวมรายจ่ายอื่นๆ
+            // SALARYNET_AMT   NUMBER(9, 2) Yes null    เงินเดือนคงเหลือ
+            // PAYROLL_STATUS  NUMBER(2, 0) Yes null    สถานะประมวลเงินดือน
+            // EXPENSE_CODE    CHAR(3 BYTE)    Yes null    วิธีจ่ายเงินเดือน
+            // EXPENSE_BANK    CHAR(3 BYTE)    Yes null    ธนาคาร
+            // EXPENSE_BRANCH  CHAR(4 BYTE)    Yes null    สาขาธนาคาร
+            // EXPENSE_ACCID   VARCHAR2(15 BYTE)   Yes null    เลขบัญชี
+            // POST_STATUS NUMBER(1, 0) Yes 0   สถานะผ่านรายการ 1 = ผ่านรายการ , 0 = ยังไม่ผ่านรายการ
+            // MEMBER_NO CHAR(8 BYTE)	Yes null    เลขสมาชิก
+            // PERCENMG_SECURITY   NUMBER(3, 2) Yes 0   เรทประกันสังคมนายจ้างสมทบ
+            // PERCEN_SECURITY NUMBER(3, 2) Yes 0   เรทประกัันสังคม
+            // SOFMG_SECURITY  NUMBER(10, 2)    Yes 0   ค่าประกันสังคมนายจ้างสมทบ
+            // POST_SOF_STATUS NUMBER(1, 0) Yes 0   สถานะ post เงินประกันสังคม 1 = ผ่านรายการ , 0 = ยังไม่ผ่านรายการ
+
+            //  Hrpayroll hrpayroll = new Hrpayroll();// set init value
+            Hrpayroll hrpayroll = new Hrpayroll()
+                {
+                    SalarynetAmt = 0.00m, // Ensure initialization
+                    SalarysubtAmt = 0.00m,
+                    SalaryothAmt = 0.00m
+                };
+            hrpayroll.SalarysubtAmt = 0.00m;
+            hrpayroll.SalaryothAmt = 0.00m;
+            hrpayroll.companyid = item.companyid;
+            hrpayroll.EmpNo = item.EmpNo;
+            hrpayroll.PayrollPeriod = period;
+            hrpayroll.PostStatus = 0;//ยังไม่ผ่านรายการ
+            hrpayroll.PayrollStatus = 0;// check status
+            hrpayroll.ExpenseCode = item.SalexpCode;
+            hrpayroll.ExpenseBank = item.SalexpBank;
+            hrpayroll.ExpenseBranch = item.SalexpBranch;
+            hrpayroll.ExpenseAccid = item.SalexpAccid;
+            var dateget = DateTime.Now.ToString("HHmmss");
+            hrpayroll.PayrollslipNo = period + item.EmpNo;
+            hrpayroll.SalarybaseAmt = item.SalaryAmt;
+            hrpayroll.MemberNo = item.RefMembno;
+
+            try
+            {
+                hrpayroll.SalarynetAmt = item.SalaryAmt;
+            }
+            catch (Exception e)
+            {
+                e.Message.ToString();
+            }
+            // Do not  know 100% yet
+            hrpayroll.PercenmgSecurity = 3;
+            hrpayroll.PercenSecurity = 3;
+            hrpayroll.SofmgSecurity = 3;
+            hrpayroll.PostSofStatus = false;
+            hrpayroll.PostStaStatus = false;
+            hrpayroll.PayrollDate = DateTime.Now;
+
+
+            string dateString = period + "";
+            if (DateTime.TryParseExact(dateString, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime date))
+            {
+                hrpayroll.PayrollDate = date;
+                System.Console.WriteLine(date);
+            }
+            else
+            {
+                System.Console.WriteLine("Invalid date format.");
+            }
+
+            //step2
+            await GetFixIncome();
+            // Payroll detail
+            foreach (var incomeItem in hrBaseSalaryFixWithSignModelList.Where(x => x.EmpNo == item.EmpNo))
+            {
+                detailSeq++;
+                Hrpayrolldet paydet = new Hrpayrolldet();
+                paydet.companyid = hrpayroll.companyid;
+                paydet.PayrollslipNo = hrpayroll.PayrollslipNo;
+                paydet.EmpNo = hrpayroll.EmpNo;
+                paydet.PayrollPeriod = hrpayroll.PayrollPeriod;
+                paydet.SeqNo = detailSeq;
+                paydet.SalitemCode = incomeItem.SalitemCode;
+                paydet.Description = incomeItem.description;
+
+                try
+                {
+                    paydet.ItemAmt = incomeItem.ItemAmt;
+                }
+                catch (Exception e)
+                {
+                    paydet.ItemAmt = 0.00m;
+                    e.Message.ToString();
+                }
+
+
+                if (incomeItem.SignFlag == -1)
+                {
+                    try
+                    {
+                        hrpayroll.SalarynetAmt -= incomeItem.ItemAmt ?? 0; // เงินที่ได้รับ ลดลง
+
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalarynetAmt -= 0;
+                        e.Message.ToString();
+                    }
+
+                    try
+                    {
+                        hrpayroll.SalarysubtAmt += incomeItem.ItemAmt; //เงินหัก เพิ่มขึ้น
+
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalarysubtAmt += 0;
+                        e.Message.ToString();
+                    }
+                    hrpayroll.SalaryothAmt += 0;
+                }
+                else if (incomeItem.SignFlag == 1)
+                {
+                    hrpayroll.SalarysubtAmt += 0;
+                    try
+                    {
+                        hrpayroll.SalarynetAmt += incomeItem.ItemAmt ?? 0; // เงินที่ได้รับ เพิ่มขึ้น
+
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalarynetAmt += 0;
+                        e.Message.ToString();
+                    }
+                    try
+                    {
+                        hrpayroll.SalaryothAmt += incomeItem.ItemAmt;
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalaryothAmt += 0;
+                        e.Message.ToString();
+                    }
+                }
+
+                hrpayrollsDetList.Add(paydet);
+            }
+
+
+            // hrBaseSalaryFixWithSignModelList
+            // Payroll detail
+            // foreach (var incomeItem in hrBaseSalaryFixWithSignModelList.Where(x => x.EmpNo == item.EmpNo))
+            // {
+            //     var fixPayrollDetList = await CalFixIncome(item.EmpNo);
+
+            //     hrpayrollsDetList.AddRange(fixPayrollDetList);
+            // }
+
+            // Steps 2.1
+
+            if (item.RefMembno != null)
+            {
+                var kptempreceiveList = await GetLoan(item.RefMembno);
+                // Payroll detail
+
+                foreach (var kpItem in kptempreceiveList)
+                {
+                    detailSeq++;
+                    Hrpayrolldet paydetLoan = new Hrpayrolldet();
+                    paydetLoan.companyid = hrpayroll.companyid;
+                    paydetLoan.PayrollslipNo = hrpayroll.PayrollslipNo;
+                    paydetLoan.EmpNo = hrpayroll.EmpNo;
+                    paydetLoan.PayrollPeriod = hrpayroll.PayrollPeriod;
+                    paydetLoan.SeqNo = detailSeq;
+                    paydetLoan.SalitemCode = "005";
+                    paydetLoan.Description = "เงินกู้สหกรณ์";
+
+
+                    hrpayroll.SalaryothAmt += 0.00m;
+                    try
+                    {
+                        paydetLoan.ItemAmt = kpItem.ReceiveAmt;
+                    }
+                    catch (Exception e)
+                    {
+                        paydetLoan.ItemAmt = 0.00m;
+                        e.Message.ToString();
+                    }
+
+                    try
+                    {
+
+                        hrpayroll.SalarynetAmt -= kpItem.ReceiveAmt ?? 0; // เงินที่ได้รับ ลดลง หักเงินกู้
+
+
+                        // hrpayroll.SalarynetAmt += 0.00m;
+                        // hrpayroll.SalaryothAmt += 0.00m;
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalarynetAmt += 0;
+                        e.Message.ToString();
+                    }
+                    try
+                    {
+                        hrpayroll.SalarysubtAmt += kpItem.ReceiveAmt;
+                    }
+                    catch (Exception e)
+                    {
+                        hrpayroll.SalarysubtAmt += 0;
+                        e.Message.ToString();
+                    }
+
+
+                    hrpayrollsDetList.Add(paydetLoan);
+                }
+
+            }
+            // step 3 income not fix
+            // step 4
+
+            var otList = await GetOTIncome(item.EmpNo);
+            foreach (var otItem in otList)
+            {
+                detailSeq++;
+                Hrpayrolldet paydetOT = new Hrpayrolldet();
+                paydetOT.companyid = hrpayroll.companyid;
+                paydetOT.PayrollslipNo = hrpayroll.PayrollslipNo;
+                paydetOT.EmpNo = hrpayroll.EmpNo;
+                paydetOT.PayrollPeriod = hrpayroll.PayrollPeriod;
+                paydetOT.SeqNo = detailSeq;
+                paydetOT.SalitemCode = "OT";
+                paydetOT.Description = otItem.OtDocno;
+
+                try
+                {
+                    paydetOT.ItemAmt = otItem.OtAmt ?? 0;
+                }
+                catch (Exception e)
+                {
+                    paydetOT.ItemAmt = 0.00m;
+                    e.Message.ToString();
+                }
+
+                try
+                {
+                    hrpayroll.SalarynetAmt += otItem.OtAmt ?? 0;
+
+
+
+                }
+                catch (Exception e)
+                {
+                    hrpayroll.SalarynetAmt += 0;
+                    e.Message.ToString();
+                }
+                try
+                {
+                    hrpayroll.SalaryothAmt += otItem.OtAmt ?? 0;
+
+                }
+                catch (Exception e)
+                {
+                    hrpayroll.SalaryothAmt += 0.00m;
+                    e.Message.ToString();
+                }
+                hrpayrollsDetList.Add(paydetOT);
+            }
+
+
+            // step 5 Socail and Providend Fund
+            // step 5.1 provident fund
+            detailSeq++;
+            Hrpayrolldet paydet_pv = new Hrpayrolldet();
+            paydet_pv.companyid = hrpayroll.companyid;
+            paydet_pv.PayrollslipNo = hrpayroll.PayrollslipNo;
+            paydet_pv.EmpNo = hrpayroll.EmpNo;
+            paydet_pv.PayrollPeriod = hrpayroll.PayrollPeriod;
+            paydet_pv.SeqNo = detailSeq;
+            paydet_pv.SalitemCode = "pv";
+            paydet_pv.Description = "Providend Fund";
+
+            hrpayroll.SalaryothAmt += 0.00m;//ไม่มีรายได้จาก Providend Fund
+
+            decimal? provf_amount = 0.00m;
+            try
+            {
+                provf_amount = item.SalaryAmt * item.ProvfEmprate / 100;
+                //  paydet_pv.ItemAmt = item.ProvfAmt;
+
+            }
+            catch (Exception e)
+            {
+                paydet_pv.ItemAmt = 0.00m;
+                e.Message.ToString();
+            }
+
+            paydet_pv.ItemAmt = provf_amount;
+
+            try
+            {
+
+                hrpayroll.SalarynetAmt -= provf_amount ?? 0;
+
+            }
+            catch (Exception e)
+            {
+                hrpayroll.SalarynetAmt -= 0;
+                e.Message.ToString();
+            }
+
+            try
+            {
+                hrpayroll.SalarysubtAmt += provf_amount;
+
+            }
+            catch (Exception e)
+            {
+                hrpayroll.SalarysubtAmt += 0;
+                e.Message.ToString();
+            }
+            hrpayrollsDetList.Add(paydet_pv);
+            //5.2 social security
+            detailSeq++;
+            Hrpayrolldet paydet_so = new Hrpayrolldet();
+            paydet_so.companyid = hrpayroll.companyid;
+            paydet_so.PayrollslipNo = hrpayroll.PayrollslipNo;
+            paydet_so.EmpNo = hrpayroll.EmpNo;
+            paydet_so.PayrollPeriod = hrpayroll.PayrollPeriod;
+            paydet_so.SeqNo = detailSeq;
+            paydet_so.SalitemCode = "So";
+            paydet_so.Description = "ประกันสังคม";
+
+            hrpayroll.SalaryothAmt += 0.00m;//ไม่มีรายได้จาก ประกันสังคม
+            decimal? amt = 0.00m;
+            try
+            {
+                // if (item.SsStatus == 1)
+                // {
+                var rate = item.SsRate;
+                decimal? maxSalary = 0.00m;
+                decimal? cSalary = 0.00m;
+                if (socailContant?.SecurityMoney != null)
+                {
+                    maxSalary = socailContant.SecurityMoney;
+                }
+
+
+                if (item.SalaryAmt > maxSalary)
+                {
+                    cSalary = maxSalary;
+                }
+                else
+                {
+                    cSalary = item.SalaryAmt;
+                }
+                amt = cSalary * rate / 100;
+
+
+                paydet_so.ItemAmt = amt;
+
+
+                // }
+            }
+            catch (Exception e)
+            {
+                paydet_so.ItemAmt = 0.00m;
+                e.Message.ToString();
+            }
+
+            hrpayrollsDetList.Add(paydet_so);
+
+            try
+            {
+
+                hrpayroll.SalarynetAmt -= amt ?? 0;//เงินที่ได้รับ ลดลง หักประกันสังคม
+
+            }
+            catch (Exception e)
+            {
+                hrpayroll.SalarynetAmt -= 0;
+                e.Message.ToString();
+            }
+
+            try
+            {
+                hrpayroll.SalarysubtAmt += amt ?? 0;//เงินหัก เพิ่มขึ้น
+
+            }
+            catch (Exception e)
+            {
+                hrpayroll.SalarysubtAmt += 0;
+                e.Message.ToString();
+            }
+            //Steps  8 get deduct tax
+            decimal? deductTax = 0.00m;
+            var (hrextenuatetaxesList, total) = await GetEmployeeDeduct(item.EmpNo);
+
+            // List<Hrextenuatetax> hrextenuatetaxesList = await GetEmployeeDeduct(item.EmpNo);
+            foreach (var deductItem in hrextenuatetaxesList)
+            {
+                detailSeq++;
+                Hrpayrolldet paydetDeduct = new Hrpayrolldet();
+                paydetDeduct.companyid = hrpayroll.companyid;
+                paydetDeduct.PayrollslipNo = hrpayroll.PayrollslipNo;
+                paydetDeduct.EmpNo = hrpayroll.EmpNo;
+                paydetDeduct.PayrollPeriod = hrpayroll.PayrollPeriod;
+                paydetDeduct.SeqNo = detailSeq;
+                paydetDeduct.SalitemCode = "de";
+                paydetDeduct.Description = paydetDeduct.Description;
+
+                try
+                {
+                    deductTax = total;
+                    paydetDeduct.ItemAmt = deductTax;
+
+                }
+                catch (Exception e)
+                {
+                    paydetDeduct.ItemAmt = 0.00m;
+                    deductTax += 0.00m;
+                    e.Message.ToString();
+                }
+
+
+                //  hrpayrollsDetList.Add(paydetDeduct);
+            }
+
+            // try
+            // {
+            //     hrpayroll.SalarynetAmt -= deductTax;//ภาษีทั้งปี หาร 12  หักรายเดือน
+
+
+
+            // }
+            // catch (Exception e)
+            // {
+            //     e.Message.ToString();
+            // }
+
+            // step 9 calulate tax
+            detailSeq++;
+            Hrpayrolldet paydet_taxcal = new Hrpayrolldet();
+            paydet_taxcal.companyid = hrpayroll.companyid;
+            paydet_taxcal.PayrollslipNo = hrpayroll.PayrollslipNo;
+            paydet_taxcal.EmpNo = hrpayroll.EmpNo;
+            paydet_taxcal.PayrollPeriod = hrpayroll.PayrollPeriod;
+            paydet_taxcal.SeqNo = detailSeq;
+            paydet_taxcal.SalitemCode = "tax";
+            paydet_taxcal.Description = "หักภาษี";
+            paydet_taxcal.ItemAmt = 0.00m;
+            hrpayroll.SalaryothAmt += 0.00m;// ไม่มีรายได้จาก ภาษี
+            decimal? amttax = 0.00m;
+            try
+            {
+                int month = int.Parse(formModel.Month);
+
+                try
+                {
+                    amttax = await CalculateTax(formModel.Year, month, totalMonthCal, item, deductTax);
+                }
+                catch (Exception e)
+                {
+                    amttax = 0.00m;
+
+                    e.Message.ToString();
+                }
+
+                try
+                {
+                    paydet_taxcal.ItemAmt += amttax;
+                }
+                catch (Exception e)
+                {
+                    paydet_taxcal.ItemAmt += 0.00m;
+
+                    e.Message.ToString();
+                }
+
+
+                try
+                {
+                    // hrpayroll.SalarynetAmt -= amttax;
+                    hrpayroll.SalarynetAmt -= paydet_taxcal.ItemAmt;
+
+                }
+                catch (Exception e)
+                {
+                    hrpayroll.SalarynetAmt -= 0;
+                    e.Message.ToString();
+                }
+
+            }
+            catch (Exception e)
+            {
+                paydet_taxcal.ItemAmt = 0.00m;
+                e.Message.ToString();
+            }
+            try
+            {
+                hrpayroll.SalarysubtAmt += amttax;
+
+            }
+            catch (Exception e)
+            {
+                hrpayroll.SalarysubtAmt += 0;
+                e.Message.ToString();
+            }
+            hrpayrollsDetList.Add(paydet_taxcal);
+            hrpayrollsList.Add(hrpayroll);
+
+        }
+        hrpayrollsDetList.RemoveAll(x => x.ItemAmt == 0.00m);
+
+    }
+
+
+    private async Task<decimal> CalculateTax(string year, int month, int totalmonth, Hremployee employee, decimal? totalDeduct)
+    {
+        decimal taxAccumThisEmp = 0.00m;
+        string empNo = "";
+        if (employee is null)
+        {
+            throw new ArgumentNullException(nameof(employee));
+        }
+        if (employee != null)
+        {
+            empNo = employee.EmpNo;
+        }
+        await using var context = DbFactory.CreateDbContext();
+        HRPayAccum? hrPayAccumsTax = new HRPayAccum();
+        // var Iemployee = context.Hremployee.Where(e => e.EmpNo == empNo).FirstOrDefaultAsync();
+        // hrPayAccumsTax = await context.HRPayAccums.Where(e => e.EmpNo == empNo & e.YEAR == year).FirstOrDefaultAsync();
+        try
+        {
+            hrPayAccumsTax = await context.HRPayAccums.Where(e => e.EmpNo == empNo).FirstOrDefaultAsync();
+
+
+            if (hrPayAccumsTax == null)
+            {
+                if (employee != null)
+                {
+
+                    HRPayAccum hRPayAccum = new HRPayAccum();
+                    hRPayAccum.StartMonth = month;
+                    hRPayAccum.companyid = employee.companyid;
+                    DateTime lastMonthOfYear = new DateTime(DateTime.Now.Year, 12, 1);
+                    hRPayAccum.EndMonth = totalmonth;
+                    hRPayAccum.WORKMONTH = (totalmonth - month) + 1;
+                    hRPayAccum.EmpNo = employee.EmpNo;
+                    hRPayAccum.YEAR = year;
+                    hRPayAccum.IncomeForwardAmt = 0.00m;
+                    hRPayAccum.IncomeYearAmt = 0.00m;
+                    hRPayAccum.TaxYearAmt = 0.00m;
+                    hRPayAccum.IncomePredictAmt = hRPayAccum.WORKMONTH * employee.SalaryAmt;
+                    hRPayAccum.LastPeriodCode = this.period;
+                    hRPayAccum.MODIFIED_BY = "system";
+                    hRPayAccum.MODIFIED_DATE = DateTime.Now;
+
+                    context.HRPayAccums.Add(hRPayAccum);
+                    await context.SaveChangesAsync();
+                    hrPayAccumsTax = hRPayAccum;
+                    //   var thisid = hRPayAccum.id;
+
+                }
+
+            }
+
+            var currentMaxSaraly = hrPayAccumsTax?.IncomeForwardAmt + (((totalmonth - month) + 1) * employee?.SalaryAmt);
+
+            currentMaxSaraly -= totalDeduct ?? 0m;
+            //  var taxRate = await context.HRUcfTaxRates.Where(e => currentMaxSaraly > e.minRate && currentMaxSaraly < e.maxRate).FirstOrDefaultAsync();
+            List<HRUcfTaxRate> taxRateAllofEmp = await context.HRUcfTaxRates.Where(e => currentMaxSaraly > e.minRate && currentMaxSaraly < e.maxRate).OrderByDescending(e => e.step).ToListAsync();
+            bool topRate = true;
+
+
+            List<HREmpTaxRateDet> hREmpTaxRateDetList = new List<HREmpTaxRateDet>();
+            foreach (var item in taxRateAllofEmp)
+            {
+                HREmpTaxRateDet taxDet = new HREmpTaxRateDet();
+
+                decimal taxTopLevel = 0.00m; // Ensure initialization
+                decimal onTopRate = 0.00m;
+
+
+                if (topRate == true && item != null)
+                {
+                    onTopRate = (currentMaxSaraly - item.minRate) ?? 0; // Ensure minRate is not null
+                    taxTopLevel = onTopRate * ((item?.PercentRate ?? 0) / 100); // Ensure  PercentRate is not null
+                    taxAccumThisEmp += taxTopLevel;
+                    topRate = false;
+                }
+
+
+
+                if (item != null)
+                {
+                    if (employee != null)
+                    {
+                        taxDet.CoopId = employee.companyid;
+                        taxDet.EmpNo = employee.EmpNo;
+                        taxDet.Name = employee.EmpName;
+                        taxDet.NameEn = employee.EmpEname;
+                    }
+                    if (topRate == false)
+                    {
+                        taxAccumThisEmp += taxTopLevel;
+                    }
+                    taxDet.minRate = item.minRate;
+                    taxDet.maxRate = item.maxRate;
+                    taxDet.PercentRate = item.PercentRate;
+                    taxDet.taxLevelRate = item.taxLevelRate;
+                    taxDet.taxAccumLevelRate = onTopRate;
+                    taxDet.BaseLevelTax = taxTopLevel;
+                    taxDet.Peroid = period;
+                    taxDet.code = item.code;
+                    taxDet.isActive = item.isActive;
+
+
+                    taxDet.year = year;
+                    taxDet.step = item.step;
+                    taxDet.MODIFIED_BY = "system";
+                    taxDet.MODIFIED_DATE = DateTime.Now;
+
+
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            e.Message.ToString();
+        }
+
+        // if (totalDeduct != null)
+        // {
+        //     taxAccumThisEmp -=  (totalDeduct ?? 0m);
+
+        // }
+
+
+        taxAccumThisEmp = taxAccumThisEmp / totalmonth;
+        // if(taxRate !=null){
+        // var onTopRate = currentMaxSaraly - taxRate?.minRate;
+        // var taxTopLevel = onTopRate * (taxRate?.PercentRate / 100);
+        // // var taxRateAll = await context.HRUcfTaxRates.Where(e => currentMaxSaraly < e.maxRate).ToListAsync();
+
+        // var taxRateList = await context.HRUcfTaxRates.Where(e => e.isActive == 1 & e.step <= taxRate.step).ToListAsync();
+        return taxAccumThisEmp;
+    }
+
+    private async Task CalculateTax(string empNo, string year, int month, Hremployee employee)
+    {
+        if (employee is null)
+        {
+            throw new ArgumentNullException(nameof(employee));
+        }
+
+        await using var context = DbFactory.CreateDbContext();
+        HRPayAccum? hrPayAccumsTax = new HRPayAccum();
+        // var Iemployee = context.Hremployee.Where(e => e.EmpNo == empNo).FirstOrDefaultAsync();
+        hrPayAccumsTax = await context.HRPayAccums.Where(e => e.EmpNo == empNo & e.YEAR == year).FirstOrDefaultAsync();
+        if (hrPayAccumsTax == null)
+        {
+            if (employee != null)
+            {
+
+                HRPayAccum hRPayAccum = new HRPayAccum();
+                hRPayAccum.StartMonth = month;
+                DateTime lastMonthOfYear = new DateTime(DateTime.Now.Year, 12, 1);
+                hRPayAccum.EndMonth = 12;
+                hRPayAccum.WORKMONTH = 12 - month;
+                hRPayAccum.EmpNo = empNo;
+                hRPayAccum.YEAR = year;
+                hRPayAccum.IncomeForwardAmt = 0.00m;
+                hRPayAccum.IncomeYearAmt = 0.00m;
+                hRPayAccum.TaxYearAmt = 0.00m;
+                hRPayAccum.IncomePredictAmt = hRPayAccum.WORKMONTH * employee.SalaryAmt;
+                hRPayAccum.LastPeriodCode = this.period;
+                hRPayAccum.MODIFIED_BY = "system";
+                hRPayAccum.MODIFIED_DATE = DateTime.Now;
+
+                context.HRPayAccums.Add(hRPayAccum);
+                await context.SaveChangesAsync();
+                hrPayAccumsTax = hRPayAccum;
+                //   var thisid = hRPayAccum.id;
+
+            }
+
+        }
+
+        var currentMaxSaraly = hrPayAccumsTax?.IncomeForwardAmt + (((12 - month) + 1) * employee?.SalaryAmt);
+        //  var taxRate = await context.HRUcfTaxRates.Where(e => currentMaxSaraly > e.minRate && currentMaxSaraly < e.maxRate).FirstOrDefaultAsync();
+        List<HRUcfTaxRate> taxRateAllofEmp = await context.HRUcfTaxRates.Where(e => currentMaxSaraly > e.minRate && currentMaxSaraly < e.maxRate).OrderByDescending(e => e.step).ToListAsync();
+        bool topRate = true;
+
+
+        List<HREmpTaxRateDet> hREmpTaxRateDetList = new List<HREmpTaxRateDet>();
+        decimal taxAccumThisEmp = 0.00m;
+        foreach (var item in taxRateAllofEmp)
+        {
+            HREmpTaxRateDet taxDet = new HREmpTaxRateDet();
+
+            decimal onTopRate = 0.00m;
+            decimal taxTopLevel = 0.00m; // Ensure initialization
+
+            if (topRate == true && item != null)
+            {
+                onTopRate = (currentMaxSaraly - item.minRate) ?? 0; // Ensure minRate is not null
+                taxTopLevel = onTopRate * ((item?.PercentRate ?? 0) / 100); // Ensure  PercentRate is not null
+                taxAccumThisEmp += taxTopLevel;
+                topRate = false;
+            }
+
+
+
+            if (item != null)
+            {
+                if (employee != null)
+                {
+                    taxDet.CoopId = employee.companyid;
+                    taxDet.EmpNo = employee.EmpNo;
+                    taxDet.Name = employee.EmpName;
+                    taxDet.NameEn = employee.EmpEname;
+                }
+                if (topRate == false)
+                {
+                    taxAccumThisEmp += taxTopLevel;
+                }
+                taxDet.minRate = item.minRate;
+                taxDet.maxRate = item.maxRate;
+                taxDet.PercentRate = item.PercentRate;
+                taxDet.taxLevelRate = item.taxLevelRate;
+                taxDet.taxAccumLevelRate = onTopRate;
+                taxDet.BaseLevelTax = taxTopLevel;
+                taxDet.Peroid = period;
+                taxDet.code = item.code;
+                taxDet.isActive = item.isActive;
+
+
+                taxDet.year = year;
+                taxDet.step = item.step;
+                taxDet.MODIFIED_BY = "system";
+                taxDet.MODIFIED_DATE = DateTime.Now;
+
+
+            }
+        }
+        // if(taxRate !=null){
+        // var onTopRate = currentMaxSaraly - taxRate?.minRate;
+        // var taxTopLevel = onTopRate * (taxRate?.PercentRate / 100);
+        // // var taxRateAll = await context.HRUcfTaxRates.Where(e => currentMaxSaraly < e.maxRate).ToListAsync();
+
+        // var taxRateList = await context.HRUcfTaxRates.Where(e => e.isActive == 1 & e.step <= taxRate.step).ToListAsync();
+
+    }
+
+
+    // private async Task SetPayrollDetail(Hrpayroll hrpayroll)
+    // {
+    //     foreach (var incomeItem in hrBaseSalaryFixWithSignModelList.Where(x => x.EmpNo == hrpayroll.EmpNo))
+    //     {
+    //         Hrpayrolldet paydet = new Hrpayrolldet();
+    //         paydet.companyid = hrpayroll.companyid;
+    //         paydet.PayrollslipNo = hrpayroll.PayrollslipNo;
+    //         paydet.EmpNo = hrpayroll.EmpNo;
+    //         paydet.PayrollPeriod = hrpayroll.PayrollPeriod;
+    //         paydet.SeqNo = i;
+    //         paydet.SalitemCode = incomeItem.SalitemCode;
+    //         paydet.Description = incomeItem.description;
+
+    //         try
+    //         {
+    //             paydet.ItemAmt = incomeItem.ItemAmt;
+    //         }
+    //         catch (Exception e)
+    //         {
+    //             paydet.ItemAmt = 0.00m;
+    //             e.Message.ToString();
+    //         }
+
+    //         try
+    //         {
+    //             if (incomeItem.SignFlag == -1)
+    //             {
+    //                 hrpayroll.SalarynetAmt -= incomeItem.ItemAmt;
+
+    //                 hrpayroll.SalarysubtAmt += incomeItem.ItemAmt;
+    //             }
+    //             else if (incomeItem.SignFlag == 1)
+    //             {
+    //                 hrpayroll.SalarynetAmt += incomeItem.ItemAmt;
+    //                 hrpayroll.SalaryothAmt += incomeItem.ItemAmt;
+    //             }
+    //         }
+    //         catch (Exception e)
+    //         {
+    //             e.Message.ToString();
+    //         }
+    //         hrpayrollsDetList.Add(paydet);
+    //     }
+    //     hrpayrollsList.Add(hrpayroll);
+    // }
+
+
+
+
+    private void Clear()
+    {
+        hrpayrollsDetList = new();
+        hrBaseSalaryFixWithSignModelList = new();
+        hrpayrollsList = new();
+        hrEmployeeList = new();
+    }
+
+    private void ClearCal()
+    {
+        hrpayrollsDetList = new();
+        hrpayrollsList = new();
+
+    }
+
+
+    private async Task GetEmployee()
+    {
+        await using var context = DbFactory.CreateDbContext();
+        hrEmployeeList = new();
+        //   hrEmployeeList = await context.Hremployee.Where(e => e.EmpStatus == 1).ToListAsync();
+        hrEmployeeList = await context.Hremployee.ToListAsync();
+
+    }
+
+
+    private async Task GetEmployee(String empno)
+    {
+        await using var context = DbFactory.CreateDbContext();
+        hrEmployeeList = new();
+        hrEmployeeList = await context.Hremployee.Where(e => e.EmpStatus == 1 && e.EmpNo == empno).ToListAsync();
+    }
+
+    private async Task<(List<Hrextenuatetax> empDeduct, decimal totalDeduct)> GetEmployeeDeduct(string empno)
+    {
+        await using var context = DbFactory.CreateDbContext();
+
+        List<Hrextenuatetax> empDeduct = await context.Hrextenuatetaxs.Where(e => e.EmpNo == empno).ToListAsync();
+        decimal totalDeduct = 0.00m;
+
+        if (empDeduct != null)
+        {
+            foreach (var item in empDeduct)
+            {
+                try
+                {
+                    totalDeduct += item.PayTravel ?? 0m;
+                    totalDeduct += item.PayChild ?? 0m;
+                    totalDeduct += item.PayParent ?? 0m;
+                    totalDeduct += item.PayIntaddr ?? 0m;
+                    totalDeduct += item.PayInsoth ?? 0m;
+                    totalDeduct += item.PayInsretry ?? 0m;
+                    totalDeduct += item.PayDisabled ?? 0m;
+                    totalDeduct += item.PayInsparent ?? 0m;
+                    totalDeduct += item.PayMate ?? 0m;
+                    totalDeduct += item.PayLtf ?? 0m;
+                    totalDeduct += item.PayRmf ?? 0m;
+                    totalDeduct += item.PayDonateoth ?? 0m;
+                    totalDeduct += item.PayDonateedu ?? 0m;
+                }
+                catch (Exception e)
+                {
+                    System.Console.WriteLine(e.Message);
+                }
+            }
+        }
+
+        return (empDeduct, totalDeduct);
+    }
+
+
+    // private async Task<List<Hrextenuatetax>> GetEmployeeDeduct(String empno)
+    // {
+    //     await using var context = DbFactory.CreateDbContext();
+
+    //     List<Hrextenuatetax> empDeduct = await context.Hrextenuatetaxs.Where(e => e.EmpNo == empno).ToListAsync();
+    //     decimal totalDeduct = 0.00m;
+    //     if (empDeduct != null)
+    //     {
+    //         foreach (var item in empDeduct)
+    //         {
+    //             try
+    //             {
+    //                 totalDeduct += item.PayTravel?? 0m;
+    //                 totalDeduct += item.PayChild ?? 0m;
+    //                 totalDeduct += item.PayParent ?? 0m;
+    //                 totalDeduct += item.PayIntaddr?? 0m;
+    //                 totalDeduct += item.PayInsoth ?? 0m;
+    //                 totalDeduct += item.PayInsretry  ?? 0m;
+    //                 totalDeduct += item.PayDisabled ?? 0m;
+    //                 totalDeduct += item.PayInsparent ?? 0m;
+    //                 totalDeduct += item.PayMate ?? 0m;
+    //                 totalDeduct += item.PayLtf ?? 0m;
+    //                 totalDeduct += item.PayRmf ?? 0m;
+    //                 totalDeduct += item.PayDonateoth ?? 0m;
+    //                 totalDeduct += item.PayDonateedu ?? 0m;
+    //             }
+    //             catch (Exception e)
+    //             {
+    //                 e.Message.ToString();
+    //             }
+    //         }
+
+    //     }
+
+    //     return empDeduct;
+    // }
+
+
+    private async Task GetFixIncome()
+    {
+        await using var context = DbFactory.CreateDbContext();
+        // var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+
+        // // fixIncomeList = await context.hrbasepayrollfixeds
+        // //    .Where(f => empNos.Contains(f.EmpNo))
+        // //    .ToListAsync();
+
+
+        hrBaseSalaryFixWithSignModelList = await (
+       from payroll in context.hrbasepayrollfixeds
+       join salaryItem in context.hrucfsalaryitems
+       on payroll.SalitemCode equals salaryItem.SalitemCode into salaryGroup
+       from salaryItem in salaryGroup.DefaultIfEmpty() // Left Join
+       select new HRBaseSalaryFixWithSignModel
+           {
+               companyid = payroll.companyid,
+               EmpNo = payroll.EmpNo,
+               SeqNo = payroll.SeqNo,
+               SalitemCode = payroll.SalitemCode,
+               ItemAmt = payroll.ItemAmt,
+               SignFlag = salaryItem != null ? salaryItem.SignFlag : null, // ป้องกันค่า null
+               description = string.IsNullOrEmpty(salaryItem.SalitemDesc) ? "" : salaryItem.SalitemDesc
+
+           }
+       ).ToListAsync();
+
+
+    }
+
+    private async Task GetTaxRate()
+    {
+        try
+        {
+            await using var context = DbFactory.CreateDbContext();
+            var taxRate = await context.HRUcfTaxRates.Where(e => e.isActive == 1).ToListAsync();
+            //  var taxRate = await context.HRUcfTaxRates.ToListAsync();
+
+
+            var taxRateC = taxRate.Count();
+
+        }
+        catch (Exception e)
+        {
+            e.Message.ToString();
+        }
+
+    }
+
+    // private async Task CalFixIncome()
+    // {
+    //     await using var context = DbFactory.CreateDbContext();
+
+    // var    hrBaseSalaryFixWithSignModelList2 = await (
+    //    from payroll in context.hrbasepayrollfixeds
+    //    join salaryItem in context.hrucfsalaryitems
+    //    on payroll.SalitemCode equals salaryItem.SalitemCode into salaryGroup
+    //    from salaryItem in salaryGroup.DefaultIfEmpty() // Left Join
+    //    select new HRBaseSalaryFixWithSignModel
+    //        {
+    //            companyid = payroll.companyid,
+    //            EmpNo = payroll.EmpNo,
+    //            SeqNo = payroll.SeqNo,
+    //            SalitemCode = payroll.SalitemCode,
+    //            ItemAmt = payroll.ItemAmt,
+    //            SignFlag = salaryItem != null ? salaryItem.SignFlag : null, // ป้องกันค่า null
+    //            description = string.IsNullOrEmpty(salaryItem.SalitemDesc) ? "" : salaryItem.SalitemDesc
+
+    //        }
+    //    ).ToListAsync();
+
+
+    // }
+
+    // step 2
+    private async Task<List<Hrpayrolldet>> CalFixIncome()
+    {
+        await using var context = DbFactory.CreateDbContext();
+
+        var hrBaseSalaryFixWithSignModelList2 = await (
+            from payroll in context.hrbasepayrollfixeds
+            join salaryItem in context.hrucfsalaryitems
+            on payroll.SalitemCode equals salaryItem.SalitemCode into salaryGroup
+            from salaryItem in salaryGroup.DefaultIfEmpty() // Left Join
+            select new HRBaseSalaryFixWithSignModel
+                {
+                    companyid = payroll.companyid,
+                    EmpNo = payroll.EmpNo,
+                    SeqNo = payroll.SeqNo,
+                    SalitemCode = payroll.SalitemCode,
+                    ItemAmt = payroll.ItemAmt,
+                    SignFlag = salaryItem != null ? salaryItem.SignFlag : null, // ป้องกันค่า null
+                    description = string.IsNullOrEmpty(salaryItem.SalitemDesc) ? "" : salaryItem.SalitemDesc
+                }
+        ).ToListAsync();
+
+        // ✅ แปลงข้อมูลจาก HRBaseSalaryFixWithSignModel -> Hrpayrolldet
+        List<Hrpayrolldet> hrpayrollDetList = new();
+
+        foreach (var item in hrBaseSalaryFixWithSignModelList2)
+        {
+            Hrpayrolldet paydet = new Hrpayrolldet
+                {
+                    companyid = item.companyid,
+                    EmpNo = item.EmpNo,
+                    PayrollslipNo = "", // ต้องใส่ค่าจริง เช่น period + timestamp
+                    PayrollPeriod = DateTime.Now.ToString("yyyyMM"), // ใช้เดือนปีปัจจุบัน
+                    SeqNo = item.SeqNo,
+                    SalitemCode = item.SalitemCode,
+                    Description = item.description,
+                    ItemAmt = item.ItemAmt ?? 0m // ป้องกัน null exception
+                };
+
+
+        }
+
+        return hrpayrollDetList;
+    }
+
+    // step 2
+    private async Task<List<Hrpayrolldet>> CalFixIncome(string empNo)
+    {
+        await using var context = DbFactory.CreateDbContext();
+
+
+        var hrBaseSalaryFixWithSignModelList2 = await (
+            from payroll in context.hrbasepayrollfixeds
+            where payroll.EmpNo == empNo
+            join salaryItem in context.hrucfsalaryitems
+            on payroll.SalitemCode equals salaryItem.SalitemCode into salaryGroup
+            from salaryItem in salaryGroup.DefaultIfEmpty() // Left Join
+            select new HRBaseSalaryFixWithSignModel
+                {
+                    companyid = payroll.companyid,
+                    EmpNo = payroll.EmpNo,
+                    SeqNo = payroll.SeqNo,
+                    SalitemCode = payroll.SalitemCode,
+                    ItemAmt = payroll.ItemAmt,
+                    SignFlag = salaryItem != null ? salaryItem.SignFlag : null, // ป้องกันค่า null
+                    description = string.IsNullOrEmpty(salaryItem.SalitemDesc) ? "" : salaryItem.SalitemDesc
+                }
+        ).ToListAsync();
+
+        // ✅ แปลงข้อมูลจาก HRBaseSalaryFixWithSignModel -> Hrpayrolldet
+        List<Hrpayrolldet> hrpayrollDetList = new();
+
+        foreach (var item in hrBaseSalaryFixWithSignModelList2)
+        {
+            Hrpayrolldet paydet = new Hrpayrolldet
+                {
+                    companyid = item.companyid,
+                    EmpNo = item.EmpNo,
+                    PayrollslipNo = "", // ต้องใส่ค่าจริง เช่น period + timestamp
+                    PayrollPeriod = DateTime.Now.ToString("yyyyMM"), // ใช้เดือนปีปัจจุบัน
+                    SeqNo = item.SeqNo,
+                    SalitemCode = item.SalitemCode,
+                    Description = item.description,
+                    ItemAmt = item.ItemAmt ?? 0m // ป้องกัน null exception
+                };
+
+
+        }
+
+        return hrpayrollDetList;
+    }
+
+
+    // step 2.1
+    private async Task<List<Kptempreceive>> GetLoan(String refMemNo)
+    {
+        await using var context = DbFactory.CreateDbContext();
+
+        // var empList = hrEmployeeList.Select(x => x.EmpNo).ToList();
+        // var kptempreceiveList = await context.Kptempreceives.Contains(empList).ToListAsync();
+
+        var kptempreceiveList = await context.Kptempreceives
+             .Where(x => x.MemberNo == refMemNo)
+             .ToListAsync();
+
+
+
+        return kptempreceiveList;
+    }
+
+
+
+    private async Task GetLoanDebtStep21(String MemNo)
+    {
+        //ยังไม่ได้ทำ ดึงจาก Kptempreceive และ Hremployee ที่ member no เดียวกัน
+        await using var context = DbFactory.CreateDbContext();
+        var loan = await context.Kptempreceives.Where(x => x.MemberNo == MemNo).ToListAsync();
+
+    }
+
+
+
+    private async Task GetOtherIncomeStep3()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+
+    }
+    //step 4
+    private async Task<List<HrwOt>> GetOTIncome(string EmpNo)
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var otList = await context.HrwOts.Where(x => x.EmpNo == EmpNo).ToListAsync();
+
+        return otList;
+
+    }
+
+    private async Task GetSocialSecProvidendStep5(string EmpNo)
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var socialSecureList = await context.Hremployee.Where(x => x.EmpNo == EmpNo).ToListAsync();
+
+
+    }
+    private async Task GetProvidentStep6()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+
+    }
+
+    private async Task GetTaxDeductStep7()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+
+    }
+
+    private async Task GetTotalEstimateIncomeStep8()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+
+    }
+    private async Task CalculateTaxStep9()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+
+    }
+
+    private async Task NetIncomeStep10()
+    {
+        //ยังไม่ได้ทำ
+        await using var context = DbFactory.CreateDbContext();
+        var empNos = hrEmployeeList.Select(e => e.EmpNo).ToList();
+        var hrEmployeeList2 = await context.Hremployee.ToListAsync();//
+
+    }
+
+
+
+    private void FilterByEmployee(string empNo)
+    {
+        // Apply filtering logic here
+        hrpayrollsDetListOneEmp = hrpayrollsDetList.Where(x => x.EmpNo == empNo)
+            .ToList();
+    }
+
+    // private async Task Save()
+    // {
+    //     try
+    //     {
+    //         //    await using var context = DbFactory.CreateDbContext();
+
+    //         context.Hrpayroll.AddRange(hrpayrollsList);
+    //         await context.SaveChangesAsync();
+    //         message = "ข้อมูล Payroll บันทึกข้อมูลเรียบร้อย";
+
+    //         context = DbFactory.CreateDbContext();
+    //         int maxSeq = 0;
+    //         try{
+    //          maxSeq = context.Hrpayrolldet.Max(x => x.SeqNo);
+    //         }
+    //         catch (Exception e)
+    //         {
+    //             maxSeq = 0;
+    //             e.Message.ToString();
+    //             message = e.Message.ToString();
+
+    //         }
+    //         foreach (var item in hrpayrollsDetList)
+    //         {
+    //             item.SeqNo = maxSeq + 1;
+    //             // context.Hrpayrolldet.Add(item);
+    //             // await context.SaveChangesAsync();
+
+
+    //         }
+
+    //         context.Hrpayrolldet.AddRange(hrpayrollsDetList);
+    //         await context.SaveChangesAsync();
+
+    //         message += " <br />ข้อมูล รายละเอียดการจ่าย Payroll บันทึกข้อมูลเรียบร้อย";
+    //     }
+    //     catch (Exception e)
+    //     {
+    //         e.Message.ToString();
+    //         message = "บันทึกไม่สำเร็จ"+e.Message.ToString();
+    //     }
+
+    // }
+
+    private async Task Save()
+    {
+        using var transaction = await context.Database.BeginTransactionAsync(); // เริ่ม Transaction
+
+        try
+        {
+
+            int maxSeq = 0;
+
+            try
+            {
+                maxSeq = context.Hrpayrolldet.Max(x => x.SeqNo);
+            }
+            catch (Exception e)
+            {
+                maxSeq = 0;
+                message = e.Message;
+            }
+
+            // try
+            // {
+            //     using var context = DbFactory.CreateDbContext();
+            //     // maxSeq = context.Hrpayrolldet.Select(x => x.SeqNo).FirstOrDefaultAsync().Max();
+            //     if (context.Hrpayrolldet.Any())
+            //     {
+            //         maxSeq = context.Hrpayrolldet.Max(x => x.SeqNo);
+            //     }
+            //     else
+            //     {
+            //         maxSeq = 0;
+            //     }
+
+            //     // maxSeq = context.Hrpayrolldet.Max(x => x.SeqNo);
+            // }
+            // catch (Exception e)
+            // {
+            //     maxSeq = 0;
+            //     message = e.Message.ToString();
+            // }
+            context.Hrpayroll.AddRange(hrpayrollsList);
+            await context.SaveChangesAsync(); // บันทึกเฉพาะ Payroll
+
+
+
+            foreach (var item in hrpayrollsDetList)
+            {
+                maxSeq++;
+                item.SeqNo = maxSeq;
+            }
+
+            context.Hrpayrolldet.AddRange(hrpayrollsDetList);
+            await context.SaveChangesAsync(); // บันทึกข้อมูล รายละเอียดการจ่าย Payroll
+
+            await transaction.CommitAsync(); // ยืนยันการบันทึกทั้งหมด
+            message = "ข้อมูล Payroll และ รายละเอียดการจ่าย Payroll บันทึกข้อมูลเรียบร้อย";
+        }
+        catch (Exception e)
+        {
+            await transaction.RollbackAsync(); // ยกเลิกการทำงานถ้ามีข้อผิดพลาด
+            message = "บันทึกไม่สำเร็จ: " + e.Message;
+        }
+    }
+
+    private async Task CalculatePayrollAI()
+    {
+        period = formModel.Year + formModel.Month;
+        ClearCal();
+
+        var result = await PayrollService.ProcessPayrollAsync(hrEmployeeList, period);
+
+        hrpayrollsList = result.Payrolls;
+        hrpayrollsDetList = result.PayrollDetails;
+
+        StateHasChanged();
+    }
+    private class FormModel
+    {
+        [Required(ErrorMessage = "กรุณาเลือกประเภทพนักงาน")]
+
+        public string EmployeeType { get; set; } = "01";
+
+        [Required]
+        public string Year { get; set; } = "2568";
+
+        [Required]
+        public string Month { get; set; } = "01";
+
+        [Required]
+        public int TermOfPay { get; set; } = 1;
+
+        public int TotalTerm { get; set; } = 1;
+        public string CalPerson { get; set; } = "Thong";
+        public string ApprovePerson { get; set; } = "Thong";
+        public string status = "0";
+        public decimal totalAmount = 0.00M;
+    }
+
+    private string _value;
+    private Margin _margin;
+    private bool _dense;
+    private bool _disabled;
+    private bool _readonly;
+    private bool _placeholder;
+    private bool _helperText;
+    private bool _helperTextOnFocus;
+    private bool _clearable;
+    private bool _fitContent;
+    private bool _modal = true;
+
+    private readonly string[] _states =
+    {
+        "Alabama", "Alaska", "Arizona", "Arkansas", "California",
+        "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
+        "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas",
+        "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+        "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana",
+        "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
+        "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma",
+        "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+        "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
+        "Washington", "West Virginia", "Wisconsin", "Wyoming"
+    };
+    // private class FormModel
+    // {
+    //     public DateTime CalculationDate { get; set; } = DateTime.Now;
+    //     public string EmployeeType { get; set; } = "";
+    //     public string Year { get; set; } = "2568";
+    //     public string Month { get; set; } = "01";
+    //     public int TermOfPay { get; set; } = 1;
+    //     public int TotalTerm { get; set; } = 1;
+    //     public string CalPerson { get; set; } = "Thong";
+    //     public string ApprovePerson { get; set; } = "Thong";
+    //     public string status = "0";
+    //     public decimal totalAmount = 0.00M;
+    // }
+}
+
+
