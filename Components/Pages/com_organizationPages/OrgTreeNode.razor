@@ -1,0 +1,51 @@
+@using HRM.Models
+
+<div class="org-tree-node">
+    <div class="org-tree-row @(IsSelected ? "org-tree-row-selected" : "") @(Node.isActive ? "" : "org-tree-row-inactive")"
+         @onclick="() => OnSelect.InvokeAsync(Node.id)">
+        @if (Children.Any())
+        {
+            <span class="org-tree-toggle" @onclick="ToggleExpand" @onclick:stopPropagation="true">@(Expanded ? "▾" : "▸")</span>
+        }
+        else
+        {
+            <span class="org-tree-toggle-spacer">&nbsp;&nbsp;</span>
+        }
+        <span class="org-tree-label">
+            @Node.name
+            @if (!string.IsNullOrEmpty(Node.code))
+            {
+                <small class="text-muted">(@Node.code)</small>
+            }
+            @if (!Node.isActive)
+            {
+                <span class="badge bg-secondary ms-1">สิ้นสุด</span>
+            }
+        </span>
+    </div>
+
+    @if (Expanded && Children.Any())
+    {
+        <div class="org-tree-children">
+            @foreach (var child in Children)
+            {
+                <OrgTreeNode Node="child" ChildLookup="ChildLookup" SelectedId="SelectedId" OnSelect="OnSelect" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public com_organization Node { get; set; } = default!;
+    [Parameter] public ILookup<long?, com_organization> ChildLookup { get; set; } = default!;
+    [Parameter] public long? SelectedId { get; set; }
+    [Parameter] public EventCallback<long> OnSelect { get; set; }
+
+    private bool Expanded = true;
+
+    private bool IsSelected => SelectedId == Node.id;
+
+    private IEnumerable<com_organization> Children => ChildLookup[Node.id];
+
+    private void ToggleExpand() => Expanded = !Expanded;
+}

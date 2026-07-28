@@ -1,0 +1,619 @@
+@page "/com_organizations/orgtree"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject UserService UserService
+
+<PageTitle>Org Tree</PageTitle>
+
+<h1>โครงสร้างองค์กร (Org Tree)</h1>
+<p>
+    <a href="/com_organizations">กลับไปหน้ารายการ (Index)</a>
+</p>
+
+<div class="form-check mb-2">
+    <input type="checkbox" class="form-check-input" id="showInactive" @bind="ShowInactive" @bind:after="LoadDataAsync" />
+    <label class="form-check-label" for="showInactive">แสดงหน่วยงานที่สิ้นสุดแล้ว</label>
+</div>
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+
+@if (loading)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body org-tree-scroll">
+                    @if (!RootNodes.Any())
+                    {
+                        <p class="text-muted">ยังไม่มีหน่วยงาน</p>
+                    }
+                    @foreach (var root in RootNodes)
+                    {
+                        <OrgTreeNode Node="root" ChildLookup="ChildLookup" SelectedId="SelectedId" OnSelect="SelectNode" />
+                    }
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="StartAddRoot">+ เพิ่มหน่วยงานระดับบนสุด</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            @if (Mode == PanelMode.None)
+            {
+                <p class="text-muted">เลือกหน่วยงานทางด้านซ้ายเพื่อดูรายละเอียด หรือเพิ่มหน่วยงานใหม่</p>
+            }
+            else if (Mode == PanelMode.View && Selected is not null)
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <h4>
+                            @Selected.name <small class="text-muted">(@Selected.code)</small>
+                            @if (!Selected.isActive)
+                            {
+                                <span class="badge bg-secondary">สิ้นสุด</span>
+                            }
+                        </h4>
+                        <dl class="row">
+                            <dt class="col-sm-4">ชื่อภาษาอังกฤษ</dt>
+                            <dd class="col-sm-8">@Selected.name_en</dd>
+                            <dt class="col-sm-4">Layer</dt>
+                            <dd class="col-sm-8">@Selected.layer_code</dd>
+                            <dt class="col-sm-4">หน่วยงานแม่</dt>
+                            <dd class="col-sm-8">@ParentName(Selected)</dd>
+                            <dt class="col-sm-4">หัวหน้างาน</dt>
+                            <dd class="col-sm-8">@Selected.boss_name (@Selected.boss_emp_id)</dd>
+                            <dt class="col-sm-4">ผู้อนุมัติ</dt>
+                            <dd class="col-sm-8">@Selected.approver_name</dd>
+                            <dt class="col-sm-4">วันที่เริ่มมีผล</dt>
+                            <dd class="col-sm-8">@(Selected.startdate?.ToString("dd/MM/yyyy"))</dd>
+                            <dt class="col-sm-4">วันที่สิ้นสุด</dt>
+                            <dd class="col-sm-8">@(Selected.enddate?.ToString("dd/MM/yyyy"))</dd>
+                            <dt class="col-sm-4">หมายเหตุ</dt>
+                            <dd class="col-sm-8">@Selected.remark</dd>
+                            <dt class="col-sm-4">แก้ไขล่าสุด</dt>
+                            <dd class="col-sm-8">@(Selected.moddate?.ToString("dd/MM/yyyy HH:mm")) โดย @Selected.modby</dd>
+                        </dl>
+                        <div class="btn-group">
+                            <button class="btn btn-primary btn-sm" @onclick="StartEdit">แก้ไข</button>
+                            <button class="btn btn-success btn-sm" @onclick="StartAddChild">+ เพิ่มหน่วยงานย่อย</button>
+                            @if (Selected.isActive)
+                            {
+                                <button class="btn btn-danger btn-sm" @onclick="StartEnd">สิ้นสุดหน่วยงานนี้</button>
+                            }
+                            <button class="btn btn-secondary btn-sm" @onclick="ToggleHistoryAsync">ประวัติการเปลี่ยนแปลง</button>
+                        </div>
+                    </div>
+                </div>
+
+                @if (ShowHistory)
+                {
+                    <div class="card mt-2">
+                        <div class="card-body">
+                            <h5>ประวัติการเปลี่ยนแปลง</h5>
+                            @if (!History.Any())
+                            {
+                                <p class="text-muted">ไม่มีประวัติ</p>
+                            }
+                            else
+                            {
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>ชื่อ</th>
+                                            <th>หน่วยงานแม่</th>
+                                            <th>เริ่มมีผล</th>
+                                            <th>สิ้นสุด</th>
+                                            <th>แก้ไขเมื่อ</th>
+                                            <th>โดย</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var h in History)
+                                        {
+                                            <tr>
+                                                <td>@h.name</td>
+                                                <td>@h.parent_code</td>
+                                                <td>@(h.startdate?.ToString("dd/MM/yyyy"))</td>
+                                                <td>@(h.enddate?.ToString("dd/MM/yyyy"))</td>
+                                                <td>@(h.moddate?.ToString("dd/MM/yyyy HH:mm"))</td>
+                                                <td>@h.modby</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+            else if (Mode == PanelMode.Edit && EditModel is not null)
+            {
+                <EditForm Model="EditModel" OnValidSubmit="SaveEditAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger" />
+                    <h4>แก้ไขหน่วยงาน: @Selected!.name</h4>
+                    <div class="mb-2">
+                        <label class="form-label">รหัส</label>
+                        <InputText class="form-control" @bind-Value="EditModel.code" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">ชื่อ</label>
+                        <InputText class="form-control" @bind-Value="EditModel.name" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">ชื่อภาษาอังกฤษ</label>
+                        <InputText class="form-control" @bind-Value="EditModel.name_en" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Layer code</label>
+                        <InputText class="form-control" @bind-Value="EditModel.layer_code" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">หน่วยงานแม่</label>
+                        <InputSelect class="form-select" @bind-Value="EditModel.parentID">
+                            <option value="">-- ไม่มี (ระดับบนสุด) --</option>
+                            @foreach (var o in AllOrgs.Where(o => o.id != Selected!.id))
+                            {
+                                <option value="@o.id">@o.name (@o.code)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">หัวหน้างาน (ชื่อ)</label>
+                        <InputText class="form-control" @bind-Value="EditModel.boss_name" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">รหัสหัวหน้างาน</label>
+                        <InputText class="form-control" @bind-Value="EditModel.boss_emp_id" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">หมายเหตุ</label>
+                        <InputText class="form-control" @bind-Value="EditModel.remark" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">วันที่มีผล (Effective Date) *</label>
+                        <InputDate class="form-control" @bind-Value="EffectiveDate" />
+                    </div>
+                    <button type="submit" class="btn btn-primary">บันทึก</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelPanel">ยกเลิก</button>
+                </EditForm>
+            }
+            else if (Mode == PanelMode.AddChild && EditModel is not null)
+            {
+                <EditForm Model="EditModel" OnValidSubmit="SaveAddAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger" />
+                    <h4>เพิ่มหน่วยงานย่อยภายใต้: @(Selected?.name ?? "ระดับบนสุด")</h4>
+                    <div class="mb-2">
+                        <label class="form-label">รหัส *</label>
+                        <InputText class="form-control" @bind-Value="EditModel.code" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">ชื่อ *</label>
+                        <InputText class="form-control" @bind-Value="EditModel.name" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">ชื่อภาษาอังกฤษ</label>
+                        <InputText class="form-control" @bind-Value="EditModel.name_en" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Layer code</label>
+                        <InputText class="form-control" @bind-Value="EditModel.layer_code" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">หัวหน้างาน (ชื่อ)</label>
+                        <InputText class="form-control" @bind-Value="EditModel.boss_name" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">รหัสหัวหน้างาน</label>
+                        <InputText class="form-control" @bind-Value="EditModel.boss_emp_id" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">หมายเหตุ</label>
+                        <InputText class="form-control" @bind-Value="EditModel.remark" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">วันที่มีผล (Effective Date) *</label>
+                        <InputDate class="form-control" @bind-Value="EffectiveDate" />
+                    </div>
+                    <button type="submit" class="btn btn-success">สร้างหน่วยงาน</button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelPanel">ยกเลิก</button>
+                </EditForm>
+            }
+            else if (Mode == PanelMode.End && Selected is not null)
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <h4>สิ้นสุดหน่วยงาน: @Selected.name</h4>
+                        <p class="text-danger">หน่วยงานจะถูกทำเครื่องหมายว่าสิ้นสุด ณ วันที่มีผลด้านล่าง (จะไม่ถูกลบข้อมูล) และบันทึกสถานะก่อนหน้าไว้ในประวัติ</p>
+                        <div class="mb-2">
+                            <label class="form-label">วันที่มีผล (Effective Date) *</label>
+                            <InputDate class="form-control" @bind-Value="EffectiveDate" />
+                        </div>
+                        <button class="btn btn-danger" @onclick="SaveEndAsync">ยืนยันสิ้นสุด</button>
+                        <button class="btn btn-secondary" @onclick="CancelPanel">ยกเลิก</button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .org-tree-scroll { max-height: 65vh; overflow-y: auto; }
+    .org-tree-children { margin-left: 1.25rem; border-left: 1px dashed #ccc; padding-left: 0.5rem; }
+    .org-tree-row { cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+    .org-tree-row:hover { background-color: #f1f3f5; }
+    .org-tree-row-selected { background-color: #e7f1ff; font-weight: 600; }
+    .org-tree-row-inactive { color: #adb5bd; }
+    .org-tree-toggle { display: inline-block; width: 1rem; cursor: pointer; }
+    .org-tree-toggle-spacer { display: inline-block; width: 1rem; }
+</style>
+
+@code {
+    private enum PanelMode { None, View, Edit, AddChild, End }
+
+    private PanelMode Mode = PanelMode.None;
+    private bool loading = true;
+    private bool ShowInactive = false;
+    private bool ShowHistory = false;
+    private string? ErrorMessage;
+
+    private List<com_organization> AllOrgs = new();
+    private List<com_organization> RootNodes = new();
+    private ILookup<long?, com_organization> ChildLookup = Enumerable.Empty<com_organization>().ToLookup(x => (long?)x.id);
+
+    private long? SelectedId;
+    private com_organization? Selected;
+    private com_organization? EditModel;
+    private DateTime EffectiveDate = DateTime.Today;
+    private List<com_organization_hi> History = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        loading = true;
+        using var ctx = DbFactory.CreateDbContext();
+        var query = ctx.com_organizations.AsNoTracking().AsQueryable();
+        if (!ShowInactive)
+        {
+            query = query.Where(o => o.isActive);
+        }
+        AllOrgs = await query.OrderBy(o => o.name).ToListAsync();
+        ChildLookup = AllOrgs.ToLookup(o => o.parentID);
+        RootNodes = AllOrgs.Where(o => o.istop || o.parentID == null).OrderBy(o => o.name).ToList();
+
+        if (SelectedId is not null)
+        {
+            Selected = AllOrgs.FirstOrDefault(o => o.id == SelectedId);
+            if (Selected is null)
+            {
+                Mode = PanelMode.None;
+                SelectedId = null;
+            }
+        }
+        loading = false;
+    }
+
+    private Task SelectNode(long id)
+    {
+        SelectedId = id;
+        Selected = AllOrgs.FirstOrDefault(o => o.id == id);
+        Mode = PanelMode.View;
+        ShowHistory = false;
+        History.Clear();
+        ErrorMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private string ParentName(com_organization node)
+    {
+        if (node.parentID is null)
+        {
+            return "-- ระดับบนสุด --";
+        }
+        var p = AllOrgs.FirstOrDefault(o => o.id == node.parentID);
+        return p is null ? (node.parent_code ?? "-") : $"{p.name} ({p.code})";
+    }
+
+    private async Task ToggleHistoryAsync()
+    {
+        ShowHistory = !ShowHistory;
+        if (ShowHistory && Selected is not null)
+        {
+            using var ctx = DbFactory.CreateDbContext();
+            History = await ctx.com_organization_his
+                .AsNoTracking()
+                .Where(h => h.id == Selected.id)
+                .OrderByDescending(h => h.moddate)
+                .ToListAsync();
+        }
+    }
+
+    private void StartAddRoot()
+    {
+        SelectedId = null;
+        Selected = null;
+        ErrorMessage = null;
+        EditModel = new com_organization { isActive = true, istop = true, parentID = null };
+        EffectiveDate = DateTime.Today;
+        Mode = PanelMode.AddChild;
+    }
+
+    private void StartAddChild()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+        ErrorMessage = null;
+        EditModel = new com_organization
+        {
+            isActive = true,
+            istop = false,
+            parentID = Selected.id,
+            parent_code = Selected.code,
+            node_level = (Selected.node_level ?? 0) + 1,
+            companyid = Selected.companyid,
+            comp_code = Selected.comp_code,
+        };
+        EffectiveDate = DateTime.Today;
+        Mode = PanelMode.AddChild;
+    }
+
+    private void StartEdit()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+        ErrorMessage = null;
+        EditModel = Clone(Selected);
+        EffectiveDate = Selected.startdate ?? DateTime.Today;
+        Mode = PanelMode.Edit;
+    }
+
+    private void StartEnd()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+        ErrorMessage = null;
+        EffectiveDate = DateTime.Today;
+        Mode = PanelMode.End;
+    }
+
+    private void CancelPanel()
+    {
+        ErrorMessage = null;
+        Mode = Selected is null ? PanelMode.None : PanelMode.View;
+    }
+
+    private static com_organization Clone(com_organization src) => new com_organization
+    {
+        id = src.id,
+        code = src.code,
+        name = src.name,
+        name_en = src.name_en,
+        layer = src.layer,
+        parent_code = src.parent_code,
+        isCompany = src.isCompany,
+        comp_code_all = src.comp_code_all,
+        isBranch = src.isBranch,
+        tax_id = src.tax_id,
+        isActive = src.isActive,
+        moddate = src.moddate,
+        modby = src.modby,
+        layer_code = src.layer_code,
+        approver_userid = src.approver_userid,
+        isManPowerCount = src.isManPowerCount,
+        startdate = src.startdate,
+        enddate = src.enddate,
+        org_type = src.org_type,
+        remark = src.remark,
+        abbr = src.abbr,
+        boss_emp_id = src.boss_emp_id,
+        approver_empid = src.approver_empid,
+        comp_code = src.comp_code,
+        companyid = src.companyid,
+        org_level = src.org_level,
+        asOfDate = src.asOfDate,
+        orgCode = src.orgCode,
+        orgLayerName = src.orgLayerName,
+        orgLayerNameEn = src.orgLayerNameEn,
+        refkeyParent = src.refkeyParent,
+        ref1 = src.ref1,
+        parentID = src.parentID,
+        boss_name = src.boss_name,
+        approver_name = src.approver_name,
+        approver_PosName = src.approver_PosName,
+        node_level = src.node_level,
+        istop = src.istop,
+    };
+
+    private string GetCurrentUser()
+    {
+        try
+        {
+            return UserService.GetUserName();
+        }
+        catch
+        {
+            return "system";
+        }
+    }
+
+    /// <summary>
+    /// Writes a snapshot of the org's current state into the history table (com_organization_hi).
+    /// enddateForSnapshot marks when that snapshot's validity ended (null = still current, used on create).
+    /// </summary>
+    private static void SnapshotToHistory(HRMContext ctx, com_organization current, DateTime? enddateForSnapshot, string user)
+    {
+        var hi = new com_organization_hi
+        {
+            id = current.id,
+            code = current.code,
+            name = current.name,
+            name_en = current.name_en,
+            layer = current.layer,
+            parent_code = current.parent_code,
+            isCompany = current.isCompany,
+            comp_code_all = current.comp_code_all,
+            isBranch = current.isBranch,
+            tax_id = current.tax_id,
+            isActive = current.isActive,
+            moddate = DateTime.Now,
+            modby = user,
+            layer_code = current.layer_code,
+            approver_userid = current.approver_userid,
+            isManPowerCount = current.isManPowerCount,
+            startdate = current.startdate,
+            enddate = enddateForSnapshot,
+            org_type = current.org_type,
+            remark = current.remark,
+            abbr = current.abbr,
+            boss_emp_id = current.boss_emp_id,
+            approver_empid = current.approver_empid,
+            comp_code = current.comp_code,
+            companyid = current.companyid ?? 0,
+            org_level = current.org_level,
+            asOfDate = current.asOfDate,
+            orgCode = current.orgCode,
+            orgLayerName = current.orgLayerName,
+            orgLayerNameEn = current.orgLayerNameEn,
+            refkeyParent = current.refkeyParent,
+            ref1 = current.ref1,
+            parentID = current.parentID,
+            boss_name = current.boss_name,
+            approver_name = current.approver_name,
+            approver_PosName = current.approver_PosName,
+            node_level = current.node_level,
+            istop = current.istop,
+        };
+        ctx.com_organization_his.Add(hi);
+    }
+
+    private async Task SaveAddAsync()
+    {
+        if (EditModel is null)
+        {
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(EditModel.name))
+        {
+            ErrorMessage = "กรุณาระบุชื่อหน่วยงาน";
+            return;
+        }
+
+        using var ctx = DbFactory.CreateDbContext();
+        var user = GetCurrentUser();
+        EditModel.startdate = EffectiveDate;
+        EditModel.isActive = true;
+        EditModel.moddate = DateTime.Now;
+        EditModel.modby = user;
+
+        ctx.com_organizations.Add(EditModel);
+        await ctx.SaveChangesAsync();
+
+        // Audit trail entry documenting the creation event.
+        SnapshotToHistory(ctx, EditModel, null, user);
+        await ctx.SaveChangesAsync();
+
+        var newId = EditModel.id;
+        Mode = PanelMode.None;
+        await LoadDataAsync();
+        await SelectNode(newId);
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (EditModel is null || Selected is null)
+        {
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(EditModel.name))
+        {
+            ErrorMessage = "กรุณาระบุชื่อหน่วยงาน";
+            return;
+        }
+
+        using var ctx = DbFactory.CreateDbContext();
+        var entity = await ctx.com_organizations.FirstOrDefaultAsync(o => o.id == Selected.id);
+        if (entity is null)
+        {
+            ErrorMessage = "ไม่พบหน่วยงานนี้แล้ว";
+            return;
+        }
+
+        var user = GetCurrentUser();
+        // Preserve the outgoing version in history before overwriting.
+        SnapshotToHistory(ctx, entity, EffectiveDate, user);
+
+        entity.code = EditModel.code;
+        entity.name = EditModel.name;
+        entity.name_en = EditModel.name_en;
+        entity.layer_code = EditModel.layer_code;
+        entity.parentID = EditModel.parentID;
+        entity.parent_code = EditModel.parentID is null
+            ? null
+            : AllOrgs.FirstOrDefault(o => o.id == EditModel.parentID)?.code;
+        entity.boss_name = EditModel.boss_name;
+        entity.boss_emp_id = EditModel.boss_emp_id;
+        entity.remark = EditModel.remark;
+        entity.startdate = EffectiveDate;
+        entity.moddate = DateTime.Now;
+        entity.modby = user;
+
+        await ctx.SaveChangesAsync();
+
+        Mode = PanelMode.None;
+        var id = entity.id;
+        await LoadDataAsync();
+        await SelectNode(id);
+    }
+
+    private async Task SaveEndAsync()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        using var ctx = DbFactory.CreateDbContext();
+        var entity = await ctx.com_organizations.FirstOrDefaultAsync(o => o.id == Selected.id);
+        if (entity is null)
+        {
+            ErrorMessage = "ไม่พบหน่วยงานนี้แล้ว";
+            return;
+        }
+
+        var user = GetCurrentUser();
+        SnapshotToHistory(ctx, entity, EffectiveDate, user);
+
+        entity.isActive = false;
+        entity.enddate = EffectiveDate;
+        entity.moddate = DateTime.Now;
+        entity.modby = user;
+
+        await ctx.SaveChangesAsync();
+
+        Mode = PanelMode.None;
+        var id = entity.id;
+        await LoadDataAsync();
+        await SelectNode(id);
+    }
+}
