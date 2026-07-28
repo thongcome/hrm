@@ -1,0 +1,43 @@
+@page "/payroll/hrpayrolldets/delete"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete Payroll Detail</PageTitle>
+
+@if (Hrpayrolldet is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <p>Delete payroll detail for <strong>@Hrpayrolldet.PayrollslipNo</strong> ?</p>
+    <button class="btn btn-danger" @onclick="ConfirmDelete">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/payroll/hrpayrolldets">Cancel</a>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    private Hrpayrolldet? Hrpayrolldet { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrpayrolldet = await context.Hrpayrolldet.FirstOrDefaultAsync(m => m.id == id);
+        if (Hrpayrolldet is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task ConfirmDelete()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Hrpayrolldet.Remove(Hrpayrolldet!);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/payroll/hrpayrolldets");
+    }
+}

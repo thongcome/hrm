@@ -1,0 +1,46 @@
+@page "/payroll/hrpayrolls/details"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Payroll Details</PageTitle>
+
+<h1>Payroll Details</h1>
+
+@if (Hrpayroll is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <dl class="row">
+        <dt class="col-sm-3">Payroll Slip No</dt>
+        <dd class="col-sm-9">@Hrpayroll.PayrollslipNo</dd>
+
+        <dt class="col-sm-3">EmpNo</dt>
+        <dd class="col-sm-9">@Hrpayroll.EmpNo</dd>
+
+        <dt class="col-sm-3">Salary Net</dt>
+        <dd class="col-sm-9">@Hrpayroll.SalarynetAmt</dd>
+    </dl>
+}
+
+<div class="mt-3"><a href="/payroll/hrpayrolls">Back to list</a></div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    private Hrpayroll? Hrpayroll { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrpayroll = await context.Hrpayroll.FirstOrDefaultAsync(m => m.id == id);
+        if (Hrpayroll is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+}

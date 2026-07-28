@@ -1,0 +1,54 @@
+@page "/payroll/hrpayrolldets/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit Payroll Detail</PageTitle>
+
+@if (Hrpayrolldet is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <EditForm Model="Hrpayrolldet" OnValidSubmit="Update">
+        <DataAnnotationsValidator />
+        <div class="mb-3">
+            <label class="form-label">Payroll Slip No</label>
+            <InputText @bind-Value="Hrpayrolldet.PayrollslipNo" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Item Amount</label>
+            <InputNumber @bind-Value="Hrpayrolldet.ItemAmt" class="form-control" />
+        </div>
+        <button class="btn btn-primary" type="submit">Save</button>
+    </EditForm>
+}
+
+<div class="mt-3"><a href="/payroll/hrpayrolldets">Back</a></div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    private Hrpayrolldet? Hrpayrolldet { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrpayrolldet = await context.Hrpayrolldet.FirstOrDefaultAsync(m => m.id == id);
+        if (Hrpayrolldet is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task Update()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(Hrpayrolldet!).State = EntityState.Modified;
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/payroll/hrpayrolldets");
+    }
+}

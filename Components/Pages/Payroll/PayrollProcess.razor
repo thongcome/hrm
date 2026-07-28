@@ -64,13 +64,36 @@
  
                 </div>
             </EditForm>
+            <div class="mb-3 d-flex gap-3 align-items-center">
+                <MudTextField @bind-Value="searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mud-width-full" />
+               @*  <MudSelect T="string" @bind-Value="selectedEmployeeType" Label="ประเภทพนักงาน" Dense="true" Class="min-width-150">
+                    <MudSelectItem Value="ALL">ทั้งหมด</MudSelectItem>
+                    <MudSelectItem Value="01">พนักงานประจำ</MudSelectItem>
+                    <MudSelectItem Value="02">พนักงานชั่วคราว</MudSelectItem>
+                </MudSelect> *@
+                <MudSelect T="string"
+                           @bind-Value="selectedEmployeeType"
+                           Label="ประเภทพนักงาน"
+                           Dense="true"
+                           Class="min-width-150">
+                    <MudSelectItem T="string" Value="@("ALL")">ทั้งหมด</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("01")">พนักงานประจำ</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("02")">พนักงานชั่วคราว</MudSelectItem>
+                </MudSelect>
+@*                 <MudButton Variant="Variant.Outlined" OnClick="() => { searchTerm = string.Empty; selectedEmployeeType = งALL"; }">รีเซ็ต</MudButton>
+ *@           
+                <MudButton Variant="Variant.Outlined"
+                           OnClick="ResetSearch">
+                    รีเซ็ต
+                </MudButton>
+            </div>
 
-            <MudTable Items="@hrEmployeeList" Dense="true" Hover="true" Elevation="0">
+            <MudTable Items="@hrEmployeeList" Dense="true" Hover="true" Elevation="0" Filter="EmpFilter">
                 <HeaderContent>
-                    <MudTh>รหัสพนักงาน</MudTh>
-                    <MudTh>ชื่อ</MudTh>
-                    <MudTh>เงินเดือน</MudTh>
-                    <MudTh>สถานะ</MudTh>
+                    <MudTh SortBy="@(new Func<Hremployee, object>(x => x.EmpNo))">รหัสพนักงาน</MudTh>
+                    <MudTh SortBy="@(new Func<Hremployee, object>(x => x.EmpName))">ชื่อ</MudTh>
+                    <MudTh SortBy="@(new Func<Hremployee, object>(x => x.SalaryAmt))">เงินเดือน</MudTh>
+                    <MudTh SortBy="@(new Func<Hremployee, object>(x => x.EmpStatus))">สถานะ</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.EmpNo</MudTd>
@@ -171,6 +194,15 @@
     List<HRBaseSalaryFixWithSignModel> hrBaseSalaryFixWithSignModelList = new();
 
     private int totalMonthCal = 12; // ค่าดีฟอลต์คือ 12 เดือน เพื่อหาร ภาษี 1 ปี
+    private void ResetSearch()
+    {
+        searchTerm = string.Empty;
+        selectedEmployeeType = "ALL";
+    }
+
+    // Search / filter state for employee table
+    private string searchTerm = string.Empty;
+    private string selectedEmployeeType = "ALL";
 
     // private int currentStep = 0; // ค่าดีฟอลต์คือ Step 1
 
@@ -1588,6 +1620,28 @@
         // Apply filtering logic here
         hrpayrollsDetListOneEmp = hrpayrollsDetList.Where(x => x.EmpNo == empNo)
             .ToList();
+    }
+
+    private bool EmpFilter(Hremployee emp)
+    {
+        if (emp == null) return false;
+
+        // Filter by employee type if selected
+        if (!string.IsNullOrWhiteSpace(selectedEmployeeType) && selectedEmployeeType != "ALL")
+        {
+            if ((emp.EmptypeCode ?? string.Empty) != selectedEmployeeType)
+                return false;
+        }
+
+        // If no search term, include
+        if (string.IsNullOrWhiteSpace(searchTerm)) return true;
+
+        var q = searchTerm.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(emp.EmpNo) && emp.EmpNo.ToLowerInvariant().Contains(q)) return true;
+        if (!string.IsNullOrWhiteSpace(emp.EmpName) && emp.EmpName.ToLowerInvariant().Contains(q)) return true;
+        if (!string.IsNullOrWhiteSpace(emp.EmpSurname) && emp.EmpSurname.ToLowerInvariant().Contains(q)) return true;
+
+        return false;
     }
 
     // private async Task Save()

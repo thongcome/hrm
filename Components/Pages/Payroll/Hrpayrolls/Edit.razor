@@ -1,0 +1,65 @@
+@page "/payroll/hrpayrolls/edit"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Edit Payroll</PageTitle>
+
+<h1>Edit Payroll</h1>
+
+@if (Hrpayroll is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <EditForm method="post" Model="Hrpayroll" OnValidSubmit="UpdateHrpayroll" FormName="edit" Enhance>
+        <DataAnnotationsValidator />
+        <ValidationSummary role="alert"/>
+        <input type="hidden" name="Hrpayroll.id" value="@Hrpayroll.id" />
+
+        <div class="mb-3">
+            <label class="form-label">Payroll Slip No</label>
+            <InputText @bind-Value="Hrpayroll.PayrollslipNo" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">EmpNo</label>
+            <InputText @bind-Value="Hrpayroll.EmpNo" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Salary Net</label>
+            <InputNumber @bind-Value="Hrpayroll.SalarynetAmt" class="form-control" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save</button>
+    </EditForm>
+}
+
+<div class="mt-3"><a href="/payroll/hrpayrolls">Back to list</a></div>
+
+@code {
+    [SupplyParameterFromQuery]
+    private long id { get; set; }
+
+    [SupplyParameterFromForm]
+    private Hrpayroll? Hrpayroll { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        Hrpayroll ??= await context.Hrpayroll.FirstOrDefaultAsync(m => m.id == id);
+        if (Hrpayroll is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task UpdateHrpayroll()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Attach(Hrpayroll!).State = EntityState.Modified;
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/payroll/hrpayrolls");
+    }
+}

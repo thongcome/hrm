@@ -1,0 +1,45 @@
+@page "/payroll/hrpayrolls/create"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create Payroll</PageTitle>
+
+<h1>Create Payroll</h1>
+
+<EditForm method="post" Model="Hrpayroll" OnValidSubmit="AddHrpayroll" FormName="create" Enhance>
+    <DataAnnotationsValidator />
+    <ValidationSummary class="text-danger" role="alert"/>
+    <div class="mb-3">
+        <label class="form-label">Payroll Slip No</label>
+        <InputText @bind-Value="Hrpayroll.PayrollslipNo" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">EmpNo</label>
+        <InputText @bind-Value="Hrpayroll.EmpNo" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Payroll Period</label>
+        <InputText @bind-Value="Hrpayroll.PayrollPeriod" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Salary Base</label>
+        <InputNumber @bind-Value="Hrpayroll.SalarybaseAmt" class="form-control" />
+    </div>
+    <button type="submit" class="btn btn-primary">Create</button>
+</EditForm>
+
+<div class="mt-3"><a href="/payroll/hrpayrolls">Back to list</a></div>
+
+@code {
+    private Hrpayroll Hrpayroll { get; set; } = new();
+
+    private async Task AddHrpayroll()
+    {
+        using var context = DbFactory.CreateDbContext();
+        context.Hrpayroll.Add(Hrpayroll);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/payroll/hrpayrolls");
+    }
+}

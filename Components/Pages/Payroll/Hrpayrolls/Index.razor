@@ -1,0 +1,44 @@
+@page "/payroll/hrpayrolls"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using HRM.Models
+@implements IAsyncDisposable
+@inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+
+<PageTitle>Payrolls</PageTitle>
+
+<h1>Payrolls</h1>
+
+<p>
+    <a href="payroll/hrpayrolls/create">Create New</a>
+</p>
+
+<QuickGrid Class="table" Items="context.Hrpayroll">
+    <PropertyColumn Property="hrpayroll => hrpayroll.companyid" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.PayrollslipNo" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.EmpNo" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.PayrollDate" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.PayrollPeriod" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.SalarybaseAmt" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.SalaryothAmt" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.SalarysubtAmt" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.SalarynetAmt" />
+    <PropertyColumn Property="hrpayroll => hrpayroll.PayrollStatus" />
+
+    <TemplateColumn Context="hrpayroll">
+        <a href="@($"payroll/hrpayrolls/edit?id={hrpayroll.id}")">Edit</a> |
+        <a href="@($"payroll/hrpayrolls/details?id={hrpayroll.id}")">Details</a> |
+        <a href="@($"payroll/hrpayrolls/delete?id={hrpayroll.id}")">Delete</a>
+    </TemplateColumn>
+</QuickGrid>
+
+@code {
+    private HRMContext context = default!;
+
+    protected override void OnInitialized()
+    {
+        context = DbFactory.CreateDbContext();
+    }
+
+    public async ValueTask DisposeAsync() => await context.DisposeAsync();
+}
