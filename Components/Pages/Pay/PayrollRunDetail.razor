@@ -1,0 +1,247 @@
+@page "/pay/runs/{RunId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject PayrollWorkflowService WorkflowService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>รอบเงินเดือน #@RunId</PageTitle>
+
+@if (_run is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h5">รอบเงินเดือน @_run.CompanyId — @_run.PayrollPeriod (@_run.RunType)</MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    งวด @_run.PeriodStart.ToString("dd/MM/yyyy") - @_run.PeriodEnd.ToString("dd/MM/yyyy") ·
+                    จ่ายเงิน @_run.PayDate.ToString("dd/MM/yyyy")
+                </MudText>
+            </div>
+            <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@_run.Status</MudChip>
+        </MudStack>
+
+        <MudDivider Class="my-3" />
+
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+            @if (_allowed.Contains(PayrollAction.Calculate))
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CalculateAsync" Disabled="_busy">
+                    @(_employees.Count == 0 ? "คำนวณ" : "คำนวณใหม่")
+                </MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.SubmitForReview))
+            {
+                <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="_busy">ส่งตรวจสอบ</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.Approve))
+            {
+                <MudButton Color="Color.Tertiary" Variant="Variant.Filled" OnClick="ApproveAsync" Disabled="_busy">อนุมัติ</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.Post))
+            {
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="PostAsync" Disabled="_busy">บันทึกบัญชี (Post)</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.MarkPaid))
+            {
+                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="MarkPaidAsync" Disabled="_busy">ยืนยันจ่ายเงินแล้ว</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.Cancel))
+            {
+                <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="CancelAsync" Disabled="_busy">ยกเลิกรอบ</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.CreateAdjustment))
+            {
+                <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">สร้างรอบปรับปรุง</MudButton>
+            }
+        </MudStack>
+
+        @if (_negativeCount > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                มีพนักงาน @_negativeCount คน ที่เงินสุทธิติดลบ (ถูกปรับเป็น 0 ชั่วคราว) — ต้องแก้ไขข้อมูลหรือทำเครื่องหมายยกเว้นก่อนจึงจะอนุมัติได้
+            </MudAlert>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" Class="mb-2">รายชื่อพนักงาน (@_employees.Count คน) — สุทธิรวม @_employees.Sum(e => e.Employee.NetPay).ToString("N2")</MudText>
+        <MudTable Items="_employees" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>รหัสพนักงาน</MudTh>
+                <MudTh>ชื่อ</MudTh>
+                <MudTh>สัดส่วนวันทำงาน</MudTh>
+                <MudTh>รายรับรวม</MudTh>
+                <MudTh>รายหักรวม</MudTh>
+                <MudTh>สุทธิ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Employee.EmpNo</MudTd>
+                <MudTd>@context.Employee.Hremployee?.EmpName @context.Employee.Hremployee?.EmpSurname</MudTd>
+                <MudTd>
+                    @context.Employee.ActualWorkingDays/@context.Employee.WorkingDaysInPeriod
+                    @if (context.Employee.ProrationFactor < 1m)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">prorated</MudChip>
+                    }
+                </MudTd>
+                <MudTd>@context.Employee.GrossEarnings.ToString("N2")</MudTd>
+                <MudTd>@context.Employee.TotalDeductions.ToString("N2")</MudTd>
+                <MudTd>
+                    @context.Employee.NetPay.ToString("N2")
+                    @if (context.Employee.IsNegativeNetPayFlag)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-1">ติดลบ</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}/employee/{context.Employee.Id}"))">
+                        รายละเอียด
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>ยังไม่ได้คำนวณ — กดปุ่ม "คำนวณ" ด้านบน</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long RunId { get; set; }
+
+    private Pay_PayrollRun? _run;
+    private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
+    private bool _busy;
+    private int _negativeCount;
+
+    private record EmployeeRow(Pay_PayrollEmployee Employee);
+    private List<EmployeeRow> _employees = new();
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == RunId);
+        if (_run is null) return;
+
+        var employees = await context.Pay_PayrollEmployees
+            .Include(e => e.Hremployee)
+            .Where(e => e.PayrollRunId == RunId)
+            .OrderBy(e => e.EmpNo)
+            .ToListAsync();
+
+        _employees = employees.Select(e => new EmployeeRow(e)).ToList();
+        _negativeCount = employees.Count(e => e.IsNegativeNetPayFlag && !e.IsExcluded);
+        _allowed = PayrollWorkflowService.GetAllowedActions(_run.Status);
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+
+    private async Task RunActionAsync(Func<long, Task> action, string successMessage)
+    {
+        _busy = true;
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            await action(actorUserId);
+            await LoadAsync();
+            Snackbar.Add(successMessage, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task CalculateAsync() => RunActionAsync(
+        async uid => await WorkflowService.CalculateAsync(RunId, uid),
+        "คำนวณเรียบร้อย");
+
+    private Task SubmitForReviewAsync() => RunActionAsync(
+        async uid => await WorkflowService.SubmitForReviewAsync(RunId, uid),
+        "ส่งตรวจสอบเรียบร้อย");
+
+    private async Task ApproveAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "ยืนยันการอนุมัติ", "หลังอนุมัติแล้วจะแก้ไขตัวเลขในรอบนี้ไม่ได้ ต้องสร้างรอบปรับปรุงแยกแทน ยืนยันหรือไม่?",
+            yesText: "อนุมัติ", cancelText: "ยกเลิก");
+        if (confirmed != true) return;
+
+        await RunActionAsync(async uid => await WorkflowService.ApproveAsync(RunId, uid, null), "อนุมัติเรียบร้อย");
+    }
+
+    private Task PostAsync() => RunActionAsync(
+        async uid => await WorkflowService.PostAsync(RunId, uid),
+        "บันทึกบัญชีเรียบร้อย");
+
+    private Task MarkPaidAsync() => RunActionAsync(
+        async uid => await WorkflowService.MarkPaidAsync(RunId, uid),
+        "ยืนยันการจ่ายเงินเรียบร้อย");
+
+    private async Task CancelAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "ยืนยันการยกเลิก", "ต้องการยกเลิกรอบเงินเดือนนี้หรือไม่?", yesText: "ยกเลิกรอบ", cancelText: "กลับ");
+        if (confirmed != true) return;
+
+        await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), "ยกเลิกรอบเรียบร้อย");
+    }
+
+    private async Task CreateAdjustmentAsync()
+    {
+        _busy = true;
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            var newRunId = await WorkflowService.CreateAdjustmentRunAsync(RunId, actorUserId);
+            Navigation.NavigateTo($"/pay/runs/{newRunId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static Color StatusColor(PayrollRunStatus status) => status switch
+    {
+        PayrollRunStatus.Draft => Color.Default,
+        PayrollRunStatus.Calculated => Color.Info,
+        PayrollRunStatus.Reviewed => Color.Warning,
+        PayrollRunStatus.Approved => Color.Tertiary,
+        PayrollRunStatus.Posted => Color.Secondary,
+        PayrollRunStatus.Paid => Color.Success,
+        PayrollRunStatus.Cancelled => Color.Error,
+        _ => Color.Default,
+    };
+}

@@ -103,4 +103,8 @@ public partial class Hrpayroll
 
     [Column("POST_STA_STATUS", TypeName = "decimal(1)")]
     public bool PostStaStatus { get; set; } = false;
+
+    public virtual Hremployee? Hremployee { get; set; }
+
+    public virtual ICollection<Hrpayrolldet> Hrpayrolldets { get; set; } = new List<Hrpayrolldet>();
 }

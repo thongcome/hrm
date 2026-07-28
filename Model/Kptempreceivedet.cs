@@ -324,4 +324,5 @@ public partial class Kptempreceivedet
     [Column("TRANTOVC_DATE", TypeName = "DATE")]
     public DateTime? TrantovcDate { get; set; }
 
+    public virtual Kptempreceive? Kptempreceive { get; set; }
 }

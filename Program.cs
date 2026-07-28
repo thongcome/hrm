@@ -11,10 +11,14 @@ using HRM.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using HRM.Model;
 using HRM.Models;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using MudBlazor.Services;
 using HRM.Interface;
 using HRM.Services.Payroll;
+using HRM.Services.Pay;
+using HRM.Services.Pay.Calculators;
+using System.Security.Claims;
 
 
 
@@ -61,7 +65,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddDefaultTokenProviders();
 
 
-builder.Services.AddRazorPages();  // à¾ÔèÁ¡ÒÃãªé§Ò¹ Razor Pages
+builder.Services.AddRazorPages();  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¹ Razor Pages
                                    // bootstrap blazor
 
 
@@ -95,7 +99,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
 builder.Services.AddAuthorizationCore();
 
-builder.Services.AddScoped<MenuStateService>();// à¡çº¢éÍÁÙÅÊ¶Ò¹ÐàÁ¹Ù
+builder.Services.AddScoped<MenuStateService>();// ï¿½çº¢ï¿½ï¿½ï¿½ï¿½ï¿½Ê¶Ò¹ï¿½ï¿½ï¿½ï¿½ï¿½
 
 // Add Company services to the container.
 // Program.cs
@@ -119,16 +123,24 @@ builder.Services.AddSingleton<IJsonLocalizationService, JsonLocalizationService>
 // Configure Serilog
 
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Error()  // ¡ÓË¹´ÃÐ´Ñº¡ÒÃºÑ¹·Ö¡¢Ñé¹µèÓà»ç¹ Error
-    .WriteTo.Console()  // ºÑ¹·Ö¡ log ä»ÂÑ§ Console
-    .WriteTo.File("logs/error-log.txt", rollingInterval: RollingInterval.Day)  // ºÑ¹·Ö¡ log à©¾ÒÐ Error Å§ä¿Åì
+    .MinimumLevel.Error()  // ï¿½ï¿½Ë¹ï¿½ï¿½Ð´Ñºï¿½ï¿½ÃºÑ¹ï¿½Ö¡ï¿½ï¿½é¹µï¿½ï¿½ï¿½ï¿½ Error
+    .WriteTo.Console()  // ï¿½Ñ¹ï¿½Ö¡ log ï¿½ï¿½Ñ§ Console
+    .WriteTo.File("logs/error-log.txt", rollingInterval: RollingInterval.Day)  // ï¿½Ñ¹ï¿½Ö¡ log à©¾ï¿½ï¿½ Error Å§ï¿½ï¿½ï¿½
     .CreateLogger();
 
-builder.Host.UseSerilog();  // ãªé Serilog à»ç¹ logging provider
+builder.Host.UseSerilog();  // ï¿½ï¿½ Serilog ï¿½ï¿½ logging provider
 builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Information);
 builder.Services.AddScoped<IPasswordHasher<sc_user>, PasswordHasher<sc_user>>();
-builder.Services.AddScoped<PayrollCalculationService>();
+builder.Services.AddScoped<HRM.Services.Payroll.PayrollCalculationService>();
 builder.Services.AddSingleton<PayrollAnalysisService>();
+
+// ----- Pay_* module (new payroll engine, parallel to the legacy Payroll pages) -----
+builder.Services.AddScoped<ISocialSecurityRateProvider, HrucfsecurityRateProvider>();
+builder.Services.AddScoped<OvertimeEarningsCalculator>();
+builder.Services.AddScoped<LoanDeductionCalculator>();
+builder.Services.AddScoped<HRM.Services.Pay.PayrollCalculationService>();
+builder.Services.AddScoped<PayrollWorkflowService>();
+// ----- end Pay_* module -----
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -192,6 +204,62 @@ app.UseAuthorization();
 
 //app.UseRouting();
 
-app.MapRazorPages();  // à»Ô´ãªé§Ò¹àÊé¹·Ò§ Razor Pages ¢Í§ Identity
+app.MapRazorPages();  // ï¿½Ô´ï¿½ï¿½Ò¹ï¿½ï¿½é¹·Ò§ Razor Pages ï¿½Í§ Identity
+
+// Plain (non-Blazor-circuit) sign-in endpoint. Login.razor used to call
+// HttpContext.SignInAsync directly from an interactive Blazor Server
+// component's event handler, which throws "Headers are read-only, response
+// has already started" because by the time that handler runs the initial
+// HTTP response (and its headers) has already been sent over the open
+// SignalR connection â€” the Set-Cookie header can never be written that way.
+// Routing the actual sign-in through a real HTTP endpoint (a fresh
+// request/response each time) is the standard fix for cookie auth + Blazor
+// Server.
+app.MapPost("/login-handler", async (
+    HttpContext httpContext,
+    IDbContextFactory<HRMContext> dbFactory,
+    IPasswordHasher<sc_user> passwordHasher) =>
+{
+    var form = await httpContext.Request.ReadFormAsync();
+    var username = form["username"].ToString();
+    var password = form["password"].ToString();
+    var returnUrl = form["returnUrl"].ToString();
+
+    await using var context = await dbFactory.CreateDbContextAsync();
+    var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == username);
+
+    if (user is not null && !user.isdisable && !user.iscancel && user.isActivate)
+    {
+        var result = passwordHasher.VerifyHashedPassword(user, user.password ?? "", password);
+        if (result != PasswordVerificationResult.Failed)
+        {
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.Name, user.firstname + " " + user.lastname),
+                new(ClaimTypes.NameIdentifier, user.userid.ToString()),
+                new("userid", user.userid.ToString()),
+                new("username", user.loginname),
+                new("company_id", user.company_id.ToString()),
+            };
+            // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
+            // ("Cookies") â€” confirmed via a throwaway /whoami diagnostic to be
+            // the scheme HttpContext.User/Blazor's plain [Authorize] actually
+            // resolve against at runtime (the later AddAuthentication(...) call
+            // near the bottom of this file's registrations wins over the
+            // earlier DefaultScheme = IdentityConstants.ApplicationScheme).
+            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new ClaimsPrincipal(identity);
+
+            await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+            return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/sc_users" : returnUrl);
+        }
+    }
+
+    var errorRedirect = "/login?error=1";
+    if (!string.IsNullOrEmpty(returnUrl))
+        errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
+    return Results.LocalRedirect(errorRedirect);
+});
 
 app.Run();

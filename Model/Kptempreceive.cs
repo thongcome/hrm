@@ -173,8 +173,8 @@ public partial class Kptempreceive
     /// </summary>
     [Column("ENTRY_ID")]
     [StringLength(15)]
-    
+
     public string? EntryId { get; set; }
 
-   
+    public virtual ICollection<Kptempreceivedet> Kptempreceivedets { get; set; } = new List<Kptempreceivedet>();
 }

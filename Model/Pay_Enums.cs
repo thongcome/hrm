@@ -1,0 +1,55 @@
+namespace HRM.Models;
+
+public enum PayrollRunStatus
+{
+    Draft = 0,
+    Calculated = 1,
+    Reviewed = 2,
+    Approved = 3,
+    Posted = 4,
+    Paid = 5,
+    Cancelled = 9
+}
+
+public enum PayrollRunType
+{
+    Regular = 0,
+    Adjustment = 1,
+    Bonus = 2
+}
+
+public enum PayItemCategory
+{
+    Earning = 0,
+    Deduction = 1,
+    Informational = 2
+}
+
+public enum PayLineSourceType
+{
+    Base = 0,
+    Overtime = 1,
+    Loan = 2,
+    SocialSecurity = 3,
+    ProvidentFund = 4,
+    Tax = 5,
+    Allowance = 6,
+    Adjustment = 7
+}
+
+public enum PayAuditEventType
+{
+    StatusTransition = 0,
+    TaxCalculationDetail = 1,
+    ManualAdjustment = 2,
+    RecalculationTriggered = 3,
+    ExclusionChanged = 4,
+    Error = 5
+}
+
+public enum BankFileExportStatus
+{
+    Generated = 0,
+    Downloaded = 1,
+    ConfirmedSent = 2
+}

@@ -337,6 +337,21 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<wf_workflow_in_workflow> wf_workflow_in_workflows { get; set; }
 
+    // ----- Pay_* module (new, code-first — see Docs/Payroll design plan) -----
+    public virtual DbSet<Pay_PayrollRun> Pay_PayrollRuns { get; set; }
+    public virtual DbSet<Pay_PayrollEmployee> Pay_PayrollEmployees { get; set; }
+    public virtual DbSet<Pay_PayrollLineItem> Pay_PayrollLineItems { get; set; }
+    public virtual DbSet<Pay_PayItemType> Pay_PayItemTypes { get; set; }
+    public virtual DbSet<Pay_TaxBracket> Pay_TaxBrackets { get; set; }
+    public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
+    public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
+    public virtual DbSet<Pay_Payslip> Pay_Payslips { get; set; }
+    public virtual DbSet<Pay_BankFileExportBatch> Pay_BankFileExportBatches { get; set; }
+    public virtual DbSet<Pay_BankFileExportLine> Pay_BankFileExportLines { get; set; }
+    public virtual DbSet<Pay_GLExportBatch> Pay_GLExportBatches { get; set; }
+    public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
+    // ----- end Pay_* module -----
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
         => optionsBuilder.UseSqlServer("Data Source=.;Initial Catalog=hrm;User Id=hrm;Password=hrm;TrustServerCertificate=True;Encrypt=True;MultipleActiveResultSets=true");
@@ -401,6 +416,47 @@ public partial class HRMContext : DbContext
         {
             entity.HasKey(e => e.id).HasName("PK_HOLIDAY");
         });
+
+        // ----- ผูกตารางเงินเดือน (Hr*/Kp*) ด้วยรหัสทางธุรกิจ companyid + EmpNo/PayrollslipNo/KpslipNo -----
+        // เป็นความสัมพันธ์ระดับ EF model เท่านั้น ไม่มี FK constraint จริงในฐานข้อมูล (ไม่ได้สร้าง migration)
+        modelBuilder.Entity<Hremployee>(entity =>
+        {
+            entity.HasAlternateKey(e => new { e.companyid, e.EmpNo });
+
+            entity.HasMany(d => d.Hrpayrolls)
+                .WithOne(p => p.Hremployee)
+                .HasForeignKey(p => new { p.companyid, p.EmpNo })
+                .HasPrincipalKey(p => new { p.companyid, p.EmpNo })
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasMany(d => d.HrwOts)
+                .WithOne(p => p.Hremployee)
+                .HasForeignKey(p => new { p.companyid, p.EmpNo })
+                .HasPrincipalKey(p => new { p.companyid, p.EmpNo })
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        // Hrpayroll = แม่ (หัวรายการเงินเดือนต่อรอบจ่าย), Hrpayrolldet = ลูก (รายการเงินได้/เงินหักแต่ละบรรทัด)
+        // ผูกด้วย FK จริง Hrpayrolldet.HrpayrollId -> Hrpayroll.id (คอลัมน์ใหม่ ต้องสร้าง migration เพื่อเพิ่มคอลัมน์นี้ในฐานข้อมูลจริง)
+        modelBuilder.Entity<Hrpayrolldet>(entity =>
+        {
+            entity.HasOne(d => d.Hrpayroll)
+                .WithMany(p => p.Hrpayrolldets)
+                .HasForeignKey(d => d.HrpayrollId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<Kptempreceive>(entity =>
+        {
+            entity.HasAlternateKey(e => new { e.companyid, e.KpslipNo });
+
+            entity.HasMany(d => d.Kptempreceivedets)
+                .WithOne(p => p.Kptempreceive)
+                .HasForeignKey(p => new { p.companyid, p.KpslipNo })
+                .HasPrincipalKey(p => new { p.companyid, p.KpslipNo })
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+        // ----- จบส่วนผูกตารางเงินเดือน -----
 
         modelBuilder.Entity<J_DEPT_GROUP_V2>(entity =>
         {
@@ -474,6 +530,14 @@ public partial class HRMContext : DbContext
         modelBuilder.Entity<Employee>(entity =>
         {
             entity.HasKey(e => e.id).HasName("PK_EMPLOYEE");
+
+            // ผูกกับ Hremployee (พนักงานฝั่ง payroll เดิม) ด้วย EmployeeID = EmpNo
+            // เป็นความสัมพันธ์ระดับ EF model เท่านั้น ไม่มี FK constraint จริงในฐานข้อมูล (ไม่ได้สร้าง migration)
+            entity.HasMany(d => d.Hremployees)
+                .WithOne(p => p.Employee)
+                .HasForeignKey(p => p.EmpNo)
+                .HasPrincipalKey(p => p.EmployeeID)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<error_log_file>(entity =>
@@ -1130,6 +1194,144 @@ public partial class HRMContext : DbContext
             entity.Property(e => e.wexpireday).HasDefaultValueSql("(NULL)");
             entity.Property(e => e.wstartdate).HasDefaultValueSql("(NULL)");
         });
+
+        // ----- Pay_* module (new, code-first) -----
+        // Actor stamps (CreatedByUserId, ActorUserId, GeneratedByUserId, etc.) are
+        // plain long/long? columns, not EF-configured FKs to sc_user — matches how
+        // other "xxx_by" actor columns are stored elsewhere in this legacy schema,
+        // and keeps sc_user deletable independent of payroll history.
+        modelBuilder.Entity<Pay_PayrollRun>(entity =>
+        {
+            entity.HasOne(d => d.AdjustmentOfRun)
+                .WithMany()
+                .HasForeignKey(d => d.AdjustmentOfRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PayrollEmployee>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollRun)
+                .WithMany(p => p.Pay_PayrollEmployees)
+                .HasForeignKey(d => d.PayrollRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_PayrollEmployees)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PayrollLineItem>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollEmployee)
+                .WithMany(p => p.Pay_PayrollLineItems)
+                .HasForeignKey(d => d.PayrollEmployeeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Pay_PayItemType)
+                .WithMany(p => p.Pay_PayrollLineItems)
+                .HasForeignKey(d => d.PayItemTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundElection>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_ProvidentFundElections)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PayrollAuditLog>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollRun)
+                .WithMany(p => p.Pay_PayrollAuditLogs)
+                .HasForeignKey(d => d.PayrollRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // secondary path — Restrict avoids SQL Server's "multiple cascade
+            // paths" error (Run already cascades to this table directly above)
+            entity.HasOne(d => d.Pay_PayrollEmployee)
+                .WithMany(p => p.Pay_PayrollAuditLogs)
+                .HasForeignKey(d => d.PayrollEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_Payslip>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollEmployee)
+                .WithOne(p => p.Pay_Payslip)
+                .HasForeignKey<Pay_Payslip>(d => d.PayrollEmployeeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_BankFileExportBatch>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollRun)
+                .WithMany(p => p.Pay_BankFileExportBatches)
+                .HasForeignKey(d => d.PayrollRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_BankFileExportLine>(entity =>
+        {
+            entity.HasOne(d => d.Pay_BankFileExportBatch)
+                .WithMany(p => p.Pay_BankFileExportLines)
+                .HasForeignKey(d => d.BankFileExportBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // secondary path — Restrict avoids "multiple cascade paths" back to Run
+            entity.HasOne(d => d.Pay_PayrollEmployee)
+                .WithMany(p => p.Pay_BankFileExportLines)
+                .HasForeignKey(d => d.PayrollEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_GLExportBatch>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollRun)
+                .WithMany(p => p.Pay_GLExportBatches)
+                .HasForeignKey(d => d.PayrollRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_GLExportEntry>(entity =>
+        {
+            entity.HasOne(d => d.Pay_GLExportBatch)
+                .WithMany(p => p.Pay_GLExportEntries)
+                .HasForeignKey(d => d.GLExportBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Built-in pay item types — system-reserved, used directly by the
+        // calculation service (BASE/OT/SSO/PF/TAX/LOAN). ALLOWANCE/ADJUST are
+        // not reserved so admins can add more of that kind via the UI later.
+        modelBuilder.Entity<Pay_PayItemType>().HasData(
+            new Pay_PayItemType { Id = 1, Code = "BASE", NameTh = "เงินเดือนฐาน", NameEn = "Base Salary", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = true, IsActive = true, SortOrder = 1 },
+            new Pay_PayItemType { Id = 2, Code = "OT", NameTh = "ค่าล่วงเวลา", NameEn = "Overtime", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = true, IsActive = true, SortOrder = 2 },
+            new Pay_PayItemType { Id = 3, Code = "ALLOWANCE", NameTh = "เบี้ยเลี้ยง/เงินเพิ่มประจำ", NameEn = "Allowance", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 3 },
+            new Pay_PayItemType { Id = 4, Code = "SSO", NameTh = "ประกันสังคม", NameEn = "Social Security", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 4 },
+            new Pay_PayItemType { Id = 5, Code = "PF", NameTh = "กองทุนสำรองเลี้ยงชีพ (พนักงาน)", NameEn = "Provident Fund (Employee)", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 5 },
+            new Pay_PayItemType { Id = 6, Code = "TAX", NameTh = "ภาษีหัก ณ ที่จ่าย", NameEn = "Withholding Tax", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 6 },
+            new Pay_PayItemType { Id = 7, Code = "LOAN", NameTh = "หักเงินกู้", NameEn = "Loan Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 7 },
+            new Pay_PayItemType { Id = 8, Code = "ADJUST", NameTh = "ปรับปรุงพิเศษ", NameEn = "Special Adjustment", Category = PayItemCategory.Informational, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 8 }
+        );
+
+        // Standard Thai personal-income-tax brackets, effective year 2026 (ค.ศ.).
+        // These are the long-standing official PIT brackets — confirm against
+        // the current Revenue Department schedule before relying on them for
+        // a real payroll run; adjust via the Pay_TaxBracket admin CRUD page.
+        modelBuilder.Entity<Pay_TaxBracket>().HasData(
+            new Pay_TaxBracket { Id = 1, EffectiveYear = 2026, Step = 1, MinIncome = 0m, MaxIncome = 150000m, RatePercent = 0m, IsActive = true },
+            new Pay_TaxBracket { Id = 2, EffectiveYear = 2026, Step = 2, MinIncome = 150000m, MaxIncome = 300000m, RatePercent = 5m, IsActive = true },
+            new Pay_TaxBracket { Id = 3, EffectiveYear = 2026, Step = 3, MinIncome = 300000m, MaxIncome = 500000m, RatePercent = 10m, IsActive = true },
+            new Pay_TaxBracket { Id = 4, EffectiveYear = 2026, Step = 4, MinIncome = 500000m, MaxIncome = 750000m, RatePercent = 15m, IsActive = true },
+            new Pay_TaxBracket { Id = 5, EffectiveYear = 2026, Step = 5, MinIncome = 750000m, MaxIncome = 1000000m, RatePercent = 20m, IsActive = true },
+            new Pay_TaxBracket { Id = 6, EffectiveYear = 2026, Step = 6, MinIncome = 1000000m, MaxIncome = 2000000m, RatePercent = 25m, IsActive = true },
+            new Pay_TaxBracket { Id = 7, EffectiveYear = 2026, Step = 7, MinIncome = 2000000m, MaxIncome = 5000000m, RatePercent = 30m, IsActive = true },
+            new Pay_TaxBracket { Id = 8, EffectiveYear = 2026, Step = 8, MinIncome = 5000000m, MaxIncome = null, RatePercent = 35m, IsActive = true }
+        );
+        // ----- end Pay_* module -----
 
         OnModelCreatingPartial(modelBuilder);
     }

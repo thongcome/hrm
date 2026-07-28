@@ -382,4 +382,14 @@ public partial class Hremployee
 
     [Column("ASSIST_BF", TypeName = "decimal(15,2)")]
     public decimal? AssistBf { get; set; }
+
+    public virtual Employee? Employee { get; set; }
+
+    public virtual ICollection<Hrpayroll> Hrpayrolls { get; set; } = new List<Hrpayroll>();
+
+    public virtual ICollection<Pay_PayrollEmployee> Pay_PayrollEmployees { get; set; } = new List<Pay_PayrollEmployee>();
+
+    public virtual ICollection<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; } = new List<Pay_ProvidentFundElection>();
+
+    public virtual ICollection<HrwOt> HrwOts { get; set; } = new List<HrwOt>();
 }

@@ -1,0 +1,91 @@
+@page "/pay/runs/{RunId:long}/employee/{EmployeeId:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>รายละเอียดเงินเดือนพนักงาน</PageTitle>
+
+@if (_employee is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}"))" Class="mb-2">
+        กลับไปหน้ารอบเงินเดือน
+    </MudButton>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">@_employee.Hremployee?.EmpName @_employee.Hremployee?.EmpSurname (@_employee.EmpNo)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            สัดส่วนวันทำงาน @_employee.ActualWorkingDays/@_employee.WorkingDaysInPeriod (@(_employee.ProrationFactor.ToString("P2")))
+        </MudText>
+
+        <MudSimpleTable Class="mt-3" Dense="true">
+            <tbody>
+                <tr><td>รายรับรวม (Gross)</td><td class="text-right">@_employee.GrossEarnings.ToString("N2")</td></tr>
+                <tr><td>รายหักรวม</td><td class="text-right">@_employee.TotalDeductions.ToString("N2")</td></tr>
+                <tr><td><b>สุทธิ (Net Pay)</b></td><td class="text-right"><b>@_employee.NetPay.ToString("N2")</b></td></tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">รายการย่อย</MudText>
+        <MudTable Items="_lineItems" Dense="true">
+            <HeaderContent>
+                <MudTh>รายการ</MudTh>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>จำนวนเงิน</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Pay_PayItemType.NameTh (@context.Pay_PayItemType.NameEn)</MudTd>
+                <MudTd>@(context.SignFlag > 0 ? "รายรับ" : "รายหัก")</MudTd>
+                <MudTd>@((context.SignFlag * context.Amount).ToString("N2"))</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    @if (_taxDetailJson is not null)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-2">รายละเอียดการคำนวณภาษี (Audit Trail)</MudText>
+            <MudTextField Value="@_taxDetailJson" T="string" Lines="12" ReadOnly="true" Variant="Variant.Outlined" />
+        </MudPaper>
+    }
+}
+
+@code {
+    [Parameter] public long RunId { get; set; }
+    [Parameter] public long EmployeeId { get; set; }
+
+    private Pay_PayrollEmployee? _employee;
+    private List<Pay_PayrollLineItem> _lineItems = new();
+    private string? _taxDetailJson;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _employee = await context.Pay_PayrollEmployees
+            .Include(e => e.Hremployee)
+            .FirstOrDefaultAsync(e => e.Id == EmployeeId && e.PayrollRunId == RunId);
+        if (_employee is null) return;
+
+        _lineItems = await context.Pay_PayrollLineItems
+            .Include(li => li.Pay_PayItemType)
+            .Where(li => li.PayrollEmployeeId == EmployeeId)
+            .OrderBy(li => li.SeqNo)
+            .ToListAsync();
+
+        _taxDetailJson = await context.Pay_PayrollAuditLogs
+            .Where(a => a.PayrollRunId == RunId && a.PayrollEmployeeId == EmployeeId && a.EventType == PayAuditEventType.TaxCalculationDetail)
+            .OrderByDescending(a => a.EventDate)
+            .Select(a => a.DetailJson)
+            .FirstOrDefaultAsync();
+    }
+}

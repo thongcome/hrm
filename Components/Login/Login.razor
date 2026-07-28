@@ -1,174 +1,31 @@
-﻿@page "/login"
-@inject AuthService AuthService
-@inject AuthenticationStateProvider AuthProvider
-@inject NavigationManager Nav
-@using System.ComponentModel.DataAnnotations
-@inject IPasswordHasher<sc_user> PasswordHasher
-
-@using System.Security.Claims
-@using HRM.Models
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using Microsoft.AspNetCore.Identity
-@using Microsoft.EntityFrameworkCore
-@inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
-@inject ILogger<Login> Logger
-@inject IDbContextFactory<HRMContext> DbFactory
+@page "/login"
 
 <h3>Login</h3>
 
-@if (!string.IsNullOrEmpty(errorMessage))
+@if (Error == "1")
 {
-    <div class="alert alert-danger">@errorMessage</div>
+    <div class="alert alert-danger">รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน</div>
 }
 
-<EditForm Model="loginModel" OnValidSubmit="HandleLogin">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
-
+@* Plain HTML form posted to /login-handler (a real endpoint, not a Blazor
+   event handler) — see Program.cs for why the sign-in must happen there. *@
+<form method="post" action="/login-handler">
+    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
     <div class="mb-3">
         <label>Username</label>
-        <InputText class="form-control" @bind-Value="loginModel.Username" />
+        <input class="form-control" name="username" required />
     </div>
     <div class="mb-3">
         <label>Password</label>
-        <InputText class="form-control" @bind-Value="loginModel.Password" type="password" />
+        <input class="form-control" name="password" type="password" required />
     </div>
     <button type="submit" class="btn btn-primary">Login</button>
-</EditForm>
+</form>
 
 @code {
-    private LoginModel loginModel = new();
-    private string? errorMessage;
-    private HRMContext context = default!;
+    [SupplyParameterFromQuery]
+    private string? Error { get; set; }
 
-    // private async Task HandleLogin()
-    // {
-    //     context = DbFactory.CreateDbContext();
-    //     var user = await context.sc_users
-    //         .FirstOrDefaultAsync(u =>
-    //             u.loginname == loginModel.Username &&
-    //             u.password == loginModel.Password && // ✅ แนะนำใช้ Hash Password ภายหลัง
-    //             u.isdisable == false &&
-    //             u.iscancel == false &&
-    //             u.isActivate == true);
-
-    //     if (user != null)
-    //     {
-    //         var claims = new List<Claim>
-    //         {
-    //             new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
-    //             new Claim("userid", user.userid.ToString()),
-    //             new Claim("username", user.loginname),
-    //             new Claim("company_id", user.company_id.ToString())
-    //         };
-
-    //         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    //         var principal = new ClaimsPrincipal(identity);
-
-    //         await HttpContextAccessor.HttpContext!.SignInAsync(
-    //             CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
-    //         Logger.LogInformation("Login success for: {Username}", user.loginname);
-    //         Navigation.NavigateTo("/");
-    //     }
-    //     else
-    //     {
-    //         errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
-    //     }
-    // }
-
-
-    // private async Task HandleLogin()
-    // {
-    //     context = DbFactory.CreateDbContext();
-
-    //     // 1. ดึง user ตาม loginname
-    //     var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == loginModel.Username);
-
-    //     if (user != null && !user.isdisable && !user.iscancel && user.isActivate)
-    //     {
-    //         // 2. ใช้ PasswordHasher ตรวจสอบความถูกต้องของรหัสผ่าน
-    //         var result = PasswordHasher.VerifyHashedPassword(user, user.password ?? "", loginModel.Password);
-
-    //         if (result == PasswordVerificationResult.Success)
-    //         {
-    //             var claims = new List<Claim>
-    //         {
-    //             new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
-    //             new Claim("userid", user.userid.ToString()),
-    //             new Claim("username", user.loginname),
-    //             new Claim("company_id", user.company_id.ToString())
-    //         };
-
-    //             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    //             var principal = new ClaimsPrincipal(identity);
-
-    //             await HttpContextAccessor.HttpContext!.SignInAsync(
-    //                 CookieAuthenticationDefaults.AuthenticationScheme, principal);
-    //             Logger.LogInformation("Check login for user: {Username}", loginModel.Username);
-    //             Logger.LogInformation("Stored hash: {Hash}", user.password);
-    //             Logger.LogInformation("Login input password: {Input}", loginModel.Password);
-
-    //             Logger.LogInformation("Login success for: {Username}", user.loginname);
-    //             Navigation.NavigateTo("/sc_users");
-    //             return;
-    //         }
-    //     }
-
-    //     errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
-    // }
-
-  
-
-    private async Task HandleLogin()
-    {
-        context = DbFactory.CreateDbContext();
-
-        // 1. ดึง user ตาม loginname
-        var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == loginModel.Username);
-
-        if (user != null && !user.isdisable && !user.iscancel && user.isActivate)
-        {
-            // 2. ใช้ PasswordHasher ตรวจสอบความถูกต้องของรหัสผ่าน
-            var result = PasswordHasher.VerifyHashedPassword(user, user.password ?? "", loginModel.Password);
-
-            if (result == PasswordVerificationResult.Success)
-            {
-                var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.Name, user.firstname + " " + user.lastname),
-                new Claim("userid", user.userid.ToString()),
-                new Claim("username", user.loginname),
-                new Claim("company_id", user.company_id.ToString())
-            };
-
-                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-                var principal = new ClaimsPrincipal(identity);
-
-                await HttpContextAccessor.HttpContext!.SignInAsync(
-                    CookieAuthenticationDefaults.AuthenticationScheme, principal);
-                Logger.LogInformation("Check login for user: {Username}", loginModel.Username);
-                Logger.LogInformation("Stored hash: {Hash}", user.password);
-                Logger.LogInformation("Login input password: {Input}", loginModel.Password);
-
-                Logger.LogInformation("Login success for: {Username}", user.loginname);
-                Navigation.NavigateTo("/sc_users");
-                return;
-            }
-        }
-
-        errorMessage = "รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
-    }
-
-
-    public class LoginModel
-    {
-        [Required]
-        public string Username { get; set; } = string.Empty;
-
-        [Required]
-        public string Password { get; set; } = string.Empty;
-    }
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
 }

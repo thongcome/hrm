@@ -135,4 +135,6 @@ public partial class HrwOt
     [Column("SALARY_CAL_SEQ")]
     [Precision(4)]
     public decimal? SalaryCalSeq { get; set; }
+
+    public virtual Hremployee? Hremployee { get; set; }
 }

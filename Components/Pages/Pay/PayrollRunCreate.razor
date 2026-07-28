@@ -1,0 +1,105 @@
+@page "/pay/runs/create"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>สร้างรอบเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4" MaxWidth="600px">
+    <MudText Typo="Typo.h5" Class="mb-4">สร้างรอบเงินเดือนใหม่</MudText>
+
+    <MudForm @ref="_form" Model="_model">
+        <MudTextField @bind-Value="_model.CompanyId" Label="รหัสบริษัท (CompanyId)" Required="true" MaxLength="6" />
+        <MudSelect @bind-Value="_model.RunType" Label="ประเภทรอบ" Class="mt-3">
+            <MudSelectItem Value="PayrollRunType.Regular">รอบปกติ (Regular)</MudSelectItem>
+            <MudSelectItem Value="PayrollRunType.Bonus">โบนัส (Bonus)</MudSelectItem>
+        </MudSelect>
+        <MudDatePicker @bind-Date="_periodMonth" Label="เดือน/ปี ของงวด" Class="mt-3" />
+        <MudDatePicker @bind-Date="_payDate" Label="วันที่จ่ายเงิน" Class="mt-3" />
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Class="mt-4" Justify="Justify.FlexEnd">
+            <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("/pay/runs"))">ยกเลิก</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">สร้างรอบ (Draft)</MudButton>
+        </MudStack>
+    </MudForm>
+</MudPaper>
+
+@code {
+    private MudForm _form = null!;
+    private readonly CreateModel _model = new();
+    private DateTime? _periodMonth = DateTime.Today;
+    private DateTime? _payDate = DateTime.Today;
+    private string? _error;
+
+    private class CreateModel
+    {
+        public string CompanyId { get; set; } = "";
+        public PayrollRunType RunType { get; set; } = PayrollRunType.Regular;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null || _payDate is null)
+        {
+            _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            return;
+        }
+
+        var periodStart = new DateOnly(_periodMonth.Value.Year, _periodMonth.Value.Month, 1);
+        var periodEnd = periodStart.AddMonths(1).AddDays(-1);
+        // InvariantCulture: the server's ambient culture is Thai, whose default
+        // calendar formats "yyyy" as the Buddhist year (e.g. 2569, not 2026) —
+        // PayrollPeriod must stay Gregorian to match Pay_TaxBracket.EffectiveYear.
+        var period = periodStart.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Pay_PayrollRuns.AnyAsync(r =>
+            r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.RunType == _model.RunType);
+        if (duplicate)
+        {
+            _error = $"มีรอบ {_model.RunType} ของงวด {period} สำหรับบริษัท {_model.CompanyId} อยู่แล้ว";
+            return;
+        }
+
+        var actorUserId = await GetCurrentUserIdAsync();
+
+        var run = new Pay_PayrollRun
+        {
+            CompanyId = _model.CompanyId,
+            PayrollPeriod = period,
+            PeriodStart = periodStart,
+            PeriodEnd = periodEnd,
+            PayDate = DateOnly.FromDateTime(_payDate.Value),
+            RunType = _model.RunType,
+            Status = PayrollRunStatus.Draft,
+            CreatedByUserId = actorUserId,
+        };
+
+        context.Pay_PayrollRuns.Add(run);
+        await context.SaveChangesAsync();
+
+        Navigation.NavigateTo($"/pay/runs/{run.Id}");
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+}

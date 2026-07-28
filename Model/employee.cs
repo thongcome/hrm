@@ -208,9 +208,11 @@ public partial class Employee
     public string? head_code { get; set; }
 
     [StringLength(250)]
-    
+
     public string? resign_by { get; set; }
 
     [Column(TypeName = "datetime")]
     public DateTime? resign_date { get; set; }
+
+    public virtual ICollection<Hremployee> Hremployees { get; set; } = new List<Hremployee>();
 }

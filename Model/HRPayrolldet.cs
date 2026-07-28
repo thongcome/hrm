@@ -14,6 +14,10 @@ public partial class Hrpayrolldet
     [Column("ID")]
     public long id { get; set; }
 
+    // FK ไปยัง Hrpayroll.id (Hrpayroll = แม่/หัวรายการ, Hrpayrolldet = ลูก/รายการเงินได้-เงินหักแต่ละบรรทัด)
+    [Column("HrpayrollId")]
+    public long? HrpayrollId { get; set; }
+
     [Column("companyid")]
     [StringLength(6)]
     
@@ -53,4 +57,6 @@ public partial class Hrpayrolldet
 
     [Column("ITEM_AMT", TypeName = "decimal(15,2)")]
     public decimal? ItemAmt { get; set; }
+
+    public virtual Hrpayroll? Hrpayroll { get; set; }
 }

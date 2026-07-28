@@ -2,6 +2,7 @@
 using HRM.Models;
 using HRM.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
 
 public class CustomAuthStateProvider : AuthenticationStateProvider
@@ -9,11 +10,22 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
     private readonly MenuStateService menuService;
 
     private readonly ClaimsPrincipal _anonymous = new(new ClaimsIdentity());
-    private ClaimsPrincipal _currentUser = null!;
+    private ClaimsPrincipal _currentUser;
 
-    public CustomAuthStateProvider(MenuStateService menuService)
+    public CustomAuthStateProvider(MenuStateService menuService, IHttpContextAccessor httpContextAccessor)
     {
         this.menuService = menuService;
+
+        // This provider is scoped per Blazor Server circuit and otherwise never
+        // looks at the auth cookie at all — without this, every new circuit
+        // starts anonymous even for a user who is genuinely signed in via
+        // cookie auth (e.g. through /login-handler in Program.cs), because
+        // nothing else ever calls this class's own SignInAsync during that
+        // circuit's lifetime. HttpContext is only available here, at
+        // construction/connection time, not later once the SignalR circuit is
+        // fully established, so it must be captured now.
+        var httpUser = httpContextAccessor.HttpContext?.User;
+        _currentUser = httpUser?.Identity?.IsAuthenticated == true ? httpUser : _anonymous;
     }
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
