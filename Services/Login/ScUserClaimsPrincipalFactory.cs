@@ -50,7 +50,13 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
 
         identity.AddClaim(new Claim("sc_userid", scUser.userid.ToString()));
         if (!string.IsNullOrWhiteSpace(scUser.empid))
+        {
             identity.AddClaim(new Claim("empno", scUser.empid));
+
+            var companyId = await PayrollCompanyResolver.ResolveAsync(context, scUser.empid);
+            if (!string.IsNullOrWhiteSpace(companyId))
+                identity.AddClaim(new Claim("payroll_company", companyId));
+        }
 
         foreach (var ur in scUser.sc_user_roles.Where(r => r.isactive))
         {

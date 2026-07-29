@@ -1,10 +1,13 @@
 @page "/pay/runs"
+@using System.Security.Claims
 @using HRM.Models
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>รอบเงินเดือน (ใหม่)</PageTitle>
@@ -69,7 +72,16 @@
     {
         await using var context = await DbFactory.CreateDbContextAsync();
 
+        // One sc_user resolves to exactly one company via empid ->
+        // Hremployee.EmpNo (see PayrollCompanyResolver) — someone needing
+        // more than one company gets a separate account per company. No
+        // claim means no company link is set up yet, so they see nothing
+        // rather than every company's payroll.
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = state.User.FindFirstValue("payroll_company");
+
         _runs = await context.Pay_PayrollRuns
+            .Where(r => r.CompanyId == companyId)
             .OrderByDescending(r => r.PayrollPeriod)
             .ThenByDescending(r => r.Id)
             .ToListAsync();

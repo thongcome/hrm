@@ -19,7 +19,11 @@
 
 <PageTitle>รอบเงินเดือน #@RunId</PageTitle>
 
-@if (_run is null)
+@if (_forbidden)
+{
+    <MudAlert Severity="Severity.Error">รอบเงินเดือนนี้เป็นของบริษัทอื่น ไม่สามารถเข้าถึงได้</MudAlert>
+}
+else if (_run is null)
 {
     <MudProgressCircular Indeterminate="true" />
 }
@@ -227,6 +231,7 @@ else
     [Parameter] public long RunId { get; set; }
 
     private Pay_PayrollRun? _run;
+    private bool _forbidden;
     private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
     private bool _busy;
     private int _negativeCount;
@@ -250,6 +255,19 @@ else
 
         _run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == RunId);
         if (_run is null) return;
+
+        // One sc_user resolves to exactly one company via empid ->
+        // Hremployee.EmpNo — see PayrollCompanyResolver. A run for any
+        // other company is treated as inaccessible, not just hidden from
+        // lists (defends direct-URL access, not just navigation).
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = authState.User.FindFirstValue("payroll_company");
+        if (_run.CompanyId != companyId)
+        {
+            _forbidden = true;
+            _run = null;
+            return;
+        }
 
         var employees = await context.Pay_PayrollEmployees
             .Include(e => e.Hremployee)

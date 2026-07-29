@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 // Payslip/bank/GL files live under App_Data (outside wwwroot — see
 // PrivateFileStorage), so these are the only way to reach them. Each route
-// requires the same Menu:PAY_RUNS policy as the run-detail page itself.
+// requires the same Menu:PAY_RUNS policy as the run-detail page, plus a
+// company-ownership check — the menu policy alone only proves the caller
+// works with SOME company's payroll, not that they own this specific file.
 public static class PayrollFileEndpoints
 {
     public static void MapPayrollFileEndpoints(this WebApplication app)
@@ -14,7 +16,7 @@ public static class PayrollFileEndpoints
         var group = app.MapGroup("/pay/files").RequireAuthorization("Menu:PAY_RUNS");
 
         group.MapGet("/payslip/{payslipId:long}", async (
-            long payslipId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long payslipId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
         {
             await using var context = await dbFactory.CreateDbContextAsync();
             var payslip = await context.Pay_Payslips
@@ -22,28 +24,44 @@ public static class PayrollFileEndpoints
                 .FirstOrDefaultAsync(p => p.Id == payslipId);
             if (payslip is null) return Results.NotFound();
 
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (payslip.Pay_PayrollEmployee.CompanyId != companyId)
+                return Results.Forbid();
+
             var bytes = await storage.ReadAsync(payslip.PdfStoragePath);
             var fileName = $"payslip_{payslip.Pay_PayrollEmployee.EmpNo}.pdf";
             return Results.File(bytes, "application/pdf", fileName);
         });
 
         group.MapGet("/bank-export/{batchId:long}", async (
-            long batchId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long batchId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
         {
             await using var context = await dbFactory.CreateDbContextAsync();
-            var batch = await context.Pay_BankFileExportBatches.FirstOrDefaultAsync(b => b.Id == batchId);
+            var batch = await context.Pay_BankFileExportBatches
+                .Include(b => b.Pay_PayrollRun)
+                .FirstOrDefaultAsync(b => b.Id == batchId);
             if (batch is null) return Results.NotFound();
+
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (batch.Pay_PayrollRun.CompanyId != companyId)
+                return Results.Forbid();
 
             var bytes = await storage.ReadAsync(batch.FilePath);
             return Results.File(bytes, "text/csv", $"bankfile_{batchId}.csv");
         });
 
         group.MapGet("/gl-export/{batchId:long}", async (
-            long batchId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long batchId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
         {
             await using var context = await dbFactory.CreateDbContextAsync();
-            var batch = await context.Pay_GLExportBatches.FirstOrDefaultAsync(b => b.Id == batchId);
+            var batch = await context.Pay_GLExportBatches
+                .Include(b => b.Pay_PayrollRun)
+                .FirstOrDefaultAsync(b => b.Id == batchId);
             if (batch is null) return Results.NotFound();
+
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (batch.Pay_PayrollRun.CompanyId != companyId)
+                return Results.Forbid();
 
             var bytes = await storage.ReadAsync(batch.FilePath);
             return Results.File(bytes, "text/csv", $"gl_{batchId}.csv");

@@ -351,6 +351,18 @@ app.MapPost("/login-handler", async (
                         claims.Add(new Claim("menu", menu.menucode!));
                 }
 
+                // Same empno/payroll_company derivation as ScUserClaimsPrincipalFactory
+                // (kept in sync via PayrollCompanyResolver — see that file for why
+                // duplicating this logic by hand is exactly the kind of thing that
+                // already caused a real bug once, with role/menu claims).
+                if (!string.IsNullOrWhiteSpace(user.empid))
+                {
+                    claims.Add(new Claim("empno", user.empid));
+                    var payrollCompanyId = await HRM.Services.Login.PayrollCompanyResolver.ResolveAsync(context, user.empid);
+                    if (!string.IsNullOrWhiteSpace(payrollCompanyId))
+                        claims.Add(new Claim("payroll_company", payrollCompanyId));
+                }
+
                 // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
                 // ("Cookies") — confirmed via a throwaway /whoami diagnostic to be
                 // the scheme HttpContext.User/Blazor's plain [Authorize] actually

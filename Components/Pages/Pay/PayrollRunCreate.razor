@@ -16,7 +16,8 @@
     <MudText Typo="Typo.h5" Class="mb-4">สร้างรอบเงินเดือนใหม่</MudText>
 
     <MudForm @ref="_form" Model="_model">
-        <MudTextField @bind-Value="_model.CompanyId" Label="รหัสบริษัท (CompanyId)" Required="true" MaxLength="6" />
+        <MudTextField Value="_model.CompanyId" Label="รหัสบริษัท (CompanyId)" ReadOnly="true"
+            HelperText="กำหนดจากบัญชีผู้ใช้ของคุณ แก้ไขไม่ได้" />
         <MudSelect @bind-Value="_model.RunType" Label="ประเภทรอบ" Class="mt-3">
             <MudSelectItem Value="PayrollRunType.Regular">รอบปกติ (Regular)</MudSelectItem>
             <MudSelectItem Value="PayrollRunType.Bonus">โบนัส (Bonus)</MudSelectItem>
@@ -49,13 +50,21 @@
         public PayrollRunType RunType { get; set; } = PayrollRunType.Regular;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _model.CompanyId = state.User.FindFirstValue("payroll_company") ?? "";
+    }
+
     private async Task SaveAsync()
     {
         _error = null;
 
         if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null || _payDate is null)
         {
-            _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            _error = string.IsNullOrWhiteSpace(_model.CompanyId)
+                ? "บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน"
+                : "กรุณากรอกข้อมูลให้ครบถ้วน";
             return;
         }
 

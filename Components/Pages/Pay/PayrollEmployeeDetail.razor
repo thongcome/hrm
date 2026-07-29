@@ -1,15 +1,22 @@
 @page "/pay/runs/{RunId:long}/employee/{EmployeeId:long}"
+@using System.Security.Claims
 @using HRM.Models
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>รายละเอียดเงินเดือนพนักงาน</PageTitle>
 
-@if (_employee is null)
+@if (_forbidden)
+{
+    <MudAlert Severity="Severity.Error">รอบเงินเดือนนี้เป็นของบริษัทอื่น ไม่สามารถเข้าถึงได้</MudAlert>
+}
+else if (_employee is null)
 {
     <MudProgressCircular Indeterminate="true" />
 }
@@ -64,6 +71,7 @@ else
     [Parameter] public long EmployeeId { get; set; }
 
     private Pay_PayrollEmployee? _employee;
+    private bool _forbidden;
     private List<Pay_PayrollLineItem> _lineItems = new();
     private string? _taxDetailJson;
 
@@ -75,6 +83,15 @@ else
             .Include(e => e.Hremployee)
             .FirstOrDefaultAsync(e => e.Id == EmployeeId && e.PayrollRunId == RunId);
         if (_employee is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = state.User.FindFirstValue("payroll_company");
+        if (_employee.CompanyId != companyId)
+        {
+            _forbidden = true;
+            _employee = null;
+            return;
+        }
 
         _lineItems = await context.Pay_PayrollLineItems
             .Include(li => li.Pay_PayItemType)

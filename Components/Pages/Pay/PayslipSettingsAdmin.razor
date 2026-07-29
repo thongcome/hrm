@@ -21,7 +21,14 @@
 
     @if (_settings is null)
     {
-        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" Class="mt-4" />
+        }
     }
     else
     {
@@ -78,15 +85,23 @@
     private Hremployee? _previewEmployee;
     private string _selectedPreset = "{BirthDateDDMMYYYY}";
     private string? _error;
-    private const string CompanyId = "001";
+    private string? _companyId;
 
     protected override async Task OnInitializedAsync()
     {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId))
+        {
+            _error = "บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน";
+            return;
+        }
+
         await using var context = await DbFactory.CreateDbContextAsync();
-        _settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == CompanyId);
+        _settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (_settings is null)
         {
-            _settings = new Pay_PayslipSettings { CompanyId = CompanyId, PasswordTemplate = "{BirthDateDDMMYYYY}" };
+            _settings = new Pay_PayslipSettings { CompanyId = _companyId, PasswordTemplate = "{BirthDateDDMMYYYY}" };
             context.Pay_PayslipSettings.Add(_settings);
             await context.SaveChangesAsync();
         }
@@ -105,7 +120,7 @@
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
     {
         await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Hremployee.AsQueryable();
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             query = query.Where(e => e.EmpNo.Contains(search)
@@ -125,7 +140,7 @@
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == CompanyId);
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
             _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";

@@ -133,11 +133,14 @@
     private async Task LoadAsync()
     {
         _loading = true;
+        var companyId = await GetCurrentCompanyIdAsync();
+
         await using var context = await DbFactory.CreateDbContextAsync();
         _payItemTypes = await context.Pay_PayItemTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
         var query = context.Pay_AdhocPayItems
             .Include(a => a.Hremployee)
             .Include(a => a.Pay_PayItemType)
+            .Where(a => a.Hremployee.companyid == companyId)
             .AsQueryable();
         if (!string.IsNullOrWhiteSpace(Period))
             query = query.Where(a => a.TargetPeriod == Period);
@@ -155,10 +158,21 @@
         return long.TryParse(idClaim, out var id) ? id : 0;
     }
 
+    // One sc_user resolves to exactly one company via empid -> Hremployee.EmpNo
+    // (see PayrollCompanyResolver) — a null result means the account isn't
+    // linked to any company yet, so every query below matches nothing rather
+    // than every company's data.
+    private async Task<string?> GetCurrentCompanyIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return state.User.FindFirstValue("payroll_company");
+    }
+
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
     {
+        var companyId = await GetCurrentCompanyIdAsync();
         await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Hremployee.AsQueryable();
+        var query = context.Hremployee.Where(e => e.companyid == companyId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             query = query.Where(e => e.EmpNo.Contains(search)
@@ -183,6 +197,13 @@
         // TargetPeriod must stay Gregorian to match Pay_PayrollRun.PayrollPeriod.
         var targetPeriod = _form.TargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
 
+        var companyId = await GetCurrentCompanyIdAsync();
+        if (_form.SelectedEmployee.companyid != companyId)
+        {
+            _error = "เลือกได้เฉพาะพนักงานในบริษัทของคุณ";
+            return;
+        }
+
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var actorUserId = await GetCurrentUserIdAsync();
@@ -205,10 +226,18 @@
         await LoadAsync();
     }
 
+    private async Task<Pay_AdhocPayItem?> LoadOwnCompanyItemAsync(HRMContext context, long id)
+    {
+        var companyId = await GetCurrentCompanyIdAsync();
+        return await context.Pay_AdhocPayItems
+            .Include(a => a.Hremployee)
+            .FirstOrDefaultAsync(a => a.Id == id && a.Hremployee.companyid == companyId);
+    }
+
     private async Task ApproveAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        var item = await LoadOwnCompanyItemAsync(context, id);
         if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
         item.Status = PayAdhocItemStatus.Approved;
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
@@ -221,7 +250,7 @@
     private async Task RejectAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        var item = await LoadOwnCompanyItemAsync(context, id);
         if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
         item.Status = PayAdhocItemStatus.Rejected;
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
@@ -234,7 +263,7 @@
     private async Task CancelItemAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        var item = await LoadOwnCompanyItemAsync(context, id);
         if (item is null) return;
         item.Status = PayAdhocItemStatus.Cancelled;
         await context.SaveChangesAsync();
