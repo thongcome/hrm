@@ -75,6 +75,29 @@ else
                 มีพนักงาน @_negativeCount คน ที่เงินสุทธิติดลบ (ถูกปรับเป็น 0 ชั่วคราว) — ต้องแก้ไขข้อมูลหรือทำเครื่องหมายยกเว้นก่อนจึงจะอนุมัติได้
             </MudAlert>
         }
+
+        @if (_pendingAdhocCount > 0 || _unconsumedApprovedAdhocCount > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+                    <span>
+                        @if (_pendingAdhocCount > 0)
+                        {
+                            <text>มีรายการเงินได้-เงินหักเฉพาะกิจ <b>@_pendingAdhocCount รายการ</b> ที่ยังไม่ได้อนุมัติสำหรับงวดนี้ </text>
+                        }
+                        @if (_unconsumedApprovedAdhocCount > 0)
+                        {
+                            <text>มีรายการที่อนุมัติแล้ว <b>@_unconsumedApprovedAdhocCount รายการ</b> แต่ยังไม่ถูกรวมในการคำนวณล่าสุด </text>
+                        }
+                        — กรุณาอนุมัติให้ครบแล้วกด "คำนวณใหม่" ก่อนอนุมัติ/จ่ายเงินรอบนี้
+                    </span>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error"
+                        OnClick="@(() => Navigation.NavigateTo($"/pay/adhoc/{_run!.PayrollPeriod}"))">
+                        ไปดูรายการ
+                    </MudButton>
+                </MudStack>
+            </MudAlert>
+        }
     </MudPaper>
 
     <MudPaper Class="pa-4">
@@ -128,6 +151,8 @@ else
     private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
     private bool _busy;
     private int _negativeCount;
+    private int _pendingAdhocCount;
+    private int _unconsumedApprovedAdhocCount;
 
     private record EmployeeRow(Pay_PayrollEmployee Employee);
     private List<EmployeeRow> _employees = new();
@@ -150,6 +175,15 @@ else
         _employees = employees.Select(e => new EmployeeRow(e)).ToList();
         _negativeCount = employees.Count(e => e.IsNegativeNetPayFlag && !e.IsExcluded);
         _allowed = PayrollWorkflowService.GetAllowedActions(_run.Status);
+
+        _pendingAdhocCount = await context.Pay_AdhocPayItems
+            .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
+                && a.Hremployee.companyid == _run.CompanyId
+                && a.Status == PayAdhocItemStatus.Pending);
+        _unconsumedApprovedAdhocCount = await context.Pay_AdhocPayItems
+            .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
+                && a.Hremployee.companyid == _run.CompanyId
+                && a.Status == PayAdhocItemStatus.Approved);
     }
 
     private async Task<long> GetCurrentUserIdAsync()
