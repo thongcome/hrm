@@ -173,6 +173,10 @@ builder.Services.AddScoped<BankFileExportService>();
 builder.Services.AddScoped<GLExportService>();
 // ----- end Pay_* module -----
 
+// ----- Att_* module (Time Tracking & Attendance) -----
+builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
+// ----- end Att_* module -----
+
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {

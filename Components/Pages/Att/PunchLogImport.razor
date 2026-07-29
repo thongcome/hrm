@@ -1,0 +1,315 @@
+@page "/att/import"
+@using System.Globalization
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
+
+<PageTitle>นำเข้าไฟล์ log เครื่องสแกน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">นำเข้าไฟล์ log จากเครื่องสแกน (ลายนิ้วมือ/Face Recognition)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รองรับไฟล์ CSV แบบ 3 คอลัมน์: รหัสพนักงาน, วันที่เวลา, ทิศทาง (เข้า/ออก — ใส่ว่างได้ถ้าเครื่องไม่ระบุ) ไม่มีหัวตาราง
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    @if (_trackingMode == AttTrackingMode.None)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            บริษัทนี้ยังไม่ได้เปิดใช้งานระบบบันทึกเวลาเข้างาน — ไปตั้งค่าที่ <MudLink Href="/att/settings">ตั้งค่าบันทึกเวลาเข้างาน</MudLink> ก่อน
+        </MudAlert>
+        return;
+    }
+
+    <MudExpansionPanels Class="mt-3">
+        <MudExpansionPanel Text="เครื่องสแกนที่ลงทะเบียนไว้ (คลิกเพื่อเพิ่มเครื่องใหม่)">
+            <MudGrid>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_newDeviceCode" Label="รหัสเครื่อง" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_newDeviceName" Label="ชื่อเครื่อง" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="AttDeviceType" @bind-Value="_newDeviceType" Label="ประเภทเครื่อง">
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Fingerprint">ลายนิ้วมือ</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.FaceRecognition">Face Recognition</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.CardReader">บัตรสแกน</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Mobile">มือถือ/แอป</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Manual">อื่นๆ/ป้อนเอง</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddDeviceAsync">เพิ่มเครื่อง</MudButton>
+                </MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_deviceError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_deviceError</MudAlert>
+            }
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="5">
+            <MudSelect T="long?" @bind-Value="_deviceId" Label="เครื่องสแกน (ไม่บังคับ)">
+                <MudSelectItem T="long?" Value="@((long?)null)">— ไม่ระบุ —</MudSelectItem>
+                @foreach (var d in _devices)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)d.Id)">@d.DeviceName (@d.DeviceCode)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
+                        @(_uploadFile?.Name ?? "เลือกไฟล์ CSV")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ImportAsync" Disabled="_uploadFile is null">นำเข้า</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_importError))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_importError</MudAlert>
+    }
+
+    @if (_lastResult is not null)
+    {
+        <MudAlert Severity="@(_lastResult.SkippedRows > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
+            นำเข้าสำเร็จ @_lastResult.ImportedRows/@_lastResult.TotalRows แถว
+            @if (_lastResult.SkippedRows > 0)
+            {
+                <span> — ข้าม @_lastResult.SkippedRows แถว: @_lastResult.ErrorSummary</span>
+            }
+        </MudAlert>
+    }
+
+    <MudDivider Class="my-5" />
+
+    <MudText Typo="Typo.h6">ประวัติการนำเข้า</MudText>
+    <MudTable Items="_batches" Dense="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>วันที่นำเข้า</MudTh>
+            <MudTh>ไฟล์</MudTh>
+            <MudTh>ทั้งหมด</MudTh>
+            <MudTh>สำเร็จ</MudTh>
+            <MudTh>ข้าม</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ImportedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>@context.FileName</MudTd>
+            <MudTd>@context.TotalRows</MudTd>
+            <MudTd>@context.ImportedRows</MudTd>
+            <MudTd>@context.SkippedRows</MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private AttTrackingMode _trackingMode = AttTrackingMode.None;
+    private List<Att_Device> _devices = new();
+    private long? _deviceId;
+    private string _newDeviceCode = "";
+    private string _newDeviceName = "";
+    private AttDeviceType _newDeviceType = AttDeviceType.Fingerprint;
+    private string? _deviceError;
+    private IBrowserFile? _uploadFile;
+    private string? _importError;
+    private Att_ImportBatch? _lastResult;
+    private List<Att_ImportBatch> _batches = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var settings = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        _trackingMode = settings?.TrackingMode ?? AttTrackingMode.None;
+        if (_trackingMode == AttTrackingMode.None) return;
+
+        _devices = await context.Att_Devices.Where(d => d.CompanyId == _companyId && d.IsActive).ToListAsync();
+        await LoadBatchesAsync();
+    }
+
+    private async Task LoadBatchesAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _batches = await context.Att_ImportBatches
+            .Where(b => b.CompanyId == _companyId)
+            .OrderByDescending(b => b.ImportedDate)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task AddDeviceAsync()
+    {
+        _deviceError = null;
+
+        if (string.IsNullOrWhiteSpace(_newDeviceCode) || string.IsNullOrWhiteSpace(_newDeviceName))
+        {
+            _deviceError = "กรุณากรอกรหัสและชื่อเครื่อง";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var duplicate = await context.Att_Devices.AnyAsync(d => d.CompanyId == _companyId && d.DeviceCode == _newDeviceCode);
+        if (duplicate)
+        {
+            _deviceError = $"มีรหัสเครื่อง {_newDeviceCode} อยู่แล้ว";
+            return;
+        }
+
+        context.Att_Devices.Add(new Att_Device
+        {
+            CompanyId = _companyId!,
+            DeviceCode = _newDeviceCode,
+            DeviceName = _newDeviceName,
+            DeviceType = _newDeviceType,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มเครื่องสแกนเรียบร้อย", Severity.Success);
+        _newDeviceCode = "";
+        _newDeviceName = "";
+
+        _devices = await context.Att_Devices.Where(d => d.CompanyId == _companyId && d.IsActive).ToListAsync();
+    }
+
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _uploadFile = file;
+        _lastResult = null;
+    }
+
+    private async Task ImportAsync()
+    {
+        _importError = null;
+        _lastResult = null;
+
+        if (_uploadFile is null || string.IsNullOrWhiteSpace(_companyId)) return;
+
+        const long maxSize = 10 * 1024 * 1024;
+        if (_uploadFile.Size > maxSize)
+        {
+            _importError = "ไฟล์ใหญ่เกินไป (จำกัด 10 MB)";
+            return;
+        }
+
+        string content;
+        await using (var stream = _uploadFile.OpenReadStream(maxSize))
+        using (var reader = new StreamReader(stream))
+        {
+            content = await reader.ReadToEndAsync();
+        }
+
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim().TrimEnd('\r'))
+            .Where(l => l.Length > 0)
+            .ToList();
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var employeesByCode = await context.Hremployee
+            .Where(e => e.companyid == _companyId)
+            .ToDictionaryAsync(e => e.EmpNo, e => e.id);
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        var batch = new Att_ImportBatch
+        {
+            CompanyId = _companyId,
+            DeviceId = _deviceId,
+            FileName = _uploadFile.Name,
+            ImportedByUserId = userId,
+            ImportedDate = DateTime.Now,
+            TotalRows = lines.Count,
+        };
+        context.Att_ImportBatches.Add(batch);
+        await context.SaveChangesAsync();
+
+        var imported = 0;
+        var errors = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split(',');
+            if (parts.Length < 2)
+            {
+                errors.Add($"รูปแบบแถวไม่ถูกต้อง: {line}");
+                continue;
+            }
+
+            var empCode = parts[0].Trim();
+            var dateTimeRaw = parts[1].Trim();
+            var directionRaw = parts.Length > 2 ? parts[2].Trim() : "";
+
+            if (!employeesByCode.TryGetValue(empCode, out var hremployeeId))
+            {
+                errors.Add($"ไม่พบรหัสพนักงาน {empCode}");
+                continue;
+            }
+
+            if (!DateTime.TryParse(dateTimeRaw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var punchTime))
+            {
+                errors.Add($"วันที่เวลาอ่านไม่ได้: {dateTimeRaw} ({empCode})");
+                continue;
+            }
+
+            var direction = directionRaw.ToLowerInvariant() switch
+            {
+                "in" or "เข้า" => AttPunchDirection.In,
+                "out" or "ออก" => AttPunchDirection.Out,
+                _ => AttPunchDirection.Unknown,
+            };
+
+            context.Att_PunchLogs.Add(new Att_PunchLog
+            {
+                CompanyId = _companyId,
+                HremployeeId = hremployeeId,
+                RawEmpCode = empCode,
+                DeviceId = _deviceId,
+                PunchTime = punchTime,
+                Direction = direction,
+                Source = AttPunchSource.Device,
+                ImportBatchId = batch.Id,
+            });
+            imported++;
+        }
+
+        batch.ImportedRows = imported;
+        batch.SkippedRows = lines.Count - imported;
+        batch.ErrorSummary = errors.Count > 0 ? string.Join("; ", errors.Take(10)) : null;
+
+        await context.SaveChangesAsync();
+
+        _lastResult = batch;
+        _uploadFile = null;
+        Snackbar.Add("นำเข้าไฟล์เรียบร้อย", Severity.Success);
+        await LoadBatchesAsync();
+    }
+}

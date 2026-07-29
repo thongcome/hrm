@@ -354,6 +354,13 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     public virtual DbSet<Pay_EmployeeDocument> Pay_EmployeeDocuments { get; set; }
+    public virtual DbSet<Att_CompanySetting> Att_CompanySettings { get; set; }
+    public virtual DbSet<Att_Device> Att_Devices { get; set; }
+    public virtual DbSet<Att_ImportBatch> Att_ImportBatches { get; set; }
+    public virtual DbSet<Att_PunchLog> Att_PunchLogs { get; set; }
+    public virtual DbSet<Att_ShiftDefinition> Att_ShiftDefinitions { get; set; }
+    public virtual DbSet<Att_ShiftAssignment> Att_ShiftAssignments { get; set; }
+    public virtual DbSet<Att_DailyAttendance> Att_DailyAttendances { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -1369,6 +1376,62 @@ public partial class HRMContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Att_PunchLog>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Device)
+                .WithMany()
+                .HasForeignKey(d => d.DeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ImportBatch)
+                .WithMany()
+                .HasForeignKey(d => d.ImportBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Att_ImportBatch>(entity =>
+        {
+            entity.HasOne(d => d.Device)
+                .WithMany()
+                .HasForeignKey(d => d.DeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Att_ShiftAssignment>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ShiftDefinition)
+                .WithMany()
+                .HasForeignKey(d => d.ShiftDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(d => new { d.HremployeeId, d.WorkDate }).IsUnique();
+        });
+
+        modelBuilder.Entity<Att_DailyAttendance>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.ShiftDefinition)
+                .WithMany()
+                .HasForeignKey(d => d.ShiftDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(d => new { d.HremployeeId, d.WorkDate }).IsUnique();
         });
 
         modelBuilder.Entity<Pay_PayrollPeriod>().HasData(

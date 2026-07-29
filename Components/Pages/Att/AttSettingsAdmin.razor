@@ -1,0 +1,127 @@
+@page "/att/settings"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
+
+<PageTitle>ตั้งค่าบันทึกเวลาเข้างาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ตั้งค่าบันทึกเวลาเข้างาน (Time Attendance)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ฟีเจอร์นี้เป็นทางเลือก — บริษัทที่ไม่ต้องการติดตามเวลาเข้างานเลยสามารถเลือก "ไม่เปิดใช้งาน" ได้ หน้าอื่นๆ ในโมดูลนี้จะไม่ทำงานจนกว่าจะเปิดใช้งานที่นี่
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+    }
+    else if (_settings is null)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else
+    {
+        <MudDivider Class="my-4" />
+
+        <MudRadioGroup T="AttTrackingMode" @bind-Value="_settings.TrackingMode">
+            <MudRadio T="AttTrackingMode" Value="AttTrackingMode.None" Color="Color.Primary">
+                ไม่เปิดใช้งาน — ไม่ติดตามเวลาเข้างานเลย
+            </MudRadio>
+            <MudRadio T="AttTrackingMode" Value="AttTrackingMode.SimpleInOut" Color="Color.Primary">
+                บันทึกเวลาเข้า-ออกอย่างเดียว — ไม่มีระบบกะ ใช้เวลาเริ่ม-เลิกงานเดียวกันทุกวัน
+            </MudRadio>
+            <MudRadio T="AttTrackingMode" Value="AttTrackingMode.ShiftBased" Color="Color.Primary">
+                มีระบบกะ — พนักงานแต่ละคนหมุนเวียนเข้ากะต่างกันได้ในแต่ละวัน
+            </MudRadio>
+        </MudRadioGroup>
+
+        @if (_settings.TrackingMode == AttTrackingMode.SimpleInOut)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="6">
+                    <MudTimePicker @bind-Time="_workStart" Label="เวลาเริ่มงาน (ค่าเริ่มต้น)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTimePicker @bind-Time="_workEnd" Label="เวลาเลิกงาน (ค่าเริ่มต้น)" />
+                </MudItem>
+            </MudGrid>
+        }
+
+        @if (_settings.TrackingMode != AttTrackingMode.None)
+        {
+            <MudCheckBox T="bool" @bind-Value="_settings.AllowWfh" Label="อนุญาตให้บันทึก Work From Home (WFH)" Class="mt-3" />
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private Att_CompanySetting? _settings;
+    private TimeSpan? _workStart;
+    private TimeSpan? _workEnd;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _settings = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (_settings is null)
+        {
+            _settings = new Att_CompanySetting { CompanyId = _companyId, TrackingMode = AttTrackingMode.None };
+            context.Att_CompanySettings.Add(_settings);
+            await context.SaveChangesAsync();
+        }
+
+        _workStart = _settings.DefaultWorkStart?.ToTimeSpan();
+        _workEnd = _settings.DefaultWorkEnd?.ToTimeSpan();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (_settings is null || string.IsNullOrWhiteSpace(_companyId)) return;
+
+        if (_settings.TrackingMode == AttTrackingMode.SimpleInOut && (_workStart is null || _workEnd is null))
+        {
+            _error = "กรุณาระบุเวลาเริ่ม-เลิกงานเริ่มต้น";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.TrackingMode = _settings.TrackingMode;
+        existing.AllowWfh = _settings.AllowWfh;
+        existing.DefaultWorkStart = _settings.TrackingMode == AttTrackingMode.SimpleInOut && _workStart.HasValue
+            ? TimeOnly.FromTimeSpan(_workStart.Value) : null;
+        existing.DefaultWorkEnd = _settings.TrackingMode == AttTrackingMode.SimpleInOut && _workEnd.HasValue
+            ? TimeOnly.FromTimeSpan(_workEnd.Value) : null;
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+    }
+}
