@@ -13,6 +13,7 @@ using HRM.Model;
 using HRM.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using HRM.Interface;
 using HRM.Services.Payroll;
@@ -148,10 +149,38 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/login";
         options.LogoutPath = "/logout";
         options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+        // OWASP A02/A07 hardening: HttpOnly blocks JS/XSS from reading the
+        // cookie, SameSite=Strict blocks it being sent on cross-site
+        // requests (CSRF), Secure requires HTTPS (already enforced by
+        // UseHttpsRedirection below) — .NET's cookie-auth defaults already
+        // set HttpOnly=true, but the rest are worth being explicit about.
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SameSite = SameSiteMode.Strict;
     });
 
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
+
+// OWASP A07 (brute-force login guessing) — /login-handler below has no
+// other throttle, so cap it at the network layer: 5 attempts per IP per
+// minute, sliding window, extra requests get a 429 instead of hitting the
+// password hasher at all.
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddSlidingWindowLimiter("login", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.SegmentsPerWindow = 4;
+        limiterOptions.QueueLimit = 0;
+    });
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsync("Too many login attempts — please wait a moment and try again.", ct);
+    };
+});
 
 
 var app = builder.Build();
@@ -200,6 +229,7 @@ app.MapAdditionalIdentityEndpoints();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 
 //app.UseRouting();
@@ -215,6 +245,12 @@ app.MapRazorPages();  // �Դ��ҹ��鹷ҧ Razor Pages �ͧ Identity
 // Routing the actual sign-in through a real HTTP endpoint (a fresh
 // request/response each time) is the standard fix for cookie auth + Blazor
 // Server.
+// OWASP A07 lockout thresholds — sc_user.invalidpwcount/lastinvalidpwd
+// already existed as columns but nothing ever wrote to them before this;
+// unlimited password guessing was possible against any known loginname.
+const int MaxFailedAttempts = 5;
+var lockoutWindow = TimeSpan.FromMinutes(15);
+
 app.MapPost("/login-handler", async (
     HttpContext httpContext,
     IDbContextFactory<HRMContext> dbFactory,
@@ -230,29 +266,44 @@ app.MapPost("/login-handler", async (
 
     if (user is not null && !user.isdisable && !user.iscancel && user.isActivate)
     {
-        var result = passwordHasher.VerifyHashedPassword(user, user.password ?? "", password);
-        if (result != PasswordVerificationResult.Failed)
+        var isLockedOut = user.invalidpwcount >= MaxFailedAttempts
+            && user.lastinvalidpwd is not null
+            && DateTime.Now - user.lastinvalidpwd.Value < lockoutWindow;
+
+        if (!isLockedOut)
         {
-            var claims = new List<Claim>
+            var result = passwordHasher.VerifyHashedPassword(user, user.password ?? "", password);
+            if (result != PasswordVerificationResult.Failed)
             {
-                new(ClaimTypes.Name, user.firstname + " " + user.lastname),
-                new(ClaimTypes.NameIdentifier, user.userid.ToString()),
-                new("userid", user.userid.ToString()),
-                new("username", user.loginname),
-                new("company_id", user.company_id.ToString()),
-            };
-            // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
-            // ("Cookies") — confirmed via a throwaway /whoami diagnostic to be
-            // the scheme HttpContext.User/Blazor's plain [Authorize] actually
-            // resolve against at runtime (the later AddAuthentication(...) call
-            // near the bottom of this file's registrations wins over the
-            // earlier DefaultScheme = IdentityConstants.ApplicationScheme).
-            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-            var principal = new ClaimsPrincipal(identity);
+                user.invalidpwcount = 0;
+                user.lasttimelogin = DateTime.Now;
+                await context.SaveChangesAsync();
 
-            await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+                var claims = new List<Claim>
+                {
+                    new(ClaimTypes.Name, user.firstname + " " + user.lastname),
+                    new(ClaimTypes.NameIdentifier, user.userid.ToString()),
+                    new("userid", user.userid.ToString()),
+                    new("username", user.loginname),
+                    new("company_id", user.company_id.ToString()),
+                };
+                // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
+                // ("Cookies") — confirmed via a throwaway /whoami diagnostic to be
+                // the scheme HttpContext.User/Blazor's plain [Authorize] actually
+                // resolve against at runtime (the later AddAuthentication(...) call
+                // near the bottom of this file's registrations wins over the
+                // earlier DefaultScheme = IdentityConstants.ApplicationScheme).
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var principal = new ClaimsPrincipal(identity);
 
-            return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/sc_users" : returnUrl);
+                await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+                return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/sc_users" : returnUrl);
+            }
+
+            user.invalidpwcount = (user.invalidpwcount ?? 0) + 1;
+            user.lastinvalidpwd = DateTime.Now;
+            await context.SaveChangesAsync();
         }
     }
 
@@ -260,6 +311,6 @@ app.MapPost("/login-handler", async (
     if (!string.IsNullOrEmpty(returnUrl))
         errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
     return Results.LocalRedirect(errorRedirect);
-});
+}).RequireRateLimiting("login");
 
 app.Run();
