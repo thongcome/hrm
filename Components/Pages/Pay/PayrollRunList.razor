@@ -26,6 +26,7 @@
             <MudTh>วันที่จ่าย</MudTh>
             <MudTh>จำนวนพนักงาน</MudTh>
             <MudTh>ยอดสุทธิรวม</MudTh>
+            <MudTh>รายการเฉพาะกิจ</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -36,6 +37,17 @@
             <MudTd>@context.PayDate.ToString("yyyy-MM-dd")</MudTd>
             <MudTd>@_employeeCounts.GetValueOrDefault(context.Id, 0)</MudTd>
             <MudTd>@_netTotals.GetValueOrDefault(context.Id, 0m).ToString("N2")</MudTd>
+            <MudTd>
+                @{
+                    var pendingCount = _pendingAdhocCounts.GetValueOrDefault((context.CompanyId, context.PayrollPeriod), 0);
+                }
+                @if (pendingCount > 0)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">
+                        @pendingCount รายการยังไม่พร้อม
+                    </MudChip>
+                }
+            </MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => GoToDetail(context.Id))">เปิด</MudButton>
             </MudTd>
@@ -50,6 +62,7 @@
     private List<Pay_PayrollRun> _runs = new();
     private Dictionary<long, int> _employeeCounts = new();
     private Dictionary<long, decimal> _netTotals = new();
+    private Dictionary<(string CompanyId, string Period), int> _pendingAdhocCounts = new();
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -70,6 +83,16 @@
 
         _employeeCounts = grouped.ToDictionary(g => g.RunId, g => g.Count);
         _netTotals = grouped.ToDictionary(g => g.RunId, g => g.Total);
+
+        // pending/unapproved (or approved-but-not-yet-included) ad-hoc items,
+        // grouped by company+period so every run row sharing that period
+        // (including adjustment runs) shows the same warning
+        var adhocGrouped = await context.Pay_AdhocPayItems
+            .Where(a => a.Status == PayAdhocItemStatus.Pending || a.Status == PayAdhocItemStatus.Approved)
+            .GroupBy(a => new { a.Hremployee.companyid, a.TargetPeriod })
+            .Select(g => new { g.Key.companyid, g.Key.TargetPeriod, Count = g.Count() })
+            .ToListAsync();
+        _pendingAdhocCounts = adhocGrouped.ToDictionary(g => (g.companyid, g.TargetPeriod), g => g.Count);
 
         _loading = false;
     }
