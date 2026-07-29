@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260729144511_AddPayrollPeriod")]
+    partial class AddPayrollPeriod
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -156,7 +159,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("ALL_EMPLOYEE", (string)null);
+                    b.ToTable("ALL_EMPLOYEE");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetRole", b =>
@@ -182,7 +185,7 @@ namespace HRM.Migrations
                         .IsUnique()
                         .HasFilter("([NormalizedName] IS NOT NULL)");
 
-                    b.ToTable("AspNetRoles", (string)null);
+                    b.ToTable("AspNetRoles");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetRoleClaim", b =>
@@ -207,7 +210,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "RoleId" }, "IX_AspNetRoleClaims_RoleId");
 
-                    b.ToTable("AspNetRoleClaims", (string)null);
+                    b.ToTable("AspNetRoleClaims");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetUser", b =>
@@ -270,7 +273,7 @@ namespace HRM.Migrations
                         .IsUnique()
                         .HasFilter("([NormalizedUserName] IS NOT NULL)");
 
-                    b.ToTable("AspNetUsers", (string)null);
+                    b.ToTable("AspNetUsers");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetUserClaim", b =>
@@ -295,7 +298,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "UserId" }, "IX_AspNetUserClaims_UserId");
 
-                    b.ToTable("AspNetUserClaims", (string)null);
+                    b.ToTable("AspNetUserClaims");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetUserLogin", b =>
@@ -319,7 +322,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "UserId" }, "IX_AspNetUserLogins_UserId");
 
-                    b.ToTable("AspNetUserLogins", (string)null);
+                    b.ToTable("AspNetUserLogins");
                 });
 
             modelBuilder.Entity("HRM.Models.AspNetUserToken", b =>
@@ -341,7 +344,7 @@ namespace HRM.Migrations
 
                     b.HasKey("UserId", "LoginProvider", "Name");
 
-                    b.ToTable("AspNetUserTokens", (string)null);
+                    b.ToTable("AspNetUserTokens");
                 });
 
             modelBuilder.Entity("HRM.Models.CT_Contract", b =>
@@ -501,7 +504,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("ProjectCurencyID");
 
-                    b.ToTable("CT_Contract", (string)null);
+                    b.ToTable("CT_Contract");
                 });
 
             modelBuilder.Entity("HRM.Models.ConsentHistory", b =>
@@ -539,7 +542,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("ConsentHistory", (string)null);
+                    b.ToTable("ConsentHistory");
                 });
 
             modelBuilder.Entity("HRM.Models.CostCenterProcurement", b =>
@@ -590,7 +593,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("CostCenterProcurement", (string)null);
+                    b.ToTable("CostCenterProcurement");
                 });
 
             modelBuilder.Entity("HRM.Models.Currency", b =>
@@ -626,7 +629,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("Currency", (string)null);
+                    b.ToTable("Currency");
                 });
 
             modelBuilder.Entity("HRM.Models.DocCheckList", b =>
@@ -696,7 +699,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("masdocid");
 
-                    b.ToTable("DocCheckList", (string)null);
+                    b.ToTable("DocCheckList");
                 });
 
             modelBuilder.Entity("HRM.Models.DocTypeMapping", b =>
@@ -737,7 +740,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("DocTypeMapping", (string)null);
+                    b.ToTable("DocTypeMapping");
                 });
 
             modelBuilder.Entity("HRM.Models.Employee", b =>
@@ -968,7 +971,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "EmployeeID", "Companycode" }, "employeeID_CompanyCode");
 
-                    b.ToTable("employee", (string)null);
+                    b.ToTable("employee");
                 });
 
             modelBuilder.Entity("HRM.Models.Employee_datum", b =>
@@ -1020,7 +1023,7 @@ namespace HRM.Migrations
 
                     b.HasKey("Emp_key");
 
-                    b.ToTable("Employee_data", (string)null);
+                    b.ToTable("Employee_data");
                 });
 
             modelBuilder.Entity("HRM.Models.Employeetype", b =>
@@ -1059,7 +1062,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("employeetype", (string)null);
+                    b.ToTable("employeetype");
                 });
 
             modelBuilder.Entity("HRM.Models.HRPayAccum", b =>
@@ -1143,7 +1146,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRPAYACCUM", (string)null);
+                    b.ToTable("HRPAYACCUM");
                 });
 
             modelBuilder.Entity("HRM.Models.HRTaxRate", b =>
@@ -1224,7 +1227,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRTaxRate", (string)null);
+                    b.ToTable("HRTaxRate");
                 });
 
             modelBuilder.Entity("HRM.Models.HRUcfTaxRate", b =>
@@ -1312,7 +1315,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRUCFTAXRATE", (string)null);
+                    b.ToTable("HRUCFTAXRATE");
                 });
 
             modelBuilder.Entity("HRM.Models.HeadCode_V1", b =>
@@ -1329,7 +1332,7 @@ namespace HRM.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.ToTable("HeadCode_V1", (string)null);
+                    b.ToTable("HeadCode_V1");
                 });
 
             modelBuilder.Entity("HRM.Models.Holiday", b =>
@@ -1371,7 +1374,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_HOLIDAY");
 
-                    b.ToTable("Holiday", (string)null);
+                    b.ToTable("Holiday");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrbasepayrollfixed", b =>
@@ -1411,7 +1414,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRBASEPAYROLLFIXED", (string)null);
+                    b.ToTable("HRBASEPAYROLLFIXED");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrbasepayrollrequest", b =>
@@ -1515,7 +1518,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRPayrollPayByRequest", (string)null);
+                    b.ToTable("HRPayrollPayByRequest");
                 });
 
             modelBuilder.Entity("HRM.Models.Hremployee", b =>
@@ -1936,7 +1939,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("EmpNo");
 
-                    b.ToTable("HREMPLOYEE", (string)null);
+                    b.ToTable("HREMPLOYEE");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrextenuatetax", b =>
@@ -2014,7 +2017,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HREXTENUATETAX", (string)null);
+                    b.ToTable("HREXTENUATETAX");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrpayroll", b =>
@@ -2125,7 +2128,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("companyid", "EmpNo");
 
-                    b.ToTable("HRPAYROLL", (string)null);
+                    b.ToTable("HRPAYROLL");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrpayrolldet", b =>
@@ -2185,7 +2188,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("HrpayrollId");
 
-                    b.ToTable("HRPAYROLLDET", (string)null);
+                    b.ToTable("HRPAYROLLDET");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrucfsalaryitem", b =>
@@ -2225,7 +2228,7 @@ namespace HRM.Migrations
                         .IsUnique()
                         .HasFilter("[SALITEM_CODE] IS NOT NULL");
 
-                    b.ToTable("HRUCFSALARYITEM", (string)null);
+                    b.ToTable("HRUCFSALARYITEM");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrucfsecurity", b =>
@@ -2272,7 +2275,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("HRUCFSECURITY", (string)null);
+                    b.ToTable("HRUCFSECURITY");
                 });
 
             modelBuilder.Entity("HRM.Models.HrwOt", b =>
@@ -2417,7 +2420,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("companyid", "EmpNo");
 
-                    b.ToTable("HRW_OT", (string)null);
+                    b.ToTable("HRW_OT");
                 });
 
             modelBuilder.Entity("HRM.Models.J_DEPT_GROUP_V2", b =>
@@ -2472,7 +2475,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_DEPT_GROUP_V2");
 
-                    b.ToTable("J_DEPT_GROUP_V2", (string)null);
+                    b.ToTable("J_DEPT_GROUP_V2");
                 });
 
             modelBuilder.Entity("HRM.Models.J_HR_CHECK_DEPT", b =>
@@ -2534,7 +2537,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_HR_CHECK_DEPT");
 
-                    b.ToTable("J_HR_CHECK_DEPT", (string)null);
+                    b.ToTable("J_HR_CHECK_DEPT");
                 });
 
             modelBuilder.Entity("HRM.Models.JobInJob", b =>
@@ -2566,7 +2569,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("JobInJob", (string)null);
+                    b.ToTable("JobInJob");
                 });
 
             modelBuilder.Entity("HRM.Models.Job_Comment", b =>
@@ -2609,7 +2612,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("Job_Comment", (string)null);
+                    b.ToTable("Job_Comment");
                 });
 
             modelBuilder.Entity("HRM.Models.Kptempreceive", b =>
@@ -2728,7 +2731,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("KPTEMPRECEIVE", (string)null);
+                    b.ToTable("KPTEMPRECEIVE");
                 });
 
             modelBuilder.Entity("HRM.Models.Kptempreceivedet", b =>
@@ -3119,7 +3122,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("companyid", "KpslipNo");
 
-                    b.ToTable("KPTEMPRECEIVEDET", (string)null);
+                    b.ToTable("KPTEMPRECEIVEDET");
                 });
 
             modelBuilder.Entity("HRM.Models.Loa", b =>
@@ -3172,7 +3175,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_LOA");
 
-                    b.ToTable("loa", (string)null);
+                    b.ToTable("loa");
                 });
 
             modelBuilder.Entity("HRM.Models.PRRequisitionConfirm", b =>
@@ -3289,7 +3292,7 @@ namespace HRM.Migrations
                     b.Property<long>("vendorid")
                         .HasColumnType("bigint");
 
-                    b.ToTable("PRRequisitionConfirm", (string)null);
+                    b.ToTable("PRRequisitionConfirm");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_AdhocPayItem", b =>
@@ -3352,7 +3355,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayItemTypeId");
 
-                    b.ToTable("Pay_AdhocPayItem", (string)null);
+                    b.ToTable("Pay_AdhocPayItem");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_BankFileExportBatch", b =>
@@ -3395,7 +3398,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollRunId");
 
-                    b.ToTable("Pay_BankFileExportBatch", (string)null);
+                    b.ToTable("Pay_BankFileExportBatch");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_BankFileExportLine", b =>
@@ -3433,7 +3436,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollEmployeeId");
 
-                    b.ToTable("Pay_BankFileExportLine", (string)null);
+                    b.ToTable("Pay_BankFileExportLine");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_GLExportBatch", b =>
@@ -3473,7 +3476,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollRunId");
 
-                    b.ToTable("Pay_GLExportBatch", (string)null);
+                    b.ToTable("Pay_GLExportBatch");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_GLExportEntry", b =>
@@ -3510,7 +3513,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("GLExportBatchId");
 
-                    b.ToTable("Pay_GLExportEntry", (string)null);
+                    b.ToTable("Pay_GLExportEntry");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayItemType", b =>
@@ -3557,7 +3560,7 @@ namespace HRM.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Pay_PayItemType", (string)null);
+                    b.ToTable("Pay_PayItemType");
 
                     b.HasData(
                         new
@@ -3734,7 +3737,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollRunId");
 
-                    b.ToTable("Pay_PayrollAuditLog", (string)null);
+                    b.ToTable("Pay_PayrollAuditLog");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayrollEmployee", b =>
@@ -3822,7 +3825,7 @@ namespace HRM.Migrations
                     b.HasIndex("PayrollRunId", "HremployeeId")
                         .IsUnique();
 
-                    b.ToTable("Pay_PayrollEmployee", (string)null);
+                    b.ToTable("Pay_PayrollEmployee");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayrollLineItem", b =>
@@ -3868,7 +3871,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollEmployeeId");
 
-                    b.ToTable("Pay_PayrollLineItem", (string)null);
+                    b.ToTable("Pay_PayrollLineItem");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayrollPeriod", b =>
@@ -3909,7 +3912,7 @@ namespace HRM.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Pay_PayrollPeriod", (string)null);
+                    b.ToTable("Pay_PayrollPeriod");
 
                     b.HasData(
                         new
@@ -4026,7 +4029,7 @@ namespace HRM.Migrations
                     b.HasIndex("CompanyId", "PayrollPeriod", "RunType")
                         .IsUnique();
 
-                    b.ToTable("Pay_PayrollRun", (string)null);
+                    b.ToTable("Pay_PayrollRun");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_Payslip", b =>
@@ -4063,7 +4066,7 @@ namespace HRM.Migrations
                     b.HasIndex("PayrollEmployeeId")
                         .IsUnique();
 
-                    b.ToTable("Pay_Payslip", (string)null);
+                    b.ToTable("Pay_Payslip");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayslipSettings", b =>
@@ -4103,7 +4106,7 @@ namespace HRM.Migrations
                     b.HasIndex("CompanyId")
                         .IsUnique();
 
-                    b.ToTable("Pay_PayslipSettings", (string)null);
+                    b.ToTable("Pay_PayslipSettings");
 
                     b.HasData(
                         new
@@ -4145,7 +4148,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("HremployeeId");
 
-                    b.ToTable("Pay_ProvidentFundElection", (string)null);
+                    b.ToTable("Pay_ProvidentFundElection");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_TaxBracket", b =>
@@ -4176,7 +4179,7 @@ namespace HRM.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Pay_TaxBracket", (string)null);
+                    b.ToTable("Pay_TaxBracket");
 
                     b.HasData(
                         new
@@ -4299,7 +4302,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("PosRoleAssociate", (string)null);
+                    b.ToTable("PosRoleAssociate");
                 });
 
             modelBuilder.Entity("HRM.Models.app_application_list", b =>
@@ -4341,7 +4344,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("app_application_list", (string)null);
+                    b.ToTable("app_application_list");
                 });
 
             modelBuilder.Entity("HRM.Models.app_serverInfo", b =>
@@ -4412,7 +4415,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("app_serverInfo", (string)null);
+                    b.ToTable("app_serverInfo");
                 });
 
             modelBuilder.Entity("HRM.Models.approve_level", b =>
@@ -4472,7 +4475,7 @@ namespace HRM.Migrations
                     b.HasKey("approveid")
                         .HasName("PK_ApproveLevel");
 
-                    b.ToTable("approve_level", (string)null);
+                    b.ToTable("approve_level");
                 });
 
             modelBuilder.Entity("HRM.Models.approver_budget", b =>
@@ -4516,7 +4519,7 @@ namespace HRM.Migrations
                     b.HasKey("budgetid")
                         .HasName("PK_ApproverBudget");
 
-                    b.ToTable("approver_budget", (string)null);
+                    b.ToTable("approver_budget");
                 });
 
             modelBuilder.Entity("HRM.Models.asset_fa_ora", b =>
@@ -4649,7 +4652,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("asset_fa_ora", (string)null);
+                    b.ToTable("asset_fa_ora");
                 });
 
             modelBuilder.Entity("HRM.Models.asset_notice", b =>
@@ -4727,7 +4730,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("asset_notice", (string)null);
+                    b.ToTable("asset_notice");
                 });
 
             modelBuilder.Entity("HRM.Models.asset_owner", b =>
@@ -4824,7 +4827,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("asset_owner", (string)null);
+                    b.ToTable("asset_owner");
                 });
 
             modelBuilder.Entity("HRM.Models.button_link", b =>
@@ -4870,7 +4873,7 @@ namespace HRM.Migrations
                     b.HasKey("btlinkid")
                         .HasName("PK_ButtonLink");
 
-                    b.ToTable("button_link", (string)null);
+                    b.ToTable("button_link");
                 });
 
             modelBuilder.Entity("HRM.Models.com_company", b =>
@@ -4964,7 +4967,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_comp_company");
 
-                    b.ToTable("com_company", (string)null);
+                    b.ToTable("com_company");
                 });
 
             modelBuilder.Entity("HRM.Models.com_org_layer_group", b =>
@@ -5003,7 +5006,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("com_org_layer_group", (string)null);
+                    b.ToTable("com_org_layer_group");
                 });
 
             modelBuilder.Entity("HRM.Models.com_organization", b =>
@@ -5152,7 +5155,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_organization");
 
-                    b.ToTable("com_organization", (string)null);
+                    b.ToTable("com_organization");
                 });
 
             modelBuilder.Entity("HRM.Models.com_organization_hi", b =>
@@ -5303,7 +5306,7 @@ namespace HRM.Migrations
 
                     b.HasKey("idn");
 
-                    b.ToTable("com_organization_his", (string)null);
+                    b.ToTable("com_organization_his");
                 });
 
             modelBuilder.Entity("HRM.Models.com_organize_layer", b =>
@@ -5355,7 +5358,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_organize_layer");
 
-                    b.ToTable("com_organize_layer", (string)null);
+                    b.ToTable("com_organize_layer");
                 });
 
             modelBuilder.Entity("HRM.Models.com_position", b =>
@@ -5418,7 +5421,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("com_position", (string)null);
+                    b.ToTable("com_position");
                 });
 
             modelBuilder.Entity("HRM.Models.doc_center", b =>
@@ -5482,7 +5485,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("mas_doc_type_id");
 
-                    b.ToTable("doc_center", (string)null);
+                    b.ToTable("doc_center");
                 });
 
             modelBuilder.Entity("HRM.Models.emp_checkin", b =>
@@ -5589,7 +5592,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("userid");
 
-                    b.ToTable("emp_checkin", (string)null);
+                    b.ToTable("emp_checkin");
                 });
 
             modelBuilder.Entity("HRM.Models.emp_checkout", b =>
@@ -5676,7 +5679,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("emp_checkout", (string)null);
+                    b.ToTable("emp_checkout");
                 });
 
             modelBuilder.Entity("HRM.Models.emp_overtime_request", b =>
@@ -5761,7 +5764,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("emp_overtime_request", (string)null);
+                    b.ToTable("emp_overtime_request");
                 });
 
             modelBuilder.Entity("HRM.Models.error_log_file", b =>
@@ -5783,7 +5786,7 @@ namespace HRM.Migrations
                     b.HasKey("logid")
                         .HasName("PK_ErrorLogFile");
 
-                    b.ToTable("error_log_file", (string)null);
+                    b.ToTable("error_log_file");
                 });
 
             modelBuilder.Entity("HRM.Models.error_messege", b =>
@@ -5825,7 +5828,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_ErrorMessege");
 
-                    b.ToTable("error_messege", (string)null);
+                    b.ToTable("error_messege");
                 });
 
             modelBuilder.Entity("HRM.Models.his_doc", b =>
@@ -5931,7 +5934,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("doctype_id");
 
-                    b.ToTable("his_doc", (string)null);
+                    b.ToTable("his_doc");
                 });
 
             modelBuilder.Entity("HRM.Models.his_doc_bak", b =>
@@ -6002,7 +6005,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_his_doc");
 
-                    b.ToTable("his_doc_bak", (string)null);
+                    b.ToTable("his_doc_bak");
                 });
 
             modelBuilder.Entity("HRM.Models.job_loa", b =>
@@ -6043,7 +6046,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("job_loa", (string)null);
+                    b.ToTable("job_loa");
                 });
 
             modelBuilder.Entity("HRM.Models.job_master", b =>
@@ -6224,7 +6227,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("workflowid");
 
-                    b.ToTable("job_master", (string)null);
+                    b.ToTable("job_master");
                 });
 
             modelBuilder.Entity("HRM.Models.job_status", b =>
@@ -6273,7 +6276,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "jobstatuscode" }, "IX_job_status");
 
-                    b.ToTable("job_status", (string)null);
+                    b.ToTable("job_status");
                 });
 
             modelBuilder.Entity("HRM.Models.job_subworkflow_master", b =>
@@ -6351,7 +6354,7 @@ namespace HRM.Migrations
                     b.HasKey("jobsubworkflowid")
                         .HasName("PK_JobSubworkflowmaster");
 
-                    b.ToTable("job_subworkflow_master", (string)null);
+                    b.ToTable("job_subworkflow_master");
                 });
 
             modelBuilder.Entity("HRM.Models.job_user_list", b =>
@@ -6539,7 +6542,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "jobstatus" }, "IX_job_user_list");
 
-                    b.ToTable("job_user_list", (string)null);
+                    b.ToTable("job_user_list");
                 });
 
             modelBuilder.Entity("HRM.Models.loa_type", b =>
@@ -6570,7 +6573,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_LOAType");
 
-                    b.ToTable("loa_type", (string)null);
+                    b.ToTable("loa_type");
                 });
 
             modelBuilder.Entity("HRM.Models.log_system_log", b =>
@@ -6626,7 +6629,7 @@ namespace HRM.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("id"), false);
 
-                    b.ToTable("log_system_log", (string)null);
+                    b.ToTable("log_system_log");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_EmailTemplate", b =>
@@ -6677,7 +6680,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_mas_EmailTempate");
 
-                    b.ToTable("mas_EmailTemplate", (string)null);
+                    b.ToTable("mas_EmailTemplate");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_WarranteeType", b =>
@@ -6706,7 +6709,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_WarrantyType");
 
-                    b.ToTable("mas_WarranteeType", (string)null);
+                    b.ToTable("mas_WarranteeType");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_address_type", b =>
@@ -6746,7 +6749,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_mas_AddressType");
 
-                    b.ToTable("mas_address_type", (string)null);
+                    b.ToTable("mas_address_type");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_bidding_status", b =>
@@ -6781,7 +6784,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_bidding_status", (string)null);
+                    b.ToTable("mas_bidding_status");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_country", b =>
@@ -6817,7 +6820,7 @@ namespace HRM.Migrations
                     b.HasKey("countryid")
                         .HasName("PK_Country");
 
-                    b.ToTable("mas_country", (string)null);
+                    b.ToTable("mas_country");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_doc_type", b =>
@@ -6872,7 +6875,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_DPDocType");
 
-                    b.ToTable("mas_doc_type", (string)null);
+                    b.ToTable("mas_doc_type");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_province", b =>
@@ -6921,7 +6924,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("countryID");
 
-                    b.ToTable("mas_province", (string)null);
+                    b.ToTable("mas_province");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_reason", b =>
@@ -6962,7 +6965,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_reason", (string)null);
+                    b.ToTable("mas_reason");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_service", b =>
@@ -7015,7 +7018,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_service", (string)null);
+                    b.ToTable("mas_service");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_status", b =>
@@ -7050,7 +7053,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_status", (string)null);
+                    b.ToTable("mas_status");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_title", b =>
@@ -7085,7 +7088,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_title", (string)null);
+                    b.ToTable("mas_title");
                 });
 
             modelBuilder.Entity("HRM.Models.mas_unit_type", b =>
@@ -7120,7 +7123,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("mas_unit_type", (string)null);
+                    b.ToTable("mas_unit_type");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_BiddingStatus", b =>
@@ -7155,7 +7158,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_BiddingStatus", (string)null);
+                    b.ToTable("pc_BiddingStatus");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_RFQCondition", b =>
@@ -7194,7 +7197,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_RFQCondition");
 
-                    b.ToTable("pc_RFQCondition", (string)null);
+                    b.ToTable("pc_RFQCondition");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_RFQDocRequest", b =>
@@ -7263,7 +7266,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("rfqid");
 
-                    b.ToTable("pc_RFQDocRequest", (string)null);
+                    b.ToTable("pc_RFQDocRequest");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_RFQServiceSelect", b =>
@@ -7312,7 +7315,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_pc_RFQSeviceSelect");
 
-                    b.ToTable("pc_RFQServiceSelect", (string)null);
+                    b.ToTable("pc_RFQServiceSelect");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_RFQServiceVendor", b =>
@@ -7487,7 +7490,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("vendorid");
 
-                    b.ToTable("pc_RFQServiceVendor", (string)null);
+                    b.ToTable("pc_RFQServiceVendor");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_pr", b =>
@@ -7659,7 +7662,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "PRNo" }, "IX_pc_pr");
 
-                    b.ToTable("pc_pr", (string)null);
+                    b.ToTable("pc_pr");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_pr_item", b =>
@@ -7841,7 +7844,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "PRNo" }, "IX_pc_pr_item");
 
-                    b.ToTable("pc_pr_item", (string)null);
+                    b.ToTable("pc_pr_item");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_rfq", b =>
@@ -8058,7 +8061,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_rfq", (string)null);
+                    b.ToTable("pc_rfq");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_rfqItem", b =>
@@ -8178,7 +8181,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("rfqid");
 
-                    b.ToTable("pc_rfqItem", (string)null);
+                    b.ToTable("pc_rfqItem");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_rfq_doc", b =>
@@ -8237,7 +8240,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_rfq_doc", (string)null);
+                    b.ToTable("pc_rfq_doc");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_rfq_status", b =>
@@ -8272,7 +8275,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_rfq_status", (string)null);
+                    b.ToTable("pc_rfq_status");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_te", b =>
@@ -8329,7 +8332,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_PcTe");
 
-                    b.ToTable("pc_te", (string)null);
+                    b.ToTable("pc_te");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_te_item", b =>
@@ -8443,7 +8446,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("pc_te_id");
 
-                    b.ToTable("pc_te_item", (string)null);
+                    b.ToTable("pc_te_item");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vd_Clarify", b =>
@@ -8570,7 +8573,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_vd_Clarify", (string)null);
+                    b.ToTable("pc_vd_Clarify");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vd_RFQCondition", b =>
@@ -8635,7 +8638,7 @@ namespace HRM.Migrations
                     b.Property<long?>("vendorid")
                         .HasColumnType("bigint");
 
-                    b.ToTable("pc_vd_RFQCondition", (string)null);
+                    b.ToTable("pc_vd_RFQCondition");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vd_te", b =>
@@ -8704,7 +8707,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_vd_te", (string)null);
+                    b.ToTable("pc_vd_te");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vd_te_item", b =>
@@ -8820,7 +8823,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_pc_EvaluationVD");
 
-                    b.ToTable("pc_vd_te_item", (string)null);
+                    b.ToTable("pc_vd_te_item");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vendor_RFQDocRequest", b =>
@@ -8901,7 +8904,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("doctypeid");
 
-                    b.ToTable("pc_vendor_RFQDocRequest", (string)null);
+                    b.ToTable("pc_vendor_RFQDocRequest");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vendor_quotation", b =>
@@ -9032,7 +9035,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_vendor_quotation", (string)null);
+                    b.ToTable("pc_vendor_quotation");
                 });
 
             modelBuilder.Entity("HRM.Models.pc_vendor_quotation_Item", b =>
@@ -9209,7 +9212,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pc_vendor_quotation_Item", (string)null);
+                    b.ToTable("pc_vendor_quotation_Item");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_compliance", b =>
@@ -9275,7 +9278,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pdpa_compliance", (string)null);
+                    b.ToTable("pdpa_compliance");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_consent", b =>
@@ -9449,7 +9452,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pdpa_consent", (string)null);
+                    b.ToTable("pdpa_consent");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_consent_master", b =>
@@ -9587,7 +9590,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pdpa_consent_master", (string)null);
+                    b.ToTable("pdpa_consent_master");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_datamart", b =>
@@ -9634,7 +9637,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_con_datamart");
 
-                    b.ToTable("pdpa_datamart", (string)null);
+                    b.ToTable("pdpa_datamart");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_filePrivacy", b =>
@@ -9694,7 +9697,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_con_filePrivacy");
 
-                    b.ToTable("pdpa_filePrivacy", (string)null);
+                    b.ToTable("pdpa_filePrivacy");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_log_convertEndDec", b =>
@@ -9747,7 +9750,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_log_convertEndDec");
 
-                    b.ToTable("pdpa_log_convertEndDec", (string)null);
+                    b.ToTable("pdpa_log_convertEndDec");
                 });
 
             modelBuilder.Entity("HRM.Models.pdpa_objective", b =>
@@ -9813,7 +9816,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pdpa_objective", (string)null);
+                    b.ToTable("pdpa_objective");
                 });
 
             modelBuilder.Entity("HRM.Models.po_inv", b =>
@@ -9996,7 +9999,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("po_inv", (string)null);
+                    b.ToTable("po_inv");
                 });
 
             modelBuilder.Entity("HRM.Models.pos_position", b =>
@@ -10131,7 +10134,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK__positionlist__4D1564AE");
 
-                    b.ToTable("pos_position", (string)null);
+                    b.ToTable("pos_position");
                 });
 
             modelBuilder.Entity("HRM.Models.pos_position_level", b =>
@@ -10170,7 +10173,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pos_position_level", (string)null);
+                    b.ToTable("pos_position_level");
                 });
 
             modelBuilder.Entity("HRM.Models.pr_po", b =>
@@ -10311,7 +10314,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pr_po", (string)null);
+                    b.ToTable("pr_po");
                 });
 
             modelBuilder.Entity("HRM.Models.pr_service_type", b =>
@@ -10355,7 +10358,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("pr_service_type", (string)null);
+                    b.ToTable("pr_service_type");
                 });
 
             modelBuilder.Entity("HRM.Models.prefix_runnig", b =>
@@ -10401,7 +10404,7 @@ namespace HRM.Migrations
                     b.HasKey("gencodeid")
                         .HasName("PK_PreFixRunnig");
 
-                    b.ToTable("prefix_runnig", (string)null);
+                    b.ToTable("prefix_runnig");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_menu", b =>
@@ -10517,7 +10520,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("menugroupid");
 
-                    b.ToTable("sc_menu", (string)null);
+                    b.ToTable("sc_menu");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_menu_program", b =>
@@ -10555,7 +10558,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_SC_MenuProgram");
 
-                    b.ToTable("sc_menu_program", (string)null);
+                    b.ToTable("sc_menu_program");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_menugroup", b =>
@@ -10610,7 +10613,7 @@ namespace HRM.Migrations
                     b.HasIndex(new[] { "menugroupid" }, "sc_menugroup$programgroupid_UNIQUE")
                         .IsUnique();
 
-                    b.ToTable("sc_menugroup", (string)null);
+                    b.ToTable("sc_menugroup");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_program", b =>
@@ -10665,7 +10668,7 @@ namespace HRM.Migrations
                     b.HasKey("progid")
                         .HasName("PK_SC_PROGRAM");
 
-                    b.ToTable("sc_program", (string)null);
+                    b.ToTable("sc_program");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_program_group", b =>
@@ -10715,7 +10718,7 @@ namespace HRM.Migrations
                     b.HasIndex(new[] { "programgroupid" }, "sc_programgroup$programgroupid_UNIQUE")
                         .IsUnique();
 
-                    b.ToTable("sc_program_group", (string)null);
+                    b.ToTable("sc_program_group");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_role", b =>
@@ -10788,7 +10791,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("company_id");
 
-                    b.ToTable("sc_role", (string)null);
+                    b.ToTable("sc_role");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_role_menu", b =>
@@ -10837,7 +10840,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("roleid");
 
-                    b.ToTable("sc_role_menu", (string)null);
+                    b.ToTable("sc_role_menu");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_role_program", b =>
@@ -10871,7 +10874,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("roleid");
 
-                    b.ToTable("sc_role_program", (string)null);
+                    b.ToTable("sc_role_program");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_user", b =>
@@ -11118,7 +11121,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "userid", "password", "isEmployee" }, "IX_sc_user");
 
-                    b.ToTable("sc_user", (string)null);
+                    b.ToTable("sc_user");
                 });
 
             modelBuilder.Entity("HRM.Models.sc_user_role", b =>
@@ -11172,7 +11175,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("userid");
 
-                    b.ToTable("sc_user_role", (string)null);
+                    b.ToTable("sc_user_role");
                 });
 
             modelBuilder.Entity("HRM.Models.stoa", b =>
@@ -11221,7 +11224,7 @@ namespace HRM.Migrations
                     b.HasKey("stoaid")
                         .HasName("PK_STOA");
 
-                    b.ToTable("stoa", (string)null);
+                    b.ToTable("stoa");
                 });
 
             modelBuilder.Entity("HRM.Models.task_activity", b =>
@@ -11335,7 +11338,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("task_activity", (string)null);
+                    b.ToTable("task_activity");
                 });
 
             modelBuilder.Entity("HRM.Models.task_assign", b =>
@@ -11420,7 +11423,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("taskid");
 
-                    b.ToTable("task_assign", (string)null);
+                    b.ToTable("task_assign");
                 });
 
             modelBuilder.Entity("HRM.Models.task_master", b =>
@@ -11497,7 +11500,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_Task_Master");
 
-                    b.ToTable("task_master", (string)null);
+                    b.ToTable("task_master");
                 });
 
             modelBuilder.Entity("HRM.Models.time_checkin", b =>
@@ -11543,7 +11546,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("time_checkin", (string)null);
+                    b.ToTable("time_checkin");
                 });
 
             modelBuilder.Entity("HRM.Models.toa", b =>
@@ -11631,7 +11634,7 @@ namespace HRM.Migrations
                     b.HasKey("toaid")
                         .HasName("PK_TOA");
 
-                    b.ToTable("toa", (string)null);
+                    b.ToTable("toa");
                 });
 
             modelBuilder.Entity("HRM.Models.upload_center", b =>
@@ -11696,7 +11699,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("upload_center", (string)null);
+                    b.ToTable("upload_center");
                 });
 
             modelBuilder.Entity("HRM.Models.util_document", b =>
@@ -11807,7 +11810,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("doctype_id");
 
-                    b.ToTable("util_document", (string)null);
+                    b.ToTable("util_document");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_address", b =>
@@ -11888,7 +11891,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("provinceid");
 
-                    b.ToTable("vd_address", (string)null);
+                    b.ToTable("vd_address");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_certificate", b =>
@@ -11951,7 +11954,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_certificate", (string)null);
+                    b.ToTable("vd_certificate");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_contact", b =>
@@ -12024,7 +12027,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_contact", (string)null);
+                    b.ToTable("vd_contact");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_doc", b =>
@@ -12101,7 +12104,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("vendorid");
 
-                    b.ToTable("vd_doc", (string)null);
+                    b.ToTable("vd_doc");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_financial", b =>
@@ -12152,7 +12155,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_financial", (string)null);
+                    b.ToTable("vd_financial");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_general_info", b =>
@@ -12348,7 +12351,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("capitalCurrencyid");
 
-                    b.ToTable("vd_general_info", (string)null);
+                    b.ToTable("vd_general_info");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_portfolio", b =>
@@ -12426,7 +12429,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_portfolio", (string)null);
+                    b.ToTable("vd_portfolio");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_service", b =>
@@ -12574,7 +12577,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_service", (string)null);
+                    b.ToTable("vd_service");
                 });
 
             modelBuilder.Entity("HRM.Models.vd_signed", b =>
@@ -12604,7 +12607,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("vd_signed", (string)null);
+                    b.ToTable("vd_signed");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_adhoc_user", b =>
@@ -12665,7 +12668,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("userid");
 
-                    b.ToTable("wf_adhoc_user", (string)null);
+                    b.ToTable("wf_adhoc_user");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_budget", b =>
@@ -12757,7 +12760,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("subworkflowid");
 
-                    b.ToTable("wf_budget", (string)null);
+                    b.ToTable("wf_budget");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_button", b =>
@@ -12828,7 +12831,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("button_masterid");
 
-                    b.ToTable("wf_button", (string)null);
+                    b.ToTable("wf_button");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_button_master", b =>
@@ -12894,7 +12897,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("wf_button_master", (string)null);
+                    b.ToTable("wf_button_master");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_checklist", b =>
@@ -12946,7 +12949,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_WF_CheckList");
 
-                    b.ToTable("wf_checklist", (string)null);
+                    b.ToTable("wf_checklist");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_condition", b =>
@@ -13039,7 +13042,7 @@ namespace HRM.Migrations
                     b.HasKey("subworkflowid")
                         .HasName("PK_WF_Condition_1");
 
-                    b.ToTable("wf_condition", (string)null);
+                    b.ToTable("wf_condition");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_custom_role", b =>
@@ -13113,7 +13116,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("subworkflowid");
 
-                    b.ToTable("wf_custom_role", (string)null);
+                    b.ToTable("wf_custom_role");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_custom_user", b =>
@@ -13171,7 +13174,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("userid");
 
-                    b.ToTable("wf_custom_user", (string)null);
+                    b.ToTable("wf_custom_user");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_customer_approver", b =>
@@ -13221,7 +13224,7 @@ namespace HRM.Migrations
                     b.HasKey("subworkflowid")
                         .HasName("PK_WF_CustomApprover");
 
-                    b.ToTable("wf_customer_approver", (string)null);
+                    b.ToTable("wf_customer_approver");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_decision_status", b =>
@@ -13281,7 +13284,7 @@ namespace HRM.Migrations
 
                     b.HasIndex("subworkflowid");
 
-                    b.ToTable("wf_decision_status", (string)null);
+                    b.ToTable("wf_decision_status");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_emailTemplate", b =>
@@ -13338,7 +13341,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("wf_emailTemplate", (string)null);
+                    b.ToTable("wf_emailTemplate");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_employee", b =>
@@ -13460,7 +13463,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("wf_employee", (string)null);
+                    b.ToTable("wf_employee");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_loa", b =>
@@ -13538,7 +13541,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_WF_LOA");
 
-                    b.ToTable("wf_loa", (string)null);
+                    b.ToTable("wf_loa");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_loa_user", b =>
@@ -13600,7 +13603,7 @@ namespace HRM.Migrations
                     b.Property<long>("workflowid")
                         .HasColumnType("bigint");
 
-                    b.ToTable("wf_loa_user", (string)null);
+                    b.ToTable("wf_loa_user");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_mas_reason", b =>
@@ -13613,7 +13616,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("wf_mas_reason", (string)null);
+                    b.ToTable("wf_mas_reason");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_org_type", b =>
@@ -13664,7 +13667,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_wf_OrgType");
 
-                    b.ToTable("wf_org_type", (string)null);
+                    b.ToTable("wf_org_type");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_organize", b =>
@@ -13757,7 +13760,7 @@ namespace HRM.Migrations
                     b.HasKey("id")
                         .HasName("PK_WF_Organize");
 
-                    b.ToTable("wf_organize", (string)null);
+                    b.ToTable("wf_organize");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_sub_workflow_master", b =>
@@ -13961,7 +13964,7 @@ namespace HRM.Migrations
 
                     b.HasIndex(new[] { "wlevel", "workflowid" }, "IX_wf_sub_workflow_master");
 
-                    b.ToTable("wf_sub_workflow_master", (string)null);
+                    b.ToTable("wf_sub_workflow_master");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_workflow", b =>
@@ -14149,7 +14152,7 @@ namespace HRM.Migrations
                     b.HasKey("workflowid")
                         .HasName("PK__wf_workf__D00EA011B75E9C00");
 
-                    b.ToTable("wf_workflow", (string)null);
+                    b.ToTable("wf_workflow");
                 });
 
             modelBuilder.Entity("HRM.Models.wf_workflow_in_workflow", b =>
@@ -14178,7 +14181,7 @@ namespace HRM.Migrations
 
                     b.HasKey("id");
 
-                    b.ToTable("wf_workflow_in_workflow", (string)null);
+                    b.ToTable("wf_workflow_in_workflow");
                 });
 
             modelBuilder.Entity("AspNetUserRole", b =>

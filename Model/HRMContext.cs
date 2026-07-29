@@ -352,6 +352,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
+    public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -1359,6 +1360,11 @@ public partial class HRMContext : DbContext
 
         modelBuilder.Entity<Pay_PayslipSettings>().HasData(
             new Pay_PayslipSettings { Id = 1, CompanyId = "001", PasswordTemplate = "{BirthDateDDMMYYYY}", ModifiedDate = new DateTime(2026, 7, 29) }
+        );
+
+        modelBuilder.Entity<Pay_PayrollPeriod>().HasData(
+            new Pay_PayrollPeriod { Id = 1, CompanyId = "001", Year = 2026, Month = 7, TermNo = 1, Label = "ก.ค. 2569 งวดที่ 1", PeriodStart = new DateOnly(2026, 7, 1), PeriodEnd = new DateOnly(2026, 7, 31), IsActive = true },
+            new Pay_PayrollPeriod { Id = 2, CompanyId = "001", Year = 2026, Month = 8, TermNo = 1, Label = "ส.ค. 2569 งวดที่ 1", PeriodStart = new DateOnly(2026, 8, 1), PeriodEnd = new DateOnly(2026, 8, 31), IsActive = true }
         );
         // ----- end Pay_* module -----
 

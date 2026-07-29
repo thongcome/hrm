@@ -3,9 +3,15 @@
 @using HRM.Models
 @using Microsoft.EntityFrameworkCore
 @using HRM.BusinessModel;
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
 @using MudBlazor
 @using System.ComponentModel.DataAnnotations
+@attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
  
 @*   <Dashboard />     *@ 
@@ -15,62 +21,36 @@
 
         <!-- STEP 1: กำหนดงวดการจ่าย -->
         <MudStep Label="กำหนดงวดการจ่าย">
-            <EditForm Model="@formModel" OnValidSubmit="GetEmployee">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
-
+            @if (string.IsNullOrEmpty(_companyId))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+            }
+            else
+            {
                 <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">งวดที่</label>
-                        <InputNumber class="form-control" @bind-Value="formModel.TermOfPay" />
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">ประเภทพนักงาน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.EmployeeType">
-                            <option value="">-- เลือกประเภท --</option>
-                            <option value="01">พนักงานประจำ</option>
-                            <option value="02">พนักงานชั่วคราว</option>
-                        </InputSelect>
-                    </div>
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-sm-6">
-                        <label class="form-label">ปี</label>
-                        <InputText class="form-control" @bind-Value="formModel.Year" />
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label">เดือน</label>
-                        <InputSelect class="form-select" @bind-Value="formModel.Month">
-                            <option value="">-- เลือกเดือน --</option>
-                            <option value="01">มกราคม</option>
-                            <option value="02">กุมภาพันธ์</option>
-                            <option value="03">มีนาคม</option>
-                            <option value="04">เมษายน</option>
-                            <option value="05">พฤษภาคม</option>
-                            <option value="06">มิถุนายน</option>
-                            <option value="07">กรกฎาคม</option>
-                            <option value="08">สิงหาคม</option>
-                            <option value="09">กันยายน</option>
-                            <option value="10">ตุลาคม</option>
-                            <option value="11">พฤศจิกายน</option>
-                            <option value="12">ธันวาคม</option>
-                        </InputSelect>
+                    <div class="col-sm-8">
+                        <MudSelect T="long?" @bind-Value="_selectedPeriodId" Label="งวดเงินเดือน" Dense="true">
+                            @foreach (var p in _periods)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Label</MudSelectItem>
+                            }
+                        </MudSelect>
+                        @if (_periods.Count == 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error">
+                                ยังไม่มีงวดที่ตั้งค่าไว้ — ไปตั้งค่าที่ <MudLink Href="/pay/admin/periods">จัดการงวดเงินเดือน</MudLink> ก่อน
+                            </MudText>
+                        }
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <button type="submit" class="btn btn-primary" Click="GetEmployee">ตรวจสอบรายชื่อพนักงาน</button>
- 
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GetEmployee">ตรวจสอบรายชื่อพนักงาน</MudButton>
                 </div>
-            </EditForm>
+            }
+
             <div class="mb-3 d-flex gap-3 align-items-center">
                 <MudTextField @bind-Value="searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mud-width-full" />
-               @*  <MudSelect T="string" @bind-Value="selectedEmployeeType" Label="ประเภทพนักงาน" Dense="true" Class="min-width-150">
-                    <MudSelectItem Value="ALL">ทั้งหมด</MudSelectItem>
-                    <MudSelectItem Value="01">พนักงานประจำ</MudSelectItem>
-                    <MudSelectItem Value="02">พนักงานชั่วคราว</MudSelectItem>
-                </MudSelect> *@
                 <MudSelect T="string"
                            @bind-Value="selectedEmployeeType"
                            Label="ประเภทพนักงาน"
@@ -80,8 +60,6 @@
                     <MudSelectItem T="string" Value="@("01")">พนักงานประจำ</MudSelectItem>
                     <MudSelectItem T="string" Value="@("02")">พนักงานชั่วคราว</MudSelectItem>
                 </MudSelect>
-@*                 <MudButton Variant="Variant.Outlined" OnClick="() => { searchTerm = string.Empty; selectedEmployeeType = งALL"; }">รีเซ็ต</MudButton>
- *@           
                 <MudButton Variant="Variant.Outlined"
                            OnClick="ResetSearch">
                     รีเซ็ต
@@ -94,14 +72,138 @@
                     <MudTh SortBy="@(new Func<Hremployee, object>(x => x.EmpName))">ชื่อ</MudTh>
                     <MudTh SortBy="@(new Func<Hremployee, object>(x => x.SalaryAmt))">เงินเดือน</MudTh>
                     <MudTh SortBy="@(new Func<Hremployee, object>(x => x.EmpStatus))">สถานะ</MudTh>
+                    <MudTh>การดำเนินการ</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.EmpNo</MudTd>
                     <MudTd>@context.EmpName</MudTd>
                     <MudTd>@context.SalaryAmt?.ToString("N2")</MudTd>
                     <MudTd>@context.EmpStatus</MudTd>
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenView(context))">ดู</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenEdit(context))">แก้ไข</MudButton>
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
+
+            @if (_viewEmployee is not null)
+            {
+                <MudPaper Class="pa-4 mt-4" Outlined="true">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h6">เงินหักเงินได้ปัจจุบัน — @_viewEmployee.EmpNo @_viewEmployee.EmpName @_viewEmployee.EmpSurname</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _viewEmployee = null)" />
+                    </MudStack>
+                    <MudText Typo="Typo.body2" Class="mt-2">เงินเดือนพื้นฐาน: @_viewEmployee.SalaryAmt?.ToString("N2")</MudText>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">รายการเงินได้/เงินหักประจำ (Fixed Items)</MudText>
+                    <MudSimpleTable Dense="true">
+                        <thead>
+                            <tr><th>รายการ</th><th>จำนวนเงิน</th></tr>
+                        </thead>
+                        <tbody>
+                            @if (_viewFixedItems.Count == 0)
+                            {
+                                <tr><td colspan="2"><MudText Typo="Typo.caption">ไม่มีรายการประจำ</MudText></td></tr>
+                            }
+                            @foreach (var item in _viewFixedItems)
+                            {
+                                <tr>
+                                    <td>@item.description (@item.SalitemCode)</td>
+                                    <td>@(((item.SignFlag ?? 1) * (item.ItemAmt ?? 0)).ToString("N2"))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">รายการลดหย่อนภาษี</MudText>
+                    @if (_viewTaxDeduct is null)
+                    {
+                        <MudText Typo="Typo.caption">ไม่มีข้อมูลลดหย่อนภาษี</MudText>
+                    }
+                    else
+                    {
+                        <MudSimpleTable Dense="true">
+                            <tbody>
+                                <tr><td>ค่าเดินทาง</td><td>@_viewTaxDeduct.PayTravel?.ToString("N2")</td></tr>
+                                <tr><td>บุตร</td><td>@_viewTaxDeduct.PayChild?.ToString("N2")</td></tr>
+                                <tr><td>บิดามารดา</td><td>@_viewTaxDeduct.PayParent?.ToString("N2")</td></tr>
+                                <tr><td>ดอกเบี้ย</td><td>@_viewTaxDeduct.PayIntaddr?.ToString("N2")</td></tr>
+                                <tr><td>คู่สมรส</td><td>@_viewTaxDeduct.PayMate?.ToString("N2")</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudPaper>
+            }
+
+            @if (_editEmployee is not null)
+            {
+                <MudPaper Class="pa-4 mt-4" Outlined="true">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h6">ขอปรับปรุงรายการ — @_editEmployee.EmpNo @_editEmployee.EmpName @_editEmployee.EmpSurname</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _editEmployee = null)" />
+                    </MudStack>
+                    <MudText Typo="Typo.body2" Class="mt-1">
+                        การแก้ไขจะถูกบันทึกเป็นคำขอรออนุมัติ ไม่มีผลกับข้อมูลจริงจนกว่าจะได้รับการอนุมัติด้านล่าง
+                    </MudText>
+
+                    <MudGrid Class="mt-2">
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="string" @bind-Value="_editModel.SalitemCode" Label="รายการ">
+                                @foreach (var si in _salaryItemChoices)
+                                {
+                                    <MudSelectItem T="string" Value="@si.SalitemCode">@si.SalitemDesc (@si.SalitemCode)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField @bind-Value="_editModel.ItemAmt" Label="จำนวนเงิน" Format="N2" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudTextField @bind-Value="_editModel.ReasonPay" Label="เหตุผล" />
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (!string.IsNullOrEmpty(_editError))
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-2">@_editError</MudAlert>
+                    }
+
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitEditRequestAsync">ส่งอนุมัติ</MudButton>
+                </MudPaper>
+            }
+
+            <MudExpansionPanels Class="mt-4">
+                <MudExpansionPanel Text="@($"คำขอปรับปรุงที่รออนุมัติ ({_pendingRequests.Count})")">
+                    @if (_pendingRequests.Count == 0)
+                    {
+                        <MudText Typo="Typo.caption">ไม่มีคำขอที่รออนุมัติ</MudText>
+                    }
+                    else
+                    {
+                        <MudTable Items="_pendingRequests" Dense="true" Hover="true">
+                            <HeaderContent>
+                                <MudTh>รหัสพนักงาน</MudTh>
+                                <MudTh>รายการ</MudTh>
+                                <MudTh>จำนวนเงิน</MudTh>
+                                <MudTh>เหตุผล</MudTh>
+                                <MudTh>งวด</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.EmpNo</MudTd>
+                                <MudTd>@context.description (@context.SalitemCode)</MudTd>
+                                <MudTd>@context.ItemAmt?.ToString("N2")</MudTd>
+                                <MudTd>@context.ReasonPay</MudTd>
+                                <MudTd>@context.PeriodAttend</MudTd>
+                                <MudTd>
+                                    <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Text" OnClick="@(() => ApproveRequestAsync(context))">อนุมัติ</MudButton>
+                                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RejectRequestAsync(context))">ปฏิเสธ</MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
         </MudStep>
 
         <!-- STEP 2: ประมวลผล -->
@@ -174,6 +276,184 @@
     private HRMContext context = default!;
     private FormModel formModel = new FormModel();
     private MudForm _form = new();
+
+    // Company scoping + period master data (Pay_PayrollPeriod) — replaces the
+    // old free-text Year/Month/TermOfPay entry. formModel.Year/Month are still
+    // populated from the selected period below because Step 2/3 calculation
+    // logic further down this file reads them directly and is out of scope
+    // for this change.
+    private string? _companyId;
+    private List<Pay_PayrollPeriod> _periods = new();
+    private long? _selectedPeriodId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _periods = await ctx.Pay_PayrollPeriods
+            .Where(p => p.CompanyId == _companyId && p.IsActive)
+            .OrderByDescending(p => p.Year).ThenByDescending(p => p.Month).ThenBy(p => p.TermNo)
+            .ToListAsync();
+
+        _selectedPeriodId = _periods.FirstOrDefault()?.Id;
+
+        _salaryItemChoices = await ctx.hrucfsalaryitems
+            .Where(s => s.companyid == _companyId)
+            .OrderBy(s => s.SalitemCode)
+            .ToListAsync();
+
+        await LoadPendingRequestsAsync();
+    }
+
+    // ----- View / Edit (pending-approval) / Approve for a single employee's
+    // pay items — reuses the existing but previously-unused Hrbasepayrollrequest
+    // table instead of mutating Hremployee/Hrbasepayrollfixed directly. -----
+
+    private Hremployee? _viewEmployee;
+    private List<HRBaseSalaryFixWithSignModel> _viewFixedItems = new();
+    private Hrextenuatetax? _viewTaxDeduct;
+
+    private Hremployee? _editEmployee;
+    private List<Hrucfsalaryitem> _salaryItemChoices = new();
+    private string? _editError;
+    private List<Hrbasepayrollrequest> _pendingRequests = new();
+
+    private class EditRequestModel
+    {
+        public string? SalitemCode { get; set; }
+        public decimal ItemAmt { get; set; }
+        public string ReasonPay { get; set; } = "";
+    }
+
+    private EditRequestModel _editModel = new();
+
+    private async Task OpenView(Hremployee emp)
+    {
+        _editEmployee = null;
+        _viewEmployee = emp;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+
+        _viewFixedItems = await (
+            from payroll in ctx.hrbasepayrollfixeds
+            join salaryItem in ctx.hrucfsalaryitems
+                on payroll.SalitemCode equals salaryItem.SalitemCode into salaryGroup
+            from salaryItem in salaryGroup.DefaultIfEmpty()
+            where payroll.companyid == emp.companyid && payroll.EmpNo == emp.EmpNo
+            select new HRBaseSalaryFixWithSignModel
+            {
+                companyid = payroll.companyid,
+                EmpNo = payroll.EmpNo,
+                SeqNo = payroll.SeqNo,
+                SalitemCode = payroll.SalitemCode,
+                ItemAmt = payroll.ItemAmt,
+                SignFlag = salaryItem.SalitemCode != null ? salaryItem.SignFlag : null,
+                description = salaryItem.SalitemCode != null ? (salaryItem.SalitemDesc ?? "") : "",
+            }
+        ).ToListAsync();
+
+        _viewTaxDeduct = await ctx.Hrextenuatetaxs.FirstOrDefaultAsync(t => t.EmpNo == emp.EmpNo);
+    }
+
+    private void OpenEdit(Hremployee emp)
+    {
+        _viewEmployee = null;
+        _editEmployee = emp;
+        _editError = null;
+        _editModel = new EditRequestModel { SalitemCode = _salaryItemChoices.FirstOrDefault()?.SalitemCode };
+    }
+
+    private async Task SubmitEditRequestAsync()
+    {
+        _editError = null;
+
+        if (_editEmployee is null || string.IsNullOrWhiteSpace(_companyId)) return;
+
+        var selectedPeriod = _periods.FirstOrDefault(p => p.Id == _selectedPeriodId);
+        if (selectedPeriod is null)
+        {
+            _editError = "กรุณาเลือกงวดเงินเดือนก่อน";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_editModel.SalitemCode) || string.IsNullOrWhiteSpace(_editModel.ReasonPay))
+        {
+            _editError = "กรุณาเลือกรายการและระบุเหตุผล";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actor = state.User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
+        var chosenItem = _salaryItemChoices.FirstOrDefault(s => s.SalitemCode == _editModel.SalitemCode);
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        ctx.Hrbasepayrollrequests.Add(new Hrbasepayrollrequest
+        {
+            CompCode = _companyId,
+            EmpNo = _editEmployee.EmpNo,
+            SeqNo = 0,
+            SalitemCode = _editModel.SalitemCode,
+            ItemAmt = _editModel.ItemAmt,
+            ReasonPay = _editModel.ReasonPay,
+            PeriodAttend = $"{selectedPeriod.Year}{selectedPeriod.Month:D2}",
+            IsApproved = null,
+            SignFlag = chosenItem?.SignFlag,
+            description = chosenItem?.SalitemDesc,
+            MODIFIED_BY = actor,
+            MODIFIED_DATE = DateTime.Now,
+        });
+        await ctx.SaveChangesAsync();
+
+        Snackbar.Add("ส่งคำขอปรับปรุงเรียบร้อย รออนุมัติ", Severity.Success);
+        _editEmployee = null;
+        await LoadPendingRequestsAsync();
+    }
+
+    private async Task LoadPendingRequestsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _pendingRequests = await ctx.Hrbasepayrollrequests
+            .Where(r => r.CompCode == _companyId && r.IsApproved == null)
+            .OrderByDescending(r => r.MODIFIED_DATE)
+            .ToListAsync();
+    }
+
+    private async Task ApproveRequestAsync(Hrbasepayrollrequest request)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var existing = await ctx.Hrbasepayrollrequests.FirstOrDefaultAsync(r => r.id == request.id && r.CompCode == _companyId);
+        if (existing is null || existing.IsApproved != null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        existing.IsApproved = true;
+        existing.ApproveBy = state.User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
+        existing.ApproveDate = DateTime.Now;
+        await ctx.SaveChangesAsync();
+
+        Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
+        await LoadPendingRequestsAsync();
+    }
+
+    private async Task RejectRequestAsync(Hrbasepayrollrequest request)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var existing = await ctx.Hrbasepayrollrequests.FirstOrDefaultAsync(r => r.id == request.id && r.CompCode == _companyId);
+        if (existing is null || existing.IsApproved != null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        existing.IsApproved = false;
+        existing.ApproveBy = state.User.FindFirstValue(ClaimTypes.Name) ?? "unknown";
+        existing.ApproveDate = DateTime.Now;
+        await ctx.SaveChangesAsync();
+
+        Snackbar.Add("ปฏิเสธคำขอแล้ว", Severity.Warning);
+        await LoadPendingRequestsAsync();
+    }
 
 
     private List<Hremployee> hrEmployeeList = new();
@@ -1249,11 +1529,29 @@
 
     private async Task GetEmployee()
     {
-        await using var context = DbFactory.CreateDbContext();
         hrEmployeeList = new();
-        hrEmployeeList = await context.Hremployee.Where(e => e.EmpStatus == 1).ToListAsync();
-      //  hrEmployeeList = await context.Hremployee.ToListAsync();
 
+        if (string.IsNullOrWhiteSpace(_companyId) || _selectedPeriodId is null) return;
+
+        var selectedPeriod = _periods.FirstOrDefault(p => p.Id == _selectedPeriodId);
+        if (selectedPeriod is null) return;
+
+        // Keep formModel.Year/Month/TermOfPay populated from the selected
+        // period — Step 2/3 below (CalculatePayroll/CalculateTax) still read
+        // these fields directly and are intentionally left untouched.
+        formModel.Year = selectedPeriod.Year.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        formModel.Month = selectedPeriod.Month.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+        formModel.TermOfPay = selectedPeriod.TermNo;
+
+        var periodStartDt = selectedPeriod.PeriodStart.ToDateTime(TimeOnly.MinValue);
+        var periodEndDt = selectedPeriod.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
+
+        await using var context = DbFactory.CreateDbContext();
+        hrEmployeeList = await context.Hremployee
+            .Where(e => e.companyid == _companyId
+                && e.WorkDate != null && e.WorkDate <= periodEndDt
+                && (e.ResignDate == null || e.ResignDate >= periodStartDt))
+            .ToListAsync();
     }
 
 

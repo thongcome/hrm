@@ -1,0 +1,203 @@
+@page "/pay/admin/periods"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>จัดการงวดเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">จัดการงวดเงินเดือน (Payroll Period)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        งวดที่กำหนดไว้ที่นี่จะปรากฏเป็นตัวเลือกในหน้า "ตรวจสอบรายชื่อพนักงาน" (/payrollprocess) แทนการกรอกปี/เดือน/งวดเอง
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+    }
+    else
+    {
+        <MudDivider Class="my-4" />
+
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_newModel.Year" Label="ปี (ค.ศ.)" Min="2020" Max="2100" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_newModel.Month" Label="เดือน">
+                    @for (var m = 1; m <= 12; m++)
+                    {
+                        var month = m;
+                        <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_newModel.TermNo" Label="งวดที่" Min="1" Max="9" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_newPeriodStart" Label="วันที่เริ่มงวด" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_newPeriodEnd" Label="วันที่สิ้นสุดงวด" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_newModel.Label" Label="ชื่อแสดงผล (Label)"
+                    HelperText="ปล่อยว่างไว้เพื่อให้ระบบตั้งชื่อให้อัตโนมัติจากปี/เดือน/งวด" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="AddPeriodAsync">เพิ่มงวด</MudButton>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_periods" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ปี</MudTh>
+                <MudTh>เดือน</MudTh>
+                <MudTh>งวดที่</MudTh>
+                <MudTh>ชื่อแสดงผล</MudTh>
+                <MudTh>ช่วงวันที่</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Year</MudTd>
+                <MudTd>@ThaiMonthName(context.Month)</MudTd>
+                <MudTd>@context.TermNo</MudTd>
+                <MudTd>@context.Label</MudTd>
+                <MudTd>@context.PeriodStart.ToString("dd/MM/yyyy") - @context.PeriodEnd.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pay_PayrollPeriod> _periods = new();
+    private string? _error;
+    private DateTime? _newPeriodStart;
+    private DateTime? _newPeriodEnd;
+
+    private class NewPeriodModel
+    {
+        public int Year { get; set; } = DateTime.Today.Year;
+        public int Month { get; set; } = DateTime.Today.Month;
+        public int TermNo { get; set; } = 1;
+        public string? Label { get; set; }
+    }
+
+    private NewPeriodModel _newModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+
+        _newPeriodStart = new DateTime(_newModel.Year, _newModel.Month, 1);
+        _newPeriodEnd = _newPeriodStart.Value.AddMonths(1).AddDays(-1);
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Pay_PayrollPeriods
+            .Where(p => p.CompanyId == _companyId)
+            .OrderByDescending(p => p.Year).ThenByDescending(p => p.Month).ThenBy(p => p.TermNo)
+            .ToListAsync();
+    }
+
+    private async Task AddPeriodAsync()
+    {
+        _error = null;
+
+        if (_newPeriodStart is null || _newPeriodEnd is null || _newPeriodEnd < _newPeriodStart)
+        {
+            _error = "กรุณาระบุช่วงวันที่ของงวดให้ถูกต้อง";
+            return;
+        }
+
+        var periodStart = DateOnly.FromDateTime(_newPeriodStart.Value);
+        var periodEnd = DateOnly.FromDateTime(_newPeriodEnd.Value);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Pay_PayrollPeriods.AnyAsync(p =>
+            p.CompanyId == _companyId && p.Year == _newModel.Year && p.Month == _newModel.Month && p.TermNo == _newModel.TermNo);
+        if (duplicate)
+        {
+            _error = $"มีงวดปี {_newModel.Year} เดือน {ThaiMonthName(_newModel.Month)} งวดที่ {_newModel.TermNo} อยู่แล้ว";
+            return;
+        }
+
+        var label = string.IsNullOrWhiteSpace(_newModel.Label)
+            ? $"{ThaiMonthName(_newModel.Month)} {_newModel.Year + 543} งวดที่ {_newModel.TermNo}"
+            : _newModel.Label;
+
+        context.Pay_PayrollPeriods.Add(new Pay_PayrollPeriod
+        {
+            CompanyId = _companyId!,
+            Year = _newModel.Year,
+            Month = _newModel.Month,
+            TermNo = _newModel.TermNo,
+            Label = label,
+            PeriodStart = periodStart,
+            PeriodEnd = periodEnd,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มงวดเรียบร้อย", Severity.Success);
+        _newModel = new NewPeriodModel();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Pay_PayrollPeriod period)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayrollPeriods.FirstOrDefaultAsync(p => p.Id == period.Id && p.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private static string ThaiMonthName(int month) => month switch
+    {
+        1 => "มกราคม",
+        2 => "กุมภาพันธ์",
+        3 => "มีนาคม",
+        4 => "เมษายน",
+        5 => "พฤษภาคม",
+        6 => "มิถุนายน",
+        7 => "กรกฎาคม",
+        8 => "สิงหาคม",
+        9 => "กันยายน",
+        10 => "ตุลาคม",
+        11 => "พฤศจิกายน",
+        12 => "ธันวาคม",
+        _ => month.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+}
