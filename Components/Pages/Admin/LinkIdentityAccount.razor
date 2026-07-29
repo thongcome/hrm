@@ -1,0 +1,138 @@
+@page "/admin/link-identity-account"
+@using HRM.Data
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+<PageTitle>ผูกบัญชี Microsoft Identity กับ sc_user</PageTitle>
+
+<MudPaper Class="pa-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ผูกบัญชี Microsoft Identity กับ sc_user</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        สร้างบัญชี Identity (สำหรับล็อกอินผ่านหน้า /Account/Login) แล้วผูกกับผู้ใช้ sc_user ที่มีอยู่แล้ว
+        ผ่าน <code>userid</code> — สิทธิ์ (บทบาท/เมนู) จะดึงจาก sc_user เดิมโดยอัตโนมัติทุกครั้งที่ล็อกอิน
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudAutocomplete T="sc_user" Label="ผู้ใช้ sc_user ที่จะผูก" @bind-Value="_selectedScUser"
+        SearchFunc="SearchScUsersAsync"
+        ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
+        Required="true" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+
+    @if (_selectedScUser is not null)
+    {
+        @if (_existingLinkUserName is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                ผู้ใช้นี้ผูกกับบัญชี Identity อยู่แล้ว: <b>@_existingLinkUserName</b>
+            </MudAlert>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_email" Label="อีเมล/ชื่อผู้ใช้สำหรับล็อกอิน" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_password" Label="รหัสผ่านเริ่มต้น" InputType="InputType.Password" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_confirmPassword" Label="ยืนยันรหัสผ่าน" InputType="InputType.Password" Required="true" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="CreateLinkAsync">
+                สร้างบัญชีและผูก
+            </MudButton>
+        }
+    }
+</MudPaper>
+
+@code {
+    private sc_user? _selectedScUser;
+    private string? _existingLinkUserName;
+    private string _email = "";
+    private string _password = "";
+    private string _confirmPassword = "";
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync() => await CheckExistingLinkAsync();
+
+    private async Task<IEnumerable<sc_user>> SearchScUsersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.sc_users.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(u => u.loginname.Contains(search)
+                || u.firstname.Contains(search)
+                || u.lastname.Contains(search));
+        }
+        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private async Task CheckExistingLinkAsync()
+    {
+        _existingLinkUserName = null;
+        _error = null;
+        if (_selectedScUser is null) return;
+
+        var existing = UserManager.Users.FirstOrDefault(u => u.userid == _selectedScUser.userid);
+        _existingLinkUserName = existing?.UserName;
+
+        _email = _selectedScUser.email ?? "";
+    }
+
+    private async Task CreateLinkAsync()
+    {
+        _error = null;
+        if (_selectedScUser is not null
+            && UserManager.Users.Any(u => u.userid == _selectedScUser.userid))
+        {
+            _existingLinkUserName = UserManager.Users.First(u => u.userid == _selectedScUser.userid).UserName;
+            return;
+        }
+
+        if (_selectedScUser is null || string.IsNullOrWhiteSpace(_email)
+            || string.IsNullOrWhiteSpace(_password) || _password != _confirmPassword)
+        {
+            _error = "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน และรหัสผ่านต้องตรงกัน";
+            return;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = _email,
+            Email = _email,
+            EmailConfirmed = true,
+            FirstName = _selectedScUser.firstname,
+            LastName = _selectedScUser.lastname,
+            userid = _selectedScUser.userid,
+        };
+
+        var result = await UserManager.CreateAsync(user, _password);
+        if (!result.Succeeded)
+        {
+            _error = string.Join(", ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        Snackbar.Add($"สร้างบัญชี Identity และผูกกับ {_selectedScUser.loginname} เรียบร้อย", Severity.Success);
+        _selectedScUser = null;
+        _email = "";
+        _password = "";
+        _confirmPassword = "";
+    }
+}

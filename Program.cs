@@ -63,7 +63,11 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
-    .AddDefaultTokenProviders();
+    .AddDefaultTokenProviders()
+    // Bridges Identity sign-in to SC_* roles/menus via ApplicationUser.userid
+    // -> sc_user.userid — see ScUserClaimsPrincipalFactory for why this
+    // doesn't touch ClaimTypes.NameIdentifier.
+    .AddClaimsPrincipalFactory<HRM.Services.Login.ScUserClaimsPrincipalFactory>();
 
 
 builder.Services.AddRazorPages();  // ���������ҹ Razor Pages
@@ -215,6 +219,19 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+
+// Standard Blazor Web App pipeline order: auth middleware must run BEFORE
+// UseAntiforgery, since antiforgery token validation for authenticated form
+// posts (e.g. Identity's Login/Register pages) depends on the user
+// principal already being established. A previous fix attempt here
+// (see the removed "remark becuase solved antifogery mismath" comment)
+// worked around a symptom of this by disabling auth entirely instead of
+// fixing the order — that broke [Authorize] everywhere, so it was
+// re-enabled again below the antiforgery call, which is what caused
+// "A valid antiforgery token was not provided" on /Account/Login.
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
@@ -222,14 +239,6 @@ app.MapRazorComponents<App>()
 
 // Add additional endpoints required by the Identity /Account Razor components.
 app.MapAdditionalIdentityEndpoints();
-
-// remark becuase solved antifogery mismath
-//app.UseAuthentication();
-//app.UseAuthorization();
-
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseRateLimiter();
 
 
 //app.UseRouting();
