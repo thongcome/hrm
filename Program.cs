@@ -13,6 +13,7 @@ using HRM.Model;
 using HRM.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using HRM.Interface;
@@ -102,7 +103,22 @@ builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
-builder.Services.AddAuthorizationCore();
+
+// Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
+// resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
+// both login paths already attach — see MenuAuthorization.cs. FallbackPolicy
+// denies anonymous access to any endpoint that forgot to declare an
+// [Authorize] attribute at all (the class of bug found on
+// /admin/link-identity-account, which HAD [Authorize] but no role/menu
+// check — this is the safety net for the "no attribute at all" case).
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, HRM.Services.Login.MenuPolicyProvider>();
+builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.MenuAuthorizationHandler>();
+builder.Services.AddAuthorizationCore(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 builder.Services.AddScoped<MenuStateService>();// �红�����ʶҹ�����
 
@@ -271,7 +287,9 @@ app.MapPost("/login-handler", async (
     var returnUrl = form["returnUrl"].ToString();
 
     await using var context = await dbFactory.CreateDbContextAsync();
-    var user = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == username);
+    var user = await context.sc_users
+        .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_menus).ThenInclude(rm => rm.menu)
+        .FirstOrDefaultAsync(u => u.loginname == username);
 
     if (user is not null && !user.isdisable && !user.iscancel && user.isActivate)
     {
@@ -296,6 +314,32 @@ app.MapPost("/login-handler", async (
                     new("username", user.loginname),
                     new("company_id", user.company_id.ToString()),
                 };
+
+                // Role/menu claims — CustomAuthStateProvider.SignInAsync built
+                // this exact same shape but is never actually called from
+                // anywhere; this endpoint replaced its call site during an
+                // earlier fix without carrying the logic over, so every
+                // /login-handler session has been missing Role/menu claims
+                // ever since. Found while wiring up the new Menu-based
+                // [Authorize(Policy="Menu:...")] pages, whose FallbackPolicy
+                // would otherwise lock out every real HR login.
+                foreach (var ur in user.sc_user_roles.Where(r => r.isactive))
+                {
+                    if (!string.IsNullOrWhiteSpace(ur.role?.name))
+                        claims.Add(new Claim(ClaimTypes.Role, ur.role!.name));
+                }
+                var menus = user.sc_user_roles
+                    .Where(ur => ur.isactive)
+                    .SelectMany(ur => ur.role?.sc_role_menus ?? new List<sc_role_menu>())
+                    .Where(rm => rm.isactive && rm.menu != null && rm.menu.isactive)
+                    .Select(rm => rm.menu!)
+                    .Distinct();
+                foreach (var menu in menus)
+                {
+                    if (!string.IsNullOrWhiteSpace(menu.menucode))
+                        claims.Add(new Claim("menu", menu.menucode!));
+                }
+
                 // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
                 // ("Cookies") — confirmed via a throwaway /whoami diagnostic to be
                 // the scheme HttpContext.User/Blazor's plain [Authorize] actually
