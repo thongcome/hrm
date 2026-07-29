@@ -351,6 +351,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_GLExportBatch> Pay_GLExportBatches { get; set; }
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
+    public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -1355,6 +1356,10 @@ public partial class HRMContext : DbContext
                 .HasForeignKey(d => d.ConsumedByPayrollRunId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        modelBuilder.Entity<Pay_PayslipSettings>().HasData(
+            new Pay_PayslipSettings { Id = 1, CompanyId = "001", PasswordTemplate = "{BirthDateDDMMYYYY}", ModifiedDate = new DateTime(2026, 7, 29) }
+        );
         // ----- end Pay_* module -----
 
         OnModelCreatingPartial(modelBuilder);

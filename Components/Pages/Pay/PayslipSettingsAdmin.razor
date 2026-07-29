@@ -1,0 +1,149 @@
+@page "/pay/admin/payslip-settings"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+<PageTitle>ตั้งค่ารหัสผ่านสลิปเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ตั้งค่ารหัสผ่านสลิปเงินเดือน (PDF)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รหัสผ่านจะถูกคำนวณจากข้อมูลพนักงานตามรูปแบบนี้ทุกครั้งที่สร้าง/เปิดสลิป — ระบบไม่เก็บรหัสผ่านไว้ที่ไหนเลย
+    </MudText>
+
+    @if (_settings is null)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else
+    {
+        <MudDivider Class="my-4" />
+
+        <MudSelect T="string" Value="_selectedPreset" ValueChanged="OnPresetChanged" Label="รูปแบบสำเร็จรูป">
+            <MudSelectItem Value="@("{BirthDateDDMMYYYY}")">วันเกิด แบบ วว/ดด/ปปปป (ค.ศ.) เช่น 15031990</MudSelectItem>
+            <MudSelectItem Value="@("{BirthDateDDMMYY}")">วันเกิด แบบ วว/ดด/ปป เช่น 150390</MudSelectItem>
+            <MudSelectItem Value="@("{IdCardLast4}")">เลขบัตรประชาชน 4 ตัวท้าย</MudSelectItem>
+            <MudSelectItem Value="@("{EmpNo}{BirthDateDDMMYY}")">กำหนดเอง (แก้ไขด้านล่าง)</MudSelectItem>
+        </MudSelect>
+
+        <MudTextField @bind-Value="_settings.PasswordTemplate" Label="รูปแบบรหัสผ่าน (template)" Class="mt-4"
+            HelperText="โทเค็นที่ใช้ได้: {BirthDateDDMMYYYY} {BirthDateDDMMYY} {IdCardLast4} {EmpNo} — ผสมกันได้ เช่น {EmpNo}{BirthDateDDMMYY}" />
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+
+        <MudDivider Class="my-5" />
+
+        <MudText Typo="Typo.h6" Class="mb-2">ทดสอบดูตัวอย่าง</MudText>
+        <MudAutocomplete T="Hremployee" Label="เลือกพนักงานเพื่อดูตัวอย่างรหัสผ่าน" @bind-Value="_previewEmployee"
+            SearchFunc="SearchEmployeesAsync"
+            ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+
+        @if (_previewEmployee is not null)
+        {
+            var result = PayslipPasswordService.Resolve(_previewEmployee, _settings.PasswordTemplate);
+            @if (result.Success)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">
+                    รหัสผ่านสำหรับ @_previewEmployee.EmpNo — @_previewEmployee.EmpName: <b class="mono">@result.Password</b>
+                </MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">@result.ErrorReason</MudAlert>
+            }
+        }
+    }
+</MudPaper>
+
+<style>
+    .mono { font-family: ui-monospace, Consolas, monospace; }
+</style>
+
+@code {
+    private Pay_PayslipSettings? _settings;
+    private Hremployee? _previewEmployee;
+    private string _selectedPreset = "{BirthDateDDMMYYYY}";
+    private string? _error;
+    private const string CompanyId = "001";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == CompanyId);
+        if (_settings is null)
+        {
+            _settings = new Pay_PayslipSettings { CompanyId = CompanyId, PasswordTemplate = "{BirthDateDDMMYYYY}" };
+            context.Pay_PayslipSettings.Add(_settings);
+            await context.SaveChangesAsync();
+        }
+        _selectedPreset = PayslipPasswordService.SupportedTokens.Contains(_settings.PasswordTemplate)
+            ? _settings.PasswordTemplate
+            : "{EmpNo}{BirthDateDDMMYY}";
+    }
+
+    private void OnPresetChanged(string value)
+    {
+        _selectedPreset = value;
+        if (_settings is not null && value != "{EmpNo}{BirthDateDDMMYY}")
+            _settings.PasswordTemplate = value;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_settings is null || string.IsNullOrWhiteSpace(_settings.PasswordTemplate))
+        {
+            _error = "กรุณากำหนดรูปแบบรหัสผ่าน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == CompanyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.PasswordTemplate = _settings.PasswordTemplate;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+}
