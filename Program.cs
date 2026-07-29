@@ -1,6 +1,7 @@
 using HRM.Components;
 using HRM.Components.Account;
 using HRM.Data;
+using HRM.Endpoints;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
@@ -23,6 +24,8 @@ using HRM.Services.Pay.Calculators;
 using System.Security.Claims;
 
 
+
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -164,6 +167,10 @@ builder.Services.AddScoped<OvertimeEarningsCalculator>();
 builder.Services.AddScoped<LoanDeductionCalculator>();
 builder.Services.AddScoped<HRM.Services.Pay.PayrollCalculationService>();
 builder.Services.AddScoped<PayrollWorkflowService>();
+builder.Services.AddSingleton<PrivateFileStorage>();
+builder.Services.AddScoped<PayslipGenerationService>();
+builder.Services.AddScoped<BankFileExportService>();
+builder.Services.AddScoped<GLExportService>();
 // ----- end Pay_* module -----
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -263,6 +270,7 @@ app.MapAdditionalIdentityEndpoints();
 //app.UseRouting();
 
 app.MapRazorPages();  // �Դ��ҹ��鹷ҧ Razor Pages �ͧ Identity
+app.MapPayrollFileEndpoints();
 
 // Plain (non-Blazor-circuit) sign-in endpoint. Login.razor used to call
 // HttpContext.SignInAsync directly from an interactive Blazor Server

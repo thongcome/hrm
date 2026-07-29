@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260729092111_AddPayslipCompanyName")]
+    partial class AddPayslipCompanyName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3566,7 +3569,6 @@ namespace HRM.Migrations
                             Category = 0,
                             Code = "BASE",
                             DefaultSignFlag = 1,
-                            GLAccountCode = "5000-SALARY",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Base Salary",
@@ -3579,7 +3581,6 @@ namespace HRM.Migrations
                             Category = 0,
                             Code = "OT",
                             DefaultSignFlag = 1,
-                            GLAccountCode = "5010-OT",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Overtime",
@@ -3592,7 +3593,6 @@ namespace HRM.Migrations
                             Category = 0,
                             Code = "ALLOWANCE",
                             DefaultSignFlag = 1,
-                            GLAccountCode = "5020-ALLOWANCE",
                             IsActive = true,
                             IsSystemReserved = false,
                             NameEn = "Allowance",
@@ -3605,7 +3605,6 @@ namespace HRM.Migrations
                             Category = 1,
                             Code = "SSO",
                             DefaultSignFlag = -1,
-                            GLAccountCode = "2200-SSO-PAYABLE",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Social Security",
@@ -3618,7 +3617,6 @@ namespace HRM.Migrations
                             Category = 1,
                             Code = "PF",
                             DefaultSignFlag = -1,
-                            GLAccountCode = "2210-PF-PAYABLE",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Provident Fund (Employee)",
@@ -3631,7 +3629,6 @@ namespace HRM.Migrations
                             Category = 1,
                             Code = "TAX",
                             DefaultSignFlag = -1,
-                            GLAccountCode = "2220-WHT-PAYABLE",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Withholding Tax",
@@ -3644,7 +3641,6 @@ namespace HRM.Migrations
                             Category = 1,
                             Code = "LOAN",
                             DefaultSignFlag = -1,
-                            GLAccountCode = "1300-LOAN-RECEIVABLE",
                             IsActive = true,
                             IsSystemReserved = true,
                             NameEn = "Loan Deduction",
@@ -3657,7 +3653,6 @@ namespace HRM.Migrations
                             Category = 2,
                             Code = "ADJUST",
                             DefaultSignFlag = 1,
-                            GLAccountCode = "5090-ADJUSTMENT",
                             IsActive = true,
                             IsSystemReserved = false,
                             NameEn = "Special Adjustment",
@@ -3670,7 +3665,6 @@ namespace HRM.Migrations
                             Category = 0,
                             Code = "BONUS",
                             DefaultSignFlag = 1,
-                            GLAccountCode = "5030-BONUS",
                             IsActive = true,
                             IsSystemReserved = false,
                             NameEn = "Bonus / Commission (ad-hoc)",
@@ -3683,7 +3677,6 @@ namespace HRM.Migrations
                             Category = 1,
                             Code = "ADHOC_DEDUCT",
                             DefaultSignFlag = -1,
-                            GLAccountCode = "2230-ADHOC-DEDUCT-PAYABLE",
                             IsActive = true,
                             IsSystemReserved = false,
                             NameEn = "Ad-hoc Deduction",

@@ -12,6 +12,9 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
+@inject PayslipGenerationService PayslipGenerationService
+@inject BankFileExportService BankFileExportService
+@inject GLExportService GLExportService
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>รอบเงินเดือน #@RunId</PageTitle>
@@ -67,7 +70,34 @@ else
             {
                 <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">สร้างรอบปรับปรุง</MudButton>
             }
+            @if (_canGenerateDocuments)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GeneratePayslipsAsync" Disabled="_busy">สร้างสลิปทั้งหมด</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateBankFileAsync" Disabled="_busy">สร้างไฟล์ธนาคาร</MudButton>
+            }
+            @if (_canGenerateGL)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateGLExportAsync" Disabled="_busy">สร้างไฟล์บัญชี (GL)</MudButton>
+            }
         </MudStack>
+
+        @if (_payslipSummary is not null)
+        {
+            <MudAlert Severity="@(_payslipSummary.SkippedReasons.Count > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
+                สร้างสลิปสำเร็จ @_payslipSummary.Generated คน
+                @if (_payslipSummary.SkippedReasons.Count > 0)
+                {
+                    <div>ข้าม @_payslipSummary.SkippedReasons.Count คน:
+                        <ul class="mb-0">
+                            @foreach (var reason in _payslipSummary.SkippedReasons)
+                            {
+                                <li>@reason</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </MudAlert>
+        }
 
         @if (_negativeCount > 0)
         {
@@ -110,6 +140,7 @@ else
                 <MudTh>รายรับรวม</MudTh>
                 <MudTh>รายหักรวม</MudTh>
                 <MudTh>สุทธิ</MudTh>
+                <MudTh>สลิป</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -132,6 +163,12 @@ else
                     }
                 </MudTd>
                 <MudTd>
+                    @if (_payslipIdByEmployeeId.TryGetValue(context.Employee.Id, out var payslipId))
+                    {
+                        <MudLink Href="@($"/pay/files/payslip/{payslipId}")" Target="_blank">ดาวน์โหลด</MudLink>
+                    }
+                </MudTd>
+                <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}/employee/{context.Employee.Id}"))">
                         รายละเอียด
                     </MudButton>
@@ -142,6 +179,48 @@ else
             </NoRecordsContent>
         </MudTable>
     </MudPaper>
+
+    @if (_bankFileBatches.Count > 0)
+    {
+        <MudPaper Class="pa-4 mt-4">
+            <MudText Typo="Typo.h6" Class="mb-2">ไฟล์ธนาคารที่สร้างแล้ว</MudText>
+            <MudTable Items="_bankFileBatches" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>วันที่สร้าง</MudTh>
+                    <MudTh>จำนวนรายการ</MudTh>
+                    <MudTh>ยอดรวม</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@context.TotalRecordCount</MudTd>
+                    <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
+                    <MudTd><MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank">ดาวน์โหลด</MudLink></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+
+    @if (_glExportBatches.Count > 0)
+    {
+        <MudPaper Class="pa-4 mt-4">
+            <MudText Typo="Typo.h6" Class="mb-2">ไฟล์บัญชี (GL) ที่สร้างแล้ว</MudText>
+            <MudTable Items="_glExportBatches" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>วันที่สร้าง</MudTh>
+                    <MudTh>Debit รวม</MudTh>
+                    <MudTh>Credit รวม</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@context.TotalDebit.ToString("N2")</MudTd>
+                    <MudTd>@context.TotalCredit.ToString("N2")</MudTd>
+                    <MudTd><MudLink Href="@($"/pay/files/gl-export/{context.Id}")" Target="_blank">ดาวน์โหลด</MudLink></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
 }
 
 @code {
@@ -153,6 +232,12 @@ else
     private int _negativeCount;
     private int _pendingAdhocCount;
     private int _unconsumedApprovedAdhocCount;
+    private bool _canGenerateDocuments;
+    private bool _canGenerateGL;
+    private PayslipGenerationResult? _payslipSummary;
+    private Dictionary<long, long> _payslipIdByEmployeeId = new();
+    private List<Pay_BankFileExportBatch> _bankFileBatches = new();
+    private List<Pay_GLExportBatch> _glExportBatches = new();
 
     private record EmployeeRow(Pay_PayrollEmployee Employee);
     private List<EmployeeRow> _employees = new();
@@ -184,6 +269,22 @@ else
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
                 && a.Hremployee.companyid == _run.CompanyId
                 && a.Status == PayAdhocItemStatus.Approved);
+
+        _canGenerateDocuments = _run.Status >= PayrollRunStatus.Approved && _run.Status != PayrollRunStatus.Cancelled;
+        _canGenerateGL = _run.Status >= PayrollRunStatus.Posted && _run.Status != PayrollRunStatus.Cancelled;
+
+        _payslipIdByEmployeeId = await context.Pay_Payslips
+            .Where(p => employees.Select(e => e.Id).Contains(p.PayrollEmployeeId))
+            .ToDictionaryAsync(p => p.PayrollEmployeeId, p => p.Id);
+
+        _bankFileBatches = await context.Pay_BankFileExportBatches
+            .Where(b => b.PayrollRunId == RunId)
+            .OrderByDescending(b => b.GeneratedDate)
+            .ToListAsync();
+        _glExportBatches = await context.Pay_GLExportBatches
+            .Where(b => b.PayrollRunId == RunId)
+            .OrderByDescending(b => b.GeneratedDate)
+            .ToListAsync();
     }
 
     private async Task<long> GetCurrentUserIdAsync()
@@ -266,6 +367,33 @@ else
             _busy = false;
         }
     }
+
+    private async Task GeneratePayslipsAsync()
+    {
+        _busy = true;
+        try
+        {
+            _payslipSummary = await PayslipGenerationService.GenerateAsync(RunId);
+            await LoadAsync();
+            Snackbar.Add($"สร้างสลิปสำเร็จ {_payslipSummary.Generated} คน", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task GenerateBankFileAsync() => RunActionAsync(
+        async uid => await BankFileExportService.ExportAsync(RunId, uid),
+        "สร้างไฟล์ธนาคารเรียบร้อย");
+
+    private Task GenerateGLExportAsync() => RunActionAsync(
+        async uid => await GLExportService.ExportAsync(RunId, uid),
+        "สร้างไฟล์บัญชี (GL) เรียบร้อย");
 
     private static Color StatusColor(PayrollRunStatus status) => status switch
     {

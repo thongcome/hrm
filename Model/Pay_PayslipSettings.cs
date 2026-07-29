@@ -23,6 +23,16 @@ public class Pay_PayslipSettings
     [Required, StringLength(200)]
     public string PasswordTemplate { get; set; } = "{BirthDateDDMMYYYY}";
 
+    // Shown on the payslip PDF header. Hremployee.companyid/Pay_PayrollRun.CompanyId
+    // ("001"-style codes) and com_company.code ("AD"-style codes) are two
+    // unrelated identifier spaces with no reliable join between them (same
+    // issue flagged in the OWASP A01 review) — rather than bridging that,
+    // the display name just lives here against the CompanyId Pay_* already uses.
+    [StringLength(250)]
+    public string? CompanyName { get; set; }
+    [StringLength(250)]
+    public string? CompanyNameEn { get; set; }
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }
