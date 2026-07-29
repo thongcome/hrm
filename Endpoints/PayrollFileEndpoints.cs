@@ -66,5 +66,26 @@ public static class PayrollFileEndpoints
             var bytes = await storage.ReadAsync(batch.FilePath);
             return Results.File(bytes, "text/csv", $"gl_{batchId}.csv");
         });
+
+        // Separate group: employee documents are managed under Menu:PAY_ADMIN
+        // (PayrollEmployeeAdmin.razor), not Menu:PAY_RUNS like the group above.
+        var employeeDocGroup = app.MapGroup("/pay/files").RequireAuthorization("Menu:PAY_ADMIN");
+
+        employeeDocGroup.MapGet("/employee-doc/{docId:long}", async (
+            long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var doc = await context.Pay_EmployeeDocuments
+                .Include(d => d.Hremployee)
+                .FirstOrDefaultAsync(d => d.Id == docId);
+            if (doc is null) return Results.NotFound();
+
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (doc.Hremployee.companyid != companyId)
+                return Results.Forbid();
+
+            var bytes = await storage.ReadAsync(doc.StoragePath);
+            return Results.File(bytes, "application/octet-stream", doc.FileName);
+        });
     }
 }

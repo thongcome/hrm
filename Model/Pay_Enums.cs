@@ -62,3 +62,13 @@ public enum PayAdhocItemStatus
     Cancelled = 3,
     Consumed = 4
 }
+
+public enum Pay_EmployeeDocumentType
+{
+    IdCard = 0,
+    Contract = 1,
+    EducationCertificate = 2,
+    ResignationLetter = 3,
+    BankBook = 4,
+    Other = 9
+}

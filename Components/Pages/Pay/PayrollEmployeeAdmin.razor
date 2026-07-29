@@ -1,0 +1,470 @@
+@page "/pay/employees"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject PrivateFileStorage FileStorage
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>จัดการพนักงาน (Payroll)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">จัดการพนักงาน (สำหรับงาน Payroll)</MudText>
+        @if (!string.IsNullOrEmpty(_companyId))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate">+ เพิ่มพนักงาน</MudButton>
+        }
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        หน้านี้จัดการเฉพาะข้อมูลพื้นฐานที่ใช้จริงในงาน Payroll (ไม่ใช่ระบบบุคคลากรเต็มรูปแบบ) — ข้อมูลอื่นๆ เช่นที่อยู่/ผู้ติดต่อฉุกเฉิน แก้ไขผ่านหน้า Employee เดิม
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudTextField @bind-Value="_searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start"
+        AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-4 mud-width-full" />
+
+    <MudTable Items="@_employees" Dense="true" Hover="true" Elevation="0" Filter="EmpFilter" Class="mt-3">
+        <HeaderContent>
+            <MudTh>รหัสพนักงาน</MudTh>
+            <MudTh>ชื่อ-นามสกุล</MudTh>
+            <MudTh>แผนก/ตำแหน่ง</MudTh>
+            <MudTh>เงินเดือน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>การดำเนินการ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@context.EmpName @context.EmpSurname</MudTd>
+            <MudTd>@context.DeptgrpCode / @context.PosCode</MudTd>
+            <MudTd>@context.SalaryAmt?.ToString("N2")</MudTd>
+            <MudTd>
+                @if (context.ResignDate is not null)
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ลาออกแล้ว (@context.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenEdit(context))">แก้ไข</MudButton>
+                @if (context.ResignDate is null)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => OpenResign(context))">ลงวันที่ลาออก</MudButton>
+                }
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenDocsAsync(context))">เอกสาร</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (_formEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">@(_isCreating ? "เพิ่มพนักงานใหม่" : $"แก้ไขพนักงาน — {_formEmployee.EmpNo}")</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _formEmployee = null)" />
+            </MudStack>
+
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.EmpNo" Label="รหัสพนักงาน" ReadOnly="!_isCreating" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudTextField @bind-Value="_formEmployee.PrenameCode" Label="คำนำหน้า" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_formEmployee.EmpName" Label="ชื่อ" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_formEmployee.EmpSurname" Label="นามสกุล" Required="true" />
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_formEmployee.EmptypeCode" Label="ประเภทพนักงาน">
+                        <MudSelectItem T="string" Value="@("01")">พนักงานประจำ</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("02")">พนักงานชั่วคราว</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.DeptgrpCode" Label="แผนก" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.PosCode" Label="ตำแหน่ง" />
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_workDate" Label="วันเริ่มงาน" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_birthDate" Label="วันเกิด" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.IdCard" Label="เลขบัตรประชาชน" />
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_formEmployee.SalaryAmt" Label="เงินเดือน" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.SalexpBank" Label="รหัสธนาคาร" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.SalexpBranch" Label="รหัสสาขา" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployee.SalexpAccid" Label="เลขบัญชี" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_formError</MudAlert>
+            }
+
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">บันทึก</MudButton>
+        </MudPaper>
+    }
+
+    @if (_resignEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">ลงวันที่ลาออก — @_resignEmployee.EmpNo @_resignEmployee.EmpName @_resignEmployee.EmpSurname</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _resignEmployee = null)" />
+            </MudStack>
+            <MudDatePicker @bind-Date="_resignDate" Label="วันที่ลาออก" Class="mt-2" />
+            @if (!string.IsNullOrEmpty(_resignError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_resignError</MudAlert>
+            }
+            <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="ConfirmResignAsync">ยืนยันลงวันที่ลาออก</MudButton>
+        </MudPaper>
+    }
+
+    @if (_docsEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">เอกสาร — @_docsEmployee.EmpNo @_docsEmployee.EmpName @_docsEmployee.EmpSurname</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _docsEmployee = null)" />
+            </MudStack>
+
+            <MudSimpleTable Dense="true" Class="mt-2">
+                <thead>
+                    <tr><th>ประเภท</th><th>ชื่อไฟล์</th><th>วันที่อัปโหลด</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @if (_docs.Count == 0)
+                    {
+                        <tr><td colspan="4"><MudText Typo="Typo.caption">ยังไม่มีเอกสารแนบ</MudText></td></tr>
+                    }
+                    @foreach (var doc in _docs)
+                    {
+                        <tr>
+                            <td>@DocTypeLabel(doc.DocumentType)</td>
+                            <td>@doc.FileName</td>
+                            <td>@doc.UploadedDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><MudLink Href="@($"/pay/files/employee-doc/{doc.Id}")" Target="_blank">ดาวน์โหลด</MudLink></td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="Pay_EmployeeDocumentType" @bind-Value="_uploadDocType" Label="ประเภทเอกสาร">
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.IdCard">บัตรประชาชน</MudSelectItem>
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Contract">สัญญาจ้าง</MudSelectItem>
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.EducationCertificate">วุฒิการศึกษา</MudSelectItem>
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ResignationLetter">ใบลาออก</MudSelectItem>
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.BankBook">สมุดบัญชีธนาคาร</MudSelectItem>
+                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Other">อื่นๆ</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
+                                @(_uploadFile?.Name ?? "เลือกไฟล์")
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UploadDocAsync" Disabled="_uploadFile is null">อัปโหลด</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_docError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_docError</MudAlert>
+            }
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Hremployee> _employees = new();
+    private string _searchTerm = string.Empty;
+
+    private Hremployee? _formEmployee;
+    private bool _isCreating;
+    private string? _formError;
+    private DateTime? _workDate;
+    private DateTime? _birthDate;
+
+    private Hremployee? _resignEmployee;
+    private DateTime? _resignDate = DateTime.Today;
+    private string? _resignError;
+
+    private Hremployee? _docsEmployee;
+    private List<Pay_EmployeeDocument> _docs = new();
+    private Pay_EmployeeDocumentType _uploadDocType = Pay_EmployeeDocumentType.Other;
+    private IBrowserFile? _uploadFile;
+    private string? _docError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employees = await context.Hremployee
+            .Where(e => e.companyid == _companyId)
+            .OrderBy(e => e.EmpNo)
+            .ToListAsync();
+    }
+
+    private bool EmpFilter(Hremployee emp)
+    {
+        if (string.IsNullOrWhiteSpace(_searchTerm)) return true;
+        var q = _searchTerm.Trim().ToLowerInvariant();
+        return (!string.IsNullOrWhiteSpace(emp.EmpNo) && emp.EmpNo.ToLowerInvariant().Contains(q))
+            || (!string.IsNullOrWhiteSpace(emp.EmpName) && emp.EmpName.ToLowerInvariant().Contains(q))
+            || (!string.IsNullOrWhiteSpace(emp.EmpSurname) && emp.EmpSurname.ToLowerInvariant().Contains(q));
+    }
+
+    private void OpenCreate()
+    {
+        _resignEmployee = null;
+        _docsEmployee = null;
+        _isCreating = true;
+        _formError = null;
+        _workDate = DateTime.Today;
+        _birthDate = null;
+        _formEmployee = new Hremployee { companyid = _companyId!, EmptypeCode = "01" };
+    }
+
+    private void OpenEdit(Hremployee emp)
+    {
+        _resignEmployee = null;
+        _docsEmployee = null;
+        _isCreating = false;
+        _formError = null;
+        _workDate = emp.WorkDate;
+        _birthDate = emp.BirthDate;
+        // work on a copy so cancelling doesn't leave the grid row mutated
+        _formEmployee = new Hremployee
+        {
+            id = emp.id,
+            companyid = emp.companyid,
+            EmpNo = emp.EmpNo,
+            PrenameCode = emp.PrenameCode,
+            EmpName = emp.EmpName,
+            EmpSurname = emp.EmpSurname,
+            EmptypeCode = emp.EmptypeCode,
+            DeptgrpCode = emp.DeptgrpCode,
+            PosCode = emp.PosCode,
+            IdCard = emp.IdCard,
+            SalaryAmt = emp.SalaryAmt,
+            SalexpBank = emp.SalexpBank,
+            SalexpBranch = emp.SalexpBranch,
+            SalexpAccid = emp.SalexpAccid,
+        };
+    }
+
+    private async Task SaveEmployeeAsync()
+    {
+        _formError = null;
+
+        if (_formEmployee is null || string.IsNullOrWhiteSpace(_formEmployee.EmpNo)
+            || string.IsNullOrWhiteSpace(_formEmployee.EmpName) || string.IsNullOrWhiteSpace(_formEmployee.EmpSurname))
+        {
+            _formError = "กรุณากรอกรหัสพนักงาน ชื่อ และนามสกุล";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_isCreating)
+        {
+            var duplicate = await context.Hremployee.AnyAsync(e => e.companyid == _companyId && e.EmpNo == _formEmployee.EmpNo);
+            if (duplicate)
+            {
+                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในบริษัทนี้";
+                return;
+            }
+
+            _formEmployee.WorkDate = _workDate;
+            _formEmployee.BirthDate = _birthDate;
+            context.Hremployee.Add(_formEmployee);
+        }
+        else
+        {
+            var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _formEmployee.id && e.companyid == _companyId);
+            if (existing is null)
+            {
+                _formError = "ไม่พบข้อมูลพนักงาน";
+                return;
+            }
+
+            existing.PrenameCode = _formEmployee.PrenameCode;
+            existing.EmpName = _formEmployee.EmpName;
+            existing.EmpSurname = _formEmployee.EmpSurname;
+            existing.EmptypeCode = _formEmployee.EmptypeCode;
+            existing.DeptgrpCode = _formEmployee.DeptgrpCode;
+            existing.PosCode = _formEmployee.PosCode;
+            existing.IdCard = _formEmployee.IdCard;
+            existing.SalaryAmt = _formEmployee.SalaryAmt;
+            existing.SalexpBank = _formEmployee.SalexpBank;
+            existing.SalexpBranch = _formEmployee.SalexpBranch;
+            existing.SalexpAccid = _formEmployee.SalexpAccid;
+            existing.WorkDate = _workDate;
+            existing.BirthDate = _birthDate;
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_isCreating ? "เพิ่มพนักงานเรียบร้อย" : "บันทึกข้อมูลเรียบร้อย", Severity.Success);
+        _formEmployee = null;
+        await LoadAsync();
+    }
+
+    private void OpenResign(Hremployee emp)
+    {
+        _formEmployee = null;
+        _docsEmployee = null;
+        _resignError = null;
+        _resignDate = DateTime.Today;
+        _resignEmployee = emp;
+    }
+
+    private async Task ConfirmResignAsync()
+    {
+        _resignError = null;
+
+        if (_resignEmployee is null || _resignDate is null)
+        {
+            _resignError = "กรุณาระบุวันที่ลาออก";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _resignEmployee.id && e.companyid == _companyId);
+        if (existing is null)
+        {
+            _resignError = "ไม่พบข้อมูลพนักงาน";
+            return;
+        }
+
+        existing.ResignDate = _resignDate;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกวันที่ลาออกเรียบร้อย", Severity.Success);
+        _resignEmployee = null;
+        await LoadAsync();
+    }
+
+    private async Task OpenDocsAsync(Hremployee emp)
+    {
+        _formEmployee = null;
+        _resignEmployee = null;
+        _docError = null;
+        _uploadFile = null;
+        _docsEmployee = emp;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _docs = await context.Pay_EmployeeDocuments
+            .Where(d => d.HremployeeId == emp.id)
+            .OrderByDescending(d => d.UploadedDate)
+            .ToListAsync();
+    }
+
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _uploadFile = file;
+    }
+
+    private async Task UploadDocAsync()
+    {
+        _docError = null;
+
+        if (_docsEmployee is null || _uploadFile is null) return;
+
+        const long maxSize = 10 * 1024 * 1024; // 10 MB
+        if (_uploadFile.Size > maxSize)
+        {
+            _docError = "ไฟล์ใหญ่เกินไป (จำกัด 10 MB)";
+            return;
+        }
+
+        await using var stream = _uploadFile.OpenReadStream(maxSize);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        var storedFileName = $"{_docsEmployee.EmpNo}_{DateTime.Now:yyyyMMddHHmmss}_{_uploadFile.Name}";
+        var (relativePath, sha256) = await FileStorage.SaveAsync("employee-docs", storedFileName, bytes);
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Pay_EmployeeDocuments.Add(new Pay_EmployeeDocument
+        {
+            HremployeeId = _docsEmployee.id,
+            DocumentType = _uploadDocType,
+            FileName = _uploadFile.Name,
+            StoragePath = relativePath,
+            Sha256 = sha256,
+            UploadedByUserId = userId,
+            UploadedDate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("อัปโหลดเอกสารเรียบร้อย", Severity.Success);
+        _uploadFile = null;
+        await OpenDocsAsync(_docsEmployee);
+    }
+
+    private static string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
+    {
+        Pay_EmployeeDocumentType.IdCard => "บัตรประชาชน",
+        Pay_EmployeeDocumentType.Contract => "สัญญาจ้าง",
+        Pay_EmployeeDocumentType.EducationCertificate => "วุฒิการศึกษา",
+        Pay_EmployeeDocumentType.ResignationLetter => "ใบลาออก",
+        Pay_EmployeeDocumentType.BankBook => "สมุดบัญชีธนาคาร",
+        _ => "อื่นๆ",
+    };
+}
