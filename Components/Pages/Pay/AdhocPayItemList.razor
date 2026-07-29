@@ -52,7 +52,7 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_form.TargetPeriod" Label="งวดที่จ่าย/หัก (YYYYMM เช่น 202608)" Required="true" MaxLength="6" />
+                <MudDatePicker @bind-Date="_form.TargetMonth" Label="งวดที่จ่าย/หัก (เดือน/ปี)" Required="true" />
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudNumericField @bind-Value="_form.Amount" Label="จำนวนเงิน" Required="true" />
@@ -122,7 +122,7 @@
     {
         public Hremployee? SelectedEmployee { get; set; }
         public int PayItemTypeId { get; set; }
-        public string TargetPeriod { get; set; } = "";
+        public DateTime? TargetMonth { get; set; } = DateTime.Today;
         public decimal Amount { get; set; }
         public bool IsTaxable { get; set; } = true;
         public string Reason { get; set; } = "";
@@ -171,12 +171,17 @@
     private async Task SubmitAsync()
     {
         _error = null;
-        if (_form.SelectedEmployee is null || string.IsNullOrWhiteSpace(_form.TargetPeriod)
+        if (_form.SelectedEmployee is null || _form.TargetMonth is null
             || string.IsNullOrWhiteSpace(_form.Reason) || _form.Amount <= 0 || _form.PayItemTypeId == 0)
         {
             _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
             return;
         }
+
+        // InvariantCulture: the server's ambient culture is Thai, whose default
+        // calendar formats "yyyy" as the Buddhist year (e.g. 2569, not 2026) —
+        // TargetPeriod must stay Gregorian to match Pay_PayrollRun.PayrollPeriod.
+        var targetPeriod = _form.TargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
@@ -185,7 +190,7 @@
         {
             HremployeeId = _form.SelectedEmployee.id,
             PayItemTypeId = _form.PayItemTypeId,
-            TargetPeriod = _form.TargetPeriod,
+            TargetPeriod = targetPeriod,
             Amount = _form.Amount,
             IsTaxable = _form.IsTaxable,
             Reason = _form.Reason,
