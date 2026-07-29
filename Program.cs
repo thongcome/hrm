@@ -106,19 +106,22 @@ builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>
 
 // Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
 // resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
-// both login paths already attach — see MenuAuthorization.cs. FallbackPolicy
-// denies anonymous access to any endpoint that forgot to declare an
-// [Authorize] attribute at all (the class of bug found on
-// /admin/link-identity-account, which HAD [Authorize] but no role/menu
-// check — this is the safety net for the "no attribute at all" case).
+// both login paths already attach — see MenuAuthorization.cs.
+//
+// Deliberately NOT setting a global FallbackPolicy here: this is a large,
+// long-lived app with many pre-existing pages (Home, Login, Register, the
+// Identity Account flow, /login-handler, /logout, ...) that are
+// intentionally public and have no [Authorize] at all. A blanket
+// RequireAuthenticatedUser() fallback was tried and immediately broke
+// login itself — SignOutAsync -> redirect to "/" -> Home now demanded
+// auth -> redirect to /login -> /login now demanded auth too -> infinite
+// ReturnUrl-nesting loop. Enumerating every legitimately-public route in
+// an app this size to exempt them all safely is its own separate task;
+// for now new protected pages must explicitly opt in via
+// [Authorize(Policy = "Menu:XXX")] like the ones already converted.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, HRM.Services.Login.MenuPolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.MenuAuthorizationHandler>();
-builder.Services.AddAuthorizationCore(options =>
-{
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
-});
+builder.Services.AddAuthorizationCore();
 
 builder.Services.AddScoped<MenuStateService>();// �红�����ʶҹ�����
 
@@ -351,7 +354,7 @@ app.MapPost("/login-handler", async (
 
                 await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
-                return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/sc_users" : returnUrl);
+                return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
             }
 
             user.invalidpwcount = (user.invalidpwcount ?? 0) + 1;
@@ -365,5 +368,17 @@ app.MapPost("/login-handler", async (
         errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
     return Results.LocalRedirect(errorRedirect);
 }).RequireRateLimiting("login");
+
+// /logout was previously just a dead NavLink — there was no endpoint behind
+// it at all, so clicking it did nothing and the session stayed valid until
+// its natural 60-minute expiry. Signs out of both schemes since a user may
+// be signed in under either "Cookies" (/login-handler) or Identity.Application
+// (/Account/Login), depending on which path they used.
+app.MapGet("/logout", async (HttpContext httpContext) =>
+{
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    await httpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+    return Results.LocalRedirect("/");
+});
 
 app.Run();
