@@ -53,3 +53,12 @@ public enum BankFileExportStatus
     Downloaded = 1,
     ConfirmedSent = 2
 }
+
+public enum PayAdhocItemStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2,
+    Cancelled = 3,
+    Consumed = 4
+}

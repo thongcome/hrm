@@ -56,6 +56,12 @@ public class PayrollCalculationService
         {
             context.Pay_PayrollLineItems.RemoveRange(
                 context.Pay_PayrollLineItems.Where(li => existingEmployeeIds.Contains(li.PayrollEmployeeId)));
+            // Pay_PayrollAuditLog.PayrollEmployeeId is a Restrict FK (deliberately, to
+            // avoid SQL Server's "multiple cascade paths" error against the direct
+            // Run->AuditLog cascade) — it must be cleared explicitly before the
+            // employee rows can be deleted, or this throws a DbUpdateException.
+            context.Pay_PayrollAuditLogs.RemoveRange(
+                context.Pay_PayrollAuditLogs.Where(a => a.PayrollEmployeeId != null && existingEmployeeIds.Contains(a.PayrollEmployeeId.Value)));
             context.Pay_PayrollEmployees.RemoveRange(
                 context.Pay_PayrollEmployees.Where(e => e.PayrollRunId == payrollRunId));
             await context.SaveChangesAsync(ct);
@@ -143,13 +149,50 @@ public class PayrollCalculationService
                     lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, loanAmount, -1, ++seq, "KPTEMPRECEIVEDET", null));
             }
 
+            // HR-entered ad-hoc items (bonus, commission, ad-hoc deduction, etc.)
+            // approved and targeting this exact period. Query includes items
+            // already consumed by THIS run so recalculation re-picks them up
+            // idempotently rather than losing them.
+            var adhocItems = await context.Pay_AdhocPayItems
+                .Include(a => a.Pay_PayItemType)
+                .Where(a => a.HremployeeId == emp.id
+                            && a.TargetPeriod == run.PayrollPeriod
+                            && (a.Status == PayAdhocItemStatus.Approved
+                                || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
+                .ToListAsync(ct);
+
+            var adhocTaxableEarnings = 0m;
+            var adhocNonTaxableEarnings = 0m;
+            var adhocDeductions = 0m;
+            foreach (var adhoc in adhocItems)
+            {
+                var signFlag = adhoc.Pay_PayItemType.DefaultSignFlag;
+                lineItems.Add(NewLine(adhoc.Pay_PayItemType, PayLineSourceType.Adjustment, adhoc.Amount, signFlag, ++seq, "Pay_AdhocPayItem", adhoc.Id));
+
+                if (signFlag > 0)
+                {
+                    if (adhoc.IsTaxable) adhocTaxableEarnings += adhoc.Amount;
+                    else adhocNonTaxableEarnings += adhoc.Amount;
+                }
+                else
+                {
+                    adhocDeductions += adhoc.Amount;
+                }
+
+                adhoc.Status = PayAdhocItemStatus.Consumed;
+                adhoc.ConsumedByPayrollRunId = run.Id;
+            }
+
+            grossEarnings += adhocTaxableEarnings + adhocNonTaxableEarnings;
+            var taxableGrossThisPeriod = baseSalary + otAmount + adhocTaxableEarnings;
+
             var (ytdIncome, ytdDeduction, ytdTax) = await GetYtdAccumulatorsAsync(context, emp.id, run, ct);
             var (monthlyTax, annualCalc) = TaxBracketCalculator.CalculateMonthlyWithholding(
-                ytdIncome, grossEarnings, ytdDeduction, 0m, remainingPeriods, ytdTax, taxBrackets);
+                ytdIncome, taxableGrossThisPeriod, ytdDeduction, 0m, remainingPeriods, ytdTax, taxBrackets);
             if (monthlyTax != 0)
                 lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null));
 
-            var totalDeductions = ssoAmount + pf.EmployeeAmount + loanAmount + monthlyTax;
+            var totalDeductions = ssoAmount + pf.EmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
             var netPayResult = NetPayGuardService.Ensure(grossEarnings - totalDeductions);
 
             payEmp.GrossEarnings = grossEarnings;

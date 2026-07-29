@@ -391,5 +391,7 @@ public partial class Hremployee
 
     public virtual ICollection<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; } = new List<Pay_ProvidentFundElection>();
 
+    public virtual ICollection<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; } = new List<Pay_AdhocPayItem>();
+
     public virtual ICollection<HrwOt> HrwOts { get; set; } = new List<HrwOt>();
 }

@@ -350,6 +350,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_BankFileExportLine> Pay_BankFileExportLines { get; set; }
     public virtual DbSet<Pay_GLExportBatch> Pay_GLExportBatches { get; set; }
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
+    public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -1314,7 +1315,9 @@ public partial class HRMContext : DbContext
             new Pay_PayItemType { Id = 5, Code = "PF", NameTh = "กองทุนสำรองเลี้ยงชีพ (พนักงาน)", NameEn = "Provident Fund (Employee)", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 5 },
             new Pay_PayItemType { Id = 6, Code = "TAX", NameTh = "ภาษีหัก ณ ที่จ่าย", NameEn = "Withholding Tax", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 6 },
             new Pay_PayItemType { Id = 7, Code = "LOAN", NameTh = "หักเงินกู้", NameEn = "Loan Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 7 },
-            new Pay_PayItemType { Id = 8, Code = "ADJUST", NameTh = "ปรับปรุงพิเศษ", NameEn = "Special Adjustment", Category = PayItemCategory.Informational, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 8 }
+            new Pay_PayItemType { Id = 8, Code = "ADJUST", NameTh = "ปรับปรุงพิเศษ", NameEn = "Special Adjustment", Category = PayItemCategory.Informational, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 8 },
+            new Pay_PayItemType { Id = 9, Code = "BONUS", NameTh = "โบนัส/ค่าคอมมิชชั่นเฉพาะกิจ", NameEn = "Bonus / Commission (ad-hoc)", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 9 },
+            new Pay_PayItemType { Id = 10, Code = "ADHOC_DEDUCT", NameTh = "หักเฉพาะกิจ (เช่น ค่าเสียหาย/ชุดยูนิฟอร์ม)", NameEn = "Ad-hoc Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = false, IsActive = true, SortOrder = 10 }
         );
 
         // Standard Thai personal-income-tax brackets, effective year 2026 (ค.ศ.).
@@ -1331,6 +1334,27 @@ public partial class HRMContext : DbContext
             new Pay_TaxBracket { Id = 7, EffectiveYear = 2026, Step = 7, MinIncome = 2000000m, MaxIncome = 5000000m, RatePercent = 30m, IsActive = true },
             new Pay_TaxBracket { Id = 8, EffectiveYear = 2026, Step = 8, MinIncome = 5000000m, MaxIncome = null, RatePercent = 35m, IsActive = true }
         );
+
+        modelBuilder.Entity<Pay_AdhocPayItem>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_AdhocPayItems)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Pay_PayItemType)
+                .WithMany()
+                .HasForeignKey(d => d.PayItemTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // no navigation collection back on Pay_PayrollRun — this is a
+            // many-to-one lookup only (which run consumed this item), not
+            // part of the run's owned object graph
+            entity.HasOne(d => d.ConsumedByPayrollRun)
+                .WithMany()
+                .HasForeignKey(d => d.ConsumedByPayrollRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         // ----- end Pay_* module -----
 
         OnModelCreatingPartial(modelBuilder);

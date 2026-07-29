@@ -113,6 +113,18 @@ public class PayrollWorkflowService
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Cancelled;
 
+        // release any ad-hoc items this run had consumed back to Approved so
+        // they can be picked up by a future run for the same period instead
+        // of being stranded forever in Consumed status
+        var consumedItems = await context.Pay_AdhocPayItems
+            .Where(a => a.ConsumedByPayrollRunId == runId)
+            .ToListAsync(ct);
+        foreach (var item in consumedItems)
+        {
+            item.Status = PayAdhocItemStatus.Approved;
+            item.ConsumedByPayrollRunId = null;
+        }
+
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);
     }

@@ -1,0 +1,225 @@
+@page "/pay/adhoc"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+<PageTitle>รายการเงินได้-เงินหักเฉพาะกิจ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h5">รายการเงินได้-เงินหักเฉพาะกิจ</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                HR ป้อนแทนพนักงาน (ระบบยื่นเองของพนักงานจะทำใน phase ถัดไป) — อนุมัติแล้วเท่านั้นที่จะถูกดึงเข้าคำนวณเงินเดือนของงวดที่ระบุ
+            </MudText>
+        </div>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showCreate = !_showCreate)">
+            @(_showCreate ? "ปิดฟอร์ม" : "เพิ่มรายการใหม่")
+        </MudButton>
+    </MudStack>
+
+    @if (_showCreate)
+    {
+        <MudDivider Class="my-3" />
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_form.EmpNo" Label="รหัสพนักงาน (EmpNo)" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="ประเภทรายการ">
+                    @foreach (var t in _payItemTypes)
+                    {
+                        <MudSelectItem T="int" Value="t.Id">@t.NameTh (@t.NameEn) — @(t.DefaultSignFlag > 0 ? "รายรับ" : "รายหัก")</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_form.TargetPeriod" Label="งวดที่จ่าย/หัก (YYYYMM เช่น 202608)" Required="true" MaxLength="6" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_form.Amount" Label="จำนวนเงิน" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudCheckBox @bind-Value="_form.IsTaxable" Label="นับเป็นเงินได้ที่ต้องเสียภาษี" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_form.Reason" Label="เหตุผล" Required="true" Lines="2" />
+            </MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync">บันทึกคำขอ</MudButton>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudTable Items="_items" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>งวด</MudTh>
+            <MudTh>จำนวนเงิน</MudTh>
+            <MudTh>เหตุผล</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Hremployee.EmpNo — @context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
+            <MudTd>@context.Pay_PayItemType.NameTh</MudTd>
+            <MudTd>@context.TargetPeriod</MudTd>
+            <MudTd>@context.Amount.ToString("N2")</MudTd>
+            <MudTd>@context.Reason</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@context.Status</MudChip></MudTd>
+            <MudTd>
+                @if (context.Status == PayAdhocItemStatus.Pending)
+                {
+                    <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">อนุมัติ</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">ปฏิเสธ</MudButton>
+                }
+                @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">ยกเลิก</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>ยังไม่มีรายการ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Pay_AdhocPayItem> _items = new();
+    private List<Pay_PayItemType> _payItemTypes = new();
+    private bool _loading = true;
+    private bool _showCreate;
+    private string? _error;
+    private CreateForm _form = new();
+
+    private class CreateForm
+    {
+        public string EmpNo { get; set; } = "";
+        public int PayItemTypeId { get; set; }
+        public string TargetPeriod { get; set; } = "";
+        public decimal Amount { get; set; }
+        public bool IsTaxable { get; set; } = true;
+        public string Reason { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _payItemTypes = await context.Pay_PayItemTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
+        _items = await context.Pay_AdhocPayItems
+            .Include(a => a.Hremployee)
+            .Include(a => a.Pay_PayItemType)
+            .OrderByDescending(a => a.RequestedDate)
+            .Take(200)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_form.EmpNo) || string.IsNullOrWhiteSpace(_form.TargetPeriod)
+            || string.IsNullOrWhiteSpace(_form.Reason) || _form.Amount <= 0 || _form.PayItemTypeId == 0)
+        {
+            _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == _form.EmpNo);
+        if (emp is null)
+        {
+            _error = $"ไม่พบพนักงานรหัส {_form.EmpNo}";
+            return;
+        }
+
+        var actorUserId = await GetCurrentUserIdAsync();
+        context.Pay_AdhocPayItems.Add(new Pay_AdhocPayItem
+        {
+            HremployeeId = emp.id,
+            PayItemTypeId = _form.PayItemTypeId,
+            TargetPeriod = _form.TargetPeriod,
+            Amount = _form.Amount,
+            IsTaxable = _form.IsTaxable,
+            Reason = _form.Reason,
+            Status = PayAdhocItemStatus.Pending,
+            RequestedByUserId = actorUserId,
+        });
+        await context.SaveChangesAsync();
+
+        _form = new CreateForm();
+        _showCreate = false;
+        Snackbar.Add("บันทึกคำขอเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task ApproveAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
+        item.Status = PayAdhocItemStatus.Approved;
+        item.ApprovedByUserId = await GetCurrentUserIdAsync();
+        item.ApprovedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+        Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task RejectAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
+        item.Status = PayAdhocItemStatus.Rejected;
+        item.ApprovedByUserId = await GetCurrentUserIdAsync();
+        item.ApprovedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ปฏิเสธรายการแล้ว", Severity.Warning);
+        await LoadAsync();
+    }
+
+    private async Task CancelItemAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var item = await context.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.Id == id);
+        if (item is null) return;
+        item.Status = PayAdhocItemStatus.Cancelled;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ยกเลิกรายการแล้ว", Severity.Info);
+        await LoadAsync();
+    }
+
+    private static Color StatusColor(PayAdhocItemStatus status) => status switch
+    {
+        PayAdhocItemStatus.Pending => Color.Warning,
+        PayAdhocItemStatus.Approved => Color.Info,
+        PayAdhocItemStatus.Rejected => Color.Error,
+        PayAdhocItemStatus.Cancelled => Color.Default,
+        PayAdhocItemStatus.Consumed => Color.Success,
+        _ => Color.Default,
+    };
+}
