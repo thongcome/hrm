@@ -1,4 +1,4 @@
-﻿@using System.Security.Claims
+@using System.Security.Claims
 @using HRM.Services
 @inherits LayoutComponentBase
 @inject AuthenticationStateProvider AuthStateProvider
@@ -6,11 +6,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 
- 
 <link href="~/bootstrap/bootstrap.min.css" rel="stylesheet">
 <link href="css/app.css" rel="stylesheet">
 @* Required *@
-<MudThemeProvider />
+<MudThemeProvider Theme="HumanOkTheme.Theme" />
 <MudPopoverProvider />
 
 @* Needed for dialogs *@
@@ -18,93 +17,96 @@
 
 @* Needed for snackbars *@
 <MudSnackbarProvider />
-<div class="page">
-    <main>
-        <!-- แถบ Header -->
-        <div class="container-fluid py-2 header-orange">
-            <div class="row align-items-center">
-                <!-- โลโก้อยู่ซ้าย -->
-                <div class="col-auto">
-                    <a href="/" class="d-flex align-items-center text-decoration-none">
-                        <img src="images/humanok3_small.jpg" alt="HumanOk Logo" class="me-2" height="40">
-                        <span class="text-dark fw-bold fs-5">HumanOk</span>
-                    </a>
-                </div>
 
-                <!-- เมนูนำทางอยู่ขวา -->
-                <div class="col text-end">
- 
-                    <nav class="d-inline-flex flex-nowrap gap-4 ">
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/dev/pages" style="color:#c0392b;">รวมลิงก์ทั้งหมด (ชั่วคราว)</NavLink>
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        <MudLink Href="/" Class="d-flex align-center text-decoration-none ml-2">
+            <MudImage Src="images/humanok3_small.jpg" Alt="HumanOk Logo" Height="36" Class="rounded" />
+            <MudText Typo="Typo.h6" Class="ml-3" Style="color:inherit;">HumanOk</MudText>
+        </MudLink>
+        <MudSpacer />
+        @if (_isAuthenticated)
+        {
+            <MudText Typo="Typo.body2" Class="mr-3" Style="opacity:.85;">@_userName</MudText>
+            <MudButton Href="/logout" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Logout">ออกจากระบบ</MudButton>
+        }
+        else
+        {
+            <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Login">เข้าสู่ระบบ</MudButton>
+        }
+    </MudAppBar>
 
-                        @foreach (var menu in MenuService.AllowedMenus.OrderBy(m => m.menuorder))
-                        {
-                            <NavLink class="nav-link" href="@menu.url">
-                                @if (!string.IsNullOrEmpty(menu.icon))
-                                {
-                                    <i class="@menu.icon me-2"></i>
-                                }
-                                @menu.menuname
-                            </NavLink>
-                        }
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always">
+        <MudNavMenu>
+            <MudNavLink Href="/dev/pages" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.ListAlt" IconColor="Color.Error">
+                รวมลิงก์ทั้งหมด (ชั่วคราว)
+            </MudNavLink>
 
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/hrpayrolldasboard">Dashboard</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/hremployees">พนักงาน (payrolls)
-                            </NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/employees">ข้อมูลพนักงาน</NavLink>
-                    
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/payrollprocess">ประมวลผลเงินเดือน</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/AIpayrollprocess">AI ประมวลผลเงินเดือน</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/runs">เงินเดือน (ใหม่)</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/adhoc">รายการเฉพาะกิจ</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/admin/payslip-settings">ตั้งค่าสลิป</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/admin/periods">จัดการงวดเงินเดือน</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/pay/employees">จัดการพนักงาน (Payroll)</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/att/settings">ตั้งค่าเวลาเข้างาน</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/att/shifts">จัดการกะ</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/att/import">นำเข้า Log เครื่องสแกน</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/att/report">รายงานเวลาเข้างาน</NavLink>
+            @if (MenuService.AllowedMenus.Any())
+            {
+                <MudNavGroup Title="เมนูตามสิทธิ์" Icon="@Icons.Material.Filled.VerifiedUser" Expanded="true">
+                    @foreach (var menu in MenuService.AllowedMenus.OrderBy(m => m.menuorder))
+                    {
+                        <MudNavLink Href="@menu.url" Icon="@(string.IsNullOrEmpty(menu.icon) ? Icons.Material.Filled.ChevronRight : menu.icon)">
+                            @menu.menuname
+                        </MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/income">Income Mng.</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/masterdata">Master Data</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/ot">OT</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/sc_users">User Mng</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/onlinereport">report</NavLink>
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/hrpayrolls">hrpayrolls</NavLink>
+            <MudNavGroup Title="เงินเดือน (Payroll)" Icon="@Icons.Material.Filled.Payments" Expanded="true">
+                <MudNavLink Href="/hrpayrolldasboard" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+                <MudNavLink Href="/hremployees" Icon="@Icons.Material.Filled.People">พนักงาน (payrolls)</MudNavLink>
+                <MudNavLink Href="/pay/employees" Icon="@Icons.Material.Filled.Badge">ข้อมูลพนักงาน / จัดการพนักงาน (Payroll)</MudNavLink>
+                <MudNavLink Href="/payrollprocess" Icon="@Icons.Material.Filled.PlaylistPlay">ประมวลผลเงินเดือน</MudNavLink>
+                <MudNavLink Href="/AIpayrollprocess" Icon="@Icons.Material.Filled.AutoAwesome">AI ประมวลผลเงินเดือน</MudNavLink>
+                <MudNavLink Href="/pay/runs" Icon="@Icons.Material.Filled.RequestQuote">เงินเดือน (ใหม่)</MudNavLink>
+                <MudNavLink Href="/pay/adhoc" Icon="@Icons.Material.Filled.PostAdd">รายการเฉพาะกิจ</MudNavLink>
+                <MudNavLink Href="/pay/admin/payslip-settings" Icon="@Icons.Material.Filled.Receipt">ตั้งค่าสลิป</MudNavLink>
+                <MudNavLink Href="/pay/admin/periods" Icon="@Icons.Material.Filled.CalendarMonth">จัดการงวดเงินเดือน</MudNavLink>
+            </MudNavGroup>
 
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/login">Log In</NavLink>
-                        
-                        <NavLink class="nav-link custom-nav text-dark fw-bold" href="/logout">Log Out</NavLink>
-                    </nav>
-                </div>
-            </div>
-        </div>
-       
+            <MudNavGroup Title="เวลาเข้างาน (Attendance)" Icon="@Icons.Material.Filled.AccessTime" Expanded="false">
+                <MudNavLink Href="/att/settings" Icon="@Icons.Material.Filled.Tune">ตั้งค่าเวลาเข้างาน</MudNavLink>
+                <MudNavLink Href="/att/shifts" Icon="@Icons.Material.Filled.Schedule">จัดการกะ</MudNavLink>
+                <MudNavLink Href="/att/import" Icon="@Icons.Material.Filled.UploadFile">นำเข้า Log เครื่องสแกน</MudNavLink>
+                <MudNavLink Href="/att/report" Icon="@Icons.Material.Filled.Assessment">รายงานเวลาเข้างาน</MudNavLink>
+            </MudNavGroup>
 
-        <!-- เนื้อหาหลัก -->
-        <article class="content px-4">
+            <MudNavGroup Title="ระบบ / อื่นๆ (เก่า)" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+                <MudNavLink Href="/income" Icon="@Icons.Material.Filled.AttachMoney">Income Mng.</MudNavLink>
+                <MudNavLink Href="/masterdata" Icon="@Icons.Material.Filled.Storage">Master Data</MudNavLink>
+                <MudNavLink Href="/ot" Icon="@Icons.Material.Filled.MoreTime">OT</MudNavLink>
+                <MudNavLink Href="/sc_users" Icon="@Icons.Material.Filled.ManageAccounts">User Mng</MudNavLink>
+                <MudNavLink Href="/onlinereport" Icon="@Icons.Material.Filled.Description">report</MudNavLink>
+                <MudNavLink Href="/hrpayrolls" Icon="@Icons.Material.Filled.Folder">hrpayrolls</MudNavLink>
+            </MudNavGroup>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="content px-4 py-4">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
-<footer class="bg-gray-900 text-black text-center py-4 mt-10">
+<footer>
     <p>© 2025 HumanOk. All rights reserved.</p>
 </footer>
 
 @code {
-    private List<string> allowedMenus = new();
+    private bool _drawerOpen = true;
+    private bool _isAuthenticated;
+    private string _userName = "";
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
-        allowedMenus = user.Claims
-            .Where(c => c.Type == "menu")
-            .Select(c => c.Value)
-            .ToList();
+        _isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+        _userName = user.Identity?.Name ?? "";
     }
-
-    private bool HasMenu(string code) => allowedMenus.Contains(code);
 }
