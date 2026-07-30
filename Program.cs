@@ -73,6 +73,23 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     // doesn't touch ClaimTypes.NameIdentifier.
     .AddClaimsPrincipalFactory<HRM.Services.Login.ScUserClaimsPrincipalFactory>();
 
+// Identity.Application's own cookie — this is now the app's ONLY sign-in
+// cookie (see removed second AddAuthentication(...) block further down,
+// which used to make "Cookies" the real default scheme and cause every
+// Blazor page's CustomAuthStateProvider to see Identity-signed-in users as
+// anonymous). LoginPath/LogoutPath point at our own pages, not Identity's
+// scaffolded /Account/Login.
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/login";
+    options.LogoutPath = "/logout";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+    // OWASP A02/A07 hardening (moved here from the removed second
+    // AddAuthentication(...).AddCookie(...) block).
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+});
 
 builder.Services.AddRazorPages();  // ���������ҹ Razor Pages
                                    // bootstrap blazor
@@ -177,22 +194,6 @@ builder.Services.AddScoped<GLExportService>();
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
 // ----- end Att_* module -----
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/login";
-        options.LogoutPath = "/logout";
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
-        // OWASP A02/A07 hardening: HttpOnly blocks JS/XSS from reading the
-        // cookie, SameSite=Strict blocks it being sent on cross-site
-        // requests (CSRF), Secure requires HTTPS (already enforced by
-        // UseHttpsRedirection below) — .NET's cookie-auth defaults already
-        // set HttpOnly=true, but the rest are worth being explicit about.
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-        options.Cookie.SameSite = SameSiteMode.Strict;
-    });
-
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 
@@ -276,133 +277,13 @@ app.MapAdditionalIdentityEndpoints();
 app.MapRazorPages();  // �Դ��ҹ��鹷ҧ Razor Pages �ͧ Identity
 app.MapPayrollFileEndpoints();
 
-// Plain (non-Blazor-circuit) sign-in endpoint. Login.razor used to call
-// HttpContext.SignInAsync directly from an interactive Blazor Server
-// component's event handler, which throws "Headers are read-only, response
-// has already started" because by the time that handler runs the initial
-// HTTP response (and its headers) has already been sent over the open
-// SignalR connection — the Set-Cookie header can never be written that way.
-// Routing the actual sign-in through a real HTTP endpoint (a fresh
-// request/response each time) is the standard fix for cookie auth + Blazor
-// Server.
-// OWASP A07 lockout thresholds — sc_user.invalidpwcount/lastinvalidpwd
-// already existed as columns but nothing ever wrote to them before this;
-// unlimited password guessing was possible against any known loginname.
-const int MaxFailedAttempts = 5;
-var lockoutWindow = TimeSpan.FromMinutes(15);
-
-app.MapPost("/login-handler", async (
-    HttpContext httpContext,
-    IDbContextFactory<HRMContext> dbFactory,
-    IPasswordHasher<sc_user> passwordHasher) =>
-{
-    var form = await httpContext.Request.ReadFormAsync();
-    var username = form["username"].ToString();
-    var password = form["password"].ToString();
-    var returnUrl = form["returnUrl"].ToString();
-
-    await using var context = await dbFactory.CreateDbContextAsync();
-    var user = await context.sc_users
-        .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_menus).ThenInclude(rm => rm.menu)
-        .FirstOrDefaultAsync(u => u.loginname == username);
-
-    if (user is not null && !user.isdisable && !user.iscancel && user.isActivate)
-    {
-        var isLockedOut = user.invalidpwcount >= MaxFailedAttempts
-            && user.lastinvalidpwd is not null
-            && DateTime.Now - user.lastinvalidpwd.Value < lockoutWindow;
-
-        if (!isLockedOut)
-        {
-            var result = passwordHasher.VerifyHashedPassword(user, user.password ?? "", password);
-            if (result != PasswordVerificationResult.Failed)
-            {
-                user.invalidpwcount = 0;
-                user.lasttimelogin = DateTime.Now;
-                await context.SaveChangesAsync();
-
-                var claims = new List<Claim>
-                {
-                    new(ClaimTypes.Name, user.firstname + " " + user.lastname),
-                    new(ClaimTypes.NameIdentifier, user.userid.ToString()),
-                    new("userid", user.userid.ToString()),
-                    new("username", user.loginname),
-                    new("company_id", user.company_id.ToString()),
-                };
-
-                // Role/menu claims — CustomAuthStateProvider.SignInAsync built
-                // this exact same shape but is never actually called from
-                // anywhere; this endpoint replaced its call site during an
-                // earlier fix without carrying the logic over, so every
-                // /login-handler session has been missing Role/menu claims
-                // ever since. Found while wiring up the new Menu-based
-                // [Authorize(Policy="Menu:...")] pages, whose FallbackPolicy
-                // would otherwise lock out every real HR login.
-                foreach (var ur in user.sc_user_roles.Where(r => r.isactive))
-                {
-                    if (!string.IsNullOrWhiteSpace(ur.role?.name))
-                        claims.Add(new Claim(ClaimTypes.Role, ur.role!.name));
-                }
-                var menus = user.sc_user_roles
-                    .Where(ur => ur.isactive)
-                    .SelectMany(ur => ur.role?.sc_role_menus ?? new List<sc_role_menu>())
-                    .Where(rm => rm.isactive && rm.menu != null && rm.menu.isactive)
-                    .Select(rm => rm.menu!)
-                    .Distinct();
-                foreach (var menu in menus)
-                {
-                    if (!string.IsNullOrWhiteSpace(menu.menucode))
-                        claims.Add(new Claim("menu", menu.menucode!));
-                }
-
-                // Same empno/payroll_company derivation as ScUserClaimsPrincipalFactory
-                // (kept in sync via PayrollCompanyResolver — see that file for why
-                // duplicating this logic by hand is exactly the kind of thing that
-                // already caused a real bug once, with role/menu claims).
-                if (!string.IsNullOrWhiteSpace(user.empid))
-                {
-                    claims.Add(new Claim("empno", user.empid));
-                    var payrollCompanyId = await HRM.Services.Login.PayrollCompanyResolver.ResolveAsync(context, user.empid);
-                    if (!string.IsNullOrWhiteSpace(payrollCompanyId))
-                        claims.Add(new Claim("payroll_company", payrollCompanyId));
-                }
-
-                // Sign in under CookieAuthenticationDefaults.AuthenticationScheme
-                // ("Cookies") — confirmed via a throwaway /whoami diagnostic to be
-                // the scheme HttpContext.User/Blazor's plain [Authorize] actually
-                // resolve against at runtime (the later AddAuthentication(...) call
-                // near the bottom of this file's registrations wins over the
-                // earlier DefaultScheme = IdentityConstants.ApplicationScheme).
-                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-                var principal = new ClaimsPrincipal(identity);
-
-                await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
-                return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
-            }
-
-            user.invalidpwcount = (user.invalidpwcount ?? 0) + 1;
-            user.lastinvalidpwd = DateTime.Now;
-            await context.SaveChangesAsync();
-        }
-    }
-
-    var errorRedirect = "/login?error=1";
-    if (!string.IsNullOrEmpty(returnUrl))
-        errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
-    return Results.LocalRedirect(errorRedirect);
-}).RequireRateLimiting("login");
-
-// /logout was previously just a dead NavLink — there was no endpoint behind
-// it at all, so clicking it did nothing and the session stayed valid until
-// its natural 60-minute expiry. Signs out of both schemes since a user may
-// be signed in under either "Cookies" (/login-handler) or Identity.Application
-// (/Account/Login), depending on which path they used.
-app.MapGet("/logout", async (HttpContext httpContext) =>
-{
-    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    await httpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
-    return Results.LocalRedirect("/");
-});
+// Login/logout endpoints — see Endpoints/LoginEndpoints.cs. Routing sign-in
+// through a real HTTP endpoint (not a Blazor circuit event handler) is
+// required for cookie auth + Blazor Server: Login.razor calling
+// HttpContext.SignInAsync directly from a component event handler throws
+// "Headers are read-only, response has already started" because the
+// SignalR-connection response has already begun by the time that handler
+// runs.
+app.MapLoginEndpoints();
 
 app.Run();
