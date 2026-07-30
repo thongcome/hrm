@@ -34,4 +34,7 @@ public partial class mas_address_type
 
     [InverseProperty("address_typeNavigation")]
     public virtual ICollection<vd_address> vd_addresses { get; set; } = new List<vd_address>();
+
+    [InverseProperty("address_typeNavigation")]
+    public virtual ICollection<address> addresses { get; set; } = new List<address>();
 }

@@ -1,0 +1,111 @@
+@page "/pay/withholding-cert"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ออกหนังสือรับรองหักภาษี ณ ที่จ่าย</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ออกหนังสือรับรองหักภาษี ณ ที่จ่าย (50 ทวิ)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        สรุปเงินได้และภาษีที่หักไว้ทั้งปีของพนักงาน 1 คน — นับเฉพาะงวดที่อนุมัติแล้วขึ้นไป
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="8">
+            <MudAutocomplete T="Hremployee" Label="พนักงาน (ค้นหาด้วยรหัสหรือชื่อ)" @bind-Value="_selectedEmployee"
+                SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_taxYear" Label="ปีภาษี (ค.ศ.)" Min="2000" Max="2100" />
+        </MudItem>
+    </MudGrid>
+
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="PreviewAsync">ดูตัวอย่างยอดรวม</MudButton>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">@_error</MudAlert>
+    }
+
+    @if (_preview is not null)
+    {
+        <MudSimpleTable Dense="true" Class="mt-3">
+            <tbody>
+                <tr><td>พนักงาน</td><td>@_preview.EmployeeName</td></tr>
+                <tr><td>เลขบัตรประชาชน</td><td>@(_preview.IdCard ?? "-")</td></tr>
+                <tr><td>ที่อยู่ตามทะเบียน</td><td>@(_preview.RegisteredAddressBlock ?? "-")</td></tr>
+                <tr><td>รวมเงินได้ทั้งปี</td><td>@_preview.TotalTaxableIncome.ToString("N2")</td></tr>
+                <tr><td>รวมภาษีหัก ณ ที่จ่าย</td><td>@_preview.TotalTaxWithheld.ToString("N2")</td></tr>
+                <tr><td>รวมประกันสังคม</td><td>@_preview.TotalSocialSecurity.ToString("N2")</td></tr>
+                <tr><td>รวมกองทุนสำรองเลี้ยงชีพ</td><td>@_preview.TotalProvidentFund.ToString("N2")</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
+            Href="@($"/pay/files/withholding-cert/{_selectedEmployee!.id}/{_taxYear}")" Target="_blank">
+            ดาวน์โหลด PDF
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private Hremployee? _selectedEmployee;
+    private int _taxYear = DateTime.Today.Year;
+    private WithholdingCertificateData? _preview;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task PreviewAsync()
+    {
+        _error = null;
+        _preview = null;
+
+        if (_selectedEmployee is null)
+        {
+            _error = "กรุณาเลือกพนักงาน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _preview = await WithholdingCertificateDataService.BuildAsync(context, _selectedEmployee.id, _taxYear);
+        if (_preview is null)
+        {
+            _error = $"ไม่พบข้อมูลเงินเดือนที่อนุมัติแล้วของพนักงานคนนี้ในปี {_taxYear}";
+        }
+    }
+}

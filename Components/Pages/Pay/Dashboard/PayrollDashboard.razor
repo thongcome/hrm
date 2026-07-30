@@ -1,0 +1,159 @@
+@page "/pay/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
+
+<PageTitle>แดชบอร์ดเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แดชบอร์ดเงินเดือน (Payroll Dashboard)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else
+    {
+        <MudGrid Class="mt-2">
+            @if (_snapshot is not null)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Elevation="2">
+                        <MudText Typo="Typo.caption">งวดล่าสุด (@_snapshot.PayrollPeriod) — สุทธิรวม</MudText>
+                        <MudText Typo="Typo.h5">@_snapshot.TotalNetPay.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Elevation="2">
+                        <MudText Typo="Typo.caption">จำนวนพนักงานในงวด</MudText>
+                        <MudText Typo="Typo.h5">@_snapshot.EmployeeCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Elevation="2">
+                        <MudText Typo="Typo.caption">ภาษีหัก ณ ที่จ่ายรวม</MudText>
+                        <MudText Typo="Typo.h5">@_snapshot.TotalTaxWithheld.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info">ยังไม่มีรอบเงินเดือนที่อนุมัติแล้วสำหรับบริษัทนี้</MudAlert>
+                </MudItem>
+            }
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2">
+                    <MudText Typo="Typo.caption">พนักงานทำงานอยู่ / ลาออกแล้ว</MudText>
+                    <MudText Typo="Typo.h5">@_activeCount / @_resignedCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="@(_pendingApprovalCount > 0 ? "border-left:4px solid var(--mud-palette-warning)" : "")">
+                    <MudText Typo="Typo.caption">รอบรออนุมัติ (Reviewed)</MudText>
+                    <MudText Typo="Typo.h5">@_pendingApprovalCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="@(_pendingAdhocCount > 0 ? "border-left:4px solid var(--mud-palette-warning)" : "")">
+                    <MudText Typo="Typo.caption">รายการเฉพาะกิจรออนุมัติ</MudText>
+                    <MudText Typo="Typo.h5">@_pendingAdhocCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3" Elevation="2" Style="@(_negativeNetPay.Count > 0 ? "border-left:4px solid var(--mud-palette-error)" : "")">
+                    <MudText Typo="Typo.caption">พนักงานสุทธิติดลบ (งวดล่าสุด)</MudText>
+                    <MudText Typo="Typo.h5">@_negativeNetPay.Count</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (_negativeNetPay.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">
+                พนักงานสุทธิติดลบในงวดล่าสุด: @string.Join(", ", _negativeNetPay.Select(e => $"{e.EmpNo} ({e.Hremployee.EmpName})"))
+            </MudAlert>
+        }
+        @if (_excluded.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                พนักงานที่ถูกยกเว้นในงวดล่าสุด: @string.Join(", ", _excluded.Select(e => $"{e.EmpNo} ({e.ExcludeReason})"))
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.h6" Class="mt-5 mb-2">สถานะรอบเงินเดือน (10 งวดล่าสุด)</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>สถานะ</th><th>จำนวนรอบ</th></tr></thead>
+            <tbody>
+                @foreach (var kv in _runStatusBoard.OrderBy(k => k.Key))
+                {
+                    <tr><td>@kv.Key</td><td>@kv.Value</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-5 mb-2">กิจกรรมล่าสุด</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>เวลา</th><th>เหตุการณ์</th><th>งวด</th><th>หมายเหตุ</th></tr></thead>
+            <tbody>
+                @foreach (var log in _recentActivity)
+                {
+                    <tr>
+                        <td>@log.EventDate.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@log.EventType</td>
+                        <td>@log.Pay_PayrollRun.PayrollPeriod</td>
+                        <td>@log.Comment</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private bool _loaded;
+    private Dictionary<PayrollRunStatus, int> _runStatusBoard = new();
+    private int _pendingApprovalCount;
+    private List<Pay_PayrollEmployee> _negativeNetPay = new();
+    private List<Pay_PayrollEmployee> _excluded = new();
+    private int _activeCount;
+    private int _resignedCount;
+    private int _pendingAdhocCount;
+    private LatestRunSnapshot? _snapshot;
+    private List<Pay_PayrollAuditLog> _recentActivity = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _runStatusBoard = await PayrollDashboardService.GetRunStatusBoardAsync(context, _companyId, 10);
+        _pendingApprovalCount = await PayrollDashboardService.GetPendingApprovalCountAsync(context, _companyId);
+        _negativeNetPay = await PayrollDashboardService.GetNegativeNetPayAlertsAsync(context, _companyId);
+        _excluded = await PayrollDashboardService.GetExcludedEmployeesAsync(context, _companyId);
+        (_activeCount, _resignedCount) = await PayrollDashboardService.GetHeadcountAsync(context, _companyId);
+        _pendingAdhocCount = await PayrollDashboardService.GetPendingAdhocCountAsync(context, _companyId);
+        _snapshot = await PayrollDashboardService.GetLatestRunSnapshotAsync(context, _companyId);
+        _recentActivity = await PayrollDashboardService.GetRecentActivityAsync(context, _companyId, 20);
+
+        _loaded = true;
+    }
+}

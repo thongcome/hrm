@@ -33,6 +33,14 @@ public class Pay_PayslipSettings
     [StringLength(250)]
     public string? CompanyNameEn { get; set; }
 
+    // For the withholding tax certificate (50 ทวิ) header — same "no
+    // reliable join to com_company" reasoning as CompanyName above, so this
+    // lives here too rather than trying to bridge com_company.tax_id.
+    [StringLength(13)]
+    public string? CompanyTaxId { get; set; }
+    [StringLength(500)]
+    public string? CompanyAddress { get; set; }
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }

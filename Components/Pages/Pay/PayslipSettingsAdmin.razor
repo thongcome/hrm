@@ -53,6 +53,28 @@
 
         <MudDivider Class="my-5" />
 
+        <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลบริษัท (สำหรับหนังสือรับรองหักภาษี ณ ที่จ่าย)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            ใช้พิมพ์บนหัวหนังสือรับรองหักภาษี 50 ทวิ — เลขผู้เสียภาษี/ที่อยู่เป็นข้อมูลทางกฎหมายจริง กรุณากรอกให้ถูกต้อง
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.CompanyName" Label="ชื่อบริษัท (ไทย)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.CompanyNameEn" Label="ชื่อบริษัท (อังกฤษ)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.CompanyTaxId" Label="เลขประจำตัวผู้เสียภาษี (13 หลัก)" MaxLength="13" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.CompanyAddress" Label="ที่อยู่บริษัท" Lines="2" />
+            </MudItem>
+        </MudGrid>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync">บันทึกข้อมูลบริษัท</MudButton>
+
+        <MudDivider Class="my-5" />
+
         <MudText Typo="Typo.h6" Class="mb-2">ทดสอบดูตัวอย่าง</MudText>
         <MudAutocomplete T="Hremployee" Label="เลือกพนักงานเพื่อดูตัวอย่างรหัสผ่าน" @bind-Value="_previewEmployee"
             SearchFunc="SearchEmployeesAsync"
@@ -153,6 +175,30 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+    }
+
+    private async Task SaveCompanyInfoAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.CompanyName = _settings.CompanyName;
+        existing.CompanyNameEn = _settings.CompanyNameEn;
+        existing.CompanyTaxId = _settings.CompanyTaxId;
+        existing.CompanyAddress = _settings.CompanyAddress;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกข้อมูลบริษัทเรียบร้อย", Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()

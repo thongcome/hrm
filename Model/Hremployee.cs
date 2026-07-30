@@ -394,4 +394,7 @@ public partial class Hremployee
     public virtual ICollection<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; } = new List<Pay_AdhocPayItem>();
 
     public virtual ICollection<HrwOt> HrwOts { get; set; } = new List<HrwOt>();
+
+    [InverseProperty("Hremployee")]
+    public virtual ICollection<address> addresses { get; set; } = new List<address>();
 }

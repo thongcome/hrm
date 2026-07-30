@@ -49,4 +49,7 @@ public partial class mas_province
 
     [InverseProperty("provinceNavigation")]
     public virtual ICollection<vd_address> vd_addresses { get; set; } = new List<vd_address>();
+
+    [InverseProperty("provinceNavigation")]
+    public virtual ICollection<address> addresses { get; set; } = new List<address>();
 }

@@ -95,5 +95,28 @@ public static class PayrollFileEndpoints
             var bytes = await storage.ReadAsync(doc.StoragePath);
             return Results.File(bytes, "application/octet-stream", doc.FileName);
         });
+
+        // Generated fresh on every request (deterministic from stored data,
+        // not a pre-existing file in PrivateFileStorage like the routes above).
+        employeeDocGroup.MapGet("/withholding-cert/{hremployeeId:long}/{taxYear:int}", async (
+            long hremployeeId, int taxYear, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId);
+            if (emp is null) return Results.NotFound();
+
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (emp.companyid != companyId)
+                return Results.Forbid();
+
+            var data = await WithholdingCertificateDataService.BuildAsync(context, hremployeeId, taxYear);
+            if (data is null) return Results.NotFound();
+
+            await auditLogger.LogAccessAsync("WithholdingCertificate", $"{hremployeeId}:{taxYear}", isSensitive: true,
+                note: $"50-Twi download for {emp.EmpNo}, year {taxYear}");
+
+            var bytes = WithholdingCertificatePdfService.Generate(data);
+            return Results.File(bytes, "application/pdf", $"withholding_cert_{emp.EmpNo}_{taxYear}.pdf");
+        });
     }
 }

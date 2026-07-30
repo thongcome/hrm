@@ -281,6 +281,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<vd_address> vd_addresses { get; set; }
 
+    public virtual DbSet<address> addresses { get; set; }
+
     public virtual DbSet<vd_certificate> vd_certificates { get; set; }
 
     public virtual DbSet<vd_contact> vd_contacts { get; set; }
@@ -1045,6 +1047,15 @@ public partial class HRMContext : DbContext
             entity.HasOne(d => d.country).WithMany(p => p.vd_addresses).HasConstraintName("FK_vd_address_mas_country");
 
             entity.HasOne(d => d.provinceNavigation).WithMany(p => p.vd_addresses).HasConstraintName("FK_vd_address_mas_province");
+        });
+
+        modelBuilder.Entity<address>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee).WithMany(p => p.addresses).HasConstraintName("FK_address_HREMPLOYEE").OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.address_typeNavigation).WithMany(p => p.addresses).HasConstraintName("FK_address_mas_address_type");
+
+            entity.HasOne(d => d.provinceNavigation).WithMany(p => p.addresses).HasConstraintName("FK_address_mas_province");
         });
 
         modelBuilder.Entity<vd_doc>(entity =>
