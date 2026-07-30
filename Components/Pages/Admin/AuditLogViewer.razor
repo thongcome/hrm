@@ -1,0 +1,134 @@
+@page "/admin/audit-log"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:SYS_AUDIT_LOG")]
+
+<PageTitle>Audit Log ระบบ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">Audit Log ระบบ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        บันทึกการเปลี่ยนแปลงข้อมูลทั้งระบบ และการเข้าถึงข้อมูลส่วนบุคคล (PDPA) — ตามข้อกำหนด พ.ร.บ. คอมพิวเตอร์ ต้องเก็บไว้อย่างน้อย 90 วัน
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_fromDate" Label="จากวันที่" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_toDate" Label="ถึงวันที่" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="AuditActionType?" @bind-Value="_actionFilter" Label="Action" Clearable="true">
+                <MudSelectItem T="AuditActionType?" Value="@AuditActionType.Create">Create</MudSelectItem>
+                <MudSelectItem T="AuditActionType?" Value="@AuditActionType.Update">Update</MudSelectItem>
+                <MudSelectItem T="AuditActionType?" Value="@AuditActionType.Delete">Delete</MudSelectItem>
+                <MudSelectItem T="AuditActionType?" Value="@AuditActionType.View">View</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_entityTypeFilter" Label="EntityType (ค้นหาบางส่วน)" />
+        </MudItem>
+    </MudGrid>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudCheckBox T="bool" @bind-Value="_sensitiveOnly" Label="เฉพาะการเข้าถึงข้อมูลส่วนบุคคล (PDPA)" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync">ค้นหา</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>เวลา</MudTh>
+            <MudTh>ผู้ทำรายการ</MudTh>
+            <MudTh>Action</MudTh>
+            <MudTh>EntityType</MudTh>
+            <MudTh>RecordId</MudTh>
+            <MudTh>PDPA</MudTh>
+            <MudTh>หมายเหตุ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EventDate.ToString("dd/MM/yyyy HH:mm:ss")</MudTd>
+            <MudTd>@(context.ActorName ?? context.ActorUserId?.ToString() ?? "-")</MudTd>
+            <MudTd>@context.Action</MudTd>
+            <MudTd>@context.EntityType</MudTd>
+            <MudTd>@context.RecordId</MudTd>
+            <MudTd>
+                @if (context.IsSensitiveDataAccess)
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+                }
+            </MudTd>
+            <MudTd>@context.Note</MudTd>
+            <MudTd>
+                @if (context.OldValuesJson is not null || context.NewValuesJson is not null)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _detailRow = context)">ดู diff</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@if (_detailRow is not null)
+{
+    <MudPaper Class="pa-4 mt-2" Outlined="true">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">รายละเอียดการเปลี่ยนแปลง — @_detailRow.EntityType #@_detailRow.RecordId</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _detailRow = null)" />
+        </MudStack>
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle2">ค่าเดิม</MudText>
+                <pre style="white-space:pre-wrap;">@_detailRow.OldValuesJson</pre>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle2">ค่าใหม่</MudText>
+                <pre style="white-space:pre-wrap;">@_detailRow.NewValuesJson</pre>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    private DateTime? _fromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _toDate = DateTime.Today;
+    private AuditActionType? _actionFilter;
+    private string _entityTypeFilter = string.Empty;
+    private bool _sensitiveOnly;
+    private List<AuditLog> _rows = new();
+    private AuditLog? _detailRow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.AuditLogs.AsQueryable();
+
+        if (_fromDate is not null)
+            query = query.Where(a => a.EventDate >= _fromDate.Value.Date);
+        if (_toDate is not null)
+            query = query.Where(a => a.EventDate < _toDate.Value.Date.AddDays(1));
+        if (_actionFilter is not null)
+            query = query.Where(a => a.Action == _actionFilter);
+        if (!string.IsNullOrWhiteSpace(_entityTypeFilter))
+            query = query.Where(a => a.EntityType.Contains(_entityTypeFilter));
+        if (_sensitiveOnly)
+            query = query.Where(a => a.IsSensitiveDataAccess);
+
+        _rows = await query
+            .OrderByDescending(a => a.EventDate)
+            .Take(500)
+            .ToListAsync();
+    }
+}

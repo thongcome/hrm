@@ -1,0 +1,113 @@
+@page "/pay/reports/labor-cost-trend"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
+
+<PageTitle>แนวโน้มต้นทุนแรงงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แนวโน้มต้นทุนแรงงาน (Labor Cost Trend)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudAlert Severity="Severity.Info" Class="mt-3">
+        "ต้นทุนนายจ้าง" ที่แสดงเป็นค่าประมาณ (รายรับรวมของพนักงาน + เงินสมทบกองทุนสำรองเลี้ยงชีพฝั่งนายจ้าง) เนื่องจากระบบยังไม่มีฟิลด์เก็บเงินสมทบประกันสังคมฝั่งนายจ้างแยกต่างหาก
+    </MudAlert>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_periodCount" Label="ย้อนหลังกี่งวด" Min="1" Max="36" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_rows.Count > 0)
+    {
+        <MudChart ChartType="ChartType.Line" ChartSeries="@_series" XAxisLabels="@_labels" Width="100%" Height="350px" Class="mt-4" />
+
+        <MudSimpleTable Dense="true" Class="mt-4">
+            <thead>
+                <tr><th>งวด</th><th>รายรับรวมพนักงาน (Gross)</th><th>เงินสมทบ PF (นายจ้าง)</th><th>ต้นทุนรวมโดยประมาณ</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td>@row.Period</td>
+                        <td>@row.Gross.ToString("N2")</td>
+                        <td>@row.EmployerPf.ToString("N2")</td>
+                        <td>@((row.Gross + row.EmployerPf).ToString("N2"))</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+    else if (_loaded)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีข้อมูลรอบเงินเดือนที่อนุมัติแล้วสำหรับบริษัทนี้</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private record TrendRow(string Period, decimal Gross, decimal EmployerPf);
+
+    private string? _companyId;
+    private int _periodCount = 12;
+    private List<TrendRow> _rows = new();
+    private List<ChartSeries> _series = new();
+    private string[] _labels = Array.Empty<string>();
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var grouped = await context.Pay_PayrollEmployees
+            .Where(e => e.Pay_PayrollRun.CompanyId == _companyId && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved)
+            .GroupBy(e => e.Pay_PayrollRun.PayrollPeriod)
+            .Select(g => new
+            {
+                Period = g.Key,
+                Gross = g.Sum(e => e.GrossEarnings),
+                EmployerPf = g.Sum(e => e.ProvidentFundCompanyAmount),
+            })
+            .OrderBy(g => g.Period)
+            .ToListAsync();
+
+        _rows = grouped
+            .TakeLast(_periodCount)
+            .Select(g => new TrendRow(g.Period, g.Gross, g.EmployerPf))
+            .ToList();
+
+        _labels = _rows.Select(r => r.Period).ToArray();
+        _series = new List<ChartSeries>
+        {
+            new ChartSeries { Name = "รายรับรวมพนักงาน", Data = _rows.Select(r => (double)r.Gross).ToArray() },
+            new ChartSeries { Name = "เงินสมทบ PF (นายจ้าง)", Data = _rows.Select(r => (double)r.EmployerPf).ToArray() },
+        };
+
+        _loaded = true;
+    }
+}

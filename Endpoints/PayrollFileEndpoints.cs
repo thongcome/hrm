@@ -1,6 +1,7 @@
 namespace HRM.Endpoints;
 
 using HRM.Models;
+using HRM.Services.Audit;
 using HRM.Services.Pay;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +17,7 @@ public static class PayrollFileEndpoints
         var group = app.MapGroup("/pay/files").RequireAuthorization("Menu:PAY_RUNS");
 
         group.MapGet("/payslip/{payslipId:long}", async (
-            long payslipId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long payslipId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage, IAuditLogger auditLogger) =>
         {
             await using var context = await dbFactory.CreateDbContextAsync();
             var payslip = await context.Pay_Payslips
@@ -27,6 +28,9 @@ public static class PayrollFileEndpoints
             var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
             if (payslip.Pay_PayrollEmployee.CompanyId != companyId)
                 return Results.Forbid();
+
+            await auditLogger.LogAccessAsync("Pay_Payslip", payslipId.ToString(), isSensitive: true,
+                note: $"payslip PDF download for {payslip.Pay_PayrollEmployee.EmpNo}");
 
             var bytes = await storage.ReadAsync(payslip.PdfStoragePath);
             var fileName = $"payslip_{payslip.Pay_PayrollEmployee.EmpNo}.pdf";
@@ -72,7 +76,7 @@ public static class PayrollFileEndpoints
         var employeeDocGroup = app.MapGroup("/pay/files").RequireAuthorization("Menu:PAY_ADMIN");
 
         employeeDocGroup.MapGet("/employee-doc/{docId:long}", async (
-            long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage, IAuditLogger auditLogger) =>
         {
             await using var context = await dbFactory.CreateDbContextAsync();
             var doc = await context.Pay_EmployeeDocuments
@@ -83,6 +87,10 @@ public static class PayrollFileEndpoints
             var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
             if (doc.Hremployee.companyid != companyId)
                 return Results.Forbid();
+
+            await auditLogger.LogAccessAsync("Pay_EmployeeDocument", docId.ToString(),
+                isSensitive: doc.DocumentType == Pay_EmployeeDocumentType.IdCard,
+                note: $"document download ({doc.DocumentType}) for {doc.Hremployee.EmpNo}");
 
             var bytes = await storage.ReadAsync(doc.StoragePath);
             return Results.File(bytes, "application/octet-stream", doc.FileName);

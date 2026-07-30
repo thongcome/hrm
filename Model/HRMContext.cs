@@ -354,6 +354,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     public virtual DbSet<Pay_EmployeeDocument> Pay_EmployeeDocuments { get; set; }
+    public virtual DbSet<AuditLog> AuditLogs { get; set; }
     public virtual DbSet<Att_CompanySetting> Att_CompanySettings { get; set; }
     public virtual DbSet<Att_Device> Att_Devices { get; set; }
     public virtual DbSet<Att_ImportBatch> Att_ImportBatches { get; set; }
@@ -1327,7 +1328,8 @@ public partial class HRMContext : DbContext
             new Pay_PayItemType { Id = 7, Code = "LOAN", NameTh = "หักเงินกู้", NameEn = "Loan Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = true, IsActive = true, SortOrder = 7, GLAccountCode = "1300-LOAN-RECEIVABLE" },
             new Pay_PayItemType { Id = 8, Code = "ADJUST", NameTh = "ปรับปรุงพิเศษ", NameEn = "Special Adjustment", Category = PayItemCategory.Informational, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 8, GLAccountCode = "5090-ADJUSTMENT" },
             new Pay_PayItemType { Id = 9, Code = "BONUS", NameTh = "โบนัส/ค่าคอมมิชชั่นเฉพาะกิจ", NameEn = "Bonus / Commission (ad-hoc)", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = false, IsActive = true, SortOrder = 9, GLAccountCode = "5030-BONUS" },
-            new Pay_PayItemType { Id = 10, Code = "ADHOC_DEDUCT", NameTh = "หักเฉพาะกิจ (เช่น ค่าเสียหาย/ชุดยูนิฟอร์ม)", NameEn = "Ad-hoc Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = false, IsActive = true, SortOrder = 10, GLAccountCode = "2230-ADHOC-PAYABLE" }
+            new Pay_PayItemType { Id = 10, Code = "ADHOC_DEDUCT", NameTh = "หักเฉพาะกิจ (เช่น ค่าเสียหาย/ชุดยูนิฟอร์ม)", NameEn = "Ad-hoc Deduction", Category = PayItemCategory.Deduction, DefaultSignFlag = -1, IsSystemReserved = false, IsActive = true, SortOrder = 10, GLAccountCode = "2230-ADHOC-PAYABLE" },
+            new Pay_PayItemType { Id = 11, Code = "SEVERANCE", NameTh = "ค่าชดเชยตามกฎหมาย", NameEn = "Statutory Severance Pay", Category = PayItemCategory.Earning, DefaultSignFlag = 1, IsSystemReserved = true, IsActive = true, SortOrder = 11, GLAccountCode = "5040-SEVERANCE" }
         );
 
         // Standard Thai personal-income-tax brackets, effective year 2026 (ค.ศ.).

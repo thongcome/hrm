@@ -50,6 +50,27 @@ public static class LoginEndpoints
                     if (result.Succeeded)
                     {
                         await signInManager.SignInAsync(appUser, isPersistent: false);
+
+                        // Written directly against the already-open context
+                        // rather than via IAuditLogger — SignInAsync only
+                        // updates the response cookie, so httpContext.User
+                        // in this same request is still the pre-login
+                        // principal and IAuditLogger's HttpContext-based
+                        // actor resolution would see no one signed in yet.
+                        scUser.lasttimelogin = DateTime.Now;
+                        context.AuditLogs.Add(new AuditLog
+                        {
+                            ActorUserId = scUser.userid,
+                            ActorName = scUser.loginname,
+                            Action = AuditActionType.View,
+                            EntityType = "sc_user",
+                            RecordId = scUser.userid.ToString(),
+                            IsSensitiveDataAccess = false,
+                            IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                            Note = "login",
+                        });
+                        await context.SaveChangesAsync();
+
                         return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
                     }
                 }

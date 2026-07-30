@@ -11,6 +11,9 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject PrivateFileStorage FileStorage
+@inject HRM.Services.Pay.SeveranceService SeveranceService
+@inject NavigationManager Nav
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>จัดการพนักงาน (Payroll)</PageTitle>
@@ -61,10 +64,14 @@
                 }
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenEditAsync(context))">แก้ไข</MudButton>
                 @if (context.ResignDate is null)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => OpenResign(context))">ลงวันที่ลาออก</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => OpenSeveranceAsync(context))">คำนวณค่าชดเชย</MudButton>
                 }
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenDocsAsync(context))">เอกสาร</MudButton>
             </MudTd>
@@ -155,6 +162,50 @@
         </MudPaper>
     }
 
+    @if (_severanceEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">คำนวณค่าชดเชย — @_severanceEmployee.EmpNo @_severanceEmployee.EmpName @_severanceEmployee.EmpSurname</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _severanceEmployee = null)" />
+            </MudStack>
+
+            @if (!string.IsNullOrEmpty(_severanceError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_severanceError</MudAlert>
+            }
+
+            @if (_severancePreview is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">
+                    ตรวจสอบก่อนว่าการเลิกจ้างเข้าข่ายข้อยกเว้นตามมาตรา 119 หรือไม่ (เช่น ทุจริต ฝ่าฝืนระเบียบร้ายแรง) หากเข้าข่ายข้อยกเว้น ไม่ต้องยื่นรายการนี้
+                </MudAlert>
+
+                <MudSimpleTable Dense="true" Class="mt-3">
+                    <tbody>
+                        <tr><td>อายุงาน</td><td>@_severancePreview.ContinuousServiceDays วัน</td></tr>
+                        <tr><td>เกณฑ์ที่เข้าเงื่อนไข</td><td>@_severancePreview.TierDescription</td></tr>
+                        <tr><td>จำนวนวันที่ได้รับ</td><td>@_severancePreview.EntitledDays วัน</td></tr>
+                        <tr><td>ค่าจ้างต่อวัน</td><td>@_severancePreview.DailyWage.ToString("N2")</td></tr>
+                        <tr><td>ยอดค่าชดเชยตามกฎหมาย (ขั้นต่ำ)</td><td>@_severancePreview.Amount.ToString("N2")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudGrid Class="mt-3">
+                    <MudItem xs="12" sm="4">
+                        <MudDatePicker @bind-Date="_severanceTargetMonth" Label="งวดที่จะจ่าย" Editable="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudNumericField @bind-Value="_severanceAmount" Label="จำนวนเงินที่จะยื่น" Format="N2" />
+                    </MudItem>
+                </MudGrid>
+                <MudTextField @bind-Value="_severanceReason" Label="เหตุผล" Lines="2" Class="mt-2" />
+
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeveranceAsync">ยื่นค่าชดเชย</MudButton>
+            }
+        </MudPaper>
+    }
+
     @if (_docsEmployee is not null)
     {
         <MudPaper Class="pa-4 mt-4" Outlined="true">
@@ -232,6 +283,13 @@
     private DateTime? _resignDate = DateTime.Today;
     private string? _resignError;
 
+    private Hremployee? _severanceEmployee;
+    private HRM.Services.Pay.Calculators.SeveranceCalculator.SeveranceResult? _severancePreview;
+    private DateTime? _severanceTargetMonth = DateTime.Today;
+    private decimal _severanceAmount;
+    private string _severanceReason = string.Empty;
+    private string? _severanceError;
+
     private Hremployee? _docsEmployee;
     private List<Pay_EmployeeDocument> _docs = new();
     private Pay_EmployeeDocumentType _uploadDocType = Pay_EmployeeDocumentType.Other;
@@ -269,6 +327,7 @@
     {
         _resignEmployee = null;
         _docsEmployee = null;
+        _severanceEmployee = null;
         _isCreating = true;
         _formError = null;
         _workDate = DateTime.Today;
@@ -276,10 +335,13 @@
         _formEmployee = new Hremployee { companyid = _companyId!, EmptypeCode = "01" };
     }
 
-    private void OpenEdit(Hremployee emp)
+    private async Task OpenEditAsync(Hremployee emp)
     {
+        await AuditLogger.LogAccessAsync("Hremployee", emp.id.ToString(), isSensitive: true, note: "employee admin record opened");
+
         _resignEmployee = null;
         _docsEmployee = null;
+        _severanceEmployee = null;
         _isCreating = false;
         _formError = null;
         _workDate = emp.WorkDate;
@@ -364,6 +426,7 @@
     {
         _formEmployee = null;
         _docsEmployee = null;
+        _severanceEmployee = null;
         _resignError = null;
         _resignDate = DateTime.Today;
         _resignEmployee = emp;
@@ -395,10 +458,66 @@
         await LoadAsync();
     }
 
+    private async Task OpenSeveranceAsync(Hremployee emp)
+    {
+        _formEmployee = null;
+        _resignEmployee = null;
+        _docsEmployee = null;
+        _severanceError = null;
+        _severancePreview = null;
+        _severanceEmployee = emp;
+
+        try
+        {
+            _severancePreview = await SeveranceService.PreviewAsync(emp.id);
+            _severanceAmount = _severancePreview.Amount;
+            _severanceReason = $"ค่าชดเชยตามกฎหมาย มาตรา 118 ({_severancePreview.TierDescription})";
+            _severanceTargetMonth = DateTime.Today;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _severanceError = ex.Message;
+        }
+    }
+
+    private async Task SubmitSeveranceAsync()
+    {
+        _severanceError = null;
+
+        if (_severanceEmployee is null || _severanceTargetMonth is null || _severanceAmount <= 0 || string.IsNullOrWhiteSpace(_severanceReason))
+        {
+            _severanceError = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        // InvariantCulture: ambient Thai culture formats "yyyy" as Buddhist
+        // year — TargetPeriod must stay Gregorian to match Pay_PayrollRun.
+        var targetPeriod = _severanceTargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+
+        try
+        {
+            await SeveranceService.SubmitAsync(_severanceEmployee.id, targetPeriod, _severanceAmount, _severanceReason, userId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _severanceError = ex.Message;
+            return;
+        }
+
+        Snackbar.Add("ยื่นค่าชดเชยเรียบร้อย รออนุมัติที่หน้ารายการเฉพาะกิจ", Severity.Success);
+        _severanceEmployee = null;
+        Nav.NavigateTo($"/pay/adhoc/{targetPeriod}");
+    }
+
     private async Task OpenDocsAsync(Hremployee emp)
     {
         _formEmployee = null;
         _resignEmployee = null;
+        _severanceEmployee = null;
         _docError = null;
         _uploadFile = null;
         _docsEmployee = emp;
@@ -437,7 +556,7 @@
         var (relativePath, sha256) = await FileStorage.SaveAsync("employee-docs", storedFileName, bytes);
 
         var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userIdClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
         var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
 
         await using var context = await DbFactory.CreateDbContextAsync();

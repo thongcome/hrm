@@ -237,7 +237,7 @@
             .ToDictionaryAsync(e => e.EmpNo, e => e.id);
 
         var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userIdClaim = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
         var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
 
         var batch = new Att_ImportBatch

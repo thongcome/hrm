@@ -167,9 +167,10 @@ builder.Services.AddSingleton<IJsonLocalizationService, JsonLocalizationService>
 // Configure Serilog
 
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Error()  // ��˹��дѺ��úѹ�֡��鹵���� Error
-    .WriteTo.Console()  // �ѹ�֡ log ��ѧ Console
-    .WriteTo.File("logs/error-log.txt", rollingInterval: RollingInterval.Day)  // �ѹ�֡ log ੾�� Error ŧ���
+    .MinimumLevel.Information()
+    .WriteTo.Console()
+    .WriteTo.File("logs/error-log.txt", restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error, rollingInterval: RollingInterval.Day)
+    .WriteTo.File("logs/file.log", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
 builder.Host.UseSerilog();  // �� Serilog �� logging provider
@@ -188,6 +189,8 @@ builder.Services.AddSingleton<PrivateFileStorage>();
 builder.Services.AddScoped<PayslipGenerationService>();
 builder.Services.AddScoped<BankFileExportService>();
 builder.Services.AddScoped<GLExportService>();
+builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();
+builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
 // ----- end Pay_* module -----
 
 // ----- Att_* module (Time Tracking & Attendance) -----

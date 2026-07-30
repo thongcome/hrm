@@ -1,0 +1,129 @@
+@page "/pay/reports/pay-item-breakdown"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
+
+<PageTitle>สัดส่วนรายรับ-รายหักตามประเภท</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">สัดส่วนรายรับ-รายหักตามประเภท (Pay Item / GL Breakdown)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        สรุปยอดต่องวดแยกตามประเภทรายการ (Pay_PayItemType) พร้อมรหัสบัญชี GL สำหรับส่งต่อฝ่ายบัญชี
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudDatePicker @bind-Date="_period" Label="งวด" Editable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_rows.Count > 0)
+    {
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="6">
+                <MudChart ChartType="ChartType.Donut" InputData="@_earningData" InputLabels="@_earningLabels" Width="100%" Height="300px" />
+                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">รายรับ (Earning)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudChart ChartType="ChartType.Donut" InputData="@_deductionData" InputLabels="@_deductionLabels" Width="100%" Height="300px" />
+                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">รายหัก (Deduction)</MudText>
+            </MudItem>
+        </MudGrid>
+
+        <MudSimpleTable Dense="true" Class="mt-4">
+            <thead>
+                <tr><th>ประเภท</th><th>หมวด</th><th>รหัสบัญชี GL</th><th>ยอดรวม</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td>@row.NameTh</td>
+                        <td>@row.Category</td>
+                        <td>@row.GLAccountCode</td>
+                        <td>@row.Total.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+    else if (_loaded)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ไม่พบข้อมูลสำหรับงวดนี้</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private record BreakdownRow(string NameTh, string Category, string? GLAccountCode, decimal Total);
+
+    private string? _companyId;
+    private DateTime? _period = DateTime.Today;
+    private List<BreakdownRow> _rows = new();
+    private double[] _earningData = Array.Empty<double>();
+    private string[] _earningLabels = Array.Empty<string>();
+    private double[] _deductionData = Array.Empty<double>();
+    private string[] _deductionLabels = Array.Empty<string>();
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId) || _period is null) return;
+
+        // InvariantCulture: ambient Thai culture formats "yyyy" as Buddhist
+        // year — must stay Gregorian to match Pay_PayrollRun.PayrollPeriod.
+        var targetPeriod = _period.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var grouped = await context.Pay_PayrollLineItems
+            .Where(li => li.Pay_PayrollEmployee.CompanyId == _companyId
+                && li.Pay_PayrollEmployee.Pay_PayrollRun.PayrollPeriod == targetPeriod)
+            .GroupBy(li => new { li.Pay_PayItemType.NameTh, li.Pay_PayItemType.Category, li.Pay_PayItemType.GLAccountCode })
+            .Select(g => new
+            {
+                g.Key.NameTh,
+                g.Key.Category,
+                g.Key.GLAccountCode,
+                Total = g.Sum(li => li.Amount),
+            })
+            .OrderByDescending(g => g.Total)
+            .ToListAsync();
+
+        _rows = grouped
+            .Select(g => new BreakdownRow(g.NameTh, g.Category.ToString(), g.GLAccountCode, g.Total))
+            .ToList();
+
+        var earnings = _rows.Where(r => r.Category == nameof(PayItemCategory.Earning)).ToList();
+        _earningData = earnings.Select(r => (double)r.Total).ToArray();
+        _earningLabels = earnings.Select(r => r.NameTh).ToArray();
+
+        var deductions = _rows.Where(r => r.Category == nameof(PayItemCategory.Deduction)).ToList();
+        _deductionData = deductions.Select(r => (double)r.Total).ToArray();
+        _deductionLabels = deductions.Select(r => r.NameTh).ToArray();
+
+        _loaded = true;
+    }
+}
