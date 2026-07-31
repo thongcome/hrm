@@ -28,6 +28,7 @@
         <HeaderContent>
             <MudTh>ชื่อเข้าสู่ระบบ</MudTh>
             <MudTh>ชื่อ-สกุล</MudTh>
+            <MudTh>พนักงาน</MudTh>
             <MudTh>อีเมล</MudTh>
             <MudTh>กลุ่มผู้ใช้</MudTh>
             <MudTh>สถานะ</MudTh>
@@ -36,6 +37,20 @@
         <RowTemplate>
             <MudTd>@context.loginname</MudTd>
             <MudTd>@context.firstname @context.lastname</MudTd>
+            <MudTd>
+                @if (!string.IsNullOrWhiteSpace(context.empid) && _employeesByEmpNo.TryGetValue(context.empid, out var linkedEmp))
+                {
+                    @($"{linkedEmp.EmpNo} — {linkedEmp.EmpName} {linkedEmp.EmpSurname}")
+                }
+                else if (!string.IsNullOrWhiteSpace(context.empid))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">@context.empid (ไม่พบพนักงาน)</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption">— (ไม่ได้ผูกพนักงาน)</MudText>
+                }
+            </MudTd>
             <MudTd>@context.email</MudTd>
             <MudTd>@string.Join(", ", context.sc_user_roles.Where(ur => ur.isactive).Select(ur => ur.role.abbr ?? ur.role.name))</MudTd>
             <MudTd>
@@ -65,7 +80,7 @@
         <MudGrid>
             <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_editing.loginname" Label="ชื่อเข้าสู่ระบบ" Required="true"
-                    Disabled="@(_editing.userid != 0)" HelperText="4-20 ตัวอักษร" />
+                    Disabled="@(_editing.userid != 0)" HelperText="ถ้าผูกกับพนักงาน มักใช้รหัสพนักงานตรงๆ" />
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_editing.firstname" Label="ชื่อ" Required="true" />
@@ -79,7 +94,13 @@
             <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="_editing.phone" Label="เบอร์โทร" />
             </MudItem>
-            <MudItem xs="12">
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Hremployee" Label="ผูกกับพนักงาน (จำเป็น ยกเว้นบัญชี Admin)" Value="_selectedEmployee"
+                    SearchFunc="SearchEmployeesAsync" ValueChanged="OnEmployeeSelected"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
                 <MudCheckBox T="bool" Value="@(!_editing.isdisable)" ValueChanged="@((bool v) => _editing.isdisable = !v)" Label="ใช้ระบบได้" />
             </MudItem>
         </MudGrid>
@@ -125,7 +146,9 @@
 
     private List<sc_user> _users = new();
     private List<sc_role> _roles = new();
+    private Dictionary<string, Hremployee> _employeesByEmpNo = new();
     private HashSet<long> _selectedRoleIds = new();
+    private Hremployee? _selectedEmployee;
     private sc_user? _editing;
     private string? _editError;
     private string? _editInfo;
@@ -146,6 +169,40 @@
             .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role)
             .OrderBy(u => u.loginname)
             .ToListAsync();
+
+        var empNos = _users.Where(u => !string.IsNullOrWhiteSpace(u.empid)).Select(u => u.empid!).Distinct().ToList();
+        _employeesByEmpNo = await context.Hremployee
+            .Where(e => empNos.Contains(e.EmpNo))
+            .ToDictionaryAsync(e => e.EmpNo, e => e);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void OnEmployeeSelected(Hremployee? employee)
+    {
+        _selectedEmployee = employee;
+        if (_editing is null) return;
+
+        _editing.empid = employee?.EmpNo;
+        if (employee is not null && _editing.userid == 0)
+        {
+            // only auto-fill on create — editing an existing account shouldn't
+            // silently overwrite a login name someone may already be using
+            _editing.loginname = employee.EmpNo;
+            _editing.firstname = employee.EmpName ?? employee.EmpNo;
+            _editing.lastname = employee.EmpSurname ?? string.Empty;
+        }
     }
 
     private void StartAdd()
@@ -153,6 +210,7 @@
         _editError = null;
         _editInfo = null;
         _selectedRoleIds = new();
+        _selectedEmployee = null;
         _editing = new sc_user { isdisable = false, isActivate = true, iscancel = false, isforcechanged = true };
     }
 
@@ -161,6 +219,7 @@
         _editError = null;
         _editInfo = null;
         _selectedRoleIds = user.sc_user_roles.Where(ur => ur.isactive).Select(ur => ur.roleid).ToHashSet();
+        _selectedEmployee = !string.IsNullOrWhiteSpace(user.empid) && _employeesByEmpNo.TryGetValue(user.empid, out var emp) ? emp : null;
         _editing = new sc_user
         {
             userid = user.userid,
@@ -170,6 +229,7 @@
             lastname = user.lastname,
             email = user.email,
             phone = user.phone,
+            empid = user.empid,
             isdisable = user.isdisable,
             isActivate = user.isActivate,
             iscancel = user.iscancel,
@@ -188,14 +248,24 @@
         _editInfo = null;
         if (_editing is null) return;
 
-        if (string.IsNullOrWhiteSpace(_editing.loginname) || _editing.loginname.Length < 4 || _editing.loginname.Length > 20)
+        // No hard minimum length: logins created from the employee page reuse
+        // EmpNo verbatim (e.g. "005"), which can be shorter than the old
+        // hand-typed-username convention required.
+        if (string.IsNullOrWhiteSpace(_editing.loginname) || _editing.loginname.Length > 50)
         {
-            _editError = "ชื่อเข้าสู่ระบบต้องยาว 4-20 ตัวอักษร";
+            _editError = "ชื่อเข้าสู่ระบบต้องไม่เกิน 50 ตัวอักษร";
             return;
         }
         if (string.IsNullOrWhiteSpace(_editing.firstname) || string.IsNullOrWhiteSpace(_editing.lastname))
         {
             _editError = "กรุณากรอกชื่อและนามสกุล";
+            return;
+        }
+
+        var isAdminRole = _roles.Any(r => _selectedRoleIds.Contains(r.roleid) && r.rolecode == "admin");
+        if (!isAdminRole && string.IsNullOrWhiteSpace(_editing.empid))
+        {
+            _editError = "ผู้ใช้ต้องผูกกับพนักงาน (ยกเว้นบัญชีที่มีสิทธิ์ Admin) — กรุณาเลือกพนักงาน หรือมอบสิทธิ์ Admin ให้บัญชีนี้";
             return;
         }
 
@@ -235,6 +305,7 @@
             existing.lastname = _editing.lastname;
             existing.email = _editing.email;
             existing.phone = _editing.phone;
+            existing.empid = _editing.empid;
             existing.isdisable = _editing.isdisable;
             existing.moddate = DateTime.Now;
             existing.modby = _actor;

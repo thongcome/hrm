@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
@@ -14,6 +15,7 @@
 @inject HRM.Services.Pay.SeveranceService SeveranceService
 @inject NavigationManager Nav
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject IPasswordHasher<sc_user> PasswordHasher
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>จัดการพนักงาน (Payroll)</PageTitle>
@@ -46,6 +48,7 @@
             <MudTh>แผนก/ตำแหน่ง</MudTh>
             <MudTh>เงินเดือน</MudTh>
             <MudTh>สถานะ</MudTh>
+            <MudTh>บัญชีผู้ใช้ระบบ</MudTh>
             <MudTh>การดำเนินการ</MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -61,6 +64,16 @@
                 else
                 {
                     <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (_linkedUsers.TryGetValue(context.EmpNo, out var linkedUser))
+                {
+                    <MudChip T="string" Color="@(linkedUser.isdisable ? Color.Default : Color.Success)" Size="Size.Small">@linkedUser.loginname</MudChip>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenUserAccount(context))">สร้างบัญชีผู้ใช้</MudButton>
                 }
             </MudTd>
             <MudTd>
@@ -266,6 +279,57 @@
             }
         </MudPaper>
     }
+
+    @if (_userAccountEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">สร้างบัญชีผู้ใช้ระบบ — @_userAccountEmployee.EmpNo @_userAccountEmployee.EmpName @_userAccountEmployee.EmpSurname</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _userAccountEmployee = null)" />
+            </MudStack>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                ใช้รหัสพนักงาน (@_userAccountEmployee.EmpNo) เป็นทั้งตัวผูกกับพนักงานคนนี้และเป็นชื่อเข้าสู่ระบบ (login)
+            </MudText>
+
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="4">
+                    <MudTextField Value="@_userAccountEmployee.EmpNo" Label="ชื่อเข้าสู่ระบบ (login)" ReadOnly="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Value="@_userAccountEmployee.EmpName" Label="ชื่อ" ReadOnly="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Value="@_userAccountEmployee.EmpSurname" Label="นามสกุล" ReadOnly="true" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือกกลุ่มผู้ใช้ (Role)</MudText>
+            <MudGrid>
+                @foreach (var role in _userAccountRoles)
+                {
+                    <MudItem xs="12" sm="4">
+                        <MudCheckBox T="bool" Value="@_selectedUserAccountRoleIds.Contains(role.roleid)"
+                            ValueChanged="@((bool v) => ToggleUserAccountRole(role.roleid, v))"
+                            Label="@($"{role.abbr} - {role.name}")" />
+                    </MudItem>
+                }
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_userAccountError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_userAccountError</MudAlert>
+            }
+            @if (!string.IsNullOrEmpty(_userAccountInfo))
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">@_userAccountInfo</MudAlert>
+            }
+
+            @if (string.IsNullOrEmpty(_userAccountInfo))
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="CreateUserAccountAsync">สร้างบัญชีผู้ใช้</MudButton>
+            }
+        </MudPaper>
+    }
 </MudPaper>
 
 @code {
@@ -296,6 +360,14 @@
     private IBrowserFile? _uploadFile;
     private string? _docError;
 
+    private const string DefaultAccountPassword = "Abcd@2025";
+    private Dictionary<string, sc_user> _linkedUsers = new();
+    private Hremployee? _userAccountEmployee;
+    private List<sc_role> _userAccountRoles = new();
+    private HashSet<long> _selectedUserAccountRoleIds = new();
+    private string? _userAccountError;
+    private string? _userAccountInfo;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -312,6 +384,11 @@
             .Where(e => e.companyid == _companyId)
             .OrderBy(e => e.EmpNo)
             .ToListAsync();
+
+        var empNos = _employees.Select(e => e.EmpNo).ToList();
+        _linkedUsers = await context.sc_users
+            .Where(u => u.empid != null && empNos.Contains(u.empid))
+            .ToDictionaryAsync(u => u.empid!, u => u);
     }
 
     private bool EmpFilter(Hremployee emp)
@@ -328,6 +405,7 @@
         _resignEmployee = null;
         _docsEmployee = null;
         _severanceEmployee = null;
+        _userAccountEmployee = null;
         _isCreating = true;
         _formError = null;
         _workDate = DateTime.Today;
@@ -342,6 +420,7 @@
         _resignEmployee = null;
         _docsEmployee = null;
         _severanceEmployee = null;
+        _userAccountEmployee = null;
         _isCreating = false;
         _formError = null;
         _workDate = emp.WorkDate;
@@ -427,6 +506,7 @@
         _formEmployee = null;
         _docsEmployee = null;
         _severanceEmployee = null;
+        _userAccountEmployee = null;
         _resignError = null;
         _resignDate = DateTime.Today;
         _resignEmployee = emp;
@@ -463,6 +543,7 @@
         _formEmployee = null;
         _resignEmployee = null;
         _docsEmployee = null;
+        _userAccountEmployee = null;
         _severanceError = null;
         _severancePreview = null;
         _severanceEmployee = emp;
@@ -518,6 +599,7 @@
         _formEmployee = null;
         _resignEmployee = null;
         _severanceEmployee = null;
+        _userAccountEmployee = null;
         _docError = null;
         _uploadFile = null;
         _docsEmployee = emp;
@@ -532,6 +614,88 @@
     private void OnFileSelected(IBrowserFile file)
     {
         _uploadFile = file;
+    }
+
+    private async Task OpenUserAccount(Hremployee emp)
+    {
+        _formEmployee = null;
+        _resignEmployee = null;
+        _severanceEmployee = null;
+        _docsEmployee = null;
+        _userAccountError = null;
+        _userAccountInfo = null;
+        _userAccountEmployee = emp;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _userAccountRoles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+        var employeeRole = _userAccountRoles.FirstOrDefault(r => r.rolecode == "emp");
+        _selectedUserAccountRoleIds = employeeRole is not null ? new HashSet<long> { employeeRole.roleid } : new HashSet<long>();
+    }
+
+    private void ToggleUserAccountRole(long roleId, bool selected)
+    {
+        if (selected) _selectedUserAccountRoleIds.Add(roleId);
+        else _selectedUserAccountRoleIds.Remove(roleId);
+    }
+
+    private async Task CreateUserAccountAsync()
+    {
+        _userAccountError = null;
+        if (_userAccountEmployee is null) return;
+
+        if (_selectedUserAccountRoleIds.Count == 0)
+        {
+            _userAccountError = "กรุณาเลือกอย่างน้อย 1 กลุ่มผู้ใช้";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.sc_users.AnyAsync(u => u.loginname == _userAccountEmployee.EmpNo);
+        if (duplicate)
+        {
+            _userAccountError = $"มีชื่อเข้าสู่ระบบ '{_userAccountEmployee.EmpNo}' อยู่แล้วในระบบ";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actor = state.User.Identity?.Name ?? "admin";
+
+        var newUser = new sc_user
+        {
+            loginname = _userAccountEmployee.EmpNo,
+            empid = _userAccountEmployee.EmpNo,
+            firstname = _userAccountEmployee.EmpName ?? _userAccountEmployee.EmpNo,
+            lastname = _userAccountEmployee.EmpSurname ?? string.Empty,
+            company_id = 1,
+            isforcechanged = true,
+            isActivate = true,
+            isdisable = false,
+            iscancel = false,
+            moddate = DateTime.Now,
+            modby = actor,
+        };
+        newUser.password = PasswordHasher.HashPassword(newUser, DefaultAccountPassword);
+        context.sc_users.Add(newUser);
+        await context.SaveChangesAsync();
+
+        foreach (var roleId in _selectedUserAccountRoleIds)
+        {
+            context.sc_user_roles.Add(new sc_user_role
+            {
+                userid = newUser.userid,
+                roleid = roleId,
+                isactive = true,
+                modate = DateTime.Now,
+                modby = actor,
+            });
+        }
+        await context.SaveChangesAsync();
+
+        _userAccountInfo = $"สร้างบัญชีผู้ใช้เรียบร้อย ชื่อเข้าสู่ระบบ {newUser.loginname} รหัสผ่านเริ่มต้นคือ {DefaultAccountPassword} " +
+            "(บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login) — ต้องผูกบัญชี Identity ผ่านหน้า \"ผูกบัญชี Identity\" ก่อนถึงจะ login เข้าระบบได้จริง";
+        Snackbar.Add("สร้างบัญชีผู้ใช้เรียบร้อย", Severity.Success);
+        await LoadAsync();
     }
 
     private async Task UploadDocAsync()
