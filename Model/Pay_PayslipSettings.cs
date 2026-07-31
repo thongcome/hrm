@@ -41,6 +41,14 @@ public class Pay_PayslipSettings
     [StringLength(500)]
     public string? CompanyAddress { get; set; }
 
+    // Auto-generate formula for Hremployee.EmpNo: EmpCodePrefix + running
+    // number zero-padded to EmpCodeDigits (e.g. prefix "EMP", digits 3 ->
+    // "EMP001"). EmpNo also doubles as sc_user.loginname now, so the
+    // generator must stay globally unique, not just per company.
+    [StringLength(20)]
+    public string? EmpCodePrefix { get; set; }
+    public int EmpCodeDigits { get; set; } = 3;
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }

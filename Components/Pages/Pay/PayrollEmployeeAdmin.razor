@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using System.Text.RegularExpressions
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
@@ -400,7 +401,7 @@
             || (!string.IsNullOrWhiteSpace(emp.EmpSurname) && emp.EmpSurname.ToLowerInvariant().Contains(q));
     }
 
-    private void OpenCreate()
+    private async Task OpenCreate()
     {
         _resignEmployee = null;
         _docsEmployee = null;
@@ -411,6 +412,32 @@
         _workDate = DateTime.Today;
         _birthDate = null;
         _formEmployee = new Hremployee { companyid = _companyId!, EmptypeCode = "01" };
+        _formEmployee.EmpNo = await GenerateNextEmpNoAsync();
+    }
+
+    private async Task<string> GenerateNextEmpNoAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        var prefix = settings?.EmpCodePrefix ?? string.Empty;
+        var digits = settings is null || settings.EmpCodeDigits < 1 ? 3 : settings.EmpCodeDigits;
+
+        // EmpNo also doubles as sc_user.loginname now, so the running number
+        // is tracked globally, not just within this company.
+        var existingNumbers = await context.Hremployee
+            .Where(e => e.EmpNo.StartsWith(prefix))
+            .Select(e => e.EmpNo)
+            .ToListAsync();
+
+        var pattern = $"^{Regex.Escape(prefix)}(\\d+)$";
+        var next = existingNumbers
+            .Select(no => Regex.Match(no, pattern))
+            .Where(m => m.Success)
+            .Select(m => int.Parse(m.Groups[1].Value))
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        return prefix + next.ToString(new string('0', digits));
     }
 
     private async Task OpenEditAsync(Hremployee emp)
@@ -460,10 +487,13 @@
 
         if (_isCreating)
         {
-            var duplicate = await context.Hremployee.AnyAsync(e => e.companyid == _companyId && e.EmpNo == _formEmployee.EmpNo);
+            // Global, not company-scoped: EmpNo doubles as sc_user.loginname
+            // (see PayrollEmployeeAdmin's "สร้างบัญชีผู้ใช้" flow), which must
+            // be unique across the whole system regardless of company.
+            var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
             if (duplicate)
             {
-                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในบริษัทนี้";
+                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
                 return;
             }
 

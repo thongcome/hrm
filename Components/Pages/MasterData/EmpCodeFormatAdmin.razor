@@ -1,0 +1,116 @@
+@page "/masterdata/emp-code-format"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>รูปแบบรหัสพนักงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">รูปแบบรหัสพนักงาน (สร้างอัตโนมัติ)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ใช้ตอนกด "+ เพิ่มพนักงาน" ที่หน้าจัดการพนักงาน (Payroll) — ระบบจะเสนอรหัสถัดไปให้อัตโนมัติเป็น ตัวอักษรนำหน้า + ตัวเลขรัน (แก้ไขเองได้ก่อนบันทึก)
+    </MudText>
+
+    @if (_settings is null)
+    {
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" Class="mt-4" />
+        }
+    }
+    else
+    {
+        <MudDivider Class="my-4" />
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.EmpCodePrefix" Label="ตัวอักษรนำหน้า (เว้นว่างได้)" MaxLength="20" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_settings.EmpCodeDigits" Label="จำนวนหลักตัวเลขรัน" Min="1" Max="10" />
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Class="mt-1">
+            ตัวอย่าง: @($"{_settings.EmpCodePrefix}{1.ToString("D" + Math.Max(_settings.EmpCodeDigits, 1))}")
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+    }
+</MudPaper>
+
+@code {
+    private Pay_PayslipSettings? _settings;
+    private string? _error;
+    private string? _companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId))
+        {
+            _error = "บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (_settings is null)
+        {
+            _settings = new Pay_PayslipSettings { CompanyId = _companyId, PasswordTemplate = "{BirthDateDDMMYYYY}" };
+            context.Pay_PayslipSettings.Add(_settings);
+            await context.SaveChangesAsync();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        if (_settings.EmpCodeDigits < 1 || _settings.EmpCodeDigits > 10)
+        {
+            _error = "จำนวนหลักตัวเลขรันต้องอยู่ระหว่าง 1-10";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.EmpCodePrefix = _settings.EmpCodePrefix;
+        existing.EmpCodeDigits = _settings.EmpCodeDigits;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกรูปแบบรหัสพนักงานเรียบร้อย", Severity.Success);
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue("sc_userid");
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+}
