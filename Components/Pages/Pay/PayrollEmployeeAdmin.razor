@@ -1,5 +1,6 @@
 @page "/pay/employees"
 @using System.Security.Claims
+@using HRM.Data
 @using HRM.Models
 @using HRM.Services.Pay
 @using Microsoft.AspNetCore.Authorization
@@ -17,6 +18,8 @@
 @inject NavigationManager Nav
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject IPasswordHasher<sc_user> PasswordHasher
+@inject UserManager<ApplicationUser> UserManager
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>จัดการพนักงาน (Payroll)</PageTitle>
@@ -71,6 +74,7 @@
                 @if (_linkedUsers.TryGetValue(context.EmpNo, out var linkedUser))
                 {
                     <MudChip T="string" Color="@(linkedUser.isdisable ? Color.Default : Color.Success)" Size="Size.Small">@linkedUser.loginname</MudChip>
+                    <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="รีเซ็ตรหัสผ่าน" OnClick="@(() => OpenResetPasswordAsync(context))" />
                 }
                 else
                 {
@@ -311,6 +315,9 @@
                 <MudItem xs="12" sm="4">
                     <MudTextField Value="@_userAccountEmployee.EmpSurname" Label="นามสกุล" ReadOnly="true" />
                 </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_userAccountEmail" Label="อีเมล (สำหรับส่งรหัสผ่านเริ่มต้น — เว้นว่างได้)" />
+                </MudItem>
             </MudGrid>
 
             <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือกกลุ่มผู้ใช้ (Role)</MudText>
@@ -337,6 +344,35 @@
             @if (string.IsNullOrEmpty(_userAccountInfo))
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="CreateUserAccountAsync">สร้างบัญชีผู้ใช้</MudButton>
+            }
+        </MudPaper>
+    }
+
+    @if (_resetPasswordEmployee is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h6">รีเซ็ตรหัสผ่าน — @_resetPasswordEmployee.EmpNo @_resetPasswordEmployee.EmpName @_resetPasswordEmployee.EmpSurname</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _resetPasswordEmployee = null)" />
+            </MudStack>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                จะตั้งรหัสผ่านกลับไปเป็นรหัสผ่านเริ่มต้นของบริษัท (ตั้งค่าได้ที่ /pay/admin/payslip-settings)
+            </MudText>
+
+            <MudTextField @bind-Value="_resetPasswordEmail" Label="อีเมล (สำหรับส่งรหัสผ่านใหม่ — เว้นว่างได้)" Class="mt-2" />
+
+            @if (!string.IsNullOrEmpty(_resetPasswordError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_resetPasswordError</MudAlert>
+            }
+            @if (!string.IsNullOrEmpty(_resetPasswordInfo))
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">@_resetPasswordInfo</MudAlert>
+            }
+
+            @if (string.IsNullOrEmpty(_resetPasswordInfo))
+            {
+                <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-4" OnClick="ConfirmResetPasswordAsync">ยืนยันรีเซ็ตรหัสผ่าน</MudButton>
             }
         </MudPaper>
     }
@@ -371,13 +407,18 @@
     private IBrowserFile? _uploadFile;
     private string? _docError;
 
-    private const string DefaultAccountPassword = "Abcd@2025";
     private Dictionary<string, sc_user> _linkedUsers = new();
     private Hremployee? _userAccountEmployee;
     private List<sc_role> _userAccountRoles = new();
     private HashSet<long> _selectedUserAccountRoleIds = new();
+    private string? _userAccountEmail;
     private string? _userAccountError;
     private string? _userAccountInfo;
+
+    private Hremployee? _resetPasswordEmployee;
+    private string? _resetPasswordEmail;
+    private string? _resetPasswordError;
+    private string? _resetPasswordInfo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -417,6 +458,7 @@
         _docsEmployee = null;
         _severanceEmployee = null;
         _userAccountEmployee = null;
+        _resetPasswordEmployee = null;
         _isCreating = true;
         _empNoUnlocked = false;
         _formError = null;
@@ -470,6 +512,7 @@
         _docsEmployee = null;
         _severanceEmployee = null;
         _userAccountEmployee = null;
+        _resetPasswordEmployee = null;
         _isCreating = false;
         _formError = null;
         _workDate = emp.WorkDate;
@@ -594,6 +637,7 @@
         _docsEmployee = null;
         _severanceEmployee = null;
         _userAccountEmployee = null;
+        _resetPasswordEmployee = null;
         _resignError = null;
         _resignDate = DateTime.Today;
         _resignEmployee = emp;
@@ -631,6 +675,7 @@
         _resignEmployee = null;
         _docsEmployee = null;
         _userAccountEmployee = null;
+        _resetPasswordEmployee = null;
         _severanceError = null;
         _severancePreview = null;
         _severanceEmployee = emp;
@@ -687,6 +732,7 @@
         _resignEmployee = null;
         _severanceEmployee = null;
         _userAccountEmployee = null;
+        _resetPasswordEmployee = null;
         _docError = null;
         _uploadFile = null;
         _docsEmployee = emp;
@@ -709,6 +755,7 @@
         _resignEmployee = null;
         _severanceEmployee = null;
         _docsEmployee = null;
+        _resetPasswordEmployee = null;
         _userAccountError = null;
         _userAccountInfo = null;
         _userAccountEmployee = emp;
@@ -717,12 +764,73 @@
         _userAccountRoles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
         var employeeRole = _userAccountRoles.FirstOrDefault(r => r.rolecode == "emp");
         _selectedUserAccountRoleIds = employeeRole is not null ? new HashSet<long> { employeeRole.roleid } : new HashSet<long>();
+        _userAccountEmail = await ResolveEmployeeEmailAsync(context, emp);
     }
 
     private void ToggleUserAccountRole(long roleId, bool selected)
     {
         if (selected) _selectedUserAccountRoleIds.Add(roleId);
         else _selectedUserAccountRoleIds.Remove(roleId);
+    }
+
+    private async Task OpenResetPasswordAsync(Hremployee emp)
+    {
+        _formEmployee = null;
+        _resignEmployee = null;
+        _severanceEmployee = null;
+        _docsEmployee = null;
+        _userAccountEmployee = null;
+        _resetPasswordError = null;
+        _resetPasswordInfo = null;
+        _resetPasswordEmployee = emp;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _resetPasswordEmail = await ResolveEmployeeEmailAsync(context, emp);
+    }
+
+    private async Task ConfirmResetPasswordAsync()
+    {
+        _resetPasswordError = null;
+        if (_resetPasswordEmployee is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var newPassword = await GetDefaultPasswordAsync(context);
+        if (newPassword is null)
+        {
+            _resetPasswordError = "ยังไม่ได้ตั้งค่ารหัสผ่านเริ่มต้นของบริษัท — กรุณาตั้งค่าที่ /pay/admin/payslip-settings ก่อน";
+            return;
+        }
+
+        var scUser = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == _resetPasswordEmployee.EmpNo);
+        if (scUser is null)
+        {
+            _resetPasswordError = "ไม่พบบัญชีผู้ใช้ของพนักงานคนนี้";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        scUser.password = PasswordHasher.HashPassword(scUser, newPassword);
+        scUser.isforcechanged = true;
+        scUser.moddate = DateTime.Now;
+        scUser.modby = state.User.Identity?.Name ?? "admin";
+        await context.SaveChangesAsync();
+
+        // sc_user.password above is legacy/reference only (same note as
+        // UserAdmin.razor's ResetPasswordAsync) — the credential that
+        // actually matters for sign-in is ApplicationUser.PasswordHash.
+        var appUser = await UserManager.Users.FirstOrDefaultAsync(u => u.userid == scUser.userid);
+        if (appUser is null)
+        {
+            _resetPasswordError = "บัญชีนี้ยังไม่ได้ผูกกับ Identity — กรุณาผูกที่หน้า \"ผูกบัญชี Identity\" ก่อน";
+            return;
+        }
+        await UserManager.RemovePasswordAsync(appUser);
+        await UserManager.AddPasswordAsync(appUser, newPassword);
+
+        var emailNote = await TrySendCredentialEmailAsync(_resetPasswordEmail, scUser.loginname, newPassword, isReset: true);
+        _resetPasswordInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {newPassword} {emailNote}";
+        Snackbar.Add("รีเซ็ตรหัสผ่านเรียบร้อย", Severity.Success);
     }
 
     private async Task CreateUserAccountAsync()
@@ -745,6 +853,13 @@
             return;
         }
 
+        var accountPassword = await GetDefaultPasswordAsync(context);
+        if (accountPassword is null)
+        {
+            _userAccountError = "ยังไม่ได้ตั้งค่ารหัสผ่านเริ่มต้นของบริษัท — กรุณาตั้งค่าที่ /pay/admin/payslip-settings ก่อน";
+            return;
+        }
+
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var actor = state.User.Identity?.Name ?? "admin";
 
@@ -762,7 +877,7 @@
             moddate = DateTime.Now,
             modby = actor,
         };
-        newUser.password = PasswordHasher.HashPassword(newUser, DefaultAccountPassword);
+        newUser.password = PasswordHasher.HashPassword(newUser, accountPassword);
 
         try
         {
@@ -790,10 +905,100 @@
             return;
         }
 
-        _userAccountInfo = $"สร้างบัญชีผู้ใช้เรียบร้อย ชื่อเข้าสู่ระบบ {newUser.loginname} รหัสผ่านเริ่มต้นคือ {DefaultAccountPassword} " +
-            "(บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login) — ต้องผูกบัญชี Identity ผ่านหน้า \"ผูกบัญชี Identity\" ก่อนถึงจะ login เข้าระบบได้จริง";
-        Snackbar.Add("สร้างบัญชีผู้ใช้เรียบร้อย", Severity.Success);
+        // Also create the linked Identity account right here (previously a
+        // separate manual step via /admin/link-identity-account) — the
+        // real login flow (Endpoints/LoginEndpoints.cs) authenticates
+        // against ApplicationUser.PasswordHash, not sc_user.password above,
+        // so without this the account couldn't actually log in yet despite
+        // the message telling HR a password.
+        var appUser = new ApplicationUser
+        {
+            // UserName stays synthetic/unique-by-loginname regardless of
+            // whether a real email is on file — sign-in matches by loginname
+            // (LoginEndpoints.cs), not by this value, and using the real
+            // email here would risk a collision if it's ever reused.
+            UserName = $"{newUser.loginname}@local.humanok",
+            Email = string.IsNullOrWhiteSpace(_userAccountEmail) ? $"{newUser.loginname}@local.humanok" : _userAccountEmail,
+            EmailConfirmed = true,
+            FirstName = newUser.firstname,
+            LastName = newUser.lastname,
+            userid = newUser.userid,
+        };
+        var identityResult = await UserManager.CreateAsync(appUser, accountPassword);
+        if (!identityResult.Succeeded)
+        {
+            // sc_user row already exists at this point — surface the error
+            // but don't roll back; HR can still finish the link manually via
+            // /admin/link-identity-account (e.g. if the derived password
+            // somehow still fails a policy check we didn't anticipate).
+            _userAccountError = "สร้าง sc_user สำเร็จ แต่ผูกบัญชี Identity ไม่สำเร็จ: " +
+                string.Join(", ", identityResult.Errors.Select(e => e.Description)) +
+                " — กรุณาผูกบัญชีด้วยตนเองที่หน้า \"ผูกบัญชี Identity\"";
+            await LoadAsync();
+            return;
+        }
+
+        var emailNote = await TrySendCredentialEmailAsync(_userAccountEmail, newUser.loginname, accountPassword, isReset: false);
+
+        _userAccountInfo = $"สร้างบัญชีผู้ใช้เรียบร้อย ชื่อเข้าสู่ระบบ {newUser.loginname} รหัสผ่านเริ่มต้นคือ {accountPassword} " +
+            $"— ใช้ล็อกอินที่ /login ได้ทันที {emailNote}";
+        Snackbar.Add("สร้างบัญชีผู้ใช้และผูกบัญชี Identity เรียบร้อย — ล็อกอินได้ทันที", Severity.Success);
         await LoadAsync();
+    }
+
+    // Company-wide static password (Pay_PayslipSettings.DefaultPasswordPart1
+    // + Part2, concatenated verbatim) — deliberately NOT derived from
+    // employee data like the payslip PDF password (PasswordTemplate) is, so
+    // creating/resetting an account never blocks on missing birthdate/ID
+    // card the way the old formula-based attempt did (see the "010 ไม่มี
+    // ข้อมูล วันเกิด" report that prompted this change).
+    private async Task<string?> GetDefaultPasswordAsync(HRMContext context)
+    {
+        var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (settings is null) return null;
+        var combined = (settings.DefaultPasswordPart1 ?? "") + (settings.DefaultPasswordPart2 ?? "");
+        return string.IsNullOrEmpty(combined) ? null : combined;
+    }
+
+    // Best-effort lookup so the "อีเมล" field in the create/reset panels
+    // comes pre-filled when we already have one on file, instead of forcing
+    // HR to look it up elsewhere first. address (type CUR = current/contact,
+    // id 2) is the current source of truth for employee email since the
+    // Feature A address-table migration; AdnEmail is the pre-migration flat
+    // field, kept as a fallback for records that predate that migration.
+    private static async Task<string?> ResolveEmployeeEmailAsync(HRMContext context, Hremployee emp)
+    {
+        var addr = await context.addresses
+            .Where(a => a.hremployeeid == emp.id && a.address_type_id == 2 && a.isactive && a.email != null)
+            .OrderByDescending(a => a.moddate ?? a.createdate)
+            .FirstOrDefaultAsync();
+        return addr?.email ?? emp.AdnEmail;
+    }
+
+    // Sends the plaintext credential by email per the user's explicit
+    // request (rather than the token-based /Account/ForgotPassword +
+    // /Account/ResetPassword flow already built into this app via Identity's
+    // scaffolded pages, which is the more conventional pattern but not what
+    // was asked for here). Never blocks account creation/reset on failure —
+    // SMTP is external and its failure shouldn't strand HR without the
+    // password that's already shown on screen.
+    private async Task<string> TrySendCredentialEmailAsync(string? email, string loginname, string password, bool isReset)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return "(ไม่ได้ระบุอีเมล — กรุณาแจ้งรหัสผ่านนี้ให้พนักงานเอง)";
+
+        var subject = isReset ? "รีเซ็ตรหัสผ่านเข้าระบบ HumanOk" : "บัญชีผู้ใช้ระบบ HumanOk ของคุณ";
+        var body = $"<p>ชื่อเข้าสู่ระบบ: <b>{loginname}</b></p><p>รหัสผ่าน{(isReset ? "ใหม่" : "เริ่มต้น")}: <b>{password}</b></p>" +
+            "<p>กรุณาเข้าสู่ระบบที่หน้า /login</p>";
+        try
+        {
+            await EmailSender.SendEmailAsync(email, subject, body);
+            return $"— ส่งรหัสผ่านไปที่ {email} เรียบร้อย";
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to send credential email to {Email}", email);
+            return $"— ส่งอีเมลไปที่ {email} ไม่สำเร็จ (กรุณาแจ้งรหัสผ่านนี้ให้พนักงานเอง)";
+        }
     }
 
     private async Task UploadDocAsync()

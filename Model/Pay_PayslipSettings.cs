@@ -62,6 +62,18 @@ public class Pay_PayslipSettings
     // year-to-date window and period grouping.
     public int FiscalYearStartMonth { get; set; } = 1;
 
+    // Initial/reset login password for newly-created (or reset) sc_user +
+    // ApplicationUser accounts = Part1 + Part2 concatenated verbatim (e.g.
+    // "Abcd" + "2025" -> "Abcd2025"). Company-wide and static — unlike
+    // PasswordTemplate above (which derives a per-employee value from
+    // birthdate/ID-card and is used only for payslip PDF passwords), this
+    // never depends on employee data being complete, so it can't block
+    // account creation the way the old formula-based attempt did.
+    [StringLength(50)]
+    public string? DefaultPasswordPart1 { get; set; }
+    [StringLength(50)]
+    public string? DefaultPasswordPart2 { get; set; }
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }

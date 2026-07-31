@@ -17,6 +17,8 @@
     <MudText Typo="Typo.h5">ตั้งค่ารหัสผ่านสลิปเงินเดือน (PDF)</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
         รหัสผ่านจะถูกคำนวณจากข้อมูลพนักงานตามรูปแบบนี้ทุกครั้งที่สร้าง/เปิดสลิป — ระบบไม่เก็บรหัสผ่านไว้ที่ไหนเลย
+        รูปแบบเดียวกันนี้ยังใช้เป็น<b>รหัสผ่านเริ่มต้นตอนสร้างบัญชีผู้ใช้พนักงาน</b> (หน้า "จัดการพนักงาน" ปุ่ม "สร้างบัญชีผู้ใช้") ด้วย
+        เพื่อให้ทั้งสองที่ใช้สูตรเดียวกัน จำง่าย ไม่ต้องจำรหัสแยกกันสองชุด
     </MudText>
 
     @if (_settings is null)
@@ -38,11 +40,15 @@
             <MudSelectItem Value="@("{BirthDateDDMMYYYY}")">วันเกิด แบบ วว/ดด/ปปปป (ค.ศ.) เช่น 15031990</MudSelectItem>
             <MudSelectItem Value="@("{BirthDateDDMMYY}")">วันเกิด แบบ วว/ดด/ปป เช่น 150390</MudSelectItem>
             <MudSelectItem Value="@("{IdCardLast4}")">เลขบัตรประชาชน 4 ตัวท้าย</MudSelectItem>
+            <MudSelectItem Value="@("{IdCardLast4}{EmpNo}")">เลขบัตรประชาชน 4 ตัวท้าย + รหัสพนักงาน</MudSelectItem>
             <MudSelectItem Value="@("{EmpNo}{BirthDateDDMMYY}")">กำหนดเอง (แก้ไขด้านล่าง)</MudSelectItem>
         </MudSelect>
 
         <MudTextField @bind-Value="_settings.PasswordTemplate" Label="รูปแบบรหัสผ่าน (template)" Class="mt-4"
             HelperText="โทเค็นที่ใช้ได้: {BirthDateDDMMYYYY} {BirthDateDDMMYY} {IdCardLast4} {EmpNo} — ผสมกันได้ เช่น {EmpNo}{BirthDateDDMMYY}" />
+        <MudText Typo="Typo.caption" Class="mt-1" Style="opacity:.75;">
+            หมายเหตุ: รูปแบบนี้ใช้เฉพาะรหัสผ่านสลิป PDF เท่านั้น — รหัสผ่านเข้าสู่ระบบครั้งแรกของพนักงานตั้งแยกไว้ด้านล่าง (ไม่ขึ้นกับข้อมูลพนักงาน)
+        </MudText>
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -87,6 +93,34 @@
             }
         </MudSelect>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync">บันทึกปีบัญชี</MudButton>
+
+        <MudDivider Class="my-5" />
+
+        <MudText Typo="Typo.h6" Class="mb-2">รหัสผ่านเริ่มต้นสำหรับสร้าง/รีเซ็ตบัญชีผู้ใช้พนักงาน</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            ใช้ตอนกด "สร้างบัญชีผู้ใช้" หรือ "รีเซ็ตรหัสผ่าน" ในหน้าจัดการพนักงาน — รหัสผ่านจริงคือค่าทั้งสองช่องต่อกันตรงๆ
+            (ไม่ขึ้นกับข้อมูลพนักงาน จึงใช้ได้แม้พนักงานยังไม่มีวันเกิด/เลขบัตรในระบบ)
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.DefaultPasswordPart1" Label="ส่วนที่ 1" Placeholder="เช่น Abcd" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.DefaultPasswordPart2" Label="ส่วนที่ 2" Placeholder="เช่น 2025" />
+            </MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(CombinedDefaultPassword))
+        {
+            @if (DefaultPasswordPolicyError is null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">รหัสผ่านที่ได้: <b class="mono">@CombinedDefaultPassword</b></MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">รหัสผ่านที่ได้ "@CombinedDefaultPassword" @DefaultPasswordPolicyError</MudAlert>
+            }
+        }
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveDefaultPasswordAsync">บันทึกรหัสผ่านเริ่มต้น</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -147,6 +181,9 @@
             : "{EmpNo}{BirthDateDDMMYY}";
     }
 
+    private string CombinedDefaultPassword => (_settings?.DefaultPasswordPart1 ?? "") + (_settings?.DefaultPasswordPart2 ?? "");
+    private string? DefaultPasswordPolicyError => ValidatePasswordPolicy(CombinedDefaultPassword);
+
     private void OnPresetChanged(string value)
     {
         _selectedPreset = value;
@@ -190,6 +227,54 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+    }
+
+    // Mirrors ASP.NET Core Identity's default PasswordOptions (never
+    // explicitly configured in Program.cs, so the framework default applies:
+    // digit + lowercase + uppercase + non-alphanumeric + length >= 6).
+    // Checked client-side here so a bad combination is caught when the admin
+    // saves it, not the next time HR tries to create an account.
+    private static string? ValidatePasswordPolicy(string value)
+    {
+        if (value.Length < 6) return "— ต้องมีความยาวรวมอย่างน้อย 6 ตัวอักษร";
+        if (!value.Any(char.IsDigit)) return "— ต้องมีตัวเลขอย่างน้อย 1 ตัว";
+        if (!value.Any(char.IsLower)) return "— ต้องมีอักษรพิมพ์เล็กอย่างน้อย 1 ตัว";
+        if (!value.Any(char.IsUpper)) return "— ต้องมีอักษรพิมพ์ใหญ่อย่างน้อย 1 ตัว";
+        if (value.All(char.IsLetterOrDigit)) return "— ต้องมีสัญลักษณ์ (เช่น @ ! #) อย่างน้อย 1 ตัว";
+        return null;
+    }
+
+    private async Task SaveDefaultPasswordAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        if (string.IsNullOrEmpty(CombinedDefaultPassword))
+        {
+            _error = "กรุณากรอกรหัสผ่านเริ่มต้นทั้งสองช่อง";
+            return;
+        }
+        if (DefaultPasswordPolicyError is not null)
+        {
+            _error = $"รหัสผ่าน \"{CombinedDefaultPassword}\" ไม่ผ่านเงื่อนไข {DefaultPasswordPolicyError}";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.DefaultPasswordPart1 = _settings.DefaultPasswordPart1;
+        existing.DefaultPasswordPart2 = _settings.DefaultPasswordPart2;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกรหัสผ่านเริ่มต้นเรียบร้อย", Severity.Success);
     }
 
     private async Task SaveCompanyInfoAsync()
