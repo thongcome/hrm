@@ -66,6 +66,14 @@ public class PayslipGenerationService
                     PdfStoragePath = relativePath,
                     PdfSha256 = sha256,
                     GeneratedDate = DateTime.Now,
+                    // IsPublishedToEmployee existed in the schema since the
+                    // very first Pay_* migration but nothing ever set it —
+                    // ESS reads it as the visibility gate for /ess/payslips,
+                    // so a (re)generated slip becomes visible to the
+                    // employee immediately, same trust level as the PDF
+                    // itself being ready.
+                    IsPublishedToEmployee = true,
+                    PublishedDate = DateTime.Now,
                 });
             }
             else
@@ -73,6 +81,11 @@ public class PayslipGenerationService
                 existing.PdfStoragePath = relativePath;
                 existing.PdfSha256 = sha256;
                 existing.GeneratedDate = DateTime.Now;
+                if (!existing.IsPublishedToEmployee)
+                {
+                    existing.IsPublishedToEmployee = true;
+                    existing.PublishedDate = DateTime.Now;
+                }
             }
 
             generated++;

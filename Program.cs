@@ -288,5 +288,6 @@ app.MapPayrollFileEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
+app.MapEssFileEndpoints();
 
 app.Run();

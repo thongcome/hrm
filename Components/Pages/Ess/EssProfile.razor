@@ -1,0 +1,186 @@
+@page "/ess/profile"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>ข้อมูลส่วนตัว</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ข้อมูลส่วนตัว</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mt-4">ข้อมูลทั่วไป (อ่านอย่างเดียว)</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.EmpNo" Label="รหัสพนักงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@($"{_employee.EmpName} {_employee.EmpSurname}")" Label="ชื่อ-นามสกุล" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.PosCode" Label="รหัสตำแหน่ง" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(_employee.WorkDate?.ToString("dd/MM/yyyy"))" Label="วันที่เริ่มงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.SalexpBank" Label="ธนาคาร (รหัส)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@MaskAccountNo(_employee.SalexpAccid)" Label="เลขบัญชี" ReadOnly="true" /></MudItem>
+        </MudGrid>
+
+        @if (_registeredAddress is not null)
+        {
+            <MudText Typo="Typo.h6" Class="mt-4">ที่อยู่ตามทะเบียนบ้าน (อ่านอย่างเดียว)</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">@FormatAddress(_registeredAddress)</MudText>
+        }
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">ที่อยู่ปัจจุบัน / ติดต่อได้ (แก้ไขได้)</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.no" Label="บ้านเลขที่/ที่อยู่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.subdistrict" Label="ตำบล/แขวง" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.districtid" Label="อำเภอ/เขต" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.province" Label="จังหวัด" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.postcode" Label="รหัสไปรษณีย์" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.tel" Label="โทรศัพท์" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.mobileno" Label="มือถือ" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_currentAddress.email" Label="อีเมล" /></MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4">ผู้ติดต่อฉุกเฉิน (แก้ไขได้)</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerName" Label="ชื่อ" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerSurname" Label="นามสกุล" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerPhone" Label="เบอร์โทร" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerAddress" Label="ที่อยู่ผู้ติดต่อฉุกเฉิน" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync" Disabled="_saving">
+            บันทึกข้อมูลติดต่อ
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    private const long CurrentAddressTypeId = 2; // mas_address_type code "CUR"
+    private const long RegisteredAddressTypeId = 1; // mas_address_type code "REG"
+
+    private bool _loaded;
+    private bool _saving;
+    private string? _error;
+    private Hremployee? _employee;
+    private address? _registeredAddress;
+    private address _currentAddress = new();
+    private string? _emerName, _emerSurname, _emerPhone, _emerAddress;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        if (_employee is not null)
+        {
+            _registeredAddress = await context.addresses
+                .Where(a => a.hremployeeid == _employee.id && a.address_type_id == RegisteredAddressTypeId && a.isactive)
+                .OrderByDescending(a => a.moddate ?? a.createdate)
+                .FirstOrDefaultAsync();
+
+            _currentAddress = await context.addresses
+                .Where(a => a.hremployeeid == _employee.id && a.address_type_id == CurrentAddressTypeId && a.isactive)
+                .OrderByDescending(a => a.moddate ?? a.createdate)
+                .FirstOrDefaultAsync() ?? new address { hremployeeid = _employee.id, address_type_id = CurrentAddressTypeId };
+
+            _emerName = _employee.EmerName;
+            _emerSurname = _employee.EmerSurname;
+            _emerPhone = _employee.EmerPhone;
+            _emerAddress = _employee.EmerAddress;
+
+            await AuditLogger.LogAccessAsync("Hremployee", _employee.id.ToString(), isSensitive: true, note: "ESS profile view");
+        }
+
+        _loaded = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_employee is null) return;
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            var addr = await context.addresses
+                .FirstOrDefaultAsync(a => a.id == _currentAddress.id && _currentAddress.id != 0);
+            if (addr is null)
+            {
+                addr = new address { hremployeeid = _employee.id, address_type_id = CurrentAddressTypeId, createdate = DateTime.Now };
+                context.addresses.Add(addr);
+            }
+            addr.no = _currentAddress.no;
+            addr.subdistrict = _currentAddress.subdistrict;
+            addr.districtid = _currentAddress.districtid;
+            addr.province = _currentAddress.province;
+            addr.postcode = _currentAddress.postcode;
+            addr.tel = _currentAddress.tel;
+            addr.mobileno = _currentAddress.mobileno;
+            addr.email = _currentAddress.email;
+            addr.moddate = DateTime.Now;
+
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _employee.id);
+            if (emp is not null)
+            {
+                emp.EmerName = _emerName;
+                emp.EmerSurname = _emerSurname;
+                emp.EmerPhone = _emerPhone;
+                emp.EmerAddress = _emerAddress;
+            }
+
+            await context.SaveChangesAsync();
+            await AuditLogger.LogChangeAsync(AuditActionType.Update, "Hremployee", _employee.id.ToString(),
+                oldValues: null, newValues: new { addr.no, addr.subdistrict, addr.province, _emerName, _emerPhone },
+                isSensitive: true);
+
+            _currentAddress.id = addr.id;
+            Snackbar.Add("บันทึกข้อมูลติดต่อเรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _error = "เกิดข้อผิดพลาดขณะบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง";
+            Serilog.Log.Error(ex, "ESS profile save failed for employee {Id}", _employee.id);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static string MaskAccountNo(string? accId)
+    {
+        if (string.IsNullOrWhiteSpace(accId) || accId.Length <= 4) return accId ?? "";
+        return new string('x', accId.Length - 4) + accId[^4..];
+    }
+
+    private static string FormatAddress(address a)
+    {
+        var parts = new[] { a.no, a.subdistrict, a.districtid, a.province, a.postcode }
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+        return string.Join(" ", parts);
+    }
+}

@@ -1,0 +1,79 @@
+@page "/ess/payslips"
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>สลิปเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">สลิปเงินเดือนของฉัน</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    }
+    else if (_rows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีสลิปเงินเดือนที่เผยแพร่ให้คุณดู</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Class="mt-3">
+            <thead><tr><th>งวด</th><th>วันที่-สิ้นสุดงวด</th><th style="text-align:right">สุทธิ</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td>@row.Run.PayrollPeriod</td>
+                        <td>@row.Run.PeriodStart.ToString("dd/MM/yyyy") - @row.Run.PeriodEnd.ToString("dd/MM/yyyy")</td>
+                        <td style="text-align:right">@row.PayrollEmployee.NetPay.ToString("N2")</td>
+                        <td>
+                            <MudLink Href="@($"/ess/files/payslip/{row.Payslip.Id}")" Target="_blank">
+                                <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" /> ดาวน์โหลด
+                            </MudLink>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    private record Row(Pay_PayrollRun Run, Pay_PayrollEmployee PayrollEmployee, Pay_Payslip Payslip);
+
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<Row> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        if (_employee is not null)
+        {
+            var payEmployees = await context.Pay_PayrollEmployees
+                .Include(pe => pe.Pay_PayrollRun)
+                .Include(pe => pe.Pay_Payslip)
+                .Where(pe => pe.HremployeeId == _employee.id && pe.Pay_Payslip != null && pe.Pay_Payslip!.IsPublishedToEmployee)
+                .OrderByDescending(pe => pe.Pay_PayrollRun.PeriodStart)
+                .ToListAsync();
+
+            _rows = payEmployees.Select(pe => new Row(pe.Pay_PayrollRun, pe, pe.Pay_Payslip!)).ToList();
+        }
+
+        _loaded = true;
+    }
+}

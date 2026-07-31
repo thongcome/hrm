@@ -78,6 +78,15 @@
                 <MudNavLink Href="/att/report" Icon="@Icons.Material.Filled.Assessment">รายงานเวลาเข้างาน</MudNavLink>
             </MudNavGroup>
 
+            @if (_hasEssAccess)
+            {
+                <MudNavGroup Title="พื้นที่พนักงาน (ESS)" Icon="@Icons.Material.Filled.Person" Expanded="false">
+                    <MudNavLink Href="/ess" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">หน้าแรก</MudNavLink>
+                    <MudNavLink Href="/ess/profile" Icon="@Icons.Material.Filled.Badge">ข้อมูลส่วนตัว</MudNavLink>
+                    <MudNavLink Href="/ess/payslips" Icon="@Icons.Material.Filled.Receipt">สลิปเงินเดือน</MudNavLink>
+                </MudNavGroup>
+            }
+
             <MudNavGroup Title="จัดการระบบ (เมนู/สิทธิ์)" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
                 <MudNavLink Href="/admin/system/menus" Icon="@Icons.Material.Filled.AccountTree">จัดการเมนู</MudNavLink>
                 <MudNavLink Href="/admin/system/roles" Icon="@Icons.Material.Filled.Groups">จัดการกลุ่มผู้ใช้</MudNavLink>
@@ -111,6 +120,7 @@
 @code {
     private bool _drawerOpen = true;
     private bool _isAuthenticated;
+    private bool _hasEssAccess;
     private string _userName = "";
 
     protected override async Task OnInitializedAsync()
@@ -120,5 +130,6 @@
 
         _isAuthenticated = user.Identity?.IsAuthenticated ?? false;
         _userName = user.Identity?.Name ?? "";
+        _hasEssAccess = user.HasClaim("menu", "ESS_ACCESS");
     }
 }
