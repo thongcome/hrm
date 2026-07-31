@@ -134,4 +134,13 @@ public partial class com_organization
     public int? node_level { get; set; }
 
     public bool istop { get; set; }= false;
+
+    // Soft-linked cost center / GL code for this org node — same
+    // string-code convention as code/comp_code/orgCode elsewhere on this
+    // entity, not an enforced FK. Not yet reliably populated on real
+    // employee records (Hremployee has no working link into this table
+    // today) — see Hremployee.CostCenterCode for the field payroll
+    // reporting actually reads from in the meantime.
+    [StringLength(20)]
+    public string? CostCenterCode { get; set; }
 }

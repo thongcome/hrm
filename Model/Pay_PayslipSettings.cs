@@ -57,6 +57,11 @@ public class Pay_PayslipSettings
     // "start over" from a specific number via the format settings page).
     public int? EmpCodeNextNumber { get; set; }
 
+    // 1 = calendar year (Jan-Dec, default). Set e.g. 4 for a Thai
+    // government-style fiscal year (Apr-Mar). Drives the Payroll Dashboard's
+    // year-to-date window and period grouping.
+    public int FiscalYearStartMonth { get; set; } = 1;
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }

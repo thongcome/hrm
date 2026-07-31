@@ -5,6 +5,10 @@ namespace HRM.Services.Pay;
 
 public record LatestRunSnapshot(string PayrollPeriod, decimal TotalNetPay, int EmployeeCount, decimal TotalTaxWithheld);
 
+public record YtdSummary(decimal TotalGross, decimal TotalDeductions, decimal TotalNetPay, decimal TotalTax, int EmployeeCount);
+public record CostCenterRow(string CostCenterCode, decimal TotalGross, int EmployeeCount);
+public record FiscalPeriodRow(long RunId, string PayrollPeriod, PayrollRunStatus Status, DateOnly PeriodStart, DateOnly PeriodEnd, decimal TotalNetPay, int EmployeeCount);
+
 // Non-financial-trend KPIs for a real payroll dashboard — deliberately
 // distinct from LaborCostTrendReport (multi-period financial trend) and
 // PayItemBreakdownReport (single-period pay-item breakdown): workflow
@@ -85,4 +89,83 @@ public static class PayrollDashboardService
             .OrderByDescending(r => r.PayrollPeriod)
             .Select(r => (long?)r.Id)
             .FirstOrDefaultAsync(ct);
+
+    // "fiscalYear" is the calendar year the fiscal year STARTS in — e.g. with
+    // FiscalYearStartMonth=4 (Thai govt style), fiscalYear=2026 means
+    // Apr 2026 - Mar 2027.
+    public static (DateOnly Start, DateOnly End) GetFiscalYearBounds(int fiscalYearStartMonth, int fiscalYear)
+    {
+        var start = new DateOnly(fiscalYear, fiscalYearStartMonth, 1);
+        var end = start.AddYears(1).AddDays(-1);
+        return (start, end);
+    }
+
+    public static int GetCurrentFiscalYear(int fiscalYearStartMonth, DateOnly today) =>
+        today.Month >= fiscalYearStartMonth ? today.Year : today.Year - 1;
+
+    public static async Task<YtdSummary> GetYtdSummaryAsync(HRMContext ctx, string companyId, DateOnly fyStart, DateOnly fyEnd, CancellationToken ct = default)
+    {
+        var query = ctx.Pay_PayrollEmployees
+            .Where(pe => pe.Pay_PayrollRun.CompanyId == companyId
+                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
+                && pe.Pay_PayrollRun.PeriodStart >= fyStart
+                && pe.Pay_PayrollRun.PeriodStart <= fyEnd);
+
+        var totals = await query
+            .GroupBy(x => 1)
+            .Select(g => new
+            {
+                Gross = g.Sum(x => x.GrossEarnings),
+                Deductions = g.Sum(x => x.TotalDeductions),
+                Net = g.Sum(x => x.NetPay),
+                Tax = g.Sum(x => x.TaxAmount),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var employeeCount = await query.Select(x => x.HremployeeId).Distinct().CountAsync(ct);
+
+        return new YtdSummary(totals?.Gross ?? 0, totals?.Deductions ?? 0, totals?.Net ?? 0, totals?.Tax ?? 0, employeeCount);
+    }
+
+    public static async Task<List<CostCenterRow>> GetCostCenterBreakdownAsync(HRMContext ctx, string companyId, DateOnly fyStart, DateOnly fyEnd, CancellationToken ct = default)
+    {
+        var rows = await ctx.Pay_PayrollEmployees
+            .Where(pe => pe.Pay_PayrollRun.CompanyId == companyId
+                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
+                && pe.Pay_PayrollRun.PeriodStart >= fyStart
+                && pe.Pay_PayrollRun.PeriodStart <= fyEnd)
+            .GroupBy(pe => pe.CostCenterCode)
+            .Select(g => new
+            {
+                CostCenterCode = g.Key,
+                Gross = g.Sum(x => x.GrossEarnings),
+                Count = g.Select(x => x.HremployeeId).Distinct().Count(),
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => new CostCenterRow(string.IsNullOrWhiteSpace(r.CostCenterCode) ? "ไม่ระบุ" : r.CostCenterCode, r.Gross, r.Count))
+            .OrderByDescending(r => r.TotalGross)
+            .ToList();
+    }
+
+    public static async Task<List<FiscalPeriodRow>> GetPeriodsInFiscalYearAsync(HRMContext ctx, string companyId, DateOnly fyStart, DateOnly fyEnd, CancellationToken ct = default)
+    {
+        var runs = await ctx.Pay_PayrollRuns
+            .Where(r => r.CompanyId == companyId && r.PeriodStart >= fyStart && r.PeriodStart <= fyEnd)
+            .OrderBy(r => r.PeriodStart)
+            .Select(r => new
+            {
+                r.Id,
+                r.PayrollPeriod,
+                r.Status,
+                r.PeriodStart,
+                r.PeriodEnd,
+                NetPay = r.Pay_PayrollEmployees.Sum(pe => pe.NetPay),
+                EmployeeCount = r.Pay_PayrollEmployees.Count(),
+            })
+            .ToListAsync(ct);
+
+        return runs.Select(r => new FiscalPeriodRow(r.Id, r.PayrollPeriod, r.Status, r.PeriodStart, r.PeriodEnd, r.NetPay, r.EmployeeCount)).ToList();
+    }
 }

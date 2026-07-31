@@ -69,8 +69,17 @@ public partial class Hremployee
 
     [Column("POS_CODE")]
     [StringLength(3)]
-    
+
     public string? PosCode { get; set; }
+
+    // Soft-linked cost center code, set directly by HR per employee — same
+    // spirit as DeptgrpCode above, which doesn't reliably match any
+    // com_organization.code in real data today, so this is a separate,
+    // directly-editable field rather than trying to route through that
+    // broken linkage. Snapshotted onto Pay_PayrollEmployee.CostCenterCode
+    // at calculation time.
+    [StringLength(20)]
+    public string? CostCenterCode { get; set; }
 
     [Column("SEX")]
     [StringLength(1)]

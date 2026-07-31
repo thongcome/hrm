@@ -114,6 +114,7 @@ public class PayrollCalculationService
                 BankCode = emp.SalexpBank,
                 BankBranchCode = emp.SalexpBranch,
                 BankAccountNo = emp.SalexpAccid,
+                CostCenterCode = emp.CostCenterCode,
             };
 
             var lineItems = new List<Pay_PayrollLineItem>();

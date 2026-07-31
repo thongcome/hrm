@@ -61,6 +61,12 @@ public class Pay_PayrollEmployee
     [StringLength(20)]
     public string? BankAccountNo { get; set; }
 
+    // snapshotted from Hremployee.CostCenterCode at calculation time, same
+    // reasoning as the bank fields above — later changes to the employee's
+    // cost center shouldn't retroactively change an already-calculated run
+    [StringLength(20)]
+    public string? CostCenterCode { get; set; }
+
     [StringLength(500)]
     public string? Remark { get; set; }
 

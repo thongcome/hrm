@@ -1,0 +1,108 @@
+@page "/pay/dashboard/period/{RunId:long}/employee/{PayrollEmployeeId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
+
+<PageTitle>รายการเงินได้/เงินหัก</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo($"/pay/dashboard/period/{RunId}"))" title="กลับไปหน้ารายชื่อพนักงาน" />
+        <MudText Typo="Typo.h5">รายการเงินได้/เงินหัก</MudText>
+    </MudStack>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_payEmployee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลนี้ หรือไม่ใช่ของบริษัทคุณ</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.body1" Class="mt-2">
+            @_payEmployee.EmpNo — @_payEmployee.Hremployee.EmpName @_payEmployee.Hremployee.EmpSurname
+            @if (!string.IsNullOrWhiteSpace(_payEmployee.CostCenterCode))
+            {
+                <text> (ศูนย์ต้นทุน: @_payEmployee.CostCenterCode)</text>
+            }
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            งวด @_payEmployee.Pay_PayrollRun.PayrollPeriod (@_payEmployee.Pay_PayrollRun.PeriodStart.ToString("dd/MM/yyyy") - @_payEmployee.Pay_PayrollRun.PeriodEnd.ToString("dd/MM/yyyy"))
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-3 mb-1">เงินได้</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>รายการ</th><th style="text-align:right">จำนวนเงิน</th></tr></thead>
+            <tbody>
+                @foreach (var li in _lineItems.Where(l => l.SignFlag > 0))
+                {
+                    <tr><td>@li.Pay_PayItemType.NameTh</td><td style="text-align:right">@li.Amount.ToString("N2")</td></tr>
+                }
+                <tr style="font-weight:500"><td>รวมเงินได้</td><td style="text-align:right">@_payEmployee.GrossEarnings.ToString("N2")</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-1">เงินหัก</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>รายการ</th><th style="text-align:right">จำนวนเงิน</th></tr></thead>
+            <tbody>
+                @foreach (var li in _lineItems.Where(l => l.SignFlag < 0))
+                {
+                    <tr><td>@li.Pay_PayItemType.NameTh</td><td style="text-align:right">@li.Amount.ToString("N2")</td></tr>
+                }
+                <tr style="font-weight:500"><td>รวมเงินหัก</td><td style="text-align:right">@_payEmployee.TotalDeductions.ToString("N2")</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudSimpleTable Dense="true" Class="mt-4">
+            <tbody>
+                <tr style="font-weight:500"><td>สุทธิ</td><td style="text-align:right">@_payEmployee.NetPay.ToString("N2")</td></tr>
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public long RunId { get; set; }
+    [Parameter]
+    public long PayrollEmployeeId { get; set; }
+
+    private string? _companyId;
+    private bool _loaded;
+    private Pay_PayrollEmployee? _payEmployee;
+    private List<Pay_PayrollLineItem> _lineItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loaded = true; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _payEmployee = await context.Pay_PayrollEmployees
+            .Include(pe => pe.Hremployee)
+            .Include(pe => pe.Pay_PayrollRun)
+            .FirstOrDefaultAsync(pe => pe.Id == PayrollEmployeeId && pe.PayrollRunId == RunId && pe.Pay_PayrollRun.CompanyId == _companyId);
+
+        if (_payEmployee is not null)
+        {
+            _lineItems = await context.Pay_PayrollLineItems
+                .Include(li => li.Pay_PayItemType)
+                .Where(li => li.PayrollEmployeeId == PayrollEmployeeId)
+                .OrderBy(li => li.SeqNo)
+                .ToListAsync();
+        }
+
+        _loaded = true;
+    }
+}

@@ -1,0 +1,120 @@
+@page "/pay/dashboard/period/{RunId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
+
+<PageTitle>รายละเอียดงวดเงินเดือน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/dashboard"))" title="กลับแดชบอร์ด" />
+        <MudText Typo="Typo.h5">รายละเอียดงวดเงินเดือน</MudText>
+    </MudStack>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_run is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบงวดเงินเดือนนี้ หรือไม่ใช่ของบริษัทคุณ</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.body1" Class="mt-2">
+            งวด @_run.PayrollPeriod (@_run.PeriodStart.ToString("dd/MM/yyyy") - @_run.PeriodEnd.ToString("dd/MM/yyyy")) — สถานะ: @_run.Status
+        </MudText>
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-3" Elevation="2">
+                    <MudText Typo="Typo.caption">รายรับรวม</MudText>
+                    <MudText Typo="Typo.h5">@_employees.Sum(e => e.GrossEarnings).ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-3" Elevation="2">
+                    <MudText Typo="Typo.caption">หักรวม</MudText>
+                    <MudText Typo="Typo.h5">@_employees.Sum(e => e.TotalDeductions).ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-3" Elevation="2">
+                    <MudText Typo="Typo.caption">สุทธิรวม</MudText>
+                    <MudText Typo="Typo.h5">@_employees.Sum(e => e.NetPay).ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudTextField @bind-Value="_searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start"
+            AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-4 mud-width-full" />
+
+        <MudTable Items="_employees" Dense="true" Hover="true" Class="mt-3" Filter="EmpFilter">
+            <HeaderContent>
+                <MudTh>รหัสพนักงาน</MudTh>
+                <MudTh>ชื่อ-นามสกุล</MudTh>
+                <MudTh>ศูนย์ต้นทุน</MudTh>
+                <MudTh>รายรับรวม</MudTh>
+                <MudTh>หักรวม</MudTh>
+                <MudTh>สุทธิ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo</MudTd>
+                <MudTd>@context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
+                <MudTd>@(string.IsNullOrWhiteSpace(context.CostCenterCode) ? "ไม่ระบุ" : context.CostCenterCode)</MudTd>
+                <MudTd>@context.GrossEarnings.ToString("N2")</MudTd>
+                <MudTd>@context.TotalDeductions.ToString("N2")</MudTd>
+                <MudTd>@context.NetPay.ToString("N2")</MudTd>
+                <MudTd><MudLink Href="@($"/pay/dashboard/period/{RunId}/employee/{context.Id}")">รายการเงินได้/เงินหัก</MudLink></MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public long RunId { get; set; }
+
+    private string? _companyId;
+    private bool _loaded;
+    private Pay_PayrollRun? _run;
+    private List<Pay_PayrollEmployee> _employees = new();
+    private string _searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loaded = true; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == RunId && r.CompanyId == _companyId);
+        if (_run is not null)
+        {
+            _employees = await context.Pay_PayrollEmployees
+                .Include(pe => pe.Hremployee)
+                .Where(pe => pe.PayrollRunId == RunId)
+                .OrderBy(pe => pe.EmpNo)
+                .ToListAsync();
+        }
+
+        _loaded = true;
+    }
+
+    private bool EmpFilter(Pay_PayrollEmployee pe)
+    {
+        if (string.IsNullOrWhiteSpace(_searchTerm)) return true;
+        var q = _searchTerm.Trim().ToLowerInvariant();
+        return (!string.IsNullOrWhiteSpace(pe.EmpNo) && pe.EmpNo.ToLowerInvariant().Contains(q))
+            || (!string.IsNullOrWhiteSpace(pe.Hremployee.EmpName) && pe.Hremployee.EmpName.ToLowerInvariant().Contains(q))
+            || (!string.IsNullOrWhiteSpace(pe.Hremployee.EmpSurname) && pe.Hremployee.EmpSurname.ToLowerInvariant().Contains(q));
+    }
+}

@@ -75,6 +75,21 @@
 
         <MudDivider Class="my-5" />
 
+        <MudText Typo="Typo.h6" Class="mb-2">ปีบัญชี (Fiscal Year)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            กำหนดเดือนเริ่มต้นปีบัญชี ใช้คำนวณช่วง YTD ในแดชบอร์ดเงินเดือน (ค่าเริ่มต้น: มกราคม = ปีปฏิทินปกติ)
+        </MudText>
+        <MudSelect T="int" @bind-Value="_settings.FiscalYearStartMonth" Label="เดือนเริ่มต้นปีบัญชี" Class="mud-width-full" Style="max-width: 300px;">
+            @for (var m = 1; m <= 12; m++)
+            {
+                var month = m;
+                <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync">บันทึกปีบัญชี</MudButton>
+
+        <MudDivider Class="my-5" />
+
         <MudText Typo="Typo.h6" Class="mb-2">ทดสอบดูตัวอย่าง</MudText>
         <MudAutocomplete T="Hremployee" Label="เลือกพนักงานเพื่อดูตัวอย่างรหัสผ่าน" @bind-Value="_previewEmployee"
             SearchFunc="SearchEmployeesAsync"
@@ -201,10 +216,48 @@
         Snackbar.Add("บันทึกข้อมูลบริษัทเรียบร้อย", Severity.Success);
     }
 
+    private async Task SaveFiscalYearAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.FiscalYearStartMonth = _settings.FiscalYearStartMonth;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกปีบัญชีเรียบร้อย", Severity.Success);
+    }
+
     private async Task<long> GetCurrentUserIdAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var idClaim = state.User.FindFirstValue("sc_userid");
         return long.TryParse(idClaim, out var id) ? id : 0;
     }
+
+    private static string ThaiMonthName(int month) => month switch
+    {
+        1 => "มกราคม",
+        2 => "กุมภาพันธ์",
+        3 => "มีนาคม",
+        4 => "เมษายน",
+        5 => "พฤษภาคม",
+        6 => "มิถุนายน",
+        7 => "กรกฎาคม",
+        8 => "สิงหาคม",
+        9 => "กันยายน",
+        10 => "ตุลาคม",
+        11 => "พฤศจิกายน",
+        12 => "ธันวาคม",
+        _ => month.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
 }
