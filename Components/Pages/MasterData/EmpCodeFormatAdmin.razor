@@ -38,11 +38,11 @@
                 <MudTextField @bind-Value="_settings.EmpCodePrefix" Label="ตัวอักษรนำหน้า (เว้นว่างได้)" MaxLength="20" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudNumericField @bind-Value="_settings.EmpCodeDigits" Label="จำนวนหลักตัวเลขรัน" Min="1" Max="10" />
+                <MudNumericField @bind-Value="_settings.EmpCodeDigits" Label="จำนวนหลักตัวเลขรัน" Min="1" Max="@MaxTotalLength" />
             </MudItem>
         </MudGrid>
         <MudText Typo="Typo.caption" Class="mt-1">
-            ตัวอย่าง: @($"{_settings.EmpCodePrefix}{1.ToString("D" + Math.Max(_settings.EmpCodeDigits, 1))}")
+            ตัวอย่าง: @ExampleCode() — รหัสพนักงานเก็บได้สูงสุด @MaxTotalLength ตัวอักษรรวมกัน (ตัวอักษรนำหน้า + ตัวเลขรัน)
         </MudText>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -51,13 +51,42 @@
         }
 
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+
+        <MudDivider Class="my-5" />
+
+        <MudText Typo="Typo.h6" Class="mb-2">ตัวนับเลขรัน</MudText>
+        @if (_settings.EmpCodeNextNumber.HasValue)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-2">
+                ตอนนี้กำหนดเลขรันเองไว้ที่ @_settings.EmpCodeNextNumber — รหัสถัดไปจะรันต่อจากตรงนี้ไปเรื่อยๆ
+            </MudAlert>
+            <MudButton Variant="Variant.Text" OnClick="UseAutoContinueAsync">ยกเลิก กลับไปรันต่อจากข้อมูลจริงอัตโนมัติ</MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">
+                ตอนนี้: รันต่อจากรหัสล่าสุดที่มีอยู่จริงในระบบโดยอัตโนมัติ (ค่าเริ่มต้น)
+            </MudText>
+        }
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_resetStartNumber" Label="เริ่มนับใหม่จาก" Min="1" />
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="ResetCounterAsync">เริ่มนับใหม่</MudButton>
+            </MudItem>
+        </MudGrid>
     }
 </MudPaper>
 
 @code {
+    private const int MaxTotalLength = 6; // Hremployee.EmpNo StringLength(6)
+
     private Pay_PayslipSettings? _settings;
     private string? _error;
     private string? _companyId;
+    private int _resetStartNumber = 1;
 
     protected override async Task OnInitializedAsync()
     {
@@ -79,14 +108,29 @@
         }
     }
 
+    private string ExampleCode()
+    {
+        if (_settings is null) return string.Empty;
+        var digits = Math.Max(_settings.EmpCodeDigits, 1);
+        return $"{_settings.EmpCodePrefix}{1.ToString("D" + digits)}";
+    }
+
     private async Task SaveAsync()
     {
         _error = null;
         if (_settings is null) return;
 
-        if (_settings.EmpCodeDigits < 1 || _settings.EmpCodeDigits > 10)
+        if (_settings.EmpCodeDigits < 1)
         {
-            _error = "จำนวนหลักตัวเลขรันต้องอยู่ระหว่าง 1-10";
+            _error = "จำนวนหลักตัวเลขรันต้องมากกว่า 0";
+            return;
+        }
+
+        var prefixLength = (_settings.EmpCodePrefix ?? string.Empty).Length;
+        if (prefixLength + _settings.EmpCodeDigits > MaxTotalLength)
+        {
+            _error = $"ตัวอักษรนำหน้า + จำนวนหลักตัวเลขรัน ต้องรวมกันไม่เกิน {MaxTotalLength} ตัวอักษร " +
+                $"(ตอนนี้ {prefixLength} + {_settings.EmpCodeDigits} = {prefixLength + _settings.EmpCodeDigits})";
             return;
         }
 
@@ -105,6 +149,47 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกรูปแบบรหัสพนักงานเรียบร้อย", Severity.Success);
+    }
+
+    private async Task ResetCounterAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        if (_resetStartNumber < 1)
+        {
+            _error = "เลขเริ่มต้นต้องมากกว่า 0";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.EmpCodeNextNumber = _resetStartNumber;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        _settings.EmpCodeNextNumber = _resetStartNumber;
+        Snackbar.Add($"ตั้งตัวนับเริ่มต้นใหม่ที่ {_resetStartNumber} เรียบร้อย", Severity.Success);
+    }
+
+    private async Task UseAutoContinueAsync()
+    {
+        if (_settings is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.EmpCodeNextNumber = null;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        _settings.EmpCodeNextNumber = null;
+        Snackbar.Add("กลับไปรันต่อจากข้อมูลจริงอัตโนมัติแล้ว", Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()

@@ -44,10 +44,18 @@ public class Pay_PayslipSettings
     // Auto-generate formula for Hremployee.EmpNo: EmpCodePrefix + running
     // number zero-padded to EmpCodeDigits (e.g. prefix "EMP", digits 3 ->
     // "EMP001"). EmpNo also doubles as sc_user.loginname now, so the
-    // generator must stay globally unique, not just per company.
+    // generator must stay globally unique, not just per company. Total
+    // length (prefix + digits) must fit Hremployee.EmpNo's StringLength(6).
     [StringLength(20)]
     public string? EmpCodePrefix { get; set; }
     public int EmpCodeDigits { get; set; } = 3;
+
+    // Null = derive the next number by scanning existing EmpNo values
+    // matching the prefix (i.e. "continue" automatically from real data).
+    // Set = use this value explicitly and advance it by 1 after each
+    // employee created with an auto-generated code (i.e. an admin chose to
+    // "start over" from a specific number via the format settings page).
+    public int? EmpCodeNextNumber { get; set; }
 
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }

@@ -102,7 +102,12 @@
 
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.EmpNo" Label="รหัสพนักงาน" ReadOnly="!_isCreating" Required="true" />
+                    <MudTextField @bind-Value="_formEmployee.EmpNo" Label="รหัสพนักงาน" Required="true"
+                        ReadOnly="@(!_isCreating || !_empNoUnlocked)"
+                        Adornment="@(_isCreating && !_empNoUnlocked ? Adornment.End : Adornment.None)"
+                        AdornmentIcon="@Icons.Material.Filled.Edit" AdornmentColor="Color.Default"
+                        OnAdornmentClick="@(() => _empNoUnlocked = true)"
+                        HelperText="@(_isCreating && !_empNoUnlocked ? "สร้างอัตโนมัติ — กดไอคอนเพื่อแก้ไขเอง" : null)" />
                 </MudItem>
                 <MudItem xs="12" sm="2">
                     <MudTextField @bind-Value="_formEmployee.PrenameCode" Label="คำนำหน้า" />
@@ -340,6 +345,7 @@
 
     private Hremployee? _formEmployee;
     private bool _isCreating;
+    private bool _empNoUnlocked;
     private string? _formError;
     private DateTime? _workDate;
     private DateTime? _birthDate;
@@ -408,6 +414,7 @@
         _severanceEmployee = null;
         _userAccountEmployee = null;
         _isCreating = true;
+        _empNoUnlocked = false;
         _formError = null;
         _workDate = DateTime.Today;
         _birthDate = null;
@@ -422,20 +429,31 @@
         var prefix = settings?.EmpCodePrefix ?? string.Empty;
         var digits = settings is null || settings.EmpCodeDigits < 1 ? 3 : settings.EmpCodeDigits;
 
-        // EmpNo also doubles as sc_user.loginname now, so the running number
-        // is tracked globally, not just within this company.
-        var existingNumbers = await context.Hremployee
-            .Where(e => e.EmpNo.StartsWith(prefix))
-            .Select(e => e.EmpNo)
-            .ToListAsync();
+        int next;
+        if (settings?.EmpCodeNextNumber is int statefulNext)
+        {
+            // Admin explicitly set a starting number via the format settings
+            // page (Master Data > รูปแบบรหัสพนักงาน) — use it directly instead
+            // of re-deriving from existing data.
+            next = statefulNext;
+        }
+        else
+        {
+            // EmpNo also doubles as sc_user.loginname now, so the running
+            // number is tracked globally, not just within this company.
+            var existingNumbers = await context.Hremployee
+                .Where(e => e.EmpNo.StartsWith(prefix))
+                .Select(e => e.EmpNo)
+                .ToListAsync();
 
-        var pattern = $"^{Regex.Escape(prefix)}(\\d+)$";
-        var next = existingNumbers
-            .Select(no => Regex.Match(no, pattern))
-            .Where(m => m.Success)
-            .Select(m => int.Parse(m.Groups[1].Value))
-            .DefaultIfEmpty(0)
-            .Max() + 1;
+            var pattern = $"^{Regex.Escape(prefix)}(\\d+)$";
+            next = existingNumbers
+                .Select(no => Regex.Match(no, pattern))
+                .Where(m => m.Success)
+                .Select(m => int.Parse(m.Groups[1].Value))
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+        }
 
         return prefix + next.ToString(new string('0', digits));
     }
@@ -472,6 +490,8 @@
         };
     }
 
+    private const int MaxEmpNoLength = 6; // Hremployee.EmpNo StringLength(6)
+
     private async Task SaveEmployeeAsync()
     {
         _formError = null;
@@ -483,49 +503,80 @@
             return;
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-
-        if (_isCreating)
+        if (_formEmployee.EmpNo.Length > MaxEmpNoLength)
         {
-            // Global, not company-scoped: EmpNo doubles as sc_user.loginname
-            // (see PayrollEmployeeAdmin's "สร้างบัญชีผู้ใช้" flow), which must
-            // be unique across the whole system regardless of company.
-            var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
-            if (duplicate)
-            {
-                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
-                return;
-            }
-
-            _formEmployee.WorkDate = _workDate;
-            _formEmployee.BirthDate = _birthDate;
-            context.Hremployee.Add(_formEmployee);
-        }
-        else
-        {
-            var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _formEmployee.id && e.companyid == _companyId);
-            if (existing is null)
-            {
-                _formError = "ไม่พบข้อมูลพนักงาน";
-                return;
-            }
-
-            existing.PrenameCode = _formEmployee.PrenameCode;
-            existing.EmpName = _formEmployee.EmpName;
-            existing.EmpSurname = _formEmployee.EmpSurname;
-            existing.EmptypeCode = _formEmployee.EmptypeCode;
-            existing.DeptgrpCode = _formEmployee.DeptgrpCode;
-            existing.PosCode = _formEmployee.PosCode;
-            existing.IdCard = _formEmployee.IdCard;
-            existing.SalaryAmt = _formEmployee.SalaryAmt;
-            existing.SalexpBank = _formEmployee.SalexpBank;
-            existing.SalexpBranch = _formEmployee.SalexpBranch;
-            existing.SalexpAccid = _formEmployee.SalexpAccid;
-            existing.WorkDate = _workDate;
-            existing.BirthDate = _birthDate;
+            _formError = $"รหัสพนักงานยาวเกินไป (สูงสุด {MaxEmpNoLength} ตัวอักษร) — ปรับรูปแบบได้ที่หน้า Master Data > รูปแบบรหัสพนักงาน";
+            return;
         }
 
-        await context.SaveChangesAsync();
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            if (_isCreating)
+            {
+                // Global, not company-scoped: EmpNo doubles as sc_user.loginname
+                // (see PayrollEmployeeAdmin's "สร้างบัญชีผู้ใช้" flow), which must
+                // be unique across the whole system regardless of company.
+                var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
+                if (duplicate)
+                {
+                    _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
+                    return;
+                }
+
+                _formEmployee.WorkDate = _workDate;
+                _formEmployee.BirthDate = _birthDate;
+                context.Hremployee.Add(_formEmployee);
+                await context.SaveChangesAsync();
+
+                // Only auto-advance the stateful counter when the suggested code
+                // was used as-is — a manually typed code (unlocked) shouldn't
+                // silently move the counter based on a guess at its intent.
+                if (!_empNoUnlocked)
+                {
+                    var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+                    if (settings?.EmpCodeNextNumber is not null)
+                    {
+                        settings.EmpCodeNextNumber++;
+                        await context.SaveChangesAsync();
+                    }
+                }
+            }
+            else
+            {
+                var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _formEmployee.id && e.companyid == _companyId);
+                if (existing is null)
+                {
+                    _formError = "ไม่พบข้อมูลพนักงาน";
+                    return;
+                }
+
+                existing.PrenameCode = _formEmployee.PrenameCode;
+                existing.EmpName = _formEmployee.EmpName;
+                existing.EmpSurname = _formEmployee.EmpSurname;
+                existing.EmptypeCode = _formEmployee.EmptypeCode;
+                existing.DeptgrpCode = _formEmployee.DeptgrpCode;
+                existing.PosCode = _formEmployee.PosCode;
+                existing.IdCard = _formEmployee.IdCard;
+                existing.SalaryAmt = _formEmployee.SalaryAmt;
+                existing.SalexpBank = _formEmployee.SalexpBank;
+                existing.SalexpBranch = _formEmployee.SalexpBranch;
+                existing.SalexpAccid = _formEmployee.SalexpAccid;
+                existing.WorkDate = _workDate;
+                existing.BirthDate = _birthDate;
+                await context.SaveChangesAsync();
+            }
+        }
+        catch (DbUpdateException)
+        {
+            // Never let a DB-level failure (truncation, constraint, etc.) bubble
+            // up as an unhandled exception — that crashes the whole Blazor
+            // circuit and makes every button on the page silently stop working.
+            _formError = "บันทึกไม่สำเร็จ — ข้อมูลอาจไม่ถูกต้องตามรูปแบบที่ระบบกำหนด (เช่น รหัสพนักงานยาวเกินไป) กรุณาตรวจสอบแล้วลองใหม่";
+            return;
+        }
+
         Snackbar.Add(_isCreating ? "เพิ่มพนักงานเรียบร้อย" : "บันทึกข้อมูลเรียบร้อย", Severity.Success);
         _formEmployee = null;
         await LoadAsync();
@@ -706,21 +757,32 @@
             modby = actor,
         };
         newUser.password = PasswordHasher.HashPassword(newUser, DefaultAccountPassword);
-        context.sc_users.Add(newUser);
-        await context.SaveChangesAsync();
 
-        foreach (var roleId in _selectedUserAccountRoleIds)
+        try
         {
-            context.sc_user_roles.Add(new sc_user_role
+            context.sc_users.Add(newUser);
+            await context.SaveChangesAsync();
+
+            foreach (var roleId in _selectedUserAccountRoleIds)
             {
-                userid = newUser.userid,
-                roleid = roleId,
-                isactive = true,
-                modate = DateTime.Now,
-                modby = actor,
-            });
+                context.sc_user_roles.Add(new sc_user_role
+                {
+                    userid = newUser.userid,
+                    roleid = roleId,
+                    isactive = true,
+                    modate = DateTime.Now,
+                    modby = actor,
+                });
+            }
+            await context.SaveChangesAsync();
         }
-        await context.SaveChangesAsync();
+        catch (DbUpdateException)
+        {
+            // Same defense as SaveEmployeeAsync — never let a DB-level failure
+            // crash the whole Blazor circuit.
+            _userAccountError = "สร้างบัญชีผู้ใช้ไม่สำเร็จ — กรุณาลองใหม่ หรือตรวจสอบว่ารหัสพนักงานถูกต้อง";
+            return;
+        }
 
         _userAccountInfo = $"สร้างบัญชีผู้ใช้เรียบร้อย ชื่อเข้าสู่ระบบ {newUser.loginname} รหัสผ่านเริ่มต้นคือ {DefaultAccountPassword} " +
             "(บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login) — ต้องผูกบัญชี Identity ผ่านหน้า \"ผูกบัญชี Identity\" ก่อนถึงจะ login เข้าระบบได้จริง";
