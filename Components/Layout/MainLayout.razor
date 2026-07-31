@@ -129,7 +129,14 @@
         var user = authState.User;
 
         _isAuthenticated = user.Identity?.IsAuthenticated ?? false;
-        _userName = user.Identity?.Name ?? "";
+        // Prefer the real first+last name (fullname claim, added by
+        // ScUserClaimsPrincipalFactory from sc_user) over Identity.Name,
+        // which is the ApplicationUser's UserName/email — often a synthetic
+        // "{loginname}@local.humanok" placeholder that means nothing to the
+        // person looking at the screen.
+        _userName = user.FindFirstValue("fullname");
+        if (string.IsNullOrWhiteSpace(_userName))
+            _userName = user.Identity?.Name ?? "";
         _hasEssAccess = user.HasClaim("menu", "ESS_ACCESS");
     }
 }

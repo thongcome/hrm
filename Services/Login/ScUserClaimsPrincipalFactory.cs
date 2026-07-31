@@ -49,6 +49,15 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             return principal;
 
         identity.AddClaim(new Claim("sc_userid", scUser.userid.ToString()));
+
+        // Displayed in MainLayout's top bar instead of the login/email —
+        // ClaimTypes.Name there is the ApplicationUser's UserName (often a
+        // synthetic "{loginname}@local.humanok" placeholder for accounts
+        // created without a real email), not a name a person recognizes.
+        var fullName = $"{scUser.firstname} {scUser.lastname}".Trim();
+        if (!string.IsNullOrWhiteSpace(fullName))
+            identity.AddClaim(new Claim("fullname", fullName));
+
         if (!string.IsNullOrWhiteSpace(scUser.empid))
         {
             identity.AddClaim(new Claim("empno", scUser.empid));
