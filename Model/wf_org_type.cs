@@ -43,6 +43,9 @@ public partial class wf_org_type
     
     public string? upperorg { get; set; }
 
-    [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
+    // NOT an IDENTITY column in the actual DB (verified via sys.columns.is_identity = 0) —
+    // despite the scaffold's original guess, the app must assign id itself before insert.
+    // See EntitySearchHelper.NextIdAsync used by SaveAsync in WfOrgTypeAdmin.razor.
+    [Key]    [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public long id { get; set; }
 }

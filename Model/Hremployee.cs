@@ -81,6 +81,34 @@ public partial class Hremployee
     [StringLength(20)]
     public string? CostCenterCode { get; set; }
 
+    // Real anchor into com_organization — soft link (no DB FK constraint,
+    // matching this table's existing convention), but unlike DeptgrpCode
+    // this one is unambiguous: com_organization.id is a real identity
+    // column, whereas com_organization.code has at least one confirmed
+    // duplicate in real data (two rows both code='Ploan') so joining by
+    // code string alone can't always tell which org row is meant.
+    // NULL for all existing employees after this migration — the
+    // DeptgrpCode-based linkage was already confirmed broken (doesn't match
+    // any com_organization.code for real employees), so there's no reliable
+    // source to auto-backfill from. Populate going forward via the org
+    // picker in PayrollEmployeeAdmin.razor, which fills OrganizationId +
+    // the two fields below together from the chosen com_organization row.
+    public long? OrganizationId { get; set; }
+
+    // Denormalized snapshot of the chosen org's own code/orgcodefull (see
+    // com_organization.orgcodefull for the fixed-width hierarchical-path
+    // scheme: 2 digits per level, no delimiter, e.g. "010101" = level1
+    // "01" + level2 "01" + level3 "01"). Kept here so employee-side
+    // reporting can filter/search by org subtree via a plain
+    // `orgcodefull LIKE 'xxxx%'` without joining com_organization every
+    // time — re-copy from OrganizationId's org row if that org's own
+    // orgcodefull ever changes (tree edits are rare and admin-driven).
+    [StringLength(50)]
+    public string? orgcode { get; set; }
+
+    [StringLength(100)]
+    public string? orgcodefull { get; set; }
+
     [Column("SEX")]
     [StringLength(1)]
     

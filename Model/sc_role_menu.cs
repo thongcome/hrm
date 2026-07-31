@@ -23,6 +23,13 @@ public partial class sc_role_menu
     [Required]
     public bool isactive { get; set; } = true;
 
+    // Read-only lock: grants menu access but hides Create/Edit affordances
+    // in pages built on Components/Shared/CrudScaffold.razor (checked via
+    // the "menu_edit" claim added in ScUserClaimsPrincipalFactory). Default
+    // true so every existing grant keeps working exactly as before.
+    [Required]
+    public bool canedit { get; set; } = true;
+
     [Column(TypeName = "text")]
     public string? remark { get; set; }
 

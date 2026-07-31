@@ -1,0 +1,315 @@
+@page "/wf/my-inbox"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using HRM.Services.Pay
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject PrivateFileStorage FileStorage
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>งานรออนุมัติของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานรออนุมัติของฉัน</MudText>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_info))
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+    }
+
+    <MudTable Items="_inbox" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>เอกสารต้นทาง</MudTh>
+            <MudTh>ความเห็น</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.jobmaster.subject</MudTd>
+            <MudTd>@context.jobmaster.wname</MudTd>
+            <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
+            <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                @{ var docLink = BuildDocumentLink(context.jobmaster); }
+                @if (docLink is not null)
+                {
+                    <MudLink Href="@docLink" Target="_blank">ดูเอกสารต้นทาง</MudLink>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText>
+                }
+            </MudTd>
+            <MudTd>
+                <MudTextField T="string" @bind-Value="_comments[context.jobapproverid]" Placeholder="ความเห็น (ถ้ามี)" Immediate="true" />
+            </MudTd>
+            <MudTd>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => ApproveAsync(context.jobapproverid))">อนุมัติ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => RejectAsync(context.jobapproverid))">ปฏิเสธ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewJobAsync(context.jobmasterid))">ดูรายละเอียด</MudButton>
+                </MudStack>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีงานรออนุมัติ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">เริ่มงานทดสอบใหม่ (Start Job)</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="long?" @bind-Value="_startWorkflowId" Label="Workflow">
+                @foreach (var wf in _workflows)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_startSubject" Label="เรื่อง" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_startAmount" Label="จำนวนเงิน (ถ้ามี)" /></MudItem>
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartJobAsync">เริ่มงาน</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_viewingJob is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">รายละเอียดงาน #@_viewingJob.jobmasterid — @_viewingJob.subject</MudText>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _viewingJob = null)">ปิด</MudButton>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1">สถานะ: @_viewingJob.status | ระดับปัจจุบัน: @_viewingJob.lastLevel / @_viewingJob.maxlevel</MudText>
+        @{ var viewingDocLink = BuildDocumentLink(_viewingJob); }
+        @if (viewingDocLink is not null)
+        {
+            <MudLink Href="@viewingDocLink" Target="_blank" Class="mt-1">ดูเอกสารต้นทาง (@_viewingJob.reftable #@_viewingJob.refid)</MudLink>
+        }
+        <MudTable Items="_viewingJob.job_user_lists" Dense="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>ระดับ</MudTh>
+                <MudTh>ผู้อนุมัติ (userid)</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>วันที่อนุมัติ</MudTh>
+                <MudTh>ความเห็น</MudTh>
+                <MudTh>เอกสารแนบ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.wlevel</MudTd>
+                <MudTd>@context.userid</MudTd>
+                <MudTd>@context.jobstatus</MudTd>
+                <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.comment</MudTd>
+                <MudTd>
+                    @if (_attachments.TryGetValue(context.jobapproverid, out var files) && files.Count > 0)
+                    {
+                        <MudStack Spacing="0">
+                            @foreach (var f in files)
+                            {
+                                <MudLink Href="@($"/wf/files/attachment/{f.id}")" Target="_blank">@f.files</MudLink>
+                            }
+                        </MudStack>
+                    }
+                    <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(context.jobapproverid, file))">
+                        <ActivatorContent>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">แนบไฟล์</MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<job_user_list> _inbox = new();
+    private List<wf_workflow> _workflows = new();
+    private Dictionary<long, string> _comments = new();
+    private job_master? _viewingJob;
+    private Dictionary<long, List<doc_center>> _attachments = new();
+    private bool _loading;
+    private string? _error;
+    private string? _info;
+
+    private long? _startWorkflowId;
+    private string? _startSubject;
+    private decimal? _startAmount;
+
+    private long _actorUserId;
+    private string? _actorEmpId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        _actorEmpId = state.User.FindFirst("empno")?.Value;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
+
+        await RefreshInboxAsync();
+    }
+
+    private async Task RefreshInboxAsync()
+    {
+        _loading = true;
+        try
+        {
+            _inbox = await Engine.GetMyInboxAsync(_actorUserId);
+            foreach (var item in _inbox)
+                _comments.TryAdd(item.jobapproverid, "");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ApproveAsync(long jobApproverId)
+    {
+        _error = null;
+        _info = null;
+        try
+        {
+            _comments.TryGetValue(jobApproverId, out var comment);
+            await Engine.ApproveAsync(jobApproverId, _actorUserId, comment);
+            _info = "อนุมัติสำเร็จ";
+            await RefreshInboxAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "อนุมัติไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    private async Task RejectAsync(long jobApproverId)
+    {
+        _error = null;
+        _info = null;
+        try
+        {
+            _comments.TryGetValue(jobApproverId, out var comment);
+            await Engine.RejectAsync(jobApproverId, _actorUserId, comment);
+            _info = "ปฏิเสธรายการแล้ว";
+            await RefreshInboxAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ปฏิเสธไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    private async Task ViewJobAsync(long jobMasterId)
+    {
+        _viewingJob = await Engine.GetJobDetailAsync(jobMasterId);
+        await LoadAttachmentsAsync();
+    }
+
+    // Block 8: attachments per approval level — doc_center rows keyed by
+    // refid = job_user_list.jobapproverid (see WorkflowFileEndpoints.cs for
+    // why that's a sufficient key without a reftable discriminator column).
+    private async Task LoadAttachmentsAsync()
+    {
+        _attachments = new();
+        if (_viewingJob is null) return;
+
+        var approverIds = _viewingJob.job_user_lists.Select(a => a.jobapproverid).ToList();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var docs = await context.doc_centers
+            .Where(d => d.doctypecode == "WF_ATTACHMENT" && d.refid != null && approverIds.Contains(d.refid.Value) && d.isActive != false)
+            .ToListAsync();
+        _attachments = docs.GroupBy(d => d.refid!.Value).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private async Task UploadAttachmentAsync(long jobApproverId, IBrowserFile file)
+    {
+        _error = null;
+        _info = null;
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024; // 10 MB
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var storedFileName = $"{jobApproverId}_{Guid.NewGuid():N}_{file.Name}";
+            var (relativePath, _) = await FileStorage.SaveAsync("wf-attachments", storedFileName, bytes);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            context.doc_centers.Add(new doc_center
+            {
+                refid = jobApproverId,
+                doctypecode = "WF_ATTACHMENT",
+                files = file.Name,
+                path = relativePath,
+                isActive = true,
+                moddate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+
+            _info = $"แนบไฟล์ '{file.Name}' สำเร็จ";
+            await LoadAttachmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "แนบไฟล์ไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    // Block 7 (generic document-type routing): wf_workflow.url is an
+    // admin-configured route template (e.g. "/pay/adhoc-detail/{refid}")
+    // for whichever page shows the document that started this job —
+    // job_master.reftable/refid are the generic (table, id) pair recorded
+    // at StartJobAsync time. No {refid} placeholder in the template means
+    // the workflow hasn't been configured for routing yet (null link).
+    private static string? BuildDocumentLink(job_master? job)
+    {
+        var template = job?.workflow?.url;
+        if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(job?.refid))
+            return null;
+        return template.Contains("{refid}") ? template.Replace("{refid}", job.refid) : template;
+    }
+
+    private async Task StartJobAsync()
+    {
+        _error = null;
+        _info = null;
+        if (_startWorkflowId is null)
+        {
+            _error = "กรุณาเลือก Workflow";
+            return;
+        }
+        try
+        {
+            var jobId = await Engine.StartJobAsync(_startWorkflowId.Value, "wf_demo", Guid.NewGuid().ToString("N")[..12],
+                _actorUserId, _actorEmpId, _startSubject, _startAmount);
+            _info = $"เริ่มงานสำเร็จ (Job #{jobId})";
+            await RefreshInboxAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "เริ่มงานไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

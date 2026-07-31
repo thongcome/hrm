@@ -1,0 +1,119 @@
+@page "/wf/workflows"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>จัดการ Workflow</PageTitle>
+
+<CrudScaffold TEntity="wf_workflow"
+    Title="จัดการ Workflow (wf_workflow)"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.workflowid.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewWorkflow"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>รหัส Workflow</MudTh>
+        <MudTh>ชื่อ</MudTh>
+        <MudTh>สถานะ</MudTh>
+        <MudTh>เปิดใช้งาน</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+    }
+
+    // wf_workflow.wstatus/isshow/isactive are NOT NULL in the DB — default
+    // them here so Create doesn't hit the same NOT NULL trap documented as
+    // Gotcha #4 in the plan file.
+    private wf_workflow CreateNewWorkflow() => new wf_workflow { wstatus = "ACTIVE", isshow = true, isactive = true };
+
+    private RenderFragment RenderRowColumns(wf_workflow row) => @<text>
+        <MudTd>@row.workflowcode</MudTd>
+        <MudTd>@row.wname</MudTd>
+        <MudTd>@row.wstatus</MudTd>
+        <MudTd>@(row.isactive == true ? "ใช้งาน" : "ปิด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_workflow e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.workflowcode" Label="รหัส Workflow" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField Value="@e.wname" Label="ชื่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.wstatus" Label="สถานะ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.abbname" Label="ชื่อย่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.wgroup" Label="กลุ่ม" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.url" Label="URL ปลายทาง (สำหรับ generic routing)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.isactive == true ? "ใช้งาน" : "ปิด")" Label="เปิดใช้งาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.isshow == true ? "แสดง" : "ซ่อน")" Label="แสดงในเมนู" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.description" Label="คำอธิบาย" ReadOnly="true" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_workflow e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.workflowcode" Label="รหัส Workflow" Required="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="e.wname" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.wstatus" Label="สถานะ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.abbname" Label="ชื่อย่อ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.wgroup" Label="กลุ่ม" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.url" Label="URL ปลายทาง (สำหรับ generic routing)" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudCheckBox T="bool?" Value="e.isactive" ValueChanged="v => e.isactive = v ?? false" Label="เปิดใช้งาน" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudCheckBox T="bool?" Value="e.isshow" ValueChanged="v => e.isshow = v ?? false" Label="แสดงในเมนู" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.description" Label="คำอธิบาย" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_workflow>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_workflows.AsQueryable(), term,
+            nameof(wf_workflow.workflowcode), nameof(wf_workflow.wname), nameof(wf_workflow.description));
+        return await query.OrderBy(e => e.workflowcode).ToListAsync();
+    }
+
+    private async Task<wf_workflow> SaveAsync(wf_workflow entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.workflowid == 0)
+        {
+            context.wf_workflows.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_workflows.FirstOrDefaultAsync(e => e.workflowid == entity.workflowid)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.workflowcode = entity.workflowcode;
+            existing.wname = entity.wname;
+            existing.wstatus = entity.wstatus;
+            existing.abbname = entity.abbname;
+            existing.wgroup = entity.wgroup;
+            existing.url = entity.url;
+            existing.isactive = entity.isactive;
+            existing.isshow = entity.isshow;
+            existing.description = entity.description;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

@@ -45,10 +45,14 @@
         <MudPaper Class="pa-2" Outlined="true" Style="max-height:600px; overflow-y:auto;">
             @foreach (var row in _menuRows)
             {
-                <div style="padding-left:@(row.Depth * 24)px;" class="py-1">
+                <div style="padding-left:@(row.Depth * 24)px;" class="py-1 d-flex align-center">
                     <MudCheckBox T="bool" Value="@_checkedMenuIds.Contains(row.Menu.menuid)"
                         ValueChanged="@((bool v) => ToggleMenu(row.Menu.menuid, v))"
                         Label="@($"{row.Menu.menuname} ({row.Menu.menucode})")" Dense="true" />
+                    <MudCheckBox T="bool" Value="@_editableMenuIds.Contains(row.Menu.menuid)"
+                        ValueChanged="@((bool v) => ToggleEditable(row.Menu.menuid, v))"
+                        Disabled="@(!_checkedMenuIds.Contains(row.Menu.menuid))"
+                        Label="แก้ไขได้ (ไม่ติ๊ก = อ่านอย่างเดียว)" Dense="true" Class="ml-4" />
                 </div>
             }
         </MudPaper>
@@ -62,6 +66,7 @@
     private List<sc_role> _roles = new();
     private List<(sc_menu Menu, int Depth)> _menuRows = new();
     private HashSet<long> _checkedMenuIds = new();
+    private HashSet<long> _editableMenuIds = new();
     private string? _error;
     private string _actor = "admin";
 
@@ -79,6 +84,7 @@
         _error = null;
         _menuRows = new();
         _checkedMenuIds = new();
+        _editableMenuIds = new();
         if (_selectedRoleId is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -91,10 +97,12 @@
         var roots = byParent.TryGetValue(string.Empty, out var r) ? r : new List<sc_menu>();
         Flatten(roots, 0, byParent, new HashSet<string>());
 
-        _checkedMenuIds = await context.sc_role_menus
+        var grants = await context.sc_role_menus
             .Where(rm => rm.roleid == _selectedRoleId && rm.isactive)
-            .Select(rm => rm.menuid)
-            .ToHashSetAsync();
+            .Select(rm => new { rm.menuid, rm.canedit })
+            .ToListAsync();
+        _checkedMenuIds = grants.Select(g => g.menuid).ToHashSet();
+        _editableMenuIds = grants.Where(g => g.canedit).Select(g => g.menuid).ToHashSet();
     }
 
     private void Flatten(List<sc_menu> nodes, int depth, Dictionary<string, List<sc_menu>> byParent, HashSet<string> visitedCodes)
@@ -114,7 +122,17 @@
     private void ToggleMenu(long menuId, bool selected)
     {
         if (selected) _checkedMenuIds.Add(menuId);
-        else _checkedMenuIds.Remove(menuId);
+        else
+        {
+            _checkedMenuIds.Remove(menuId);
+            _editableMenuIds.Remove(menuId); // revoking the grant also clears any edit-rights on it
+        }
+    }
+
+    private void ToggleEditable(long menuId, bool editable)
+    {
+        if (editable) _editableMenuIds.Add(menuId);
+        else _editableMenuIds.Remove(menuId);
     }
 
     private async Task SaveAsync()
@@ -129,12 +147,14 @@
         foreach (var row in _menuRows)
         {
             var desired = _checkedMenuIds.Contains(row.Menu.menuid);
+            var desiredEditable = _editableMenuIds.Contains(row.Menu.menuid);
 
             if (existingByMenuId.TryGetValue(row.Menu.menuid, out var link))
             {
-                if (link.isactive != desired)
+                if (link.isactive != desired || link.canedit != desiredEditable)
                 {
                     link.isactive = desired;
+                    link.canedit = desiredEditable;
                     link.moddate = DateTime.Now;
                     link.modby = _actor;
                 }
@@ -146,6 +166,7 @@
                     roleid = _selectedRoleId.Value,
                     menuid = row.Menu.menuid,
                     isactive = true,
+                    canedit = desiredEditable,
                     moddate = DateTime.Now,
                     modby = _actor,
                 });

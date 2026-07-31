@@ -87,6 +87,14 @@ public partial class wf_sub_workflow_master
 
     public bool isAutoApproveAllow { get; set; } = false;
 
+    // Block 6 (Mix Approval): number of vertical (org-chart) pre-check hops
+    // that must approve, in sequence, before this level's own approver
+    // (Horizontal or Vertical) is even resolved. 0/null = no pre-check,
+    // behaves exactly as before Block 6. Hop 1 = requester's own org
+    // approver, hop 2 = that org's parent's approver, etc. — walked via
+    // com_organization.parent_code. See WorkflowEngineService.AssignLevelApproversAsync.
+    public int? isNeedsupervisorapprove { get; set; }
+
     public bool isNeedBudgetApproval { get; set; } = false;
 
     public bool isPool { get; set; } = false;

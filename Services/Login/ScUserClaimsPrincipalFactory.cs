@@ -73,16 +73,20 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
                 identity.AddClaim(new Claim(ClaimTypes.Role, ur.role!.name));
         }
 
-        var menus = scUser.sc_user_roles
+        var activeGrants = scUser.sc_user_roles
             .Where(ur => ur.isactive)
             .SelectMany(ur => ur.role?.sc_role_menus ?? new List<sc_role_menu>())
             .Where(rm => rm.isactive && rm.menu != null && rm.menu.isactive)
-            .Select(rm => rm.menu!)
             .Distinct();
-        foreach (var menu in menus)
+        foreach (var grant in activeGrants)
         {
-            if (!string.IsNullOrWhiteSpace(menu.menucode))
-                identity.AddClaim(new Claim("menu", menu.menucode!));
+            if (string.IsNullOrWhiteSpace(grant.menu!.menucode)) continue;
+            identity.AddClaim(new Claim("menu", grant.menu.menucode!));
+            // Read-only lock (Components/Shared/CrudScaffold.razor's CanEdit
+            // param checks this): a grant can give menu access without
+            // edit rights via PermissionAdmin.razor's "แก้ไขได้" toggle.
+            if (grant.canedit)
+                identity.AddClaim(new Claim("menu_edit", grant.menu.menucode!));
         }
 
         return principal;

@@ -139,6 +139,16 @@
                     <MudTextField @bind-Value="_formEmployee.CostCenterCode" Label="รหัสศูนย์ต้นทุน (Cost Center)"
                         HelperText="ใช้แยกค่าใช้จ่ายเงินเดือนตามหน่วยงานในแดชบอร์ด" />
                 </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="long?" Value="_formEmployee.OrganizationId" ValueChanged="OnOrganizationSelected"
+                        Label="หน่วยงาน (ผังองค์กร)" Clearable="true"
+                        HelperText="@(string.IsNullOrEmpty(_formEmployee.orgcodefull) ? null : $"รหัสเต็ม: {_formEmployee.orgcodefull}")">
+                        @foreach (var org in _organizations)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)org.id)">@org.code — @org.name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
 
                 <MudItem xs="12" sm="4">
                     <MudDatePicker @bind-Date="_workDate" Label="วันเริ่มงาน" />
@@ -420,13 +430,37 @@
     private string? _resetPasswordError;
     private string? _resetPasswordInfo;
 
+    private List<com_organization> _organizations = new();
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
+        await using (var context = await DbFactory.CreateDbContextAsync())
+        {
+            _organizations = await context.com_organizations
+                .Where(o => o.isActive)
+                .OrderBy(o => o.orgcodefull)
+                .ToListAsync();
+        }
+
         await LoadAsync();
+    }
+
+    // Sets orgcode/orgcodefull as a denormalized snapshot from the chosen
+    // org — OrganizationId (com_organization.id) is the real anchor, these
+    // two are just for fast substring search without a join. See the
+    // OrganizationId field comment on Hremployee.cs for why id (not code)
+    // is used as the anchor.
+    private void OnOrganizationSelected(long? organizationId)
+    {
+        if (_formEmployee is null) return;
+        _formEmployee.OrganizationId = organizationId;
+        var org = _organizations.FirstOrDefault(o => o.id == organizationId);
+        _formEmployee.orgcode = org?.code;
+        _formEmployee.orgcodefull = org?.orgcodefull;
     }
 
     private async Task LoadAsync()
@@ -530,6 +564,9 @@
             DeptgrpCode = emp.DeptgrpCode,
             PosCode = emp.PosCode,
             CostCenterCode = emp.CostCenterCode,
+            OrganizationId = emp.OrganizationId,
+            orgcode = emp.orgcode,
+            orgcodefull = emp.orgcodefull,
             IdCard = emp.IdCard,
             SalaryAmt = emp.SalaryAmt,
             SalexpBank = emp.SalexpBank,
@@ -607,6 +644,9 @@
                 existing.DeptgrpCode = _formEmployee.DeptgrpCode;
                 existing.PosCode = _formEmployee.PosCode;
                 existing.CostCenterCode = _formEmployee.CostCenterCode;
+                existing.OrganizationId = _formEmployee.OrganizationId;
+                existing.orgcode = _formEmployee.orgcode;
+                existing.orgcodefull = _formEmployee.orgcodefull;
                 existing.IdCard = _formEmployee.IdCard;
                 existing.SalaryAmt = _formEmployee.SalaryAmt;
                 existing.SalexpBank = _formEmployee.SalexpBank;

@@ -1,0 +1,178 @@
+@page "/wf/sub-workflow-levels"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>จัดการระดับการอนุมัติ</PageTitle>
+
+<CrudScaffold TEntity="wf_sub_workflow_master"
+    Title="จัดการระดับการอนุมัติของ Workflow (wf_sub_workflow_master)"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.subworkflowid.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewLevel"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>Workflow</MudTh>
+        <MudTh>ระดับ</MudTh>
+        <MudTh>หัวข้อ</MudTh>
+        <MudTh>ประเภทผู้อนุมัติ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private List<wf_workflow> _workflows = new();
+    private List<string> _statusCodes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        // Block 9 (Moving Status): forward/stand/backward status are now
+        // pick-lists sourced from job_status instead of free text, so admins
+        // can't typo a status code the engine will never match against
+        // anything meaningful downstream.
+        _statusCodes = await context.job_statuses.OrderBy(s => s.jobstatuscode).Select(s => s.jobstatuscode).ToListAsync();
+    }
+
+    private string WorkflowName(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.wname ?? $"#{workflowId}";
+
+    // forwardstatus/standstatus/backwardstatus are NOT NULL in the DB — see
+    // Gotcha #4 in the plan file. approver-type booleans already default to
+    // false via the model's own property initializers, so only the three
+    // status strings need explicit defaults here.
+    private wf_sub_workflow_master CreateNewLevel() => new wf_sub_workflow_master
+    {
+        wlevel = 1,
+        forwardstatus = "PENDING",
+        standstatus = "PENDING",
+        backwardstatus = "RETURNED",
+    };
+
+    private RenderFragment RenderRowColumns(wf_sub_workflow_master row) => @<text>
+        <MudTd>@WorkflowName(row.workflowid)</MudTd>
+        <MudTd>@row.wlevel</MudTd>
+        <MudTd>@row.subject</MudTd>
+        <MudTd>@(row.iscustomUser ? "Custom User" : row.iscustomRole ? "Custom Role" : row.isupperrole || row.isupperuser ? "Vertical (ยังไม่รองรับ)" : "ยังไม่กำหนด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_sub_workflow_master e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@WorkflowName(e.workflowid)" Label="Workflow" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="2"><MudTextField Value="@e.wlevel.ToString()" Label="ระดับ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.subject" Label="หัวข้อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.iscustomUser" ReadOnly="true" Label="Custom User" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.iscustomRole" ReadOnly="true" Label="Custom Role" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.istop" ReadOnly="true" Label="ระดับสุดท้าย (istop)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.forwardstatus" Label="สถานะเมื่ออนุมัติผ่าน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.standstatus" Label="สถานะระหว่างรออนุมัติ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.backwardstatus" Label="สถานะเมื่อตีกลับ/ปฏิเสธ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isandcondition" ReadOnly="true" Label="AND-condition (อนุมัติแบบ %)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.andpercent?.ToString("0.##") ?? "-")" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.isNeedsupervisorapprove?.ToString() ?? "0")" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_sub_workflow_master e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.workflowid" ValueChanged="v => e.workflowid = v" Label="Workflow" Required="true">
+                    @foreach (var wf in _workflows)
+                    {
+                        <MudSelectItem T="long" Value="@wf.workflowid">@wf.workflowcode - @wf.wname</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="e.wlevel" Label="ระดับ" Required="true" Min="1" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.subject" Label="หัวข้อ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.iscustomUser" Label="Custom User (ระบุผู้อนุมัติเจาะจง)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.iscustomRole" Label="Custom Role (ระบุ Role ผู้อนุมัติ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.istop" Label="ระดับสุดท้าย (istop)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" Value="e.forwardstatus" ValueChanged="v => e.forwardstatus = v" Label="สถานะเมื่ออนุมัติผ่าน" Required="true">
+                    @foreach (var statusCode in _statusCodes)
+                    {
+                        <MudSelectItem T="string" Value="@statusCode">@statusCode</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" Value="e.standstatus" ValueChanged="v => e.standstatus = v" Label="สถานะระหว่างรออนุมัติ" Required="true">
+                    @foreach (var statusCode in _statusCodes)
+                    {
+                        <MudSelectItem T="string" Value="@statusCode">@statusCode</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" Value="e.backwardstatus" ValueChanged="v => e.backwardstatus = v" Label="สถานะเมื่อตีกลับ/ปฏิเสธ" Required="true">
+                    @foreach (var statusCode in _statusCodes)
+                    {
+                        <MudSelectItem T="string" Value="@statusCode">@statusCode</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isandcondition" Label="AND-condition (อนุมัติแบบ % แทนต้องครบทุกคน)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal?" @bind-Value="e.andpercent" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน (ค่าเริ่มต้น 100)" Min="1" Max="100" Disabled="!e.isandcondition" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="e.isNeedsupervisorapprove" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval, 0 = ไม่ใช้)" Min="0" Max="10" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_sub_workflow_master>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_sub_workflow_masters.AsQueryable(), term,
+            nameof(wf_sub_workflow_master.subject), nameof(wf_sub_workflow_master.remark));
+        return await query.OrderBy(e => e.workflowid).ThenBy(e => e.wlevel).ToListAsync();
+    }
+
+    private async Task<wf_sub_workflow_master> SaveAsync(wf_sub_workflow_master entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.subworkflowid == 0)
+        {
+            context.wf_sub_workflow_masters.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(e => e.subworkflowid == entity.subworkflowid)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.workflowid = entity.workflowid;
+            existing.wlevel = entity.wlevel;
+            existing.subject = entity.subject;
+            existing.iscustomUser = entity.iscustomUser;
+            existing.iscustomRole = entity.iscustomRole;
+            existing.istop = entity.istop;
+            existing.forwardstatus = entity.forwardstatus;
+            existing.standstatus = entity.standstatus;
+            existing.backwardstatus = entity.backwardstatus;
+            existing.isandcondition = entity.isandcondition;
+            existing.andpercent = entity.andpercent;
+            existing.isNeedsupervisorapprove = entity.isNeedsupervisorapprove;
+            existing.remark = entity.remark;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

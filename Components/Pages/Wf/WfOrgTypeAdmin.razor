@@ -1,0 +1,118 @@
+@page "/wf/org-types"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_ORG_TYPE_ADMIN")]
+
+<PageTitle>จัดการประเภทหน่วยงาน (Workflow)</PageTitle>
+
+<CrudScaffold TEntity="wf_org_type"
+    Title="จัดการประเภทหน่วยงาน (wf_org_type)"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="() => new wf_org_type()"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>รหัส</MudTh>
+        <MudTh>ชื่อ</MudTh>
+        <MudTh>ชื่อย่อ</MudTh>
+        <MudTh>ระดับบนสุด</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_ORG_TYPE_ADMIN");
+    }
+
+    // Bound as method references, not nested <RowColumns Context="..."> tags
+    // — this Razor/SDK combination (dotnet 10.0.300) fails to resolve the
+    // generic type parameter for RenderFragment<TEntity> child content
+    // passed as nested markup (confirmed with an isolated minimal repro:
+    // "the name 'x' does not exist in the current context" even for a
+    // 2-property test component). Passing a method matching
+    // Func<TEntity, RenderFragment> as a plain attribute works reliably —
+    // use this pattern for every future CrudScaffold-based page.
+    private RenderFragment RenderRowColumns(wf_org_type row) => @<text>
+        <MudTd>@row.orgcode</MudTd>
+        <MudTd>@row.name</MudTd>
+        <MudTd>@row.abbname</MudTd>
+        <MudTd>@(row.istoplevel ? "ใช่" : "")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_org_type e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcode" Label="รหัส" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcodefull" Label="รหัสเต็ม" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.abbname" Label="ชื่อย่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField Value="@e.name" Label="ชื่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.istoplevel ? "ใช่" : "ไม่ใช่")" Label="ระดับบนสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.upperorg" Label="สังกัดหน่วยงานบน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.levelno?.ToString())" Label="ระดับที่" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_org_type e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcode" Label="รหัส" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcodefull" Label="รหัสเต็ม" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.abbname" Label="ชื่อย่อ" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="e.name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="e.istoplevel" Label="ระดับบนสุด" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.upperorg" Label="สังกัดหน่วยงานบน" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.levelno" Label="ระดับที่" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_org_type>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_org_types.AsQueryable(), term,
+            nameof(wf_org_type.orgcode), nameof(wf_org_type.name), nameof(wf_org_type.abbname));
+        return await query.OrderBy(e => e.orgcode).ToListAsync();
+    }
+
+    private async Task<wf_org_type> SaveAsync(wf_org_type entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.id == 0)
+        {
+            // wf_org_type.id is NOT an IDENTITY column in the DB — see
+            // EntitySearchHelper.NextIdAsync for why this is needed here.
+            entity.id = await EntitySearchHelper.NextIdAsync(context.wf_org_types, e => e.id);
+            context.wf_org_types.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_org_types.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.orgcode = entity.orgcode;
+            existing.orgcodefull = entity.orgcodefull;
+            existing.name = entity.name;
+            existing.abbname = entity.abbname;
+            existing.istoplevel = entity.istoplevel;
+            existing.upperorg = entity.upperorg;
+            existing.levelno = entity.levelno;
+            existing.remark = entity.remark;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

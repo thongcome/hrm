@@ -1,0 +1,148 @@
+@page "/wf/employees"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_EMPLOYEE_ADMIN")]
+
+<PageTitle>จัดการพนักงาน (Workflow)</PageTitle>
+
+<CrudScaffold TEntity="wf_employee"
+    Title="จัดการพนักงาน สำหรับ Workflow (wf_employee)"
+    IsPdpaSensitive="true"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewEmployee"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>รหัสพนักงาน</MudTh>
+        <MudTh>ชื่อ-นามสกุล</MudTh>
+        <MudTh>อีเมล</MudTh>
+        <MudTh>สถานะ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+
+    // wf_employee.sexid is NOT NULL in the DB but the pilot form didn't
+    // originally expose it — default to "M" so a fresh record doesn't hit
+    // the NOT NULL violation before the user has picked a value.
+    private wf_employee CreateNewEmployee() => new wf_employee { sexid = "M" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_EMPLOYEE_ADMIN");
+    }
+
+    // Method-reference binding, not nested <RowColumns Context="..."> tags —
+    // see Gotcha note in the plan file (dotnet 10.0.300 fails to resolve the
+    // generic type parameter for RenderFragment<TEntity> passed as nested
+    // markup child content).
+    private RenderFragment RenderRowColumns(wf_employee row) => @<text>
+        <MudTd>@row.empid</MudTd>
+        <MudTd>@row.firstname_th @row.lastname_th</MudTd>
+        <MudTd>@row.email</MudTd>
+        <MudTd>@(row.isactive == true ? "ทำงานอยู่" : "ไม่ทำงาน")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_employee e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.empid" Label="รหัสพนักงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.firstname_th" Label="ชื่อ (ไทย)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.lastname_th" Label="นามสกุล (ไทย)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.firstname_en" Label="ชื่อ (อังกฤษ)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.lastname_en" Label="นามสกุล (อังกฤษ)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.nickname" Label="ชื่อเล่น" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.cardid" Label="เลขบัตรประชาชน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.sexid == "M" ? "ชาย" : e.sexid == "F" ? "หญิง" : e.sexid)" Label="เพศ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.birthdate?.ToString("dd/MM/yyyy"))" Label="วันเกิด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.email" Label="อีเมล" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.phone" Label="โทรศัพท์" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcode" Label="รหัสหน่วยงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgname_th" Label="ชื่อหน่วยงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.isactive == true ? "ทำงานอยู่" : "ไม่ทำงาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_employee e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.empid" Label="รหัสพนักงาน" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.firstname_th" Label="ชื่อ (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.lastname_th" Label="นามสกุล (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.firstname_en" Label="ชื่อ (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.lastname_en" Label="นามสกุล (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.nickname" Label="ชื่อเล่น" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.cardid" Label="เลขบัตรประชาชน" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="e.sexid" Label="เพศ" Required="true">
+                    <MudSelectItem T="string" Value="@("M")">ชาย</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("F")">หญิง</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker @bind-Date="e.birthdate" Label="วันเกิด" Editable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.email" Label="อีเมล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.phone" Label="โทรศัพท์" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcode" Label="รหัสหน่วยงาน" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgname_th" Label="ชื่อหน่วยงาน" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox T="bool?" @bind-Value="e.isactive" Label="ทำงานอยู่" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_employee>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_employees.AsQueryable(), term,
+            nameof(wf_employee.empid), nameof(wf_employee.firstname_th), nameof(wf_employee.lastname_th),
+            nameof(wf_employee.cardid), nameof(wf_employee.email), nameof(wf_employee.phone));
+        return await query.OrderBy(e => e.empid).ToListAsync();
+    }
+
+    private async Task<wf_employee> SaveAsync(wf_employee entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.id == 0)
+        {
+            // wf_employee.id is NOT an IDENTITY column in the DB — see
+            // EntitySearchHelper.NextIdAsync for why this is needed here.
+            entity.id = await EntitySearchHelper.NextIdAsync(context.wf_employees, e => e.id);
+            context.wf_employees.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_employees.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.empid = entity.empid;
+            existing.firstname_th = entity.firstname_th;
+            existing.lastname_th = entity.lastname_th;
+            existing.firstname_en = entity.firstname_en;
+            existing.lastname_en = entity.lastname_en;
+            existing.nickname = entity.nickname;
+            existing.cardid = entity.cardid;
+            existing.sexid = entity.sexid;
+            existing.birthdate = entity.birthdate;
+            existing.email = entity.email;
+            existing.phone = entity.phone;
+            existing.orgcode = entity.orgcode;
+            existing.orgname_th = entity.orgname_th;
+            existing.isactive = entity.isactive;
+            existing.remark = entity.remark;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

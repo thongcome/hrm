@@ -1,0 +1,113 @@
+@page "/wf/vacant-approvals"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject WorkflowEngineService Engine
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ตำแหน่งผู้อนุมัติว่าง</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ตำแหน่งผู้อนุมัติว่าง (รอ admin มอบหมาย)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เกิดขึ้นเมื่อระบบหาผู้อนุมัติของระดับนั้นไม่เจอ (เช่น ตำแหน่งหัวหน้าหน่วยงานว่าง) และระดับนั้นไม่ได้ตั้งค่าให้ข้ามอัตโนมัติ — งานจะค้างที่นี่จนกว่าจะมอบหมายผู้อนุมัติ
+    </MudText>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_info))
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+    }
+
+    <MudTable Items="_vacant" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>เหตุผล</MudTh>
+            <MudTh>มอบหมายให้</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.jobmaster.subject</MudTd>
+            <MudTd>@context.jobmaster.wname</MudTd>
+            <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
+            <MudTd>@context.reason</MudTd>
+            <MudTd>
+                <MudSelect T="long?" @bind-Value="_assignSelections[context.jobapproverid]" Placeholder="เลือกผู้ใช้">
+                    @foreach (var u in _users)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)u.userid)">@u.loginname (@u.firstname @u.lastname)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => AssignAsync(context.jobapproverid))">มอบหมาย</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีตำแหน่งว่าง</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<job_user_list> _vacant = new();
+    private List<sc_user> _users = new();
+    private Dictionary<long, long?> _assignSelections = new();
+    private bool _loading;
+    private string? _error;
+    private string? _info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _users = await context.sc_users.Where(u => !u.isdisable && !u.iscancel).OrderBy(u => u.loginname).ToListAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        try
+        {
+            _vacant = await Engine.GetVacantApprovalsAsync();
+            foreach (var item in _vacant)
+                _assignSelections.TryAdd(item.jobapproverid, null);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AssignAsync(long jobApproverId)
+    {
+        _error = null;
+        _info = null;
+        if (!_assignSelections.TryGetValue(jobApproverId, out var userId) || userId is null)
+        {
+            _error = "กรุณาเลือกผู้ใช้ที่จะมอบหมาย";
+            return;
+        }
+        try
+        {
+            await Engine.AssignApproverAsync(jobApproverId, userId.Value, "มอบหมายผ่านหน้าตำแหน่งว่าง");
+            _info = "มอบหมายผู้อนุมัติสำเร็จ";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "มอบหมายไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

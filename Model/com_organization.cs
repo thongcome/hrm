@@ -143,4 +143,22 @@ public partial class com_organization
     // reporting actually reads from in the meantime.
     [StringLength(20)]
     public string? CostCenterCode { get; set; }
+
+    // Fixed-width hierarchical path: 2 digits per level, no delimiter,
+    // built by walking parent_code up from the root (istop=true) — e.g.
+    // CEO="01", HR (child of CEO)="0101", HRM (child of HR)="010101".
+    // Lets Hremployee.orgcodefull / anything else that copies this value
+    // filter an entire subtree with a plain `LIKE 'xxxx%'` at a fixed
+    // offset, no recursive join needed. Backfilled once via a recursive
+    // CTE in the migration that added this column — re-run that same
+    // computation (not by hand) if the org tree is ever restructured.
+    // NOTE: two existing rows both have code='Ploan' under parent 'loan'
+    // (ids 9 and 10) — a real pre-existing data-quality issue (parent_code
+    // links by code string, not id, so codes need to be unique per parent
+    // to be unambiguous). The backfill still produces distinct, correct
+    // orgcodefull values for both (010301/010302) since it keys off id,
+    // but anything that instead tries to look up an org by code='Ploan'
+    // alone can't tell which of the two is meant.
+    [StringLength(100)]
+    public string? orgcodefull { get; set; }
 }

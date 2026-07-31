@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260731141313_AddScRoleMenuCanEdit")]
+    partial class AddScRoleMenuCanEdit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2101,9 +2104,6 @@ namespace HRM.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("NATION");
 
-                    b.Property<long?>("OrganizationId")
-                        .HasColumnType("bigint");
-
                     b.Property<int>("OverleaveFlag")
                         .HasColumnType("int")
                         .HasColumnName("OVERLEAVE_FLAG");
@@ -2279,14 +2279,6 @@ namespace HRM.Migrations
                         .HasMaxLength(6)
                         .HasColumnType("nvarchar(6)")
                         .HasColumnName("companyid");
-
-                    b.Property<string>("orgcode")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("orgcodefull")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
 
                     b.HasKey("id");
 
@@ -5684,10 +5676,6 @@ namespace HRM.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("orgcodefull")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<long?>("parentID")
                         .HasColumnType("bigint");
 
@@ -6852,21 +6840,7 @@ namespace HRM.Migrations
                     b.Property<decimal?>("andpercent")
                         .HasColumnType("decimal(6, 2)");
 
-                    b.Property<string>("backwardstatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<int?>("empLevel")
-                        .HasColumnType("int");
-
-                    b.Property<string>("forwardstatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<bool>("isLOA")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("isNeedsupervisorapprove")
                         .HasColumnType("int");
 
                     b.Property<bool>("isandcondition")
@@ -14445,9 +14419,6 @@ namespace HRM.Migrations
 
                     b.Property<bool>("isNeedBudgetApproval")
                         .HasColumnType("bit");
-
-                    b.Property<int?>("isNeedsupervisorapprove")
-                        .HasColumnType("int");
 
                     b.Property<bool>("isPool")
                         .HasColumnType("bit");

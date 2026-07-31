@@ -1,0 +1,183 @@
+@typeparam TEntity where TEntity : class
+@using HRM.Services.Audit
+@using MudBlazor
+@inject IAuditLogger AuditLogger
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">@Title</MudText>
+        @if (IsPdpaSensitive)
+        {
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        }
+    </MudStack>
+
+    @if (_mode == Mode.List)
+    {
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
+            @if (CanEdit)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartCreate">เพิ่มรายการ</MudButton>
+            }
+            else
+            {
+                <span></span>
+            }
+            <MudTextField T="string" Value="_searchTerm" Immediate="true" DebounceInterval="300"
+                ValueChanged="OnSearchChanged" Label="ค้นหา" Placeholder="พิมพ์คำค้นหา..."
+                Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mud-width-full" Style="max-width:400px;" />
+        </MudStack>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudTable Items="_items" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+            <HeaderContent>
+                @HeaderColumns
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                @RowColumns(context)
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenView(context))">ดู</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ไม่พบข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+    else if (_mode == Mode.View && _current is not null)
+    {
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
+            <MudText Typo="Typo.h6">รายละเอียด</MudText>
+            <MudButton Variant="Variant.Text" OnClick="BackToList">กลับไปหน้ารายการ</MudButton>
+        </MudStack>
+        @ViewFields(_current)
+        @if (CanEdit)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="StartEdit">แก้ไข</MudButton>
+        }
+    }
+    else if (_mode == Mode.Edit && _current is not null)
+    {
+        <MudText Typo="Typo.h6" Class="mt-3">@(_isCreating ? "เพิ่มรายการใหม่" : "แก้ไขรายการ")</MudText>
+        @EditFields(_current)
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAndReturnToViewAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    private enum Mode { List, View, Edit }
+    private Mode _mode = Mode.List;
+    private bool _isCreating;
+    private bool _loading;
+    private string _searchTerm = "";
+    private string? _error;
+    private List<TEntity> _items = new();
+    private TEntity? _current;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public bool IsPdpaSensitive { get; set; }
+    [Parameter, EditorRequired] public bool CanEdit { get; set; }
+    [Parameter] public string EntityTypeName { get; set; } = typeof(TEntity).Name;
+
+    // LoadListAsync/SaveAsync are entity-specific (different DbSet, different
+    // validation) — the scaffold only owns the surrounding shell (search,
+    // list/view/edit state machine, PDPA badge + access log, read-only
+    // lock). Auto-generating forms/columns from reflection was deliberately
+    // rejected — every wf_* table needs different Thai labels, dropdowns
+    // referencing other tables, and per-field validation that reflection
+    // can't produce usably.
+    [Parameter, EditorRequired] public Func<string, Task<List<TEntity>>> LoadListAsync { get; set; } = null!;
+    [Parameter, EditorRequired] public Func<TEntity, string> GetId { get; set; } = null!;
+    [Parameter, EditorRequired] public Func<TEntity, Task<TEntity>> SaveAsync { get; set; } = null!;
+    [Parameter, EditorRequired] public Func<TEntity> CreateNew { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment HeaderColumns { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TEntity> RowColumns { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TEntity> ViewFields { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TEntity> EditFields { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync() => await RefreshListAsync();
+
+    private async Task RefreshListAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = await LoadListAsync(_searchTerm);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await RefreshListAsync();
+    }
+
+    private void StartCreate()
+    {
+        _error = null;
+        _current = CreateNew();
+        _isCreating = true;
+        _mode = Mode.Edit;
+    }
+
+    private async Task OpenView(TEntity entity)
+    {
+        _current = entity;
+        _mode = Mode.View;
+        if (IsPdpaSensitive)
+            await AuditLogger.LogAccessAsync(EntityTypeName, GetId(entity), isSensitive: true, note: "view");
+    }
+
+    private void StartEdit()
+    {
+        _error = null;
+        _isCreating = false;
+        _mode = Mode.Edit;
+    }
+
+    private void CancelEdit()
+    {
+        _error = null;
+        _mode = _isCreating ? Mode.List : Mode.View;
+    }
+
+    private void BackToList()
+    {
+        _mode = Mode.List;
+        _current = null;
+    }
+
+    private async Task SaveAndReturnToViewAsync()
+    {
+        _error = null;
+        try
+        {
+            _current = await SaveAsync(_current!);
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+            return;
+        }
+
+        await RefreshListAsync();
+        _mode = Mode.View;
+        _isCreating = false;
+    }
+}

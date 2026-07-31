@@ -193,6 +193,8 @@ builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();
 builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
 // ----- end Pay_* module -----
 
+builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
+
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
 // ----- end Att_* module -----
@@ -289,5 +291,6 @@ app.MapPayrollFileEndpoints();
 // runs.
 app.MapLoginEndpoints();
 app.MapEssFileEndpoints();
+app.MapWorkflowFileEndpoints();
 
 app.Run();
