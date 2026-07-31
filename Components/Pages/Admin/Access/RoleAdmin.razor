@@ -1,0 +1,212 @@
+@page "/admin/system/roles"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>จัดการกลุ่มผู้ใช้</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการกลุ่มผู้ใช้ (Role)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กลุ่มผู้ใช้ (sc_role) เป็นตัวกำหนดสิทธิ์จริงของระบบ ผูกกับเมนูผ่านหน้า "จัดการสิทธิ์การใช้ระบบ"
+    </MudText>
+
+    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มกลุ่มผู้ใช้</MudButton>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    <MudTable Items="_roles" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อกลุ่มผู้ใช้</MudTh>
+            <MudTh>ชื่อย่อ</MudTh>
+            <MudTh>ระดับสิทธิ์</MudTh>
+            <MudTh>Upper Role</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.roleid</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.abbr</MudTd>
+            <MudTd>@context.rolelevel</MudTd>
+            <MudTd>@context.upperrole</MudTd>
+            <MudTd>@(context.isactive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                @if (context.isactive)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">ปิดใช้งาน</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">เปิดใช้งาน</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editing.roleid == 0 ? "เพิ่มกลุ่มผู้ใช้" : $"แก้ไขกลุ่มผู้ใช้ #{_editing.roleid}")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.name" Label="ชื่อกลุ่มผู้ใช้" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.abbr" Label="ชื่อย่อ" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.rolelevel" Label="ระดับสิทธิ์ (Role Level)" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_editing.upperrole" Label="Upper Role" Clearable="true">
+                    @foreach (var r in _roles.Where(r => r.roleid != _editing.roleid && !string.IsNullOrWhiteSpace(r.name)))
+                    {
+                        var roleName = r.name!;
+                        <MudSelectItem T="string" Value="@roleName">@roleName</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_editError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private List<sc_role> _roles = new();
+    private sc_role? _editing;
+    private string? _error;
+    private string? _editError;
+    private string _actor = "admin";
+    private const long DefaultCompanyId = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _roles = await context.sc_roles.OrderBy(r => r.roleid).ToListAsync();
+    }
+
+    private void StartAdd()
+    {
+        _editError = null;
+        _editing = new sc_role { rolelevel = "1", isactive = true };
+    }
+
+    private void StartEdit(sc_role role)
+    {
+        _editError = null;
+        _editing = new sc_role
+        {
+            roleid = role.roleid,
+            company_id = role.company_id,
+            name = role.name,
+            abbr = role.abbr,
+            rolelevel = role.rolelevel,
+            upperrole = role.upperrole,
+            rolecode = role.rolecode,
+            isactive = role.isactive,
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        _editError = null;
+        if (_editing is null) return;
+
+        if (string.IsNullOrWhiteSpace(_editing.name))
+        {
+            _editError = "กรุณากรอกชื่อกลุ่มผู้ใช้";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_editing.rolelevel))
+        {
+            _editError = "กรุณากรอกระดับสิทธิ์";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editing.roleid == 0)
+        {
+            _editing.company_id = DefaultCompanyId;
+            _editing.rolecode = string.IsNullOrWhiteSpace(_editing.abbr) ? _editing.name : _editing.abbr;
+            _editing.moddate = DateTime.Now;
+            _editing.modby = _actor;
+            context.sc_roles.Add(_editing);
+        }
+        else
+        {
+            var existing = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == _editing.roleid);
+            if (existing is null)
+            {
+                _editError = "ไม่พบกลุ่มผู้ใช้นี้ในระบบแล้ว";
+                return;
+            }
+
+            existing.name = _editing.name;
+            existing.abbr = _editing.abbr;
+            existing.rolelevel = _editing.rolelevel;
+            existing.upperrole = _editing.upperrole;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกกลุ่มผู้ใช้เรียบร้อย", Severity.Success);
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(sc_role role)
+    {
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == role.roleid);
+        if (existing is null) return;
+
+        if (existing.isactive)
+        {
+            var inUse = await context.sc_user_roles.AnyAsync(ur => ur.roleid == role.roleid && ur.isactive);
+            if (inUse)
+            {
+                _error = $"ปิดใช้งานกลุ่มผู้ใช้ '{role.name}' ไม่ได้ เพราะยังมีผู้ใช้ผูกกับกลุ่มนี้อยู่";
+                return;
+            }
+        }
+
+        existing.isactive = !existing.isactive;
+        existing.moddate = DateTime.Now;
+        existing.modby = _actor;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

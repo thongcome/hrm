@@ -1,0 +1,329 @@
+@page "/admin/system/users"
+@using System.Security.Claims
+@using HRM.Data
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IPasswordHasher<sc_user> PasswordHasher
+@inject UserManager<ApplicationUser> UserManager
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>จัดการผู้ใช้</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการผู้ใช้ (User)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        สร้าง/แก้ไขบัญชี sc_user และผูกกลุ่มผู้ใช้ (Role) — บัญชีที่จะ login เข้าระบบได้จริงต้องผูกกับ Identity ผ่านหน้า "ผูกบัญชี Identity" ด้วย
+    </MudText>
+
+    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มผู้ใช้</MudButton>
+
+    <MudTable Items="_users" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ชื่อเข้าสู่ระบบ</MudTh>
+            <MudTh>ชื่อ-สกุล</MudTh>
+            <MudTh>อีเมล</MudTh>
+            <MudTh>กลุ่มผู้ใช้</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.loginname</MudTd>
+            <MudTd>@context.firstname @context.lastname</MudTd>
+            <MudTd>@context.email</MudTd>
+            <MudTd>@string.Join(", ", context.sc_user_roles.Where(ur => ur.isactive).Select(ur => ur.role.abbr ?? ur.role.name))</MudTd>
+            <MudTd>
+                @if (!context.isdisable && !context.iscancel)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">ใช้งานได้</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ปิดใช้งาน</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.isdisable ? "เปิดใช้งาน" : "ปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editing.userid == 0 ? "เพิ่มผู้ใช้" : $"แก้ไขผู้ใช้: {_editing.loginname}")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.loginname" Label="ชื่อเข้าสู่ระบบ" Required="true"
+                    Disabled="@(_editing.userid != 0)" HelperText="4-20 ตัวอักษร" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.firstname" Label="ชื่อ" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.lastname" Label="นามสกุล" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.email" Label="อีเมล" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.phone" Label="เบอร์โทร" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudCheckBox T="bool" Value="@(!_editing.isdisable)" ValueChanged="@((bool v) => _editing.isdisable = !v)" Label="ใช้ระบบได้" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือกกลุ่มผู้ใช้</MudText>
+        <MudGrid>
+            @foreach (var role in _roles)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudCheckBox T="bool" Value="@_selectedRoleIds.Contains(role.roleid)"
+                        ValueChanged="@((bool v) => ToggleRoleSelection(role.roleid, v))"
+                        Label="@($"{role.abbr} - {role.name}")" />
+                </MudItem>
+            }
+        </MudGrid>
+
+        @if (_editing.userid != 0)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" Class="mt-2" OnClick="ResetPasswordAsync">
+                รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น
+            </MudButton>
+        }
+
+        @if (!string.IsNullOrEmpty(_editError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_editInfo))
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">@_editInfo</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private const long DefaultCompanyId = 1;
+    private const string DefaultPassword = "Abcd@2025";
+
+    private List<sc_user> _users = new();
+    private List<sc_role> _roles = new();
+    private HashSet<long> _selectedRoleIds = new();
+    private sc_user? _editing;
+    private string? _editError;
+    private string? _editInfo;
+    private string _actor = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+        _users = await context.sc_users
+            .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role)
+            .OrderBy(u => u.loginname)
+            .ToListAsync();
+    }
+
+    private void StartAdd()
+    {
+        _editError = null;
+        _editInfo = null;
+        _selectedRoleIds = new();
+        _editing = new sc_user { isdisable = false, isActivate = true, iscancel = false, isforcechanged = true };
+    }
+
+    private void StartEdit(sc_user user)
+    {
+        _editError = null;
+        _editInfo = null;
+        _selectedRoleIds = user.sc_user_roles.Where(ur => ur.isactive).Select(ur => ur.roleid).ToHashSet();
+        _editing = new sc_user
+        {
+            userid = user.userid,
+            company_id = user.company_id,
+            loginname = user.loginname,
+            firstname = user.firstname,
+            lastname = user.lastname,
+            email = user.email,
+            phone = user.phone,
+            isdisable = user.isdisable,
+            isActivate = user.isActivate,
+            iscancel = user.iscancel,
+        };
+    }
+
+    private void ToggleRoleSelection(long roleId, bool selected)
+    {
+        if (selected) _selectedRoleIds.Add(roleId);
+        else _selectedRoleIds.Remove(roleId);
+    }
+
+    private async Task SaveAsync()
+    {
+        _editError = null;
+        _editInfo = null;
+        if (_editing is null) return;
+
+        if (string.IsNullOrWhiteSpace(_editing.loginname) || _editing.loginname.Length < 4 || _editing.loginname.Length > 20)
+        {
+            _editError = "ชื่อเข้าสู่ระบบต้องยาว 4-20 ตัวอักษร";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_editing.firstname) || string.IsNullOrWhiteSpace(_editing.lastname))
+        {
+            _editError = "กรุณากรอกชื่อและนามสกุล";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        long userId;
+        if (_editing.userid == 0)
+        {
+            var duplicate = await context.sc_users.AnyAsync(u => u.loginname == _editing.loginname);
+            if (duplicate)
+            {
+                _editError = $"ชื่อเข้าสู่ระบบ '{_editing.loginname}' มีอยู่แล้ว";
+                return;
+            }
+
+            _editing.company_id = DefaultCompanyId;
+            _editing.isforcechanged = true;
+            _editing.iscancel = false;
+            _editing.password = PasswordHasher.HashPassword(_editing, DefaultPassword);
+            _editing.moddate = DateTime.Now;
+            _editing.modby = _actor;
+            context.sc_users.Add(_editing);
+            await context.SaveChangesAsync();
+            userId = _editing.userid;
+            _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านเริ่มต้นคือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+        }
+        else
+        {
+            var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == _editing.userid);
+            if (existing is null)
+            {
+                _editError = "ไม่พบผู้ใช้นี้ในระบบแล้ว";
+                return;
+            }
+
+            existing.firstname = _editing.firstname;
+            existing.lastname = _editing.lastname;
+            existing.email = _editing.email;
+            existing.phone = _editing.phone;
+            existing.isdisable = _editing.isdisable;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+            await context.SaveChangesAsync();
+            userId = existing.userid;
+        }
+
+        await SyncRolesAsync(context, userId);
+
+        Snackbar.Add("บันทึกผู้ใช้เรียบร้อย", Severity.Success);
+        var keepInfo = _editInfo;
+        await LoadAsync();
+        if (keepInfo is null) _editing = null;
+        _editInfo = keepInfo;
+    }
+
+    private async Task SyncRolesAsync(HRMContext context, long userId)
+    {
+        var existingLinks = await context.sc_user_roles.Where(ur => ur.userid == userId).ToListAsync();
+
+        foreach (var link in existingLinks)
+        {
+            var shouldBeActive = _selectedRoleIds.Contains(link.roleid);
+            if (link.isactive != shouldBeActive)
+            {
+                link.isactive = shouldBeActive;
+                link.modate = DateTime.Now;
+                link.modby = _actor;
+            }
+        }
+
+        var existingRoleIds = existingLinks.Select(l => l.roleid).ToHashSet();
+        foreach (var roleId in _selectedRoleIds.Except(existingRoleIds))
+        {
+            context.sc_user_roles.Add(new sc_user_role
+            {
+                userid = userId,
+                roleid = roleId,
+                isactive = true,
+                modate = DateTime.Now,
+                modby = _actor,
+            });
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_editing is null || _editing.userid == 0) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == _editing.userid);
+        if (existing is null) return;
+
+        existing.password = PasswordHasher.HashPassword(existing, DefaultPassword);
+        existing.isforcechanged = true;
+        existing.moddate = DateTime.Now;
+        existing.modby = _actor;
+        await context.SaveChangesAsync();
+
+        // sc_user.password above is legacy/reference only — actual sign-in goes
+        // through Identity (LoginEndpoints.cs calls SignInManager against
+        // ApplicationUser), so the credential that matters for login must be
+        // reset there too or this button would silently do nothing real.
+        var appUser = await UserManager.Users.FirstOrDefaultAsync(u => u.userid == existing.userid);
+        if (appUser is not null)
+        {
+            await UserManager.RemovePasswordAsync(appUser);
+            await UserManager.AddPasswordAsync(appUser, DefaultPassword);
+            _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+        }
+        else
+        {
+            _editInfo = $"รีเซ็ตรหัสผ่าน sc_user (ข้อมูลอ้างอิงเดิม) แล้ว แต่ผู้ใช้นี้ยังไม่ได้ผูกบัญชี Identity — จะ login ไม่ได้จนกว่าจะไปผูกที่หน้า \"ผูกบัญชี Identity\" ก่อน";
+        }
+        Snackbar.Add("รีเซ็ตรหัสผ่านเรียบร้อย", Severity.Success);
+    }
+
+    private async Task ToggleActiveAsync(sc_user user)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == user.userid);
+        if (existing is null) return;
+
+        existing.isdisable = !existing.isdisable;
+        existing.moddate = DateTime.Now;
+        existing.modby = _actor;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

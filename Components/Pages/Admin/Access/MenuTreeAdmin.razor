@@ -1,0 +1,346 @@
+@page "/admin/system/menus"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>จัดการเมนู</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการเมนู (Menu Tree)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        โครงสร้างเมนู 4 ระดับที่ใช้จริงกับระบบสิทธิ์ (sc_menu/sc_role_menu) — แปลงมาจากหน้าจัดการเมนูของระบบ JSP เดิม
+    </MudText>
+
+    <MudBreadcrumbs Items="_breadcrumbItems" Class="mt-3 pl-0"></MudBreadcrumbs>
+
+    <MudStack Row="true" Spacing="2" Class="mb-3">
+        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add"
+            Disabled="@(_currentParent is not null && _currentParent.isfinal)"
+            OnClick="StartAddChild">เพิ่มเมนู</MudButton>
+        @if (_breadcrumbPath.Count > 0)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowUpward" OnClick="GoUp">Go up</MudButton>
+        }
+    </MudStack>
+
+    @if (_currentParent is not null && _currentParent.isfinal)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">เมนูนี้ถูกตั้งเป็น "Is Final" (เมนูปลายทาง) แล้ว จึงเพิ่มเมนูย่อยไม่ได้ — แก้ไขให้ Is Final = ไม่ใช่ ก่อนถ้าต้องการเพิ่มลูก</MudAlert>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    <MudTable Items="_children" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Menu ID</MudTh>
+            <MudTh>Menu Name</MudTh>
+            <MudTh>Level</MudTh>
+            <MudTh>Is Final</MudTh>
+            <MudTh>Drill Down</MudTh>
+            <MudTh>Menu Order</MudTh>
+            <MudTh>แสดง</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            <MudTd>@row.Menu.menuid</MudTd>
+            <MudTd>
+                @if (row.ChildCount > 0 || !row.Menu.isfinal)
+                {
+                    <MudLink OnClick="@(() => DrillDown(row.Menu))">@row.Menu.menuname</MudLink>
+                }
+                else
+                {
+                    @row.Menu.menuname
+                }
+                @if (!string.IsNullOrWhiteSpace(row.Menu.menuname_en))
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">@row.Menu.menuname_en</MudText>
+                }
+            </MudTd>
+            <MudTd>@row.Menu.menulevel</MudTd>
+            <MudTd>@(row.Menu.isfinal ? "Yes" : "")</MudTd>
+            <MudTd>
+                @if (row.ChildCount > 0)
+                {
+                    <MudLink OnClick="@(() => DrillDown(row.Menu))">@row.ChildCount sub(s)</MudLink>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">0 sub(s)</MudText>
+                }
+            </MudTd>
+            <MudTd>@row.Menu.menuorder</MudTd>
+            <MudTd>@(row.Menu.isshow ? "ใช่" : "ไม่")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row.Menu))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Menu))">ลบ</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีเมนูในระดับนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editing.menuid == 0 ? "เพิ่มเมนู" : "แก้ไขเมนู") @(_currentParent is not null ? $"(ใต้ {_currentParent.menuname})" : "(ระดับบนสุด)")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.menuname" Label="ชื่อเมนู (ไทย)" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.menuname_en" Label="ชื่อเมนู (English)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.menucode" Label="รหัสเมนู (Menu Code, ต้องไม่ซ้ำ)" Required="true"
+                    HelperText="ใช้ผูกเมนูลูก และใช้เป็น Menu:{code} policy สำหรับหน้าที่เมนูนี้ชี้ไป" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.url" Label="URL / Route" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.icon" Label="Icon (MudBlazor icon string)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_editing.menuorder" Label="Menu Order" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" @bind-Value="_editing.menugroupid" Label="กลุ่มเมนู (Menu Group)">
+                    @foreach (var g in _menuGroups)
+                    {
+                        <MudSelectItem T="long" Value="@g.menugroupid">@g.menugroupname</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.tooltip" Label="Tooltip" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudCheckBox T="bool" @bind-Value="_editing.isfinal" Label="Is Final (เมนูปลายทาง)" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudCheckBox T="bool" @bind-Value="_editing.isshow" Label="แสดงในเมนู" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_editError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private sc_menu? _currentParent;
+    private List<sc_menu> _breadcrumbPath = new();
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+    private List<(sc_menu Menu, int ChildCount)> _children = new();
+    private List<sc_menugroup> _menuGroups = new();
+    private sc_menu? _editing;
+    private string? _error;
+    private string? _editError;
+    private string _actor = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _menuGroups = await context.sc_menugroups.OrderBy(g => g.menugroupname).ToListAsync();
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        List<sc_menu> rows;
+        if (_currentParent is null)
+        {
+            rows = await context.sc_menus
+                .Where(m => m.menulevel == 1 && (m.uppermenucode == null || m.uppermenucode == "") && m.isactive)
+                .OrderBy(m => m.menuorder)
+                .ToListAsync();
+        }
+        else
+        {
+            rows = await context.sc_menus
+                .Where(m => m.menulevel == _currentParent.menulevel + 1 && m.uppermenucode == _currentParent.menucode && m.isactive)
+                .OrderBy(m => m.menuorder)
+                .ToListAsync();
+        }
+
+        _children = new();
+        foreach (var m in rows)
+        {
+            var childCount = string.IsNullOrWhiteSpace(m.menucode)
+                ? 0
+                : await context.sc_menus.CountAsync(x => x.menulevel == m.menulevel + 1 && x.uppermenucode == m.menucode && x.isactive);
+            _children.Add((m, childCount));
+        }
+
+        _breadcrumbItems = new() { new BreadcrumbItem("Root", href: null, disabled: _breadcrumbPath.Count == 0, icon: Icons.Material.Filled.Home) };
+        for (var i = 0; i < _breadcrumbPath.Count; i++)
+        {
+            var idx = i;
+            _breadcrumbItems.Add(new BreadcrumbItem(_breadcrumbPath[i].menuname, href: null, disabled: idx == _breadcrumbPath.Count - 1));
+        }
+    }
+
+    private async Task DrillDown(sc_menu menu)
+    {
+        _editing = null;
+        _breadcrumbPath.Add(menu);
+        _currentParent = menu;
+        await LoadAsync();
+    }
+
+    private async Task GoUp()
+    {
+        _editing = null;
+        if (_breadcrumbPath.Count > 0)
+            _breadcrumbPath.RemoveAt(_breadcrumbPath.Count - 1);
+        _currentParent = _breadcrumbPath.Count > 0 ? _breadcrumbPath[^1] : null;
+        await LoadAsync();
+    }
+
+    private void StartAddChild()
+    {
+        _editError = null;
+        _editing = new sc_menu
+        {
+            menulevel = _currentParent is null ? 1 : _currentParent.menulevel + 1,
+            uppermenucode = _currentParent?.menucode,
+            menugroupid = _menuGroups.Count > 0 ? _menuGroups[0].menugroupid : 0,
+            isshow = true,
+            isactive = true,
+            menuorder = (_children.Count > 0 ? _children.Max(c => c.Menu.menuorder ?? 0) : 0) + 1,
+        };
+    }
+
+    private void StartEdit(sc_menu menu)
+    {
+        _editError = null;
+        _editing = new sc_menu
+        {
+            menuid = menu.menuid,
+            menuname = menu.menuname,
+            menuname_en = menu.menuname_en,
+            menucode = menu.menucode,
+            menulevel = menu.menulevel,
+            uppermenucode = menu.uppermenucode,
+            url = menu.url,
+            icon = menu.icon,
+            menuorder = menu.menuorder,
+            menugroupid = menu.menugroupid,
+            tooltip = menu.tooltip,
+            isfinal = menu.isfinal,
+            isshow = menu.isshow,
+            isactive = menu.isactive,
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        _editError = null;
+        if (_editing is null) return;
+
+        if (string.IsNullOrWhiteSpace(_editing.menuname))
+        {
+            _editError = "กรุณากรอกชื่อเมนู";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_editing.menucode))
+        {
+            _editError = "กรุณากรอกรหัสเมนู (Menu Code)";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicateCode = await context.sc_menus.AnyAsync(m => m.menucode == _editing.menucode && m.menuid != _editing.menuid);
+        if (duplicateCode)
+        {
+            _editError = $"รหัสเมนู '{_editing.menucode}' ถูกใช้แล้ว กรุณาตั้งรหัสอื่น";
+            return;
+        }
+
+        if (_editing.menuid == 0)
+        {
+            _editing.moddate = DateTime.Now;
+            _editing.modby = _actor;
+            context.sc_menus.Add(_editing);
+        }
+        else
+        {
+            var existing = await context.sc_menus.FirstOrDefaultAsync(m => m.menuid == _editing.menuid);
+            if (existing is null)
+            {
+                _editError = "ไม่พบเมนูนี้ในระบบแล้ว";
+                return;
+            }
+
+            existing.menuname = _editing.menuname;
+            existing.menuname_en = _editing.menuname_en;
+            existing.menucode = _editing.menucode;
+            existing.url = _editing.url;
+            existing.icon = _editing.icon;
+            existing.menuorder = _editing.menuorder;
+            existing.menugroupid = _editing.menugroupid;
+            existing.tooltip = _editing.tooltip;
+            existing.isfinal = _editing.isfinal;
+            existing.isshow = _editing.isshow;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเมนูเรียบร้อย", Severity.Success);
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(sc_menu menu)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var hasActiveChildren = !string.IsNullOrWhiteSpace(menu.menucode)
+            && await context.sc_menus.AnyAsync(m => m.menulevel == menu.menulevel + 1 && m.uppermenucode == menu.menucode && m.isactive);
+        if (hasActiveChildren)
+        {
+            _error = $"ลบเมนู '{menu.menuname}' ไม่ได้ เพราะยังมีเมนูย่อยที่ใช้งานอยู่ — ลบเมนูย่อยทั้งหมดก่อน";
+            return;
+        }
+
+        var existing = await context.sc_menus.FirstOrDefaultAsync(m => m.menuid == menu.menuid);
+        if (existing is null) return;
+
+        existing.isactive = false;
+        existing.moddate = DateTime.Now;
+        existing.modby = _actor;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("ปิดใช้งานเมนูเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

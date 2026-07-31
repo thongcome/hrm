@@ -1,0 +1,158 @@
+@page "/admin/system/permissions"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>จัดการสิทธิ์การใช้ระบบ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการสิทธิ์การใช้ระบบ (Permission)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดว่ากลุ่มผู้ใช้ (Role) ใดเห็นเมนูใดได้บ้าง — ผูกตรงกับ sc_role_menu ที่ระบบใช้ authorize จริง (นโยบาย Menu:{code})
+        การเปลี่ยนแปลงจะมีผลตั้งแต่การ login ครั้งถัดไปของผู้ใช้ในกลุ่มนั้น
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" @bind-Value="_selectedRoleId" Label="กลุ่มผู้ใช้ (Role)" @bind-Value:after="LoadPermissionsAsync">
+                @foreach (var r in _roles)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)r.roleid)">@r.abbr - @r.name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    @if (_selectedRoleId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">กรุณาเลือกกลุ่มผู้ใช้ก่อน</MudAlert>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือก เมนูที่ต้องการกำหนดให้กับกลุ่มผู้ใช้นี้</MudText>
+        <MudPaper Class="pa-2" Outlined="true" Style="max-height:600px; overflow-y:auto;">
+            @foreach (var row in _menuRows)
+            {
+                <div style="padding-left:@(row.Depth * 24)px;" class="py-1">
+                    <MudCheckBox T="bool" Value="@_checkedMenuIds.Contains(row.Menu.menuid)"
+                        ValueChanged="@((bool v) => ToggleMenu(row.Menu.menuid, v))"
+                        Label="@($"{row.Menu.menuname} ({row.Menu.menucode})")" Dense="true" />
+                </div>
+            }
+        </MudPaper>
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+    }
+</MudPaper>
+
+@code {
+    private long? _selectedRoleId;
+    private List<sc_role> _roles = new();
+    private List<(sc_menu Menu, int Depth)> _menuRows = new();
+    private HashSet<long> _checkedMenuIds = new();
+    private string? _error;
+    private string _actor = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        _error = null;
+        _menuRows = new();
+        _checkedMenuIds = new();
+        if (_selectedRoleId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var allMenus = await context.sc_menus.Where(m => m.isactive).ToListAsync();
+
+        var byParent = allMenus
+            .GroupBy(m => m.uppermenucode ?? string.Empty)
+            .ToDictionary(g => g.Key, g => g.OrderBy(m => m.menuorder).ToList());
+
+        var roots = byParent.TryGetValue(string.Empty, out var r) ? r : new List<sc_menu>();
+        Flatten(roots, 0, byParent, new HashSet<string>());
+
+        _checkedMenuIds = await context.sc_role_menus
+            .Where(rm => rm.roleid == _selectedRoleId && rm.isactive)
+            .Select(rm => rm.menuid)
+            .ToHashSetAsync();
+    }
+
+    private void Flatten(List<sc_menu> nodes, int depth, Dictionary<string, List<sc_menu>> byParent, HashSet<string> visitedCodes)
+    {
+        foreach (var node in nodes)
+        {
+            _menuRows.Add((node, depth));
+
+            if (string.IsNullOrWhiteSpace(node.menucode) || !visitedCodes.Add(node.menucode))
+                continue; // no menucode = can't have children; guard against accidental cycles
+
+            if (byParent.TryGetValue(node.menucode, out var children))
+                Flatten(children, depth + 1, byParent, visitedCodes);
+        }
+    }
+
+    private void ToggleMenu(long menuId, bool selected)
+    {
+        if (selected) _checkedMenuIds.Add(menuId);
+        else _checkedMenuIds.Remove(menuId);
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_selectedRoleId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existingLinks = await context.sc_role_menus.Where(rm => rm.roleid == _selectedRoleId).ToListAsync();
+        var existingByMenuId = existingLinks.ToDictionary(l => l.menuid);
+
+        foreach (var row in _menuRows)
+        {
+            var desired = _checkedMenuIds.Contains(row.Menu.menuid);
+
+            if (existingByMenuId.TryGetValue(row.Menu.menuid, out var link))
+            {
+                if (link.isactive != desired)
+                {
+                    link.isactive = desired;
+                    link.moddate = DateTime.Now;
+                    link.modby = _actor;
+                }
+            }
+            else if (desired)
+            {
+                context.sc_role_menus.Add(new sc_role_menu
+                {
+                    roleid = _selectedRoleId.Value,
+                    menuid = row.Menu.menuid,
+                    isactive = true,
+                    moddate = DateTime.Now,
+                    modby = _actor,
+                });
+            }
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกสิทธิ์เรียบร้อย — มีผลตั้งแต่การ login ครั้งถัดไป", Severity.Success);
+    }
+}
