@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using System.Text.RegularExpressions
 @using HRM.Models
+@using HRM.Services.Admin
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -10,6 +11,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject IWebHostEnvironment Env
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
 <PageTitle>WorkflowDesign</PageTitle>
@@ -128,6 +130,26 @@
                             }
                         </tbody>
                     </MudSimpleTable>
+                    <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
+                        <MudButton Size="Size.Small" Color="Color.Secondary" Variant="Variant.Filled"
+                            Disabled="@EntityExists(h.TableName)"
+                            OnClick="@(() => GenerateEntityAsync(h))">
+                            @(EntityExists(h.TableName) ? "สร้าง Entity แล้ว" : "สร้าง Entity")
+                        </MudButton>
+                        <MudButton Size="Size.Small" Color="Color.Tertiary" Variant="Variant.Filled"
+                            Disabled="@(!EntityExists(h.TableName) || CrudExists(h.TableName))"
+                            OnClick="@(() => GenerateCrudAsync(h))">
+                            @(CrudExists(h.TableName) ? "สร้าง CRUD แล้ว" : "สร้าง CRUD")
+                        </MudButton>
+                        @if (CrudExists(h.TableName))
+                        {
+                            <MudText Typo="Typo.body2">route: /@WorkflowDesignCodeGenerator.RouteSlug(h.TableName)</MudText>
+                        }
+                    </MudStack>
+                    @if (_rowMessages.TryGetValue(h.Id, out var msg))
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">@msg</MudAlert>
+                    }
                 </MudExpansionPanel>
             </MudExpansionPanels>
         }
@@ -135,17 +157,8 @@
 </MudPaper>
 
 @code {
-    private enum DesignFieldType { Text, Number, Decimal, Date, DateTime, Checkbox }
-
-    private class DesignField
-    {
-        public string ColumnName { get; set; } = "";
-        public string LabelTh { get; set; } = "";
-        public DesignFieldType Type { get; set; } = DesignFieldType.Text;
-        public int Length { get; set; } = 200;
-        public bool Required { get; set; }
-    }
-
+    // DesignField/DesignFieldType live in HRM.Services.Admin.WorkflowDesignCodeGenerator
+    // so the entity/CRUD code generator can share them with this page.
     private record PaletteType(DesignFieldType Type, string LabelTh, string Icon);
 
     private static readonly Regex IdentifierRegex = new(@"^[A-Za-z][A-Za-z0-9_]{0,63}$", RegexOptions.Compiled);
@@ -168,6 +181,7 @@
     private string? _successMessage;
     private string? _generatedSql;
     private List<WorkflowDesignTable> _history = new();
+    private readonly Dictionary<long, string> _rowMessages = new();
 
     protected override async Task OnInitializedAsync() => await LoadHistoryAsync();
 
@@ -315,5 +329,82 @@
             _error = $"สร้างตารางไม่สำเร็จ: {ex.Message}";
         }
         await LoadHistoryAsync();
+    }
+
+    private string EntityModelPath(string tableName) => Path.Combine(Env.ContentRootPath, "Model", $"{tableName}.cs");
+    private string CrudPagesDir(string tableName) => Path.Combine(Env.ContentRootPath, "Components", "Pages", $"{tableName}Pages");
+
+    private bool EntityExists(string tableName) => File.Exists(EntityModelPath(tableName));
+    private bool CrudExists(string tableName) => Directory.Exists(CrudPagesDir(tableName));
+
+    // Writes Model/{TableName}.cs and inserts a matching DbSet line into
+    // HRMContext.cs. This only writes SOURCE files — the running app can't
+    // pick up a brand new type without a rebuild, so the generated code
+    // isn't usable until the next dotnet build / dev-server restart (same
+    // as any other scaffolding tool).
+    private async Task GenerateEntityAsync(WorkflowDesignTable h)
+    {
+        _rowMessages.Remove(h.Id);
+        if (EntityExists(h.TableName))
+        {
+            _rowMessages[h.Id] = $"มีไฟล์ Model/{h.TableName}.cs อยู่แล้ว — ไม่เขียนทับ";
+            return;
+        }
+
+        try
+        {
+            var fields = DeserializeFields(h.FieldsJson);
+            var entityCode = WorkflowDesignCodeGenerator.GenerateEntityCode(h.TableName, fields);
+            await File.WriteAllTextAsync(EntityModelPath(h.TableName), entityCode);
+
+            var contextPath = Path.Combine(Env.ContentRootPath, "Model", "HRMContext.cs");
+            var contextCode = await File.ReadAllTextAsync(contextPath);
+            if (!contextCode.Contains($"DbSet<{h.TableName}>"))
+            {
+                const string anchor = "public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }";
+                var dbSetLine = WorkflowDesignCodeGenerator.GenerateDbSetLine(h.TableName);
+                contextCode = contextCode.Replace(anchor, anchor + "\n\n" + dbSetLine);
+                await File.WriteAllTextAsync(contextPath, contextCode);
+            }
+
+            _rowMessages[h.Id] = $"สร้าง Model/{h.TableName}.cs และเพิ่ม DbSet ใน HRMContext.cs แล้ว — ต้อง build/restart แอปก่อนใช้งานได้";
+            Snackbar.Add(_rowMessages[h.Id], Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _rowMessages[h.Id] = $"สร้าง Entity ไม่สำเร็จ: {ex.Message}";
+        }
+    }
+
+    // Writes the 5-file CRUD page set into Components/Pages/{TableName}Pages/
+    // — same "requires rebuild" caveat as GenerateEntityAsync.
+    private async Task GenerateCrudAsync(WorkflowDesignTable h)
+    {
+        _rowMessages.Remove(h.Id);
+        if (CrudExists(h.TableName))
+        {
+            _rowMessages[h.Id] = $"มีโฟลเดอร์ CRUD ของ {h.TableName} อยู่แล้ว — ไม่เขียนทับ";
+            return;
+        }
+
+        try
+        {
+            var fields = DeserializeFields(h.FieldsJson);
+            var dir = CrudPagesDir(h.TableName);
+            Directory.CreateDirectory(dir);
+
+            await File.WriteAllTextAsync(Path.Combine(dir, "Index.razor"), WorkflowDesignCodeGenerator.GenerateIndexPage(h.TableName, fields));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Create.razor"), WorkflowDesignCodeGenerator.GenerateCreatePage(h.TableName, fields));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Edit.razor"), WorkflowDesignCodeGenerator.GenerateEditPage(h.TableName, fields));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Details.razor"), WorkflowDesignCodeGenerator.GenerateDetailsPage(h.TableName, fields));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Delete.razor"), WorkflowDesignCodeGenerator.GenerateDeletePage(h.TableName, fields));
+
+            _rowMessages[h.Id] = $"สร้างหน้า CRUD ที่ /{WorkflowDesignCodeGenerator.RouteSlug(h.TableName)} แล้ว — ต้อง build/restart แอปก่อนใช้งานได้";
+            Snackbar.Add(_rowMessages[h.Id], Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _rowMessages[h.Id] = $"สร้าง CRUD ไม่สำเร็จ: {ex.Message}";
+        }
     }
 }

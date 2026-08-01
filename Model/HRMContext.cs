@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using HRM.Models;
 using Microsoft.EntityFrameworkCore;
@@ -355,6 +355,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
 
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
+
+    public virtual DbSet<info_message> info_messages { get; set; }
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     public virtual DbSet<Pay_EmployeeDocument> Pay_EmployeeDocuments { get; set; }

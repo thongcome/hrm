@@ -1,0 +1,45 @@
+@page "/info_messages/details/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+
+@if (item is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>info_message #@item.Id</h3>
+    <dl class="row">
+        <dt class="col-sm-3">ฟิลด์ใหม่ (subject)</dt>
+        <dd class="col-sm-9">@item.subject</dd>
+        <dt class="col-sm-3">ฟิลด์ใหม่ (startdate)</dt>
+        <dd class="col-sm-9">@item.startdate</dd>
+        <dt class="col-sm-3">ฟิลด์ใหม่ (enddate)</dt>
+        <dd class="col-sm-9">@item.enddate</dd>
+        <dt class="col-sm-3">ฟิลด์ใหม่ (isactive)</dt>
+        <dd class="col-sm-9">@item.isactive</dd>
+        <dt class="col-sm-3">ฟิลด์ใหม่ (message)</dt>
+        <dd class="col-sm-9">@item.message</dd>
+        <dt class="col-sm-3">สร้างเมื่อ (CreatedDate)</dt>
+        <dd class="col-sm-9">@item.CreatedDate</dd>
+    </dl>
+
+    <a class="btn btn-secondary" href="/info_messages">Back</a>
+    <a class="btn btn-info" href="/info_messages/edit/@item.Id">Edit</a>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private info_message? item;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        item = await db.info_messages.FindAsync(id);
+    }
+}

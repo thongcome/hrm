@@ -1,0 +1,50 @@
+@page "/info_messages/create"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>Create info_message</h3>
+
+<EditForm Model="item" OnValidSubmit="SaveAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+        <div class="mb-3">
+            <label for="subject" class="form-label">ฟิลด์ใหม่ (subject):</label>
+            <InputText id="subject" @bind-Value="item.subject" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label for="startdate" class="form-label">ฟิลด์ใหม่ (startdate):</label>
+            <InputDate id="startdate" @bind-Value="item.startdate" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label for="enddate" class="form-label">ฟิลด์ใหม่ (enddate):</label>
+            <InputDate id="enddate" @bind-Value="item.enddate" class="form-control" />
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" id="isactive" class="form-check-input" @bind="item.isactive" />
+            <label for="isactive" class="form-check-label">ฟิลด์ใหม่ (isactive)</label>
+        </div>
+        <div class="mb-3">
+            <label for="message" class="form-label">ฟิลด์ใหม่ (message):</label>
+            <InputText id="message" @bind-Value="item.message" class="form-control" />
+        </div>
+
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-secondary ms-2" href="/info_messages">Cancel</a>
+</EditForm>
+
+@code {
+    private info_message item = new();
+
+    private async Task SaveAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        db.info_messages.Add(item);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/info_messages");
+    }
+}

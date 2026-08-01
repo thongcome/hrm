@@ -1,0 +1,64 @@
+@page "/info_messages"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>info_message</h3>
+
+<p>
+    <button class="btn btn-primary" @onclick="Create">Create New</button>
+</p>
+
+@if (items is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>ฟิลด์ใหม่</th>
+                <th>ฟิลด์ใหม่</th>
+                <th>ฟิลด์ใหม่</th>
+                <th>ฟิลด์ใหม่</th>
+                <th>ฟิลด์ใหม่</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in items)
+            {
+                <tr>
+                    <td>@item.Id</td>
+                    <td>@item.subject</td>
+                    <td>@item.startdate</td>
+                    <td>@item.enddate</td>
+                    <td>@item.isactive</td>
+                    <td>@item.message</td>
+                    <td>
+                        <a class="btn btn-sm btn-info me-1" href="/info_messages/details/@item.Id">Details</a>
+                        <a class="btn btn-sm btn-secondary me-1" href="/info_messages/edit/@item.Id">Edit</a>
+                        <a class="btn btn-sm btn-danger" href="/info_messages/delete/@item.Id">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<info_message>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        items = await db.info_messages.OrderBy(x => x.Id).ToListAsync();
+    }
+
+    private void Create() => NavigationManager.NavigateTo("/info_messages/create");
+}

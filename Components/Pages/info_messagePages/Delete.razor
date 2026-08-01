@@ -1,0 +1,42 @@
+@page "/info_messages/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private info_message? item;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        item = await db.info_messages.FindAsync(id);
+        if (item is null) NavigationManager.NavigateTo("/info_messages");
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (item is null) return;
+        using var db = DbFactory.CreateDbContext();
+        db.info_messages.Remove(item);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/info_messages");
+    }
+}
+
+@if (item is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>Delete info_message</h3>
+    <p>Are you sure you want to delete #@item.Id?</p>
+    <button class="btn btn-danger" @onclick="DeleteConfirmedAsync">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/info_messages">Cancel</a>
+}
