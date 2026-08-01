@@ -154,5 +154,26 @@ public static class PayrollFileEndpoints
             var bytes = Por1PdfService.GenerateAnnual(data);
             return Results.File(bytes, "application/pdf", $"por1kor_{companyId}_{taxYear}.pdf");
         });
+
+        // Salary certification letter — position/department/purpose/addressee
+        // are supplied by HR at generation time (query string), not stored;
+        // see SalaryCertificateGenerate.razor.
+        employeeDocGroup.MapGet("/salary-cert/{hremployeeId:long}", async (
+            long hremployeeId, string? position, string? department, string? purpose, string? addressee,
+            HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (string.IsNullOrEmpty(companyId)) return Results.Forbid();
+
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var data = await SalaryCertificateDataService.BuildAsync(context, hremployeeId, companyId);
+            if (data is null) return Results.NotFound();
+
+            await auditLogger.LogAccessAsync("SalaryCertificate", hremployeeId.ToString(), isSensitive: true,
+                note: $"salary certification letter download, employee {hremployeeId}");
+
+            var bytes = SalaryCertificatePdfService.Generate(data, position ?? "", department ?? "", purpose, addressee, DateTime.Now);
+            return Results.File(bytes, "application/pdf", $"salary_cert_{hremployeeId}.pdf");
+        });
     }
 }
