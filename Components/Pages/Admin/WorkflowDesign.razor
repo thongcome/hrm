@@ -1,0 +1,319 @@
+@page "/admin/workflow-design"
+@using System.Security.Claims
+@using System.Text.Json
+@using System.Text.RegularExpressions
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>WorkflowDesign</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">WorkflowDesign — ออกแบบหน้าจอด้วย Drag &amp; Drop</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    ลาก field type จากพาเล็ตด้านซ้ายมาวางที่ผังด้านขวาเพื่อออกแบบหน้าจอ ลากแถวเพื่อจัดลำดับ แล้วกด "สร้างตาราง" เพื่อสร้างตารางจริงในฐานข้อมูลจากผังนี้
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-3">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">พาเล็ต (ลากไปวางขวามือ)</MudText>
+            @foreach (var pt in _paletteTypes)
+            {
+                <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="2" Style="cursor:grab;"
+                    draggable="true" @ondragstart="@(() => _draggedNewType = pt.Type)">
+                    <MudIcon Icon="@pt.Icon" Class="mr-2" />
+                    <MudText Typo="Typo.body2">@pt.LabelTh</MudText>
+                </MudPaper>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="9">
+        <MudPaper Class="pa-3 mb-4">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_tableName" Label="ชื่อตาราง (ภาษาอังกฤษ)" HelperText="a-z, A-Z, 0-9, _ เท่านั้น ขึ้นต้นด้วยตัวอักษร" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" Class="d-flex align-end">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateTableAsync">สร้างตาราง</MudButton>
+                </MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+            @if (_generatedSql is not null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">@_successMessage</MudAlert>
+                <MudTextField Value="@_generatedSql" T="string" Lines="6" ReadOnly="true" Variant="Variant.Outlined" Class="mt-2" Label="SQL ที่ใช้สร้างตาราง" />
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-3" @ondragover:preventDefault="true" @ondrop="DropNewField" Style="min-height:200px;">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">ผังหน้าจอ (@_fields.Count ฟิลด์)</MudText>
+            @if (_fields.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">ลากประเภทฟิลด์จากพาเล็ตมาวางตรงนี้</MudText>
+            }
+            @for (var i = 0; i < _fields.Count; i++)
+            {
+                var idx = i;
+                var f = _fields[idx];
+                <MudPaper Class="pa-3 mb-2" Elevation="1" draggable="true"
+                    @ondragstart="@(() => _draggedIndex = idx)"
+                    @ondragover:preventDefault="true"
+                    @ondrop="@(() => DropReorder(idx))">
+                    <MudGrid AlignItems="Center.Center">
+                        <MudItem xs="1"><MudIcon Icon="@Icons.Material.Filled.DragIndicator" Style="cursor:grab;" /></MudItem>
+                        <MudItem xs="3"><MudTextField @bind-Value="f.ColumnName" Label="ชื่อคอลัมน์ (Column Name)" Dense="true" /></MudItem>
+                        <MudItem xs="3"><MudTextField @bind-Value="f.LabelTh" Label="ป้ายชื่อ (Label)" Dense="true" /></MudItem>
+                        <MudItem xs="2">
+                            <MudSelect T="DesignFieldType" @bind-Value="f.Type" Label="ประเภท" Dense="true">
+                                @foreach (var pt in _paletteTypes)
+                                {
+                                    <MudSelectItem T="DesignFieldType" Value="pt.Type">@pt.LabelTh</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        @if (f.Type == DesignFieldType.Text)
+                        {
+                            <MudItem xs="1"><MudNumericField @bind-Value="f.Length" Label="ความยาว" Dense="true" Min="1" Max="4000" /></MudItem>
+                        }
+                        else
+                        {
+                            <MudItem xs="1"></MudItem>
+                        }
+                        <MudItem xs="1"><MudCheckBox @bind-Value="f.Required" Label="บังคับ" Dense="true" /></MudItem>
+                        <MudItem xs="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => _fields.RemoveAt(idx))" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudPaper Class="pa-3 mt-4">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">ตารางที่เคยสร้างจากหน้านี้</MudText>
+    @if (_history.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">ยังไม่เคยสร้างตารางจากหน้านี้</MudText>
+    }
+    else
+    {
+        @foreach (var h in _history)
+        {
+            <MudExpansionPanels Class="mb-2">
+                <MudExpansionPanel Text="@($"{h.TableName} — สร้างเมื่อ {h.CreatedDate:dd/MM/yyyy HH:mm}")">
+                    <MudSimpleTable Dense="true">
+                        <thead>
+                            <tr><th>Column Name</th><th>Label</th><th>ประเภท</th><th>บังคับ</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in DeserializeFields(h.FieldsJson))
+                            {
+                                <tr>
+                                    <td>@f.ColumnName</td>
+                                    <td>@f.LabelTh</td>
+                                    <td>@f.Type</td>
+                                    <td>@(f.Required ? "Yes" : "No")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+    }
+</MudPaper>
+
+@code {
+    private enum DesignFieldType { Text, Number, Decimal, Date, DateTime, Checkbox }
+
+    private class DesignField
+    {
+        public string ColumnName { get; set; } = "";
+        public string LabelTh { get; set; } = "";
+        public DesignFieldType Type { get; set; } = DesignFieldType.Text;
+        public int Length { get; set; } = 200;
+        public bool Required { get; set; }
+    }
+
+    private record PaletteType(DesignFieldType Type, string LabelTh, string Icon);
+
+    private static readonly Regex IdentifierRegex = new(@"^[A-Za-z][A-Za-z0-9_]{0,63}$", RegexOptions.Compiled);
+
+    private readonly List<PaletteType> _paletteTypes = new()
+    {
+        new(DesignFieldType.Text, "ข้อความ (Text)", Icons.Material.Filled.ShortText),
+        new(DesignFieldType.Number, "ตัวเลข (Number)", Icons.Material.Filled.Numbers),
+        new(DesignFieldType.Decimal, "ทศนิยม (Decimal)", Icons.Material.Filled.Percent),
+        new(DesignFieldType.Date, "วันที่ (Date)", Icons.Material.Filled.CalendarToday),
+        new(DesignFieldType.DateTime, "วันที่-เวลา (DateTime)", Icons.Material.Filled.Schedule),
+        new(DesignFieldType.Checkbox, "ใช่/ไม่ใช่ (Checkbox)", Icons.Material.Filled.CheckBox),
+    };
+
+    private List<DesignField> _fields = new();
+    private string _tableName = "";
+    private DesignFieldType? _draggedNewType;
+    private int? _draggedIndex;
+    private string? _error;
+    private string? _successMessage;
+    private string? _generatedSql;
+    private List<WorkflowDesignTable> _history = new();
+
+    protected override async Task OnInitializedAsync() => await LoadHistoryAsync();
+
+    private async Task LoadHistoryAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _history = await context.WorkflowDesignTables.OrderByDescending(t => t.CreatedDate).ToListAsync();
+    }
+
+    private static List<DesignField> DeserializeFields(string json) =>
+        JsonSerializer.Deserialize<List<DesignField>>(json) ?? new();
+
+    private void DropNewField()
+    {
+        if (_draggedNewType is null) return;
+        var n = _fields.Count + 1;
+        _fields.Add(new DesignField
+        {
+            ColumnName = $"Field{n}",
+            LabelTh = "ฟิลด์ใหม่",
+            Type = _draggedNewType.Value,
+        });
+        _draggedNewType = null;
+    }
+
+    private void DropReorder(int targetIndex)
+    {
+        if (_draggedIndex is null || _draggedIndex == targetIndex)
+        {
+            _draggedIndex = null;
+            return;
+        }
+        var item = _fields[_draggedIndex.Value];
+        _fields.RemoveAt(_draggedIndex.Value);
+        var insertAt = targetIndex > _draggedIndex.Value ? targetIndex - 1 : targetIndex;
+        _fields.Insert(insertAt, item);
+        _draggedIndex = null;
+    }
+
+    private static string ColumnSqlType(DesignField f) => f.Type switch
+    {
+        DesignFieldType.Text => $"nvarchar({(f.Length is > 0 and <= 4000 ? f.Length : 200)})",
+        DesignFieldType.Number => "int",
+        DesignFieldType.Decimal => "decimal(18,2)",
+        DesignFieldType.Date => "date",
+        DesignFieldType.DateTime => "datetime2",
+        DesignFieldType.Checkbox => "bit",
+        _ => "nvarchar(200)",
+    };
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue("sc_userid");
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+
+    // Table/column identifiers are validated against IdentifierRegex (alnum
+    // + underscore only, starts with a letter) AND bracket-quoted in the
+    // generated DDL — both together rule out SQL injection through this
+    // user-controlled DDL string, since bracket-quoted alnum/underscore
+    // text can't break out of the identifier position.
+    private async Task CreateTableAsync()
+    {
+        _error = null;
+        _successMessage = null;
+        _generatedSql = null;
+
+        if (string.IsNullOrWhiteSpace(_tableName) || !IdentifierRegex.IsMatch(_tableName))
+        {
+            _error = "ชื่อตารางต้องขึ้นต้นด้วยตัวอักษร และมีเฉพาะ a-z, A-Z, 0-9, _ เท่านั้น";
+            return;
+        }
+        if (_fields.Count == 0)
+        {
+            _error = "ต้องมีอย่างน้อย 1 ฟิลด์";
+            return;
+        }
+        foreach (var f in _fields)
+        {
+            if (string.IsNullOrWhiteSpace(f.ColumnName) || !IdentifierRegex.IsMatch(f.ColumnName))
+            {
+                _error = $"ชื่อคอลัมน์ \"{f.ColumnName}\" ไม่ถูกต้อง — ต้องขึ้นต้นด้วยตัวอักษร และมีเฉพาะ a-z, A-Z, 0-9, _ เท่านั้น";
+                return;
+            }
+        }
+        var dupCols = _fields.GroupBy(f => f.ColumnName, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (dupCols.Count > 0)
+        {
+            _error = $"มีชื่อคอลัมน์ซ้ำกัน: {string.Join(", ", dupCols)}";
+            return;
+        }
+        // Every generated table always gets an auto Id (PK) and CreatedDate
+        // column tacked on (see the DDL below) — a user field with either
+        // name collides with those under SQL Server's default
+        // case-insensitive collation and makes CREATE TABLE fail outright.
+        var reservedCols = _fields.Where(f => f.ColumnName.Equals("Id", StringComparison.OrdinalIgnoreCase)
+            || f.ColumnName.Equals("CreatedDate", StringComparison.OrdinalIgnoreCase)).Select(f => f.ColumnName).ToList();
+        if (reservedCols.Count > 0)
+        {
+            _error = $"ชื่อคอลัมน์ {string.Join(", ", reservedCols)} ชนกับคอลัมน์ระบบ (Id/CreatedDate) ที่สร้างให้อัตโนมัติ — กรุณาตั้งชื่ออื่น";
+            return;
+        }
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            var exists = await context.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = {0}", _tableName)
+                .FirstAsync();
+            if (exists > 0)
+            {
+                _error = $"มีตารางชื่อ \"{_tableName}\" อยู่แล้วในฐานข้อมูล — กรุณาตั้งชื่ออื่น";
+                return;
+            }
+
+            var columnDefs = _fields.Select(f => $"    [{f.ColumnName}] {ColumnSqlType(f)} {(f.Required ? "NOT NULL" : "NULL")}");
+            var sql = $"CREATE TABLE [dbo].[{_tableName}] (\n    [Id] bigint IDENTITY(1,1) PRIMARY KEY,\n{string.Join(",\n", columnDefs)},\n    [CreatedDate] datetime2 NOT NULL DEFAULT (getdate())\n);";
+
+            await context.Database.ExecuteSqlRawAsync(sql);
+
+            context.WorkflowDesignTables.Add(new WorkflowDesignTable
+            {
+                TableName = _tableName,
+                FieldsJson = JsonSerializer.Serialize(_fields),
+                CreatedByUserId = await GetCurrentUserIdAsync(),
+            });
+            await context.SaveChangesAsync();
+
+            _generatedSql = sql;
+            _successMessage = $"สร้างตาราง \"{_tableName}\" สำเร็จ";
+            Snackbar.Add(_successMessage, Severity.Success);
+
+            _tableName = "";
+            _fields = new();
+        }
+        catch (Exception ex)
+        {
+            // Never fail silently — a raw-DDL statement can hit errors this
+            // form's own validation can't fully anticipate (reserved SQL
+            // keywords as column names, server-side permission issues,
+            // etc.), so surface whatever SQL Server actually said.
+            _error = $"สร้างตารางไม่สำเร็จ: {ex.Message}";
+        }
+        await LoadHistoryAsync();
+    }
+}

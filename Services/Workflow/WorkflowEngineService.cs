@@ -438,23 +438,7 @@ public class WorkflowEngineService
     // instead of silently only moving the level number.
     private static async Task<int> ResolveNextLevelViaLoaAsync(HRMContext context, job_master job, int completedLevel, CancellationToken ct)
     {
-        if (job.reqamont is null)
-            throw new InvalidOperationException(
-                $"ระดับ {completedLevel} ตั้งค่าเป็น LOA (isLOA) แต่งานนี้ไม่มีจำนวนเงิน (reqamont) ระบุไว้ตอนเริ่มงาน — ไม่สามารถหาวงเงินที่ตรงกันได้");
-
-        var candidates = await context.wf_loas
-            .Where(l => l.wfid == job.workflowid && l.nowWorkflowid == job.workflowid
-                && l.nowLevel == completedLevel && l.isactive != false)
-            .ToListAsync(ct);
-
-        var amount = job.reqamont.Value;
-        var matched = candidates
-            .Where(l => amount >= (l.min ?? decimal.MinValue) && amount <= (l.max ?? decimal.MaxValue))
-            .Where(l => string.IsNullOrEmpty(l.orgcode) || l.orgcode == job.reqOrg)
-            .OrderByDescending(l => !string.IsNullOrEmpty(l.orgcode)) // org-specific band wins over a wildcard one
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException(
-                $"ไม่พบช่วงวงเงินใน wf_loa ที่ตรงกับจำนวนเงิน {amount:N2} ที่ระดับ {completedLevel} ของ workflow นี้ — ตรวจสอบการตั้งค่า LOA (min/max อาจไม่ครอบคลุมช่วงนี้)");
+        var matched = await FindLoaBandAsync(context, job, completedLevel, ct);
 
         if (matched.nextWorkflowId != matched.nowWorkflowid)
             throw new NotSupportedException(
@@ -464,7 +448,7 @@ public class WorkflowEngineService
         {
             jobmasterid = job.jobmasterid,
             wlevel = completedLevel,
-            value = amount,
+            value = job.reqamont!.Value,
             workflowid = job.workflowid,
             loaid = matched.loaid,
             isActive = true,
@@ -472,6 +456,58 @@ public class WorkflowEngineService
         });
 
         return matched.nextLevel;
+    }
+
+    // Shared band lookup used both to pick the next level after an isLOA
+    // level completes (ResolveNextLevelViaLoaAsync) and to resolve WHO
+    // approves an isLOA level in the first place (ResolveLoaApproversAsync)
+    // — both are keyed off the same (workflow, level, amount) match, just
+    // reading different columns off the matched row afterward.
+    private static async Task<wf_loa> FindLoaBandAsync(HRMContext context, job_master job, int level, CancellationToken ct)
+    {
+        if (job.reqamont is null)
+            throw new InvalidOperationException(
+                $"ระดับ {level} ตั้งค่าเป็น LOA (isLOA) แต่งานนี้ไม่มีจำนวนเงิน (reqamont) ระบุไว้ตอนเริ่มงาน — ไม่สามารถหาวงเงินที่ตรงกันได้");
+
+        var candidates = await context.wf_loas
+            .Where(l => l.wfid == job.workflowid && l.nowWorkflowid == job.workflowid
+                && l.nowLevel == level && l.isactive != false)
+            .ToListAsync(ct);
+
+        var amount = job.reqamont.Value;
+        return candidates
+            .Where(l => amount >= (l.min ?? decimal.MinValue) && amount <= (l.max ?? decimal.MaxValue))
+            .Where(l => string.IsNullOrEmpty(l.orgcode) || l.orgcode == job.reqOrg)
+            .OrderByDescending(l => !string.IsNullOrEmpty(l.orgcode)) // org-specific band wins over a wildcard one
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"ไม่พบช่วงวงเงินใน wf_loa ที่ตรงกับจำนวนเงิน {amount:N2} ที่ระดับ {level} ของ workflow นี้ — ตรวจสอบการตั้งค่า LOA (min/max อาจไม่ครอบคลุมช่วงนี้)");
+    }
+
+    // Block 4 (approver side): when a level has isLOA=true, its approver
+    // isn't resolved via the usual custom-user/custom-role/vertical flags —
+    // it's whoever is listed in wf_loa_user for the wf_loa band that
+    // matches this level + job.reqamont. wf_loa_user.loaid is a foreign key
+    // into wf_loa.id (the specific band row's primary key, NOT the
+    // wf_loa.loaid grouping column used for the job_loa audit snapshot) —
+    // confirmed by the user. After resolving, the engine keeps running the
+    // SAME level (this only answers "who", not "which level next" — that's
+    // still ResolveNextLevelViaLoaAsync, triggered separately once this
+    // level's approval completes).
+    private static async Task<List<(long UserId, string? EmpId)>> ResolveLoaApproversAsync(
+        HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
+    {
+        var matched = await FindLoaBandAsync(context, job, level.wlevel, ct);
+
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var loaUsers = await context.wf_loa_users
+            .Where(u => u.loaid == matched.id && u.isactive
+                && (u.startdate == null || u.startdate <= today)
+                && (u.enddate == null || u.enddate >= today))
+            .Select(u => new { u.userid, u.empid })
+            .ToListAsync(ct);
+
+        return loaUsers.Select(u => (u.userid, u.empid)).ToList();
     }
 
     // Block 6 (Mix Approval): walks up the org chart `hopNumber` steps

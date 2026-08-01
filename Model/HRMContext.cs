@@ -353,6 +353,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_GLExportBatch> Pay_GLExportBatches { get; set; }
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
+
+    public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     public virtual DbSet<Pay_EmployeeDocument> Pay_EmployeeDocuments { get; set; }
