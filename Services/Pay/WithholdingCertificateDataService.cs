@@ -36,19 +36,7 @@ public static class WithholdingCertificateDataService
 
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();
 
-        // GrossEarnings folds in both taxable and non-taxable Pay_AdhocPayItem
-        // earnings (see PayrollCalculationService — the taxable-only figure
-        // used for the actual tax bracket calc is a local variable, never
-        // persisted). Reconstruct the correction here instead of trusting
-        // GrossEarnings directly, via the SourceRefTable/SourceRefId link
-        // ad-hoc-sourced line items carry back to Pay_AdhocPayItem.IsTaxable.
-        var nonTaxableAdhocTotal = await context.Pay_PayrollLineItems
-            .Where(li => payEmployeeIds.Contains(li.PayrollEmployeeId)
-                && li.SourceRefTable == "Pay_AdhocPayItem"
-                && li.SignFlag > 0)
-            .Join(context.Pay_AdhocPayItems, li => li.SourceRefId, a => a.Id, (li, a) => new { li.Amount, a.IsTaxable })
-            .Where(x => !x.IsTaxable)
-            .SumAsync(x => x.Amount, ct);
+        var nonTaxableAdhocTotal = await TaxableIncomeHelper.GetNonTaxableAdhocTotalAsync(context, payEmployeeIds, ct);
 
         var totalGross = payEmployees.Sum(pe => pe.GrossEarnings);
         var totalTaxableIncome = totalGross - nonTaxableAdhocTotal;

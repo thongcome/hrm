@@ -1,0 +1,178 @@
+@page "/pay/por1"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ภ.ง.ด.1 / ภ.ง.ด.1ก</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">แบบยื่นภาษีเงินได้หัก ณ ที่จ่าย (ภ.ง.ด.1 / ภ.ง.ด.1ก)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        สรุปเงินได้และภาษีหัก ณ ที่จ่ายของพนักงานทั้งบริษัท — ภ.ง.ด.1 รายเดือน (ใช้นำส่งกรมสรรพากรทุกเดือน)
+        และ ภ.ง.ด.1ก สรุปประจำปี (ใช้กระทบยอดปลายปี) นับเฉพาะงวดที่อนุมัติแล้วขึ้นไป
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudAlert Severity="Severity.Info" Class="mt-3" Icon="@Icons.Material.Filled.Info">
+        เอกสารนี้เป็นเอกสารสรุปสำหรับใช้งานภายใน/ประกอบการยื่นแบบเท่านั้น
+        การยื่นแบบจริงต่อกรมสรรพากร (รวมถึงไฟล์อิเล็กทรอนิกส์สำหรับ e-Filing) ต้องตรวจสอบรูปแบบและช่องทางล่าสุดจากกรมสรรพากรก่อนใช้งานจริงเสมอ
+    </MudAlert>
+
+    <MudTabs Class="mt-4" Elevation="0" Rounded="true">
+        <MudTabPanel Text="ภ.ง.ด.1 (รายเดือน)">
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string" Label="งวดเดือนภาษี" @bind-Value="_selectedPeriod">
+                        @foreach (var p in _availablePeriods)
+                        {
+                            <MudSelectItem Value="@p">@FormatPeriod(p)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="PreviewMonthlyAsync" Disabled="@(_selectedPeriod is null)">
+                        ดูตัวอย่างยอดรวม
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_monthlyError))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">@_monthlyError</MudAlert>
+            }
+
+            @if (_monthlyPreview is not null)
+            {
+                <MudSimpleTable Dense="true" Class="mt-3">
+                    <tbody>
+                        <tr><td>งวดเดือนภาษี</td><td>@_monthlyPreview.PeriodStart.ToString("MM/yyyy")</td></tr>
+                        <tr><td>จำนวนผู้มีเงินได้</td><td>@_monthlyPreview.Lines.Count คน</td></tr>
+                        <tr><td>รวมเงินได้ (บาท)</td><td>@_monthlyPreview.TotalTaxableIncome.ToString("N2")</td></tr>
+                        <tr><td>รวมภาษีหัก ณ ที่จ่าย (บาท)</td><td>@_monthlyPreview.TotalTaxWithheld.ToString("N2")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
+                    Href="@($"/pay/files/por1/monthly/{_companyId}/{_selectedPeriod}")" Target="_blank">
+                    ดาวน์โหลด PDF (ภ.ง.ด.1)
+                </MudButton>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="ภ.ง.ด.1ก (สรุปประจำปี)">
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="int" Label="ปีภาษี" @bind-Value="_selectedYear">
+                        @foreach (var y in _availableYears)
+                        {
+                            <MudSelectItem Value="@y">@y</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="PreviewAnnualAsync" Disabled="@(_selectedYear == 0)">
+                        ดูตัวอย่างยอดรวม
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_annualError))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">@_annualError</MudAlert>
+            }
+
+            @if (_annualPreview is not null)
+            {
+                <MudSimpleTable Dense="true" Class="mt-3">
+                    <tbody>
+                        <tr><td>ปีภาษี</td><td>@_annualPreview.TaxYear</td></tr>
+                        <tr><td>จำนวนผู้มีเงินได้ทั้งปี</td><td>@_annualPreview.Lines.Count คน</td></tr>
+                        <tr><td>รวมเงินได้ทั้งปี (บาท)</td><td>@_annualPreview.TotalTaxableIncome.ToString("N2")</td></tr>
+                        <tr><td>รวมภาษีหักทั้งปี (บาท)</td><td>@_annualPreview.TotalTaxWithheld.ToString("N2")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
+                    Href="@($"/pay/files/por1/annual/{_companyId}/{_selectedYear}")" Target="_blank">
+                    ดาวน์โหลด PDF (ภ.ง.ด.1ก)
+                </MudButton>
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<string> _availablePeriods = new();
+    private List<int> _availableYears = new();
+
+    private string? _selectedPeriod;
+    private Por1MonthlyData? _monthlyPreview;
+    private string? _monthlyError;
+
+    private int _selectedYear;
+    private Por1KorAnnualData? _annualPreview;
+    private string? _annualError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var runs = await context.Pay_PayrollRuns
+            .Where(r => r.CompanyId == _companyId && r.Status >= PayrollRunStatus.Approved)
+            .Select(r => new { r.PayrollPeriod, Year = r.PeriodStart.Year })
+            .ToListAsync();
+
+        _availablePeriods = runs.Select(r => r.PayrollPeriod).Distinct().OrderByDescending(p => p).ToList();
+        _availableYears = runs.Select(r => r.Year).Distinct().OrderByDescending(y => y).ToList();
+
+        _selectedPeriod = _availablePeriods.FirstOrDefault();
+        _selectedYear = _availableYears.FirstOrDefault();
+    }
+
+    private static string FormatPeriod(string yyyymm)
+    {
+        if (yyyymm.Length != 6 || !int.TryParse(yyyymm.AsSpan(0, 4), out var y) || !int.TryParse(yyyymm.AsSpan(4, 2), out var m))
+            return yyyymm;
+        return $"{m:00}/{y}";
+    }
+
+    private async Task PreviewMonthlyAsync()
+    {
+        _monthlyError = null;
+        _monthlyPreview = null;
+        if (_selectedPeriod is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _monthlyPreview = await Por1DataService.BuildMonthlyAsync(context, _companyId!, _selectedPeriod);
+        if (_monthlyPreview is null)
+            _monthlyError = "ไม่พบข้อมูลเงินเดือนที่มีภาษีหัก ณ ที่จ่ายในงวดนี้";
+    }
+
+    private async Task PreviewAnnualAsync()
+    {
+        _annualError = null;
+        _annualPreview = null;
+        if (_selectedYear == 0) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _annualPreview = await Por1DataService.BuildAnnualAsync(context, _companyId!, _selectedYear);
+        if (_annualPreview is null)
+            _annualError = $"ไม่พบข้อมูลเงินเดือนที่อนุมัติแล้วของบริษัทนี้ในปี {_selectedYear}";
+    }
+}

@@ -118,5 +118,41 @@ public static class PayrollFileEndpoints
             var bytes = WithholdingCertificatePdfService.Generate(data);
             return Results.File(bytes, "application/pdf", $"withholding_cert_{emp.EmpNo}_{taxYear}.pdf");
         });
+
+        // ภ.ง.ด.1 (monthly) / ภ.ง.ด.1ก (annual) — company-wide, generated
+        // fresh on every request like the withholding-cert route above.
+        employeeDocGroup.MapGet("/por1/monthly/{companyId}/{payrollPeriod}", async (
+            string companyId, string payrollPeriod, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            var claimCompanyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (companyId != claimCompanyId) return Results.Forbid();
+
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var data = await Por1DataService.BuildMonthlyAsync(context, companyId, payrollPeriod);
+            if (data is null) return Results.NotFound();
+
+            await auditLogger.LogAccessAsync("Por1Monthly", $"{companyId}:{payrollPeriod}", isSensitive: true,
+                note: $"ภ.ง.ด.1 download for company {companyId}, period {payrollPeriod}");
+
+            var bytes = Por1PdfService.GenerateMonthly(data);
+            return Results.File(bytes, "application/pdf", $"por1_{companyId}_{payrollPeriod}.pdf");
+        });
+
+        employeeDocGroup.MapGet("/por1/annual/{companyId}/{taxYear:int}", async (
+            string companyId, int taxYear, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            var claimCompanyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (companyId != claimCompanyId) return Results.Forbid();
+
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var data = await Por1DataService.BuildAnnualAsync(context, companyId, taxYear);
+            if (data is null) return Results.NotFound();
+
+            await auditLogger.LogAccessAsync("Por1Annual", $"{companyId}:{taxYear}", isSensitive: true,
+                note: $"ภ.ง.ด.1ก download for company {companyId}, year {taxYear}");
+
+            var bytes = Por1PdfService.GenerateAnnual(data);
+            return Results.File(bytes, "application/pdf", $"por1kor_{companyId}_{taxYear}.pdf");
+        });
     }
 }
