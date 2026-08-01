@@ -1,0 +1,114 @@
+@page "/wf_role_authorities/create"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>Create — เชื่อม Role กับ Organization และ Position</h3>
+
+<EditForm Model="item" OnValidSubmit="SaveAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label for="roleid" class="form-label">Role:</label>
+        <InputSelect id="roleid" @bind-Value="item.roleid" class="form-select">
+            <option value="0">-- เลือก Role --</option>
+            @foreach (var r in _roles)
+            {
+                <option value="@r.roleid">@(r.name ?? r.rolecode) (#@r.roleid)</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="mb-3">
+        <label for="orgid" class="form-label">Organization:</label>
+        <InputSelect id="orgid" @bind-Value="item.orgid" class="form-select">
+            <option value="0">-- เลือก Organization --</option>
+            @foreach (var o in _orgs)
+            {
+                <option value="@o.id">@(o.name ?? o.code) (#@o.id)</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="mb-3">
+        <label for="posid" class="form-label">Position:</label>
+        <InputSelect id="posid" @bind-Value="item.posid" class="form-select">
+            <option value="0">-- เลือก Position --</option>
+            @foreach (var p in _positions)
+            {
+                <option value="@p.id">@(p.name ?? p.code) (#@p.id)</option>
+            }
+        </InputSelect>
+        @if (_positions.Count == 0)
+        {
+            <div class="form-text text-danger">ยังไม่มีข้อมูล Position ในระบบ (com_position) — เพิ่มได้ที่ /com_positions ก่อน</div>
+        }
+    </div>
+    <div class="mb-3 form-check">
+        <input type="checkbox" id="isactive" class="form-check-input" @bind="item.isactive" />
+        <label for="isactive" class="form-check-label">เปิดใช้งาน (isactive)</label>
+    </div>
+    <div class="mb-3">
+        <label for="startdate" class="form-label">วันที่เริ่ม (startdate):</label>
+        <InputDate id="startdate" @bind-Value="item.startdate" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label for="enddate" class="form-label">วันที่สิ้นสุด (enddate):</label>
+        <InputDate id="enddate" @bind-Value="item.enddate" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label for="remark" class="form-label">หมายเหตุ (remark):</label>
+        <InputTextArea id="remark" @bind-Value="item.remark" class="form-control" rows="2" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-secondary ms-2" href="/wf_role_authorities">Cancel</a>
+</EditForm>
+
+@code {
+    private wf_role_authority item = new();
+    private List<sc_role> _roles = new();
+    private List<com_organization> _orgs = new();
+    private List<com_position> _positions = new();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _roles = await db.sc_roles.Where(r => r.isactive).OrderBy(r => r.name).ToListAsync();
+        _orgs = await db.com_organizations.Where(o => o.isActive).OrderBy(o => o.name).ToListAsync();
+        _positions = await db.com_positions.Where(p => p.isActive).OrderBy(p => p.name).ToListAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (item.roleid == 0 || item.orgid == 0 || item.posid == 0)
+        {
+            _error = "กรุณาเลือก Role, Organization และ Position ให้ครบ";
+            return;
+        }
+
+        using var db = DbFactory.CreateDbContext();
+
+        var dup = await db.wf_role_authorities.AnyAsync(x =>
+            x.roleid == item.roleid && x.orgid == item.orgid && x.posid == item.posid);
+        if (dup)
+        {
+            _error = "มีการเชื่อม Role/Organization/Position ชุดนี้อยู่แล้ว";
+            return;
+        }
+
+        item.moddate = DateTime.Now;
+        db.wf_role_authorities.Add(item);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wf_role_authorities");
+    }
+}

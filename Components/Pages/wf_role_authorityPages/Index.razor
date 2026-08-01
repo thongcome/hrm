@@ -1,0 +1,76 @@
+@page "/wf_role_authorities"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>ความสัมพันธ์ Role - Organization - Position (อำนาจอนุมัติ)</h3>
+<p class="text-muted">
+    กำหนดว่า Role ใดมีผลเมื่อผู้ดำรงตำแหน่ง (Position) นั้นอยู่ในหน่วยงาน (Organization) ใด — ยังไม่ถูกใช้ในการหาผู้อนุมัติจริงของ workflow (เป็นแค่ master data ขั้นนี้)
+</p>
+
+<p>
+    <button class="btn btn-primary" @onclick="Create">Create New</button>
+</p>
+
+@if (items is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Role</th>
+                <th>Organization</th>
+                <th>Position</th>
+                <th>เปิดใช้งาน</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in items)
+            {
+                <tr>
+                    <td>@item.id</td>
+                    <td>@RoleName(item.roleid)</td>
+                    <td>@OrgName(item.orgid)</td>
+                    <td>@PosName(item.posid)</td>
+                    <td>@(item.isactive ? "Yes" : "No")</td>
+                    <td>
+                        <a class="btn btn-sm btn-info me-1" href="/wf_role_authorities/details/@item.id">Details</a>
+                        <a class="btn btn-sm btn-secondary me-1" href="/wf_role_authorities/edit/@item.id">Edit</a>
+                        <a class="btn btn-sm btn-danger" href="/wf_role_authorities/delete/@item.id">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<wf_role_authority>? items;
+    private Dictionary<long, string> _roleNames = new();
+    private Dictionary<long, string> _orgNames = new();
+    private Dictionary<long, string> _posNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        items = await db.wf_role_authorities.OrderBy(x => x.id).ToListAsync();
+
+        _roleNames = await db.sc_roles.ToDictionaryAsync(r => r.roleid, r => r.name ?? r.rolecode ?? $"#{r.roleid}");
+        _orgNames = await db.com_organizations.ToDictionaryAsync(o => o.id, o => o.name ?? o.code ?? $"#{o.id}");
+        _posNames = await db.com_positions.ToDictionaryAsync(p => p.id, p => p.name ?? p.code ?? $"#{p.id}");
+    }
+
+    private string RoleName(long id) => _roleNames.TryGetValue(id, out var n) ? n : $"#{id}";
+    private string OrgName(long id) => _orgNames.TryGetValue(id, out var n) ? n : $"#{id}";
+    private string PosName(long id) => _posNames.TryGetValue(id, out var n) ? n : $"#{id}";
+
+    private void Create() => NavigationManager.NavigateTo("/wf_role_authorities/create");
+}

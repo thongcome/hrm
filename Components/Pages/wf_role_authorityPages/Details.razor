@@ -1,0 +1,57 @@
+@page "/wf_role_authorities/details/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+
+@if (item is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>ความสัมพันธ์ #@item.id</h3>
+    <dl class="row">
+        <dt class="col-sm-3">Role</dt>
+        <dd class="col-sm-9">@_roleName (#@item.roleid)</dd>
+        <dt class="col-sm-3">Organization</dt>
+        <dd class="col-sm-9">@_orgName (#@item.orgid)</dd>
+        <dt class="col-sm-3">Position</dt>
+        <dd class="col-sm-9">@_posName (#@item.posid)</dd>
+        <dt class="col-sm-3">เปิดใช้งาน (isactive)</dt>
+        <dd class="col-sm-9">@(item.isactive ? "Yes" : "No")</dd>
+        <dt class="col-sm-3">วันที่เริ่ม (startdate)</dt>
+        <dd class="col-sm-9">@item.startdate</dd>
+        <dt class="col-sm-3">วันที่สิ้นสุด (enddate)</dt>
+        <dd class="col-sm-9">@item.enddate</dd>
+        <dt class="col-sm-3">หมายเหตุ (remark)</dt>
+        <dd class="col-sm-9">@item.remark</dd>
+        <dt class="col-sm-3">แก้ไขล่าสุด (moddate)</dt>
+        <dd class="col-sm-9">@item.moddate</dd>
+    </dl>
+
+    <a class="btn btn-secondary" href="/wf_role_authorities">Back</a>
+    <a class="btn btn-info" href="/wf_role_authorities/edit/@item.id">Edit</a>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_role_authority? item;
+    private string? _roleName;
+    private string? _orgName;
+    private string? _posName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        item = await db.wf_role_authorities.FindAsync(id);
+        if (item is null) return;
+
+        _roleName = (await db.sc_roles.FindAsync(item.roleid))?.name;
+        _orgName = (await db.com_organizations.FindAsync(item.orgid))?.name;
+        _posName = (await db.com_positions.FindAsync(item.posid))?.name;
+    }
+}

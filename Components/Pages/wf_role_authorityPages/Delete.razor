@@ -1,0 +1,53 @@
+@page "/wf_role_authorities/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_role_authority? item;
+    private string? _roleName;
+    private string? _orgName;
+    private string? _posName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        item = await db.wf_role_authorities.FindAsync(id);
+        if (item is null)
+        {
+            NavigationManager.NavigateTo("/wf_role_authorities");
+            return;
+        }
+
+        _roleName = (await db.sc_roles.FindAsync(item.roleid))?.name;
+        _orgName = (await db.com_organizations.FindAsync(item.orgid))?.name;
+        _posName = (await db.com_positions.FindAsync(item.posid))?.name;
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (item is null) return;
+        using var db = DbFactory.CreateDbContext();
+        db.wf_role_authorities.Remove(item);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wf_role_authorities");
+    }
+}
+
+@if (item is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>Delete ความสัมพันธ์</h3>
+    <p>ลบการเชื่อม Role "@_roleName" — Organization "@_orgName" — Position "@_posName" ใช่หรือไม่?</p>
+    <button class="btn btn-danger" @onclick="DeleteConfirmedAsync">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/wf_role_authorities">Cancel</a>
+}

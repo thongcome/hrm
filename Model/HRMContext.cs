@@ -327,6 +327,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<wf_loa_user> wf_loa_users { get; set; }
 
+    public virtual DbSet<wf_role_authority> wf_role_authorities { get; set; }
+
     public virtual DbSet<wf_mas_reason> wf_mas_reasons { get; set; }
 
     public virtual DbSet<wf_org_type> wf_org_types { get; set; }
