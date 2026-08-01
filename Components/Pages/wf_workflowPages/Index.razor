@@ -1,0 +1,63 @@
+@page "/wfworkflows"
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>Workflows</h3>
+
+<p>
+    <button class="btn btn-primary" @onclick="Create">Create New</button>
+</p>
+
+@if (workflows is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Status</th>
+                <th>Show</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var w in workflows)
+            {
+                <tr>
+                    <td>@w.workflowid</td>
+                    <td>@w.wname</td>
+                    <td>@w.workflowcode</td>
+                    <td>@w.wstatus</td>
+                    <td>@(w.isshow == true ? "Yes" : "No")</td>
+                    <td>@(w.isactive == true ? "Yes" : "No")</td>
+                    <td>
+                        <a class="btn btn-sm btn-primary me-1" href="/wfworkflows/manage/@w.workflowid">จัดการ workflow</a>
+                        <a class="btn btn-sm btn-info me-1" href="/wfworkflows/details/@w.workflowid">Details</a>
+                        <a class="btn btn-sm btn-secondary me-1" href="/wfworkflows/edit/@w.workflowid">Edit</a>
+                        <a class="btn btn-sm btn-danger" href="/wfworkflows/delete/@w.workflowid">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<wf_workflow>? workflows;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        workflows = await db.wf_workflows.OrderBy(w => w.workflowid).ToListAsync();
+    }
+
+    private void Create() => NavigationManager.NavigateTo("/wfworkflows/create");
+}

@@ -1,0 +1,122 @@
+@page "/wfworkflows/details/{id:long}"
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_workflow? workflow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        workflow = await db.wf_workflows.FindAsync(id);
+        if (workflow is null)
+            NavigationManager.NavigateTo("/wfworkflows");
+    }
+}
+
+@if (workflow is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>@workflow.wname (#@workflow.workflowid)</h3>
+
+    <h5 class="mt-3">ข้อมูลหลัก</h5>
+    <dl class="row">
+        <dt class="col-sm-3">รหัส Workflow (workflowcode)</dt>
+        <dd class="col-sm-9">@workflow.workflowcode</dd>
+        <dt class="col-sm-3">ชื่อ (wname)</dt>
+        <dd class="col-sm-9">@workflow.wname</dd>
+        <dt class="col-sm-3">ชื่อ (อังกฤษ) (wname_en)</dt>
+        <dd class="col-sm-9">@workflow.wname_en</dd>
+        <dt class="col-sm-3">ชื่อย่อ (abbname)</dt>
+        <dd class="col-sm-9">@workflow.abbname</dd>
+        <dt class="col-sm-3">กลุ่ม (wgroup)</dt>
+        <dd class="col-sm-9">@workflow.wgroup</dd>
+        <dt class="col-sm-3">สถานะ (wstatus)</dt>
+        <dd class="col-sm-9">@workflow.wstatus</dd>
+        <dt class="col-sm-3">รหัส (code)</dt>
+        <dd class="col-sm-9">@workflow.code</dd>
+        <dt class="col-sm-3">ไอคอน (icon)</dt>
+        <dd class="col-sm-9">@workflow.icon</dd>
+        <dt class="col-sm-3">คำอธิบาย (description)</dt>
+        <dd class="col-sm-9">@workflow.description</dd>
+        <dt class="col-sm-3">หมายเหตุ (remark)</dt>
+        <dd class="col-sm-9">@workflow.remark</dd>
+        <dt class="col-sm-3">แสดง (isshow)</dt>
+        <dd class="col-sm-9">@(workflow.isshow == true ? "Yes" : "No")</dd>
+        <dt class="col-sm-3">เปิดใช้งาน (isactive)</dt>
+        <dd class="col-sm-9">@(workflow.isactive == true ? "Yes" : "No")</dd>
+    </dl>
+
+    <h5 class="mt-4">ช่วงเวลา / อายุงาน</h5>
+    <dl class="row">
+        <dt class="col-sm-3">วันที่เริ่ม (wstartdate)</dt>
+        <dd class="col-sm-9">@workflow.wstartdate</dd>
+        <dt class="col-sm-3">วันที่สิ้นสุด (wenddate)</dt>
+        <dd class="col-sm-9">@workflow.wenddate</dd>
+        <dt class="col-sm-3">จำนวนวันหมดอายุ (wexpireday)</dt>
+        <dd class="col-sm-9">@workflow.wexpireday</dd>
+        <dt class="col-sm-3">อายุงาน (วัน) (lifetimeday)</dt>
+        <dd class="col-sm-9">@workflow.lifetimeday</dd>
+        <dt class="col-sm-3">เวลาที่คาดว่าจะเสร็จ (expecttime)</dt>
+        <dd class="col-sm-9">@workflow.expecttime</dd>
+        <dt class="col-sm-3">หน่วยเวลา (expecttimeUnit)</dt>
+        <dd class="col-sm-9">@workflow.expecttimeUnit</dd>
+        <dt class="col-sm-3">นับเฉพาะวันทำการ (expectinBiz)</dt>
+        <dd class="col-sm-9">@(workflow.expectinBiz == true ? "Yes" : "No")</dd>
+    </dl>
+
+    <h5 class="mt-4">การเชื่อมโยงเอกสาร/หน้าจอ (Generic Routing)</h5>
+    <dl class="row">
+        <dt class="col-sm-3">URL ปลายทาง (url)</dt>
+        <dd class="col-sm-9">@workflow.url</dd>
+        <dt class="col-sm-3">Component/หน้าดูรายละเอียด (c_detail)</dt>
+        <dd class="col-sm-9">@workflow.c_detail</dd>
+        <dt class="col-sm-3">Component/หน้าสร้างเอกสาร (c_create)</dt>
+        <dd class="col-sm-9">@workflow.c_create</dd>
+        <dt class="col-sm-3">Component/หน้าแก้ไข (c_edit)</dt>
+        <dd class="col-sm-9">@workflow.c_edit</dd>
+        <dt class="col-sm-3">Component/หน้ารายการ (c_list)</dt>
+        <dd class="col-sm-9">@workflow.c_list</dd>
+        <dt class="col-sm-3">ชื่อตารางเอกสารต้นทาง (tablename)</dt>
+        <dd class="col-sm-9">@workflow.tablename</dd>
+        <dt class="col-sm-3">ตารางอ้างอิง (tableref)</dt>
+        <dd class="col-sm-9">@workflow.tableref</dd>
+        <dt class="col-sm-3">คอลัมน์อ้างอิง (columnref)</dt>
+        <dd class="col-sm-9">@workflow.columnref</dd>
+        <dt class="col-sm-3">Controller</dt>
+        <dd class="col-sm-9">@workflow.controller</dd>
+        <dt class="col-sm-3">Action</dt>
+        <dd class="col-sm-9">@workflow.action</dd>
+        <dt class="col-sm-3">Create Method (create_mothod)</dt>
+        <dd class="col-sm-9">@workflow.create_mothod</dd>
+        <dt class="col-sm-3">Edit Method (edit_mothod)</dt>
+        <dd class="col-sm-9">@workflow.edit_mothod</dd>
+        <dt class="col-sm-3">View Method (view_mothod)</dt>
+        <dd class="col-sm-9">@workflow.view_mothod</dd>
+        <dt class="col-sm-3">List Method (list_mothod)</dt>
+        <dd class="col-sm-9">@workflow.list_mothod</dd>
+        <dt class="col-sm-3">พารามิเตอร์เพิ่มเติม (param)</dt>
+        <dd class="col-sm-9">@workflow.param</dd>
+        <dt class="col-sm-3">ตีกลับไปหาผู้ขอเมื่อปฏิเสธ (IsRejectToReq)</dt>
+        <dd class="col-sm-9">@(workflow.IsRejectToReq == true ? "Yes" : "No")</dd>
+    </dl>
+
+    <h5 class="mt-4">ระบบ</h5>
+    <dl class="row">
+        <dt class="col-sm-3">แก้ไขล่าสุด (moddate)</dt>
+        <dd class="col-sm-9">@workflow.moddate</dd>
+        <dt class="col-sm-3">แก้ไขโดย (modby)</dt>
+        <dd class="col-sm-9">@workflow.modby</dd>
+    </dl>
+
+    <a class="btn btn-secondary" href="/wfworkflows">Back</a>
+    <a class="btn btn-info" href="/wfworkflows/edit/@workflow.workflowid">Edit</a>
+}

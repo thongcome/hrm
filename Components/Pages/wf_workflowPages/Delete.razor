@@ -1,0 +1,40 @@
+@page "/wfworkflows/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_workflow? workflow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        workflow = await db.wf_workflows.FindAsync(id);
+        if (workflow is null) NavigationManager.NavigateTo("/wfworkflows");
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (workflow is null) return;
+        using var db = DbFactory.CreateDbContext();
+        db.wf_workflows.Remove(workflow);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wfworkflows");
+    }
+}
+
+@if (workflow is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>Delete Workflow</h3>
+    <p>Are you sure you want to delete <strong>@workflow.wname</strong>?</p>
+    <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/wfworkflows">Cancel</a>
+}

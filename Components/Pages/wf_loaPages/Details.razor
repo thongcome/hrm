@@ -1,0 +1,86 @@
+@page "/wf_loas/details/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@if (loa is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>LOA #@loa.id</h3>
+
+    <h5 class="mt-3">อ้างอิง LOA (loaid / wfid)</h5>
+    <dl class="row">
+        <dt class="col-sm-3">LOA Id (loaid)</dt>
+        <dd class="col-sm-9">@loa.loaid</dd>
+        <dt class="col-sm-3">Workflow ที่ใช้ (wfid)</dt>
+        <dd class="col-sm-9">@loa.wfid</dd>
+        <dt class="col-sm-3">Level Code (levelcode)</dt>
+        <dd class="col-sm-9">@loa.levelcode</dd>
+        <dt class="col-sm-3">Org Code (orgcode)</dt>
+        <dd class="col-sm-9">@loa.orgcode</dd>
+    </dl>
+
+    <h5 class="mt-4">ช่วงวงเงิน (Min - Max)</h5>
+    <dl class="row">
+        <dt class="col-sm-3">วงเงินต่ำสุด (min)</dt>
+        <dd class="col-sm-9">@loa.min</dd>
+        <dt class="col-sm-3">วงเงินสูงสุด (max)</dt>
+        <dd class="col-sm-9">@loa.max</dd>
+    </dl>
+
+    <h5 class="mt-4">ผลลัพธ์เมื่อเข้าเงื่อนไข</h5>
+    <dl class="row">
+        <dt class="col-sm-3">Workflow ปัจจุบัน (nowWorkflowid)</dt>
+        <dd class="col-sm-9">@loa.nowWorkflowid</dd>
+        <dt class="col-sm-3">Level ปัจจุบัน (nowLevel)</dt>
+        <dd class="col-sm-9">@loa.nowLevel</dd>
+        <dt class="col-sm-3">Workflow ถัดไป (nextWorkflowId)</dt>
+        <dd class="col-sm-9">@loa.nextWorkflowId</dd>
+        <dt class="col-sm-3">Level ถัดไป (nextLevel)</dt>
+        <dd class="col-sm-9">@loa.nextLevel</dd>
+        <dt class="col-sm-3">เปิดใช้งาน (isactive)</dt>
+        <dd class="col-sm-9">@(loa.isactive == true ? "Yes" : "No")</dd>
+    </dl>
+
+    <h5 class="mt-4">คำอธิบาย</h5>
+    <dl class="row">
+        <dt class="col-sm-3">หัวข้อ (subject)</dt>
+        <dd class="col-sm-9">@loa.subject</dd>
+        <dt class="col-sm-3">Subject (EN)</dt>
+        <dd class="col-sm-9">@loa.subjectEn</dd>
+        <dt class="col-sm-3">คำอธิบาย (descript)</dt>
+        <dd class="col-sm-9">@loa.descript</dd>
+        <dt class="col-sm-3">Description (EN)</dt>
+        <dd class="col-sm-9">@loa.descriptEn</dd>
+    </dl>
+
+    <h5 class="mt-4">ระบบ</h5>
+    <dl class="row">
+        <dt class="col-sm-3">แก้ไขล่าสุด (moddate)</dt>
+        <dd class="col-sm-9">@loa.moddate</dd>
+        <dt class="col-sm-3">แก้ไขโดย (modby)</dt>
+        <dd class="col-sm-9">@loa.modby</dd>
+    </dl>
+
+    <a class="btn btn-secondary" href="/wf_loas">Back</a>
+    <a class="btn btn-info" href="/wf_loas/edit/@loa.id">Edit</a>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_loa? loa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        loa = await db.wf_loas.FindAsync(id);
+    }
+}

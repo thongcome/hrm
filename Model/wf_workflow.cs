@@ -105,8 +105,8 @@ public partial class wf_workflow
     
     public string? description { get; set; }
 
-    [MaxLength(250)]
-    public byte[]? remark { get; set; }
+    [StringLength(500)]
+    public string? remark { get; set; }
 
     [StringLength(250)]
     

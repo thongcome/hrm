@@ -6,10 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Models;
 
-[Keyless]
 [Table("wf_loa_user")]
 public partial class wf_loa_user
 {
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long id { get; set; }
 
     public long? loaid { get; set; }

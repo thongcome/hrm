@@ -1,0 +1,68 @@
+@page "/wf_loa_users"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>LOA - ผู้ใช้สิทธิ์อนุมัติ (wf_loa_user)</h3>
+
+<p>
+    <button class="btn btn-primary" @onclick="Create">Create New</button>
+</p>
+
+@if (items is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>LOA Id</th>
+                <th>Workflow</th>
+                <th>Level</th>
+                <th>User Id</th>
+                <th>Emp Id</th>
+                <th>Org Code</th>
+                <th>เปิดใช้งาน</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in items)
+            {
+                <tr>
+                    <td>@u.id</td>
+                    <td>@u.loaid</td>
+                    <td>@u.workflowid</td>
+                    <td>@u.wlevel</td>
+                    <td>@u.userid</td>
+                    <td>@u.empid</td>
+                    <td>@u.orgcode</td>
+                    <td>@(u.isactive ? "Yes" : "No")</td>
+                    <td>
+                        <a class="btn btn-sm btn-info me-1" href="/wf_loa_users/details/@u.id">Details</a>
+                        <a class="btn btn-sm btn-secondary me-1" href="/wf_loa_users/edit/@u.id">Edit</a>
+                        <a class="btn btn-sm btn-danger" href="/wf_loa_users/delete/@u.id">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<wf_loa_user>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        items = await db.wf_loa_users.OrderBy(u => u.id).ToListAsync();
+    }
+
+    private void Create() => NavigationManager.NavigateTo("/wf_loa_users/create");
+}

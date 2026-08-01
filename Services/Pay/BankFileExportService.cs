@@ -42,7 +42,8 @@ public class BankFileExportService
             csv.AppendLine($"{emp.EmpNo},\"{name}\",{emp.BankCode},{emp.BankBranchCode},{emp.BankAccountNo},{emp.NetPay:0.00}");
         }
 
-        var fileBytes = Encoding.UTF8.GetBytes(csv.ToString());
+        var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        var fileBytes = utf8WithBom.GetPreamble().Concat(utf8WithBom.GetBytes(csv.ToString())).ToArray();
         var fileName = $"bankfile_{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
         var (relativePath, _) = await _fileStorage.SaveAsync("bank-exports", fileName, fileBytes, ct);
 

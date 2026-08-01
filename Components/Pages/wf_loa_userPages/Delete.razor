@@ -1,0 +1,42 @@
+@page "/wf_loa_users/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_loa_user? loaUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        loaUser = await db.wf_loa_users.FindAsync(id);
+        if (loaUser is null) NavigationManager.NavigateTo("/wf_loa_users");
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (loaUser is null) return;
+        using var db = DbFactory.CreateDbContext();
+        db.wf_loa_users.Remove(loaUser);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wf_loa_users");
+    }
+}
+
+@if (loaUser is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>Delete LOA User</h3>
+    <p>Are you sure you want to delete <strong>LOA User #@loaUser.id (userid @loaUser.userid, workflow @loaUser.workflowid level @loaUser.wlevel)</strong>?</p>
+    <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/wf_loa_users">Cancel</a>
+}

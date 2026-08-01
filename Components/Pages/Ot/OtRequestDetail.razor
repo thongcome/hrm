@@ -1,0 +1,106 @@
+@page "/ot-requests/detail/{Id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>รายละเอียดคำขอ OT</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบคำขอ OT รายการนี้</MudAlert>
+    }
+    else if (_request is not null)
+    {
+        <MudText Typo="Typo.h5" Class="mb-2">คำขอทำงานล่วงเวลา #@_request.id</MudText>
+
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@_employeeName" Label="พนักงานผู้ขอ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@_request.orgcode" Label="หน่วยงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.requestDate.ToString("dd/MM/yyyy HH:mm")" Label="วันที่ยื่นคำขอ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.starttime.ToString("dd/MM/yyyy HH:mm")" Label="เริ่ม OT" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.endtime.ToString("dd/MM/yyyy HH:mm")" Label="สิ้นสุด OT" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(_request.workhour?.ToString("0.##") ?? "-")" Label="ชั่วโมงทำงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(_request.workminute?.ToString("0.##") ?? "-")" Label="นาที (เพิ่มเติม)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(_request.ot_rate?.ToString("0.##") ?? "-")" Label="อัตรา OT (เท่า)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@_request.objective" Label="วัตถุประสงค์" ReadOnly="true" Lines="2" /></MudItem>
+            @if (!string.IsNullOrWhiteSpace(_request.remark))
+            {
+                <MudItem xs="12"><MudTextField Value="@_request.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
+            }
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        @if (_job is not null)
+        {
+            <MudText Typo="Typo.h6" Class="mb-2">สถานะการอนุมัติ</MudText>
+            <MudText Typo="Typo.body1" Class="mb-2">
+                สถานะ: <b>@_job.status</b> | ระดับปัจจุบัน: @_job.lastLevel / @_job.maxlevel
+                @(_job.isJobClosed == true ? " (ปิดงานแล้ว)" : "")
+            </MudText>
+            <MudTable Items="_job.job_user_lists" Dense="true">
+                <HeaderContent>
+                    <MudTh>ระดับ</MudTh>
+                    <MudTh>ผู้อนุมัติ (userid)</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh>วันที่</MudTh>
+                    <MudTh>ความเห็น</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.wlevel</MudTd>
+                    <MudTd>@context.userid</MudTd>
+                    <MudTd>@context.jobstatus</MudTd>
+                    <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@context.comment</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">คำขอนี้ยังไม่ถูกส่งเข้าสู่กระบวนการอนุมัติ (ร่าง)</MudAlert>
+        }
+
+        <MudButton Class="mt-4" Variant="Variant.Text" Href="/ot-requests">กลับไปหน้ารายการคำขอ OT</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private emp_overtime_request? _request;
+    private job_master? _job;
+    private string _employeeName = "";
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _request = await context.emp_overtime_requests.FirstOrDefaultAsync(r => r.id == Id);
+        if (_request is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        if (_request.hremployeeid is not null)
+        {
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _request.hremployeeid);
+            _employeeName = emp is null ? _request.name : $"{emp.EmpName} {emp.EmpSurname} ({emp.EmpNo})";
+        }
+        else
+        {
+            _employeeName = _request.name;
+        }
+
+        if (_request.jobmasterid is not null)
+        {
+            _job = await context.job_masters
+                .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
+                .FirstOrDefaultAsync(j => j.jobmasterid == _request.jobmasterid);
+        }
+    }
+}

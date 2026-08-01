@@ -1,0 +1,119 @@
+@page "/wfworkflows/manage/{id:long}"
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@if (workflow is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>จัดการ Workflow: @workflow.wname (#@workflow.workflowid)</h3>
+
+    <dl class="row">
+        <dt class="col-sm-2">รหัส Workflow</dt>
+        <dd class="col-sm-4">@workflow.workflowcode</dd>
+        <dt class="col-sm-2">สถานะ</dt>
+        <dd class="col-sm-4">@workflow.wstatus</dd>
+        <dt class="col-sm-2">แสดง</dt>
+        <dd class="col-sm-4">@(workflow.isshow == true ? "Yes" : "No")</dd>
+        <dt class="col-sm-2">เปิดใช้งาน</dt>
+        <dd class="col-sm-4">@(workflow.isactive == true ? "Yes" : "No")</dd>
+        <dt class="col-sm-2">คำอธิบาย</dt>
+        <dd class="col-sm-10">@workflow.description</dd>
+    </dl>
+
+    <p>
+        <a class="btn btn-sm btn-secondary" href="/wfworkflows/details/@workflow.workflowid">ดูรายละเอียดทั้งหมด</a>
+        <a class="btn btn-sm btn-secondary" href="/wfworkflows/edit/@workflow.workflowid">แก้ไข Workflow</a>
+    </p>
+
+    <hr />
+    <h5>ขั้นตอนการอนุมัติ (@levels.Count ระดับ)</h5>
+
+    <p>
+        <a class="btn btn-primary" href="@AddLevelUrl">เพิ่มขั้นตอนการอนุมัติ</a>
+    </p>
+
+    @if (levels.Count == 0)
+    {
+        <p><em>ยังไม่มีขั้นตอนการอนุมัติ — กดปุ่มด้านบนเพื่อเพิ่มระดับแรก</em></p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ระดับ (wlevel)</th>
+                    <th>หัวข้อ (subject)</th>
+                    <th>Stand Status</th>
+                    <th>Forward Status</th>
+                    <th>Backward Status</th>
+                    <th>ระดับสุดท้าย (istop)</th>
+                    <th>แสดง</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var lvl in levels)
+                {
+                    <tr>
+                        <td>@lvl.wlevel</td>
+                        <td>@lvl.subject</td>
+                        <td>@lvl.standstatus</td>
+                        <td>@lvl.forwardstatus</td>
+                        <td>@lvl.backwardstatus</td>
+                        <td>@(lvl.istop ? "Yes" : "No")</td>
+                        <td>@(lvl.isshow ? "Yes" : "No")</td>
+                        <td>
+                            <a class="btn btn-sm btn-info me-1" href="/wf_sub_workflow_masters/details?subworkflowid=@lvl.subworkflowid">ดู</a>
+                            <a class="btn btn-sm btn-secondary me-1" href="/wf_sub_workflow_masters/edit?subworkflowid=@lvl.subworkflowid">แก้ไข</a>
+                            <a class="btn btn-sm btn-danger" href="/wf_sub_workflow_masters/delete?subworkflowid=@lvl.subworkflowid">ลบ</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <a href="/wfworkflows">← กลับไปรายการ Workflow</a>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_workflow? workflow;
+    private List<wf_sub_workflow_master> levels = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        workflow = await db.wf_workflows.FindAsync(id);
+        if (workflow is null)
+        {
+            NavigationManager.NavigateTo("/wfworkflows");
+            return;
+        }
+
+        levels = await db.wf_sub_workflow_masters
+            .Where(l => l.workflowid == id)
+            .OrderBy(l => l.wlevel)
+            .ToListAsync();
+    }
+
+    private string AddLevelUrl
+    {
+        get
+        {
+            var nextLevel = levels.Count == 0 ? 1 : levels.Max(l => l.wlevel) + 1;
+            return $"/wf_sub_workflow_masters/create?WorkflowId={id}&WorkflowCode={Uri.EscapeDataString(workflow?.workflowcode ?? "")}&WLevel={nextLevel}";
+        }
+    }
+}

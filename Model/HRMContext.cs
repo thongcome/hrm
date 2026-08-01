@@ -1170,6 +1170,7 @@ public partial class HRMContext : DbContext
 
         modelBuilder.Entity<wf_loa_user>(entity =>
         {
+            entity.HasKey(e => e.id);
             entity.Property(e => e.id).ValueGeneratedOnAdd();
         });
 

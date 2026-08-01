@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260731224652_SeedWorkflowMultiUserDemo")]
+    partial class SeedWorkflowMultiUserDemo
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6263,10 +6266,6 @@ namespace HRM.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<string>("companyid")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
                     b.Property<string>("empid")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -6274,15 +6273,6 @@ namespace HRM.Migrations
 
                     b.Property<DateTime>("endtime")
                         .HasColumnType("datetime");
-
-                    b.Property<long?>("hremployeeid")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("hrwOtId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("jobmasterid")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("modby")
                         .HasMaxLength(250)
@@ -14680,9 +14670,9 @@ namespace HRM.Migrations
                     b.Property<string>("param")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("remark")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                    b.Property<byte[]>("remark")
+                        .HasMaxLength(250)
+                        .HasColumnType("varbinary(250)");
 
                     b.Property<string>("tablename")
                         .ValueGeneratedOnAdd()

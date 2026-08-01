@@ -1,0 +1,195 @@
+@page "/wfworkflows/edit/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@if (workflow is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>Edit Workflow #@workflow.workflowid</h3>
+    <EditForm Model="workflow" OnValidSubmit="Save">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <h5 class="mt-3">ข้อมูลหลัก</h5>
+        <div class="mb-3">
+            <label class="form-label">รหัส Workflow (workflowcode)</label>
+            <InputText @bind-Value="workflow.workflowcode" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ชื่อ (wname)</label>
+            <InputText @bind-Value="workflow.wname" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ชื่อ (อังกฤษ) (wname_en)</label>
+            <InputText @bind-Value="workflow.wname_en" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ชื่อย่อ (abbname)</label>
+            <InputText @bind-Value="workflow.abbname" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">กลุ่ม (wgroup)</label>
+            <InputText @bind-Value="workflow.wgroup" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">สถานะ (wstatus)</label>
+            <InputText @bind-Value="workflow.wstatus" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">รหัส (code)</label>
+            <InputText @bind-Value="workflow.code" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ไอคอน (icon)</label>
+            <InputText @bind-Value="workflow.icon" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">คำอธิบาย (description)</label>
+            <InputText @bind-Value="workflow.description" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">หมายเหตุ (remark)</label>
+            <InputTextArea @bind-Value="workflow.remark" class="form-control" rows="2" />
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" @bind="workflow.isshow" /> <label class="form-check-label">แสดง (isshow)</label>
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" @bind="workflow.isactive" /> <label class="form-check-label">เปิดใช้งาน (isactive)</label>
+        </div>
+
+        <h5 class="mt-4">ช่วงเวลา / อายุงาน</h5>
+        <div class="mb-3">
+            <label class="form-label">วันที่เริ่ม (wstartdate)</label>
+            <InputDate @bind-Value="workflow.wstartdate" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">วันที่สิ้นสุด (wenddate)</label>
+            <InputDate @bind-Value="workflow.wenddate" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">จำนวนวันหมดอายุ (wexpireday)</label>
+            <InputNumber @bind-Value="workflow.wexpireday" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">อายุงาน (วัน) (lifetimeday)</label>
+            <InputNumber @bind-Value="workflow.lifetimeday" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">เวลาที่คาดว่าจะเสร็จ (expecttime)</label>
+            <InputNumber @bind-Value="workflow.expecttime" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">หน่วยเวลา (expecttimeUnit)</label>
+            <InputText @bind-Value="workflow.expecttimeUnit" class="form-control" />
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" @bind="workflow.expectinBiz" /> <label class="form-check-label">นับเฉพาะวันทำการ (expectinBiz)</label>
+        </div>
+
+        <h5 class="mt-4">การเชื่อมโยงเอกสาร/หน้าจอ (Generic Routing)</h5>
+        <div class="mb-3">
+            <label class="form-label">URL ปลายทาง (url) — รองรับ {refid}</label>
+            <InputText @bind-Value="workflow.url" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Component/หน้าดูรายละเอียด (c_detail)</label>
+            <InputText @bind-Value="workflow.c_detail" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Component/หน้าสร้างเอกสาร (c_create)</label>
+            <InputText @bind-Value="workflow.c_create" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Component/หน้าแก้ไข (c_edit)</label>
+            <InputText @bind-Value="workflow.c_edit" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Component/หน้ารายการ (c_list)</label>
+            <InputText @bind-Value="workflow.c_list" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ชื่อตารางเอกสารต้นทาง (tablename)</label>
+            <InputText @bind-Value="workflow.tablename" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">ตารางอ้างอิง (tableref)</label>
+            <InputText @bind-Value="workflow.tableref" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">คอลัมน์อ้างอิง (columnref)</label>
+            <InputText @bind-Value="workflow.columnref" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Controller</label>
+            <InputText @bind-Value="workflow.controller" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Action</label>
+            <InputText @bind-Value="workflow.action" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Create Method (create_mothod)</label>
+            <InputText @bind-Value="workflow.create_mothod" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Edit Method (edit_mothod)</label>
+            <InputText @bind-Value="workflow.edit_mothod" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">View Method (view_mothod)</label>
+            <InputText @bind-Value="workflow.view_mothod" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">List Method (list_mothod)</label>
+            <InputText @bind-Value="workflow.list_mothod" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">พารามิเตอร์เพิ่มเติม (param)</label>
+            <InputText @bind-Value="workflow.param" class="form-control" />
+        </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" @bind="workflow.IsRejectToReq" /> <label class="form-check-label">ตีกลับไปหาผู้ขอเมื่อปฏิเสธ (IsRejectToReq)</label>
+        </div>
+
+        <p class="text-muted small">
+            หมายเหตุ: field <code>moddate</code>/<code>modby</code> ระบบตั้งค่าอัตโนมัติตอนบันทึก ไม่ต้องกรอกเอง
+        </p>
+
+        <button class="btn btn-primary">Save</button>
+        <a class="btn btn-secondary ms-2" href="/wfworkflows">Cancel</a>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_workflow? workflow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        workflow = await db.wf_workflows.FindAsync(id);
+        if (workflow is null)
+        {
+            NavigationManager.NavigateTo("/wfworkflows");
+        }
+    }
+
+    private async Task Save()
+    {
+        if (workflow is null) return;
+        workflow.moddate = DateTime.Now;
+        using var db = DbFactory.CreateDbContext();
+        db.wf_workflows.Update(workflow);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wfworkflows");
+    }
+}

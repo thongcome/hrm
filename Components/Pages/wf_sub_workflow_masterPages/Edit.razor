@@ -89,17 +89,32 @@ else
                 </div>
                 <div class="mb-3">
                     <label for="forwardstatus" class="form-label">forwardstatus:</label>
-                    <InputText id="forwardstatus" @bind-Value="wf_sub_workflow_master.forwardstatus" class="form-control" />
+                    <InputSelect id="forwardstatus" @bind-Value="wf_sub_workflow_master.forwardstatus" class="form-select">
+                        @foreach (var statusCode in _jobStatusCodes)
+                        {
+                            <option value="@statusCode">@statusCode</option>
+                        }
+                    </InputSelect>
                     <ValidationMessage For="() => wf_sub_workflow_master.forwardstatus" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="standstatus" class="form-label">standstatus:</label>
-                    <InputText id="standstatus" @bind-Value="wf_sub_workflow_master.standstatus" class="form-control" />
+                    <InputSelect id="standstatus" @bind-Value="wf_sub_workflow_master.standstatus" class="form-select">
+                        @foreach (var statusCode in _jobStatusCodes)
+                        {
+                            <option value="@statusCode">@statusCode</option>
+                        }
+                    </InputSelect>
                     <ValidationMessage For="() => wf_sub_workflow_master.standstatus" class="text-danger" />
                 </div>
                 <div class="mb-3">
                     <label for="backwardstatus" class="form-label">backwardstatus:</label>
-                    <InputText id="backwardstatus" @bind-Value="wf_sub_workflow_master.backwardstatus" class="form-control" />
+                    <InputSelect id="backwardstatus" @bind-Value="wf_sub_workflow_master.backwardstatus" class="form-select">
+                        @foreach (var statusCode in _jobStatusCodes)
+                        {
+                            <option value="@statusCode">@statusCode</option>
+                        }
+                    </InputSelect>
                     <ValidationMessage For="() => wf_sub_workflow_master.backwardstatus" class="text-danger" />
                 </div>
                 <div class="mb-3">
@@ -304,9 +319,12 @@ else
     [SupplyParameterFromForm]
     private wf_sub_workflow_master? wf_sub_workflow_master { get; set; }
 
+    private List<string> _jobStatusCodes = new();
+
     protected override async Task OnInitializedAsync()
     {
         using var context = DbFactory.CreateDbContext();
+        _jobStatusCodes = await context.job_statuses.OrderBy(s => s.jobstatuscode).Select(s => s.jobstatuscode).ToListAsync();
         wf_sub_workflow_master ??= await context.wf_sub_workflow_masters.FirstOrDefaultAsync(m => m.subworkflowid == subworkflowid);
 
         if (wf_sub_workflow_master is null)

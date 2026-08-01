@@ -1,0 +1,66 @@
+@page "/wf_loas"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<h3>LOA (วงเงินอนุมัติ)</h3>
+
+<p>
+    <button class="btn btn-primary" @onclick="Create">Create New</button>
+</p>
+
+@if (items is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Workflow ปัจจุบัน</th>
+                <th>Level ปัจจุบัน</th>
+                <th>วงเงิน (Min - Max)</th>
+                <th>Workflow ถัดไป</th>
+                <th>Level ถัดไป</th>
+                <th>เปิดใช้งาน</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in items)
+            {
+                <tr>
+                    <td>@l.id</td>
+                    <td>@l.nowWorkflowid</td>
+                    <td>@l.nowLevel</td>
+                    <td>@l.min - @l.max</td>
+                    <td>@l.nextWorkflowId</td>
+                    <td>@l.nextLevel</td>
+                    <td>@(l.isactive == true ? "Yes" : "No")</td>
+                    <td>
+                        <a class="btn btn-sm btn-info me-1" href="/wf_loas/details/@l.id">Details</a>
+                        <a class="btn btn-sm btn-secondary me-1" href="/wf_loas/edit/@l.id">Edit</a>
+                        <a class="btn btn-sm btn-danger" href="/wf_loas/delete/@l.id">Delete</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<wf_loa>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        items = await db.wf_loas.OrderBy(l => l.id).ToListAsync();
+    }
+
+    private void Create() => NavigationManager.NavigateTo("/wf_loas/create");
+}

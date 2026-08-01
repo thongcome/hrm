@@ -81,20 +81,35 @@
                 <ValidationMessage For="() => wf_sub_workflow_master.andpercent" class="text-danger" /> 
             </div>        
             <div class="mb-3">
-                <label for="forwardstatus" class="form-label">forwardstatus:</label> 
-                <InputText id="forwardstatus" @bind-Value="wf_sub_workflow_master.forwardstatus" class="form-control" /> 
-                <ValidationMessage For="() => wf_sub_workflow_master.forwardstatus" class="text-danger" /> 
-            </div>        
+                <label for="forwardstatus" class="form-label">forwardstatus:</label>
+                <InputSelect id="forwardstatus" @bind-Value="wf_sub_workflow_master.forwardstatus" class="form-select">
+                    @foreach (var statusCode in _jobStatusCodes)
+                    {
+                        <option value="@statusCode">@statusCode</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => wf_sub_workflow_master.forwardstatus" class="text-danger" />
+            </div>
             <div class="mb-3">
-                <label for="standstatus" class="form-label">standstatus:</label> 
-                <InputText id="standstatus" @bind-Value="wf_sub_workflow_master.standstatus" class="form-control" /> 
-                <ValidationMessage For="() => wf_sub_workflow_master.standstatus" class="text-danger" /> 
-            </div>        
+                <label for="standstatus" class="form-label">standstatus:</label>
+                <InputSelect id="standstatus" @bind-Value="wf_sub_workflow_master.standstatus" class="form-select">
+                    @foreach (var statusCode in _jobStatusCodes)
+                    {
+                        <option value="@statusCode">@statusCode</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => wf_sub_workflow_master.standstatus" class="text-danger" />
+            </div>
             <div class="mb-3">
-                <label for="backwardstatus" class="form-label">backwardstatus:</label> 
-                <InputText id="backwardstatus" @bind-Value="wf_sub_workflow_master.backwardstatus" class="form-control" /> 
-                <ValidationMessage For="() => wf_sub_workflow_master.backwardstatus" class="text-danger" /> 
-            </div>        
+                <label for="backwardstatus" class="form-label">backwardstatus:</label>
+                <InputSelect id="backwardstatus" @bind-Value="wf_sub_workflow_master.backwardstatus" class="form-select">
+                    @foreach (var statusCode in _jobStatusCodes)
+                    {
+                        <option value="@statusCode">@statusCode</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => wf_sub_workflow_master.backwardstatus" class="text-danger" />
+            </div>
             <div class="mb-3">
                 <label for="approvedstatus" class="form-label">approvedstatus:</label> 
                 <InputText id="approvedstatus" @bind-Value="wf_sub_workflow_master.approvedstatus" class="form-control" /> 
@@ -286,12 +301,54 @@
 </div>
 
 <div>
-    <a href="/wf_sub_workflow_masters">Back to List</a>
+    @if (WorkflowId.HasValue)
+    {
+        <a href="/wfworkflows/manage/@WorkflowId.Value">← กลับไปหน้าจัดการ workflow</a>
+    }
+    else
+    {
+        <a href="/wf_sub_workflow_masters">Back to List</a>
+    }
 </div>
 
 @code {
     [SupplyParameterFromForm]
     private wf_sub_workflow_master wf_sub_workflow_master { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private long? WorkflowId { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? WorkflowCode { get; set; }
+
+    [SupplyParameterFromQuery]
+    private int? WLevel { get; set; }
+
+    private List<string> _jobStatusCodes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        _jobStatusCodes = await db.job_statuses.OrderBy(s => s.jobstatuscode).Select(s => s.jobstatuscode).ToListAsync();
+
+        // wf_sub_workflow_master.workflowid == 0 means this is the initial GET
+        // (fresh model) — on a form POST the bound model already carries the
+        // submitted value, so this guard avoids clobbering it.
+        if (wf_sub_workflow_master.workflowid == 0 && WorkflowId.HasValue)
+        {
+            wf_sub_workflow_master.workflowid = WorkflowId.Value;
+            wf_sub_workflow_master.wfcode = WorkflowCode;
+            wf_sub_workflow_master.wlevel = WLevel ?? 1;
+            // forwardstatus/standstatus/backwardstatus are NOT NULL in the DB
+            // but this scaffolded form doesn't validate that — prefill with
+            // the same convention used by every seeded row in this app
+            // (see job_status: PENDING/APPROVED/RETURNED) so submitting the
+            // form as-is doesn't crash with a NULL constraint violation.
+            wf_sub_workflow_master.standstatus = "PENDING";
+            wf_sub_workflow_master.forwardstatus = "APPROVED";
+            wf_sub_workflow_master.backwardstatus = "RETURNED";
+        }
+    }
 
     // To protect from overposting attacks, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Addwf_sub_workflow_master()
@@ -299,6 +356,8 @@
         using var context = DbFactory.CreateDbContext();
         context.wf_sub_workflow_masters.Add(wf_sub_workflow_master);
         await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+        NavigationManager.NavigateTo(WorkflowId.HasValue
+            ? $"/wfworkflows/manage/{WorkflowId.Value}"
+            : "/wf_sub_workflow_masters");
     }
 }

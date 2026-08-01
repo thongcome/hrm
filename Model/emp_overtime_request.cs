@@ -77,4 +77,29 @@ public partial class emp_overtime_request
 
     [StringLength(500)]
     public string? com_code_all { get; set; }
+
+    // Added to drive the Workflow Approval Engine (Services/Workflow/
+    // WorkflowEngineService.cs) — this table pre-existed as an orphaned
+    // scaffold (0 rows, no code referencing it) before being repurposed as
+    // the first real "generic document" wired through Block 7 routing.
+    // Soft links only, same convention as Pay_AdhocPayItem.HremployeeId /
+    // Pay_PayrollRun snapshot fields elsewhere in this app — no FK
+    // constraints, checked in application code.
+    public long? hremployeeid { get; set; }
+
+    [StringLength(6)]
+    public string? companyid { get; set; }
+
+    // job_master.jobmasterid of the approval job started for this request
+    // (via StartJobAsync, reftable="emp_overtime_request", refid=this.id).
+    // Null until submitted; the request stays editable/re-submittable in
+    // that state. Mirrors Pay_AdhocPayItem.ConsumedByPayrollRunId's
+    // "not consumed yet" null convention.
+    public long? jobmasterid { get; set; }
+
+    // Set once an approved request has been turned into an HRW_OT row for
+    // payroll to actually pay (a deliberate manual HR action, not automatic
+    // — see OtRequestList.razor — same "explicit pull, not auto-inject"
+    // pattern as Pay_AdhocPayItem consumption).
+    public long? hrwOtId { get; set; }
 }

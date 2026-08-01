@@ -1,0 +1,42 @@
+@page "/wf_loas/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private wf_loa? loa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = DbFactory.CreateDbContext();
+        loa = await db.wf_loas.FindAsync(id);
+        if (loa is null) NavigationManager.NavigateTo("/wf_loas");
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (loa is null) return;
+        using var db = DbFactory.CreateDbContext();
+        db.wf_loas.Remove(loa);
+        await db.SaveChangesAsync();
+        NavigationManager.NavigateTo("/wf_loas");
+    }
+}
+
+@if (loa is null)
+{
+    <p><em>Not found</em></p>
+}
+else
+{
+    <h3>Delete LOA</h3>
+    <p>Are you sure you want to delete <strong>LOA #@loa.id (loaid @loa.loaid, level @loa.nowLevel, @loa.min - @loa.max)</strong>?</p>
+    <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+    <a class="btn btn-secondary ms-2" href="/wf_loas">Cancel</a>
+}
