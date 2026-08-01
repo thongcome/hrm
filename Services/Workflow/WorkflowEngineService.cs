@@ -589,12 +589,12 @@ public class WorkflowEngineService
             }
             else
             {
-                candidates = await ResolveCandidatesAsync(context, level, job.reqOrg, ct);
+                candidates = await ResolveCandidatesAsync(context, job, level, ct);
             }
         }
         else
         {
-            candidates = await ResolveCandidatesAsync(context, level, job.reqOrg, ct);
+            candidates = await ResolveCandidatesAsync(context, job, level, ct);
         }
 
         // Block 5: equal-split AND% weight only applies to the level's own
@@ -672,10 +672,20 @@ public class WorkflowEngineService
     // empty list — never throws — when the level is configured but nobody
     // currently resolves (a runtime vacancy, handled by the caller); still
     // throws for a genuine setup mistake (level has none of
-    // iscustomUser/iscustomRole/isupperrole/isupperuser ticked at all).
+    // isLOA/iscustomUser/iscustomRole/isupperrole/isupperuser ticked at all).
     private static async Task<List<(long UserId, string? EmpId)>> ResolveCandidatesAsync(
-        HRMContext context, wf_sub_workflow_master level, string? requesterOrgCode, CancellationToken ct)
+        HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
     {
+        var requesterOrgCode = job.reqOrg;
+
+        // Block 4 (approver side, per user confirmation): isLOA takes over
+        // approver resolution entirely for this level — who approves is
+        // whoever wf_loa_user lists for the amount band that matches this
+        // level, not the custom-user/custom-role/vertical flags below. See
+        // ResolveLoaApproversAsync's own comment for the exact FK chain.
+        if (level.isLOA)
+            return await ResolveLoaApproversAsync(context, job, level, ct);
+
         if (level.iscustomUser)
         {
             var users = await context.wf_custom_users
