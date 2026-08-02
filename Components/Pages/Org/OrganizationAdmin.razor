@@ -1,0 +1,326 @@
+@page "/org/organizations"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>ผังองค์กร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+    <MudText Typo="Typo.h5">ผังองค์กร (Organization)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เมื่อสร้างหน่วยงานลูกใหม่ ระบบจะกรอกรหัสศูนย์ต้นทุน (Cost Center) ให้เหมือนหน่วยงานแม่โดยอัตโนมัติ — แก้ไขได้ถ้าจริงไม่เหมือนกัน
+        (คำนวณครั้งเดียวตอนกรอก ไม่ผูก logic ตอนใช้งาน)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มหน่วยงานใหม่" : "แก้ไขหน่วยงาน")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัสหน่วยงาน (Code)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อหน่วยงาน" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="ชื่อหน่วยงาน (English)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isTop" Color="Color.Info" Label="เป็นหน่วยงานระดับบนสุด (ไม่มีหน่วยงานแม่)" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+        @if (!_isTop)
+        {
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="com_organization" Label="หน่วยงานแม่ (Parent)" Value="_selectedParent" ValueChanged="OnParentSelected"
+                    SearchFunc="SearchOrganizationsAsync"
+                    ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสศูนย์ต้นทุน (Cost Center)" Value="_selectedCostCenter" ValueChanged="v => _selectedCostCenter = v"
+                SearchFunc="SearchCostCentersAsync"
+                ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มหน่วยงาน" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (รหัส / ชื่อ / ชื่อย่อ)" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_organizations" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อหน่วยงาน</MudTh>
+            <MudTh>หน่วยงานแม่</MudTh>
+            <MudTh>รหัสเต็ม</MudTh>
+            <MudTh>Cost Center</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.parent_code</MudTd>
+            <MudTd>@context.orgcodefull</MudTd>
+            <MudTd>@context.CostCenterCode</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                    @(context.isActive ? "ใช้งาน" : "ปิดใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีหน่วยงาน</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<com_organization> _organizations = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _nameEn;
+    private string? _abbr;
+    private bool _isTop;
+    private bool _isActive = true;
+    private com_organization? _selectedParent;
+    private Com_ChartOfAccount? _selectedCostCenter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        // com_organization has no reliable company-scoping field (companyid/comp_code
+        // don't line up with the payroll_company claim used elsewhere) — matches the
+        // existing precedent in PayrollEmployeeAdmin.razor's org picker, which also
+        // loads this table without a company filter.
+        var query = context.com_organizations.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+            nameof(com_organization.code), nameof(com_organization.name), nameof(com_organization.name_en), nameof(com_organization.abbr));
+        _organizations = await query.OrderBy(o => o.orgcodefull).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        if (_editingId is long editingId)
+            query = query.Where(o => o.id != editingId); // can't be its own parent
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId && a.IsCostCenter && a.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
+        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnParentSelected(com_organization? parent)
+    {
+        _selectedParent = parent;
+        // Default the cost center from the parent — only when nothing has been
+        // picked yet, so this never silently overwrites a value the user already
+        // chose (create flow only, per user decision 2026-08-02: "คิดครั้งเดียวตอนใส่").
+        if (_selectedCostCenter is null && parent is not null && !string.IsNullOrWhiteSpace(parent.CostCenterCode))
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _selectedCostCenter = await context.Com_ChartOfAccounts
+                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == parent.CostCenterCode);
+        }
+    }
+
+    private void StartEdit(com_organization org)
+    {
+        _editingId = org.id;
+        _code = org.code ?? "";
+        _name = org.name ?? "";
+        _nameEn = org.name_en;
+        _abbr = org.abbr;
+        _isTop = org.istop;
+        _isActive = org.isActive;
+        _selectedParent = null; // resolved lazily below if needed for display; not required for save unless changed
+        _selectedCostCenter = null;
+        _error = null;
+        _ = LoadEditContextAsync(org);
+    }
+
+    private async Task LoadEditContextAsync(com_organization org)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (!string.IsNullOrWhiteSpace(org.parent_code))
+        {
+            _selectedParent = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code);
+        }
+        if (!string.IsNullOrWhiteSpace(org.CostCenterCode))
+        {
+            _selectedCostCenter = await context.Com_ChartOfAccounts.FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == org.CostCenterCode);
+        }
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _nameEn = null;
+        _abbr = null;
+        _isTop = false;
+        _isActive = true;
+        _selectedParent = null;
+        _selectedCostCenter = null;
+        _error = null;
+    }
+
+    // Fixed-width hierarchical path, 2 digits per level, no delimiter — same
+    // scheme as the existing backfilled orgcodefull values (see com_organization.cs
+    // comment). Computed once at create time by taking the next available 2-digit
+    // suffix among siblings; never recomputed on edit (existing values came from a
+    // one-time recursive-CTE backfill this increment logic doesn't need to match
+    // retroactively, only extend going forward).
+    private async Task<string> ComputeNextOrgCodeFullAsync(HRMContext context, string? parentOrgCodeFull)
+    {
+        IQueryable<com_organization> siblings = string.IsNullOrEmpty(parentOrgCodeFull)
+            ? context.com_organizations.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code))
+            : context.com_organizations.Where(o => o.orgcodefull != null && o.orgcodefull.StartsWith(parentOrgCodeFull) && o.orgcodefull.Length == parentOrgCodeFull.Length + 2);
+
+        var siblingCodes = await siblings.Select(o => o.orgcodefull).ToListAsync();
+        var maxSuffix = 0;
+        foreach (var full in siblingCodes)
+        {
+            if (string.IsNullOrEmpty(full) || full.Length < 2) continue;
+            var suffix = full[^2..];
+            if (int.TryParse(suffix, out var n) && n > maxSuffix) maxSuffix = n;
+        }
+        var nextSuffix = (maxSuffix + 1).ToString("D2");
+        return (parentOrgCodeFull ?? "") + nextSuffix;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อหน่วยงาน";
+            return;
+        }
+        if (!_isTop && _selectedParent is null)
+        {
+            _error = "กรุณาเลือกหน่วยงานแม่ หรือติ๊กว่าเป็นหน่วยงานระดับบนสุด";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.com_organizations.AnyAsync(o => o.code == _code && o.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสหน่วยงานนี้อยู่แล้ว";
+            return;
+        }
+
+        var newParentCode = _isTop ? null : _selectedParent?.code;
+        var newCostCenterCode = _selectedCostCenter?.Code;
+
+        if (_editingId is long id)
+        {
+            var existing = await context.com_organizations.FirstOrDefaultAsync(o => o.id == id);
+            if (existing is null)
+            {
+                _error = "ไม่พบหน่วยงานที่ต้องการแก้ไข";
+                return;
+            }
+            var parentChanged = existing.parent_code != newParentCode;
+            existing.code = _code;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.abbr = _abbr;
+            existing.istop = _isTop;
+            existing.isActive = _isActive;
+            existing.parent_code = newParentCode;
+            existing.CostCenterCode = newCostCenterCode;
+            if (parentChanged)
+            {
+                existing.orgcodefull = await ComputeNextOrgCodeFullAsync(context, _selectedParent?.orgcodefull);
+            }
+        }
+        else
+        {
+            var orgcodefull = await ComputeNextOrgCodeFullAsync(context, _selectedParent?.orgcodefull);
+            context.com_organizations.Add(new com_organization
+            {
+                code = _code,
+                name = _name,
+                name_en = _nameEn,
+                abbr = _abbr,
+                istop = _isTop,
+                isActive = _isActive,
+                parent_code = newParentCode,
+                CostCenterCode = newCostCenterCode,
+                orgcodefull = orgcodefull,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มหน่วยงานเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

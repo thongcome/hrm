@@ -3,6 +3,7 @@
 @using HRM.Data
 @using HRM.Models
 @using HRM.Services.Pay
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
@@ -140,8 +141,11 @@
                     <MudTextField @bind-Value="_formEmployee.PosCode" Label="ตำแหน่ง" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.CostCenterCode" Label="รหัสศูนย์ต้นทุน (Cost Center)"
-                        HelperText="ใช้แยกค่าใช้จ่ายเงินเดือนตามหน่วยงานในแดชบอร์ด" />
+                    <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสศูนย์ต้นทุน (Cost Center)" Value="_selectedCostCenter" ValueChanged="OnCostCenterSelected"
+                        SearchFunc="SearchCostCentersAsync"
+                        ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
+                        HelperText="ค้นหาจากผังบัญชี (รหัส/ชื่อไทย/ชื่ออังกฤษ) — ตั้งต้นจากหน่วยงานที่เลือก แก้ไขเองได้"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
                     <MudSelect T="long?" Value="_formEmployee.OrganizationId" ValueChanged="OnOrganizationSelected"
@@ -480,6 +484,7 @@
     private string? _resetPasswordInfo;
 
     private List<com_organization> _organizations = new();
+    private Com_ChartOfAccount? _selectedCostCenter;
     private List<Pay_SalaryGrade> _salaryGrades = new();
 
     protected override async Task OnInitializedAsync()
@@ -529,13 +534,43 @@
     // two are just for fast substring search without a join. See the
     // OrganizationId field comment on Hremployee.cs for why id (not code)
     // is used as the anchor.
-    private void OnOrganizationSelected(long? organizationId)
+    private async Task OnOrganizationSelected(long? organizationId)
     {
         if (_formEmployee is null) return;
         _formEmployee.OrganizationId = organizationId;
         var org = _organizations.FirstOrDefault(o => o.id == organizationId);
         _formEmployee.orgcode = org?.code;
         _formEmployee.orgcodefull = org?.orgcodefull;
+
+        // Default cost center from the chosen org's — HR can still pick a
+        // different one afterward via the autocomplete (per-employee override).
+        if (string.IsNullOrWhiteSpace(org?.CostCenterCode))
+        {
+            _selectedCostCenter = null;
+            _formEmployee.CostCenterCode = null;
+        }
+        else
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _selectedCostCenter = await context.Com_ChartOfAccounts
+                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == org.CostCenterCode);
+            _formEmployee.CostCenterCode = _selectedCostCenter?.Code ?? org.CostCenterCode;
+        }
+    }
+
+    private void OnCostCenterSelected(Com_ChartOfAccount? account)
+    {
+        if (_formEmployee is null) return;
+        _selectedCostCenter = account;
+        _formEmployee.CostCenterCode = account?.Code;
+    }
+
+    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId && a.IsCostCenter && a.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
+        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
     }
 
     private async Task LoadAsync()
@@ -575,6 +610,7 @@
         _birthDate = null;
         _formEmployee = new Hremployee { companyid = _companyId!, EmptypeCode = "01" };
         _formEmployee.EmpNo = await GenerateNextEmpNoAsync();
+        _selectedCostCenter = null;
     }
 
     private async Task<string> GenerateNextEmpNoAsync()
@@ -652,6 +688,14 @@
             SalexpBranch = emp.SalexpBranch,
             SalexpAccid = emp.SalexpAccid,
         };
+
+        _selectedCostCenter = null;
+        if (!string.IsNullOrWhiteSpace(emp.CostCenterCode))
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _selectedCostCenter = await context.Com_ChartOfAccounts
+                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == emp.CostCenterCode);
+        }
     }
 
     private const int MaxEmpNoLength = 6; // Hremployee.EmpNo StringLength(6)

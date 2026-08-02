@@ -1,0 +1,233 @@
+@page "/pay/admin/chart-of-accounts"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ผังบัญชี</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ผังบัญชี (Chart of Accounts)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการบัญชีทั้ง 5 หมวด (สินทรัพย์/หนี้สิน/ส่วนของผู้ถือหุ้น/รายได้/ค่าใช้จ่าย) — รายการที่ติ๊ก "ใช้เป็นศูนย์ต้นทุน"
+        จะปรากฏในช่องค้นหา Cost Center ของหน้าผังองค์กรและข้อมูลพนักงาน
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบัญชีใหม่" : "แก้ไขบัญชี")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัสบัญชี (Code)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameTh" Label="ชื่อบัญชี (ไทย)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="ชื่อบัญชี (English)" /></MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="AccountType" @bind-Value="_accountType" Label="หมวดบัญชี">
+                <MudSelectItem T="AccountType" Value="AccountType.Asset">สินทรัพย์ (Asset)</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Liability">หนี้สิน (Liability)</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Equity">ส่วนของผู้ถือหุ้น (Equity)</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Revenue">รายได้ (Revenue)</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Expense">ค่าใช้จ่าย (Expense)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSwitch T="bool" @bind-Value="_isCostCenter" Color="Color.Primary" Label="ใช้เป็นศูนย์ต้นทุน (Cost Center)" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มบัญชี" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (รหัส / ชื่อไทย / ชื่ออังกฤษ)" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_accounts" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อบัญชี</MudTh>
+            <MudTh>หมวด</MudTh>
+            <MudTh>Cost Center</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.NameTh @(string.IsNullOrWhiteSpace(context.NameEn) ? "" : $"({context.NameEn})")</MudTd>
+            <MudTd>@AccountTypeLabel(context.AccountType)</MudTd>
+            <MudTd>
+                @if (context.IsCostCenter)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">Cost Center</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีรายการบัญชีสำหรับบริษัทนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Com_ChartOfAccount> _accounts = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private string _code = "";
+    private string _nameTh = "";
+    private string? _nameEn;
+    private AccountType _accountType = AccountType.Expense;
+    private bool _isCostCenter;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
+        _accounts = await query.OrderBy(a => a.Code).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private static string AccountTypeLabel(AccountType type) => type switch
+    {
+        AccountType.Asset => "สินทรัพย์",
+        AccountType.Liability => "หนี้สิน",
+        AccountType.Equity => "ส่วนของผู้ถือหุ้น",
+        AccountType.Revenue => "รายได้",
+        AccountType.Expense => "ค่าใช้จ่าย",
+        _ => type.ToString(),
+    };
+
+    private void StartEdit(Com_ChartOfAccount account)
+    {
+        _editingId = account.Id;
+        _code = account.Code;
+        _nameTh = account.NameTh;
+        _nameEn = account.NameEn;
+        _accountType = account.AccountType;
+        _isCostCenter = account.IsCostCenter;
+        _isActive = account.IsActive;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _nameTh = "";
+        _nameEn = null;
+        _accountType = AccountType.Expense;
+        _isCostCenter = false;
+        _isActive = true;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_nameTh))
+        {
+            _error = "กรุณาระบุรหัสบัญชีและชื่อบัญชี (ไทย)";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Com_ChartOfAccounts
+            .AnyAsync(a => a.CompanyId == _companyId && a.Code == _code && a.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสบัญชีนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Com_ChartOfAccounts.FirstOrDefaultAsync(a => a.Id == id && a.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบบัญชีที่ต้องการแก้ไข";
+                return;
+            }
+            existing.Code = _code;
+            existing.NameTh = _nameTh;
+            existing.NameEn = _nameEn;
+            existing.AccountType = _accountType;
+            existing.IsCostCenter = _isCostCenter;
+            existing.IsActive = _isActive;
+        }
+        else
+        {
+            context.Com_ChartOfAccounts.Add(new Com_ChartOfAccount
+            {
+                CompanyId = _companyId!,
+                Code = _code,
+                NameTh = _nameTh,
+                NameEn = _nameEn,
+                AccountType = _accountType,
+                IsCostCenter = _isCostCenter,
+                IsActive = _isActive,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มบัญชีเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
