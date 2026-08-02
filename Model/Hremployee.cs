@@ -109,6 +109,11 @@ public partial class Hremployee
     [StringLength(100)]
     public string? orgcodefull { get; set; }
 
+    // Soft link into Pay_SalaryGrade.Id — no DB FK constraint, same
+    // convention as OrganizationId above. Optional: not every company
+    // using this system will have formalized pay bands.
+    public long? SalaryGradeId { get; set; }
+
     [Column("SEX")]
     [StringLength(1)]
     
@@ -429,6 +434,10 @@ public partial class Hremployee
     public virtual ICollection<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; } = new List<Pay_ProvidentFundElection>();
 
     public virtual ICollection<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; } = new List<Pay_AdhocPayItem>();
+
+    public virtual ICollection<Pay_PositionSalaryHistory> Pay_PositionSalaryHistories { get; set; } = new List<Pay_PositionSalaryHistory>();
+
+    public virtual ICollection<Pay_EmployeeLoan> Pay_EmployeeLoans { get; set; } = new List<Pay_EmployeeLoan>();
 
     public virtual ICollection<HrwOt> HrwOts { get; set; } = new List<HrwOt>();
 

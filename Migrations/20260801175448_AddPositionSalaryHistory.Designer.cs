@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260801175448_AddPositionSalaryHistory")]
+    partial class AddPositionSalaryHistory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2177,9 +2180,6 @@ namespace HRM.Migrations
                         .HasColumnType("decimal(15,2)")
                         .HasColumnName("SALARY_AMT");
 
-                    b.Property<long?>("SalaryGradeId")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("SalexpAccid")
                         .HasMaxLength(15)
                         .HasColumnType("nvarchar(15)")
@@ -3841,102 +3841,6 @@ namespace HRM.Migrations
                     b.ToTable("Pay_EmployeeDocument");
                 });
 
-            modelBuilder.Entity("HRM.Models.Pay_EmployeeLoan", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("CompanyId")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<string>("EmpNo")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("InstallmentAmount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<decimal>("PrincipalAmount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<decimal>("RemainingBalance")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<long>("RequestedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("RequestedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("StartPeriod")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<int>("TotalInstallments")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HremployeeId");
-
-                    b.ToTable("Pay_EmployeeLoan");
-                });
-
-            modelBuilder.Entity("HRM.Models.Pay_EmployeeLoanInstallment", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<decimal>("BalanceAfter")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<long?>("ConsumedByPayrollRunId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("InstallmentNo")
-                        .HasColumnType("int");
-
-                    b.Property<long>("LoanId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Period")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConsumedByPayrollRunId");
-
-                    b.HasIndex("LoanId");
-
-                    b.ToTable("Pay_EmployeeLoanInstallment");
-                });
-
             modelBuilder.Entity("HRM.Models.Pay_GLExportBatch", b =>
                 {
                     b.Property<long>("Id")
@@ -4764,49 +4668,6 @@ namespace HRM.Migrations
                     b.HasIndex("HremployeeId");
 
                     b.ToTable("Pay_ProvidentFundElection");
-                });
-
-            modelBuilder.Entity("HRM.Models.Pay_SalaryGrade", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("CompanyId")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<string>("GradeCode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("GradeName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("MaxSalary")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<decimal>("MidSalary")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<decimal>("MinSalary")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Pay_SalaryGrade");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_TaxBracket", b =>
@@ -15380,35 +15241,6 @@ namespace HRM.Migrations
                     b.Navigation("Hremployee");
                 });
 
-            modelBuilder.Entity("HRM.Models.Pay_EmployeeLoan", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany("Pay_EmployeeLoans")
-                        .HasForeignKey("HremployeeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Hremployee");
-                });
-
-            modelBuilder.Entity("HRM.Models.Pay_EmployeeLoanInstallment", b =>
-                {
-                    b.HasOne("HRM.Models.Pay_PayrollRun", "ConsumedByPayrollRun")
-                        .WithMany()
-                        .HasForeignKey("ConsumedByPayrollRunId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("HRM.Models.Pay_EmployeeLoan", "Pay_EmployeeLoan")
-                        .WithMany("Pay_EmployeeLoanInstallments")
-                        .HasForeignKey("LoanId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ConsumedByPayrollRun");
-
-                    b.Navigation("Pay_EmployeeLoan");
-                });
-
             modelBuilder.Entity("HRM.Models.Pay_GLExportBatch", b =>
                 {
                     b.HasOne("HRM.Models.Pay_PayrollRun", "Pay_PayrollRun")
@@ -16004,8 +15836,6 @@ namespace HRM.Migrations
 
                     b.Navigation("Pay_AdhocPayItems");
 
-                    b.Navigation("Pay_EmployeeLoans");
-
                     b.Navigation("Pay_PayrollEmployees");
 
                     b.Navigation("Pay_PositionSalaryHistories");
@@ -16028,11 +15858,6 @@ namespace HRM.Migrations
             modelBuilder.Entity("HRM.Models.Pay_BankFileExportBatch", b =>
                 {
                     b.Navigation("Pay_BankFileExportLines");
-                });
-
-            modelBuilder.Entity("HRM.Models.Pay_EmployeeLoan", b =>
-                {
-                    b.Navigation("Pay_EmployeeLoanInstallments");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_GLExportBatch", b =>

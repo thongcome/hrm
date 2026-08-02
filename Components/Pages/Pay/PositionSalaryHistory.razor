@@ -1,0 +1,129 @@
+@page "/pay/employees/{HremployeeId:long}/position-salary-history"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติปรับตำแหน่ง/เงินเดือน</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+            <div>
+                <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">ตำแหน่งปัจจุบัน: @(_employee.PosCode ?? "-")  ·  เงินเดือนปัจจุบัน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
+            </div>
+            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">← กลับไปรายการพนักงาน</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">ประวัติปรับตำแหน่ง/เงินเดือน</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            บันทึกอัตโนมัติทุกครั้งที่ตำแหน่งหรือเงินเดือนของพนักงานคนนี้ถูกแก้ไขผ่านหน้า "จัดการพนักงาน"
+        </MudText>
+
+        @if (_history.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีประวัติการปรับตำแหน่ง/เงินเดือนสำหรับพนักงานคนนี้</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_history" Dense="true" Hover="true" Elevation="0" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>วันที่</MudTh>
+                    <MudTh>ประเภท</MudTh>
+                    <MudTh>ตำแหน่ง (เดิม → ใหม่)</MudTh>
+                    <MudTh>เงินเดือน (เดิม → ใหม่)</MudTh>
+                    <MudTh>เลขที่คำสั่ง</MudTh>
+                    <MudTh>หมายเหตุ</MudTh>
+                    <MudTh>ผู้บันทึก</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ChangedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@FormatChangeType(context.ChangeType)</MudTd>
+                    <MudTd>@(context.OldPositionCode ?? "-") → @(context.NewPositionCode ?? "-")</MudTd>
+                    <MudTd>
+                        @(context.OldSalary?.ToString("N2") ?? "-") → @(context.NewSalary?.ToString("N2") ?? "-")
+                        @if (context.OldSalary is not null && context.NewSalary is not null && context.NewSalary != context.OldSalary)
+                        {
+                            var diff = context.NewSalary.Value - context.OldSalary.Value;
+                            <MudText Typo="Typo.caption" Color="@(diff > 0 ? Color.Success : Color.Error)">
+                                (@(diff > 0 ? "+" : "")@diff.ToString("N2"))
+                            </MudText>
+                        }
+                    </MudTd>
+                    <MudTd>@(context.OrderNo ?? "-")</MudTd>
+                    <MudTd>@(context.Reason ?? "-")</MudTd>
+                    <MudTd>@(_userNames.TryGetValue(context.ChangedByUserId ?? 0, out var name) ? name : "-")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long HremployeeId { get; set; }
+
+    private Hremployee? _employee;
+    private bool _notFound;
+    private List<Pay_PositionSalaryHistory> _history = new();
+    private Dictionary<long, string> _userNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var companyId = await GetCurrentCompanyIdAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == HremployeeId && e.companyid == companyId);
+        if (_employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _history = await context.Pay_PositionSalaryHistories
+            .Where(h => h.HremployeeId == HremployeeId)
+            .OrderByDescending(h => h.ChangedDate)
+            .ToListAsync();
+
+        var userIds = _history.Where(h => h.ChangedByUserId is not null).Select(h => h.ChangedByUserId!.Value).Distinct().ToList();
+        if (userIds.Count > 0)
+        {
+            _userNames = await context.sc_users
+                .Where(u => userIds.Contains(u.userid))
+                .ToDictionaryAsync(u => u.userid, u => $"{u.firstname} {u.lastname}".Trim());
+        }
+    }
+
+    private async Task<string?> GetCurrentCompanyIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return state.User.FindFirstValue("payroll_company");
+    }
+
+    private static string FormatChangeType(string? code) => code switch
+    {
+        "P" => "เลื่อนตำแหน่ง",
+        "D" => "ลดตำแหน่ง",
+        "T" => "โยกย้าย",
+        "S" => "ปรับเงินเดือนอย่างเดียว",
+        "O" => "อื่นๆ",
+        _ => "-",
+    };
+}

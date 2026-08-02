@@ -93,6 +93,8 @@
                 }
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenDocsAsync(context))">เอกสาร</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/pay-items"))">เงินได้-เงินหัก</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/position-salary-history"))">ประวัติปรับตำแหน่ง/เงินเดือน</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/loans"))">เงินกู้พนักงาน</MudButton>
             </MudTd>
         </RowTemplate>
     </MudTable>
@@ -165,6 +167,14 @@
                     <MudNumericField @bind-Value="_formEmployee.SalaryAmt" Label="เงินเดือน" Format="N2" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
+                    <MudSelect T="long?" @bind-Value="_formEmployee.SalaryGradeId" Label="เกรดเงินเดือน" Clearable="true">
+                        @foreach (var grade in _salaryGrades)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)grade.Id)">@grade.GradeCode — @grade.GradeName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
                     <MudTextField @bind-Value="_formEmployee.SalexpBank" Label="รหัสธนาคาร" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
@@ -173,7 +183,38 @@
                 <MudItem xs="12" sm="4">
                     <MudTextField @bind-Value="_formEmployee.SalexpAccid" Label="เลขบัญชี" />
                 </MudItem>
+                @{ var compaStatus = GetCompaRatioStatus(); }
+                @if (compaStatus is not null)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="compaStatus.Value.Severity" Dense="true">@compaStatus.Value.Text</MudAlert>
+                    </MudItem>
+                }
             </MudGrid>
+
+            @if (!_isCreating)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                    ถ้าเปลี่ยนตำแหน่งหรือเงินเดือนในฟอร์มด้านบน ระบบจะบันทึกลง "ประวัติปรับตำแหน่ง/เงินเดือน" ให้อัตโนมัติ — ช่องด้านล่างนี้ไม่บังคับ ใช้เผื่ออยากระบุรายละเอียดเพิ่ม
+                </MudAlert>
+                <MudGrid Class="mt-1">
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="ประเภทการเปลี่ยนแปลง" Clearable="true">
+                            <MudSelectItem T="string" Value="@("P")">เลื่อนตำแหน่ง</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("D")">ลดตำแหน่ง</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("T")">โยกย้าย</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("S")">ปรับเงินเดือนอย่างเดียว</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("O")">อื่นๆ</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField @bind-Value="_positionSalaryOrderNo" Label="เลขที่คำสั่ง" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudTextField @bind-Value="_positionSalaryReason" Label="หมายเหตุ/เหตุผล" />
+                    </MudItem>
+                </MudGrid>
+            }
 
             @if (!string.IsNullOrEmpty(_formError))
             {
@@ -401,6 +442,12 @@
     private DateTime? _workDate;
     private DateTime? _birthDate;
 
+    // Only used when saving an edit that actually changes SalaryAmt/PosCode —
+    // captured optionally alongside the change, not required (see SaveEmployeeAsync).
+    private string? _positionSalaryReason;
+    private string? _positionSalaryOrderNo;
+    private string? _positionSalaryChangeType;
+
     private Hremployee? _resignEmployee;
     private DateTime? _resignDate = DateTime.Today;
     private string? _resignError;
@@ -432,6 +479,7 @@
     private string? _resetPasswordInfo;
 
     private List<com_organization> _organizations = new();
+    private List<Pay_SalaryGrade> _salaryGrades = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -445,9 +493,34 @@
                 .Where(o => o.isActive)
                 .OrderBy(o => o.orgcodefull)
                 .ToListAsync();
+
+            _salaryGrades = await context.Pay_SalaryGrades
+                .Where(g => g.CompanyId == _companyId && g.IsActive)
+                .OrderBy(g => g.SortOrder).ThenBy(g => g.GradeCode)
+                .ToListAsync();
         }
 
         await LoadAsync();
+    }
+
+    // null = ไม่ได้กำหนดเกรด; otherwise compares SalaryAmt against the
+    // selected grade's band and returns a short Thai label + severity for
+    // the alert shown next to the grade picker.
+    private (string Text, Severity Severity)? GetCompaRatioStatus()
+    {
+        if (_formEmployee?.SalaryGradeId is not long gradeId || _formEmployee.SalaryAmt is not decimal salary)
+            return null;
+
+        var grade = _salaryGrades.FirstOrDefault(g => g.Id == gradeId);
+        if (grade is null) return null;
+
+        var compaRatio = grade.MidSalary == 0 ? 0 : salary / grade.MidSalary * 100;
+
+        if (salary < grade.MinSalary)
+            return ($"ต่ำกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
+        if (salary > grade.MaxSalary)
+            return ($"สูงกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
+        return ($"อยู่ในช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Success);
     }
 
     // Sets orgcode/orgcodefull as a denormalized snapshot from the chosen
@@ -552,6 +625,9 @@
         _formError = null;
         _workDate = emp.WorkDate;
         _birthDate = emp.BirthDate;
+        _positionSalaryReason = null;
+        _positionSalaryOrderNo = null;
+        _positionSalaryChangeType = null;
         // work on a copy so cancelling doesn't leave the grid row mutated
         _formEmployee = new Hremployee
         {
@@ -570,6 +646,7 @@
             orgcodefull = emp.orgcodefull,
             IdCard = emp.IdCard,
             SalaryAmt = emp.SalaryAmt,
+            SalaryGradeId = emp.SalaryGradeId,
             SalexpBank = emp.SalexpBank,
             SalexpBranch = emp.SalexpBranch,
             SalexpAccid = emp.SalexpAccid,
@@ -641,6 +718,9 @@
                 existing.PrenameCode = _formEmployee.PrenameCode;
                 existing.EmpName = _formEmployee.EmpName;
                 existing.EmpSurname = _formEmployee.EmpSurname;
+                var oldPosCode = existing.PosCode;
+                var oldSalary = existing.SalaryAmt;
+
                 existing.EmptypeCode = _formEmployee.EmptypeCode;
                 existing.DeptgrpCode = _formEmployee.DeptgrpCode;
                 existing.PosCode = _formEmployee.PosCode;
@@ -650,12 +730,41 @@
                 existing.orgcodefull = _formEmployee.orgcodefull;
                 existing.IdCard = _formEmployee.IdCard;
                 existing.SalaryAmt = _formEmployee.SalaryAmt;
+                existing.SalaryGradeId = _formEmployee.SalaryGradeId;
                 existing.SalexpBank = _formEmployee.SalexpBank;
                 existing.SalexpBranch = _formEmployee.SalexpBranch;
                 existing.SalexpAccid = _formEmployee.SalexpAccid;
                 existing.WorkDate = _workDate;
                 existing.BirthDate = _birthDate;
                 await context.SaveChangesAsync();
+
+                // Auto-capture into ประวัติปรับตำแหน่ง/เงินเดือน — only when
+                // position or salary actually changed, so a save that
+                // touches unrelated fields (bank account, address, etc.)
+                // doesn't create a spurious history row.
+                if (oldPosCode != existing.PosCode || oldSalary != existing.SalaryAmt)
+                {
+                    var state = await AuthProvider.GetAuthenticationStateAsync();
+                    var userIdClaim = state.User.FindFirstValue("sc_userid");
+                    var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+
+                    context.Pay_PositionSalaryHistories.Add(new Pay_PositionSalaryHistory
+                    {
+                        HremployeeId = existing.id,
+                        EmpNo = existing.EmpNo,
+                        CompanyId = existing.companyid,
+                        OldPositionCode = oldPosCode,
+                        NewPositionCode = existing.PosCode,
+                        OldSalary = oldSalary,
+                        NewSalary = existing.SalaryAmt,
+                        ChangeType = string.IsNullOrWhiteSpace(_positionSalaryChangeType) ? null : _positionSalaryChangeType,
+                        OrderNo = string.IsNullOrWhiteSpace(_positionSalaryOrderNo) ? null : _positionSalaryOrderNo,
+                        OrderDate = DateTime.Today,
+                        Reason = string.IsNullOrWhiteSpace(_positionSalaryReason) ? null : _positionSalaryReason,
+                        ChangedByUserId = userId,
+                    });
+                    await context.SaveChangesAsync();
+                }
             }
         }
         catch (DbUpdateException)

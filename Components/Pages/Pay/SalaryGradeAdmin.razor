@@ -1,0 +1,221 @@
+@page "/pay/admin/salary-grades"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>โครงสร้างเงินเดือน (Pay Grade)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">โครงสร้างเงินเดือน / เกรดเงินเดือน (Salary Grade)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดช่วงเงินเดือนต่ำสุด-กลาง-สูงสุดของแต่ละเกรด — ใช้เทียบกับเงินเดือนจริงของพนักงานที่หน้า "จัดการพนักงาน" เพื่อดูว่าอยู่ในช่วงที่กำหนดหรือไม่
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มเกรดใหม่" : $"แก้ไขเกรด — {_form.GradeCode}")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.GradeCode" Label="รหัสเกรด" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_form.GradeName" Label="ชื่อเกรด" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MinSalary" Label="เงินเดือนต่ำสุด" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MidSalary" Label="เงินเดือนกลาง (Midpoint)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MaxSalary" Label="เงินเดือนสูงสุด" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มเกรด" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_grades" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อเกรด</MudTh>
+            <MudTh>ช่วงเงินเดือน (ต่ำสุด - กลาง - สูงสุด)</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.GradeCode</MudTd>
+            <MudTd>@context.GradeName</MudTd>
+            <MudTd>@context.MinSalary.ToString("N2") - @context.MidSalary.ToString("N2") - @context.MaxSalary.ToString("N2")</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pay_SalaryGrade> _grades = new();
+    private string? _error;
+    private long? _editingId;
+
+    private class GradeForm
+    {
+        public string GradeCode { get; set; } = "";
+        public string GradeName { get; set; } = "";
+        public decimal MinSalary { get; set; }
+        public decimal MidSalary { get; set; }
+        public decimal MaxSalary { get; set; }
+        public int SortOrder { get; set; }
+    }
+
+    private GradeForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _grades = await context.Pay_SalaryGrades
+            .Where(g => g.CompanyId == _companyId)
+            .OrderBy(g => g.SortOrder).ThenBy(g => g.GradeCode)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Pay_SalaryGrade grade)
+    {
+        _editingId = grade.Id;
+        _form = new GradeForm
+        {
+            GradeCode = grade.GradeCode,
+            GradeName = grade.GradeName,
+            MinSalary = grade.MinSalary,
+            MidSalary = grade.MidSalary,
+            MaxSalary = grade.MaxSalary,
+            SortOrder = grade.SortOrder,
+        };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new GradeForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.GradeCode) || string.IsNullOrWhiteSpace(_form.GradeName))
+        {
+            _error = "กรุณากรอกรหัสเกรดและชื่อเกรด";
+            return;
+        }
+
+        if (_form.MinSalary > _form.MidSalary || _form.MidSalary > _form.MaxSalary)
+        {
+            _error = "ช่วงเงินเดือนต้องเรียงจากต่ำสุด ≤ กลาง ≤ สูงสุด";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Pay_SalaryGrades.AnyAsync(g =>
+            g.CompanyId == _companyId && g.GradeCode == _form.GradeCode && g.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"มีรหัสเกรด {_form.GradeCode} อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Pay_SalaryGrades.FirstOrDefaultAsync(g => g.Id == id && g.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบเกรดที่ต้องการแก้ไข";
+                return;
+            }
+            existing.GradeCode = _form.GradeCode;
+            existing.GradeName = _form.GradeName;
+            existing.MinSalary = _form.MinSalary;
+            existing.MidSalary = _form.MidSalary;
+            existing.MaxSalary = _form.MaxSalary;
+            existing.SortOrder = _form.SortOrder;
+        }
+        else
+        {
+            context.Pay_SalaryGrades.Add(new Pay_SalaryGrade
+            {
+                CompanyId = _companyId!,
+                GradeCode = _form.GradeCode,
+                GradeName = _form.GradeName,
+                MinSalary = _form.MinSalary,
+                MidSalary = _form.MidSalary,
+                MaxSalary = _form.MaxSalary,
+                SortOrder = _form.SortOrder,
+                IsActive = true,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มเกรดเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Pay_SalaryGrade grade)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_SalaryGrades.FirstOrDefaultAsync(g => g.Id == grade.Id && g.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

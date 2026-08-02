@@ -72,3 +72,17 @@ public enum Pay_EmployeeDocumentType
     BankBook = 4,
     Other = 9
 }
+
+public enum Pay_EmployeeLoanStatus
+{
+    Active = 0,
+    PaidOff = 1,
+    Cancelled = 2
+}
+
+public enum Pay_LoanInstallmentStatus
+{
+    Pending = 0,
+    Consumed = 1,
+    Cancelled = 2
+}

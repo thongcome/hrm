@@ -356,6 +356,14 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
 
+    public virtual DbSet<Pay_PositionSalaryHistory> Pay_PositionSalaryHistories { get; set; }
+
+    public virtual DbSet<Pay_SalaryGrade> Pay_SalaryGrades { get; set; }
+
+    public virtual DbSet<Pay_EmployeeLoan> Pay_EmployeeLoans { get; set; }
+
+    public virtual DbSet<Pay_EmployeeLoanInstallment> Pay_EmployeeLoanInstallments { get; set; }
+
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }
@@ -1380,6 +1388,35 @@ public partial class HRMContext : DbContext
             // no navigation collection back on Pay_PayrollRun — this is a
             // many-to-one lookup only (which run consumed this item), not
             // part of the run's owned object graph
+            entity.HasOne(d => d.ConsumedByPayrollRun)
+                .WithMany()
+                .HasForeignKey(d => d.ConsumedByPayrollRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PositionSalaryHistory>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_PositionSalaryHistories)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_EmployeeLoan>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_EmployeeLoans)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_EmployeeLoanInstallment>(entity =>
+        {
+            entity.HasOne(d => d.Pay_EmployeeLoan)
+                .WithMany(p => p.Pay_EmployeeLoanInstallments)
+                .HasForeignKey(d => d.LoanId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.HasOne(d => d.ConsumedByPayrollRun)
                 .WithMany()
                 .HasForeignKey(d => d.ConsumedByPayrollRunId)

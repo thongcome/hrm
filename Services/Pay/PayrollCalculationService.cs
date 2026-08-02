@@ -150,6 +150,21 @@ public class PayrollCalculationService
                     lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, loanAmount, -1, ++seq, "KPTEMPRECEIVEDET", null));
             }
 
+            // HR-entered company loans (Pay_EmployeeLoan) — separate pathway
+            // from the cooperative KPTEMPRECEIVE loan above; an employee
+            // could have both types of deduction in the same period.
+            var empLoanInstallments = await LoanDeductionCalculator.GetEmployeeLoanInstallmentsForPeriodAsync(context, emp.id, run.PayrollPeriod, run.Id, ct);
+            foreach (var installment in empLoanInstallments)
+            {
+                lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, installment.Amount, -1, ++seq, "Pay_EmployeeLoanInstallment", installment.Id));
+                installment.Status = Pay_LoanInstallmentStatus.Consumed;
+                installment.ConsumedByPayrollRunId = run.Id;
+                installment.Pay_EmployeeLoan.RemainingBalance = installment.BalanceAfter;
+                if (installment.InstallmentNo == installment.Pay_EmployeeLoan.TotalInstallments)
+                    installment.Pay_EmployeeLoan.Status = Pay_EmployeeLoanStatus.PaidOff;
+            }
+            loanAmount += LoanDeductionCalculator.SumEmployeeLoanAmount(empLoanInstallments);
+
             // HR-entered ad-hoc items (bonus, commission, ad-hoc deduction, etc.)
             // approved and targeting this exact period. Query includes items
             // already consumed by THIS run so recalculation re-picks them up
