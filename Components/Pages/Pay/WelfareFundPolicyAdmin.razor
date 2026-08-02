@@ -1,0 +1,261 @@
+@page "/pay/admin/welfare-fund-policy"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay.Calculators
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ตั้งค่ากองทุนสงเคราะห์ลูกจ้าง</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">กองทุนสงเคราะห์ลูกจ้าง (Employee Welfare Fund)</MudText>
+    <MudAlert Severity="Severity.Warning" Class="mt-2">
+        เริ่มบังคับใช้จริง 1 ต.ค. 2569 — ค่าเริ่มต้นที่ตั้งไว้มาจากการสืบค้นข้อมูลสาธารณะเท่านั้น
+        (ยังไม่ยืนยันเพดานค่าจ้าง/ช่องทางนำส่งกับกรมสวัสดิการฯ โดยตรง) หน้านี้เป็นแค่การตั้งค่า+ทดสอบคำนวณ
+        <b>ยังไม่ผูกเข้ากับการคำนวณเงินเดือนจริง</b> จนกว่าจะยืนยันรายละเอียดครบและเปิดใช้งาน (IsEnabled)
+    </MudAlert>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มช่วงอัตราใหม่" : "แก้ไขช่วงอัตรา")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6"><MudDatePicker Label="มีผลตั้งแต่" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="ถึงวันที่ (เว้นว่าง = ไม่มีกำหนด)" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_employeeRate" Label="อัตราฝั่งพนักงาน (%)" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_companyRate" Label="อัตราฝั่งบริษัท (%)" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_wageCap" Label="เพดานค่าจ้าง/เดือน (เว้นว่าง = ไม่มีเพดาน)" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12">
+            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Warning" Label="เปิดใช้งาน (มีผลกระทบจริงเมื่อผูกเข้าเงินเดือนในอนาคต)" />
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="หมายเหตุ / แหล่งที่มา" Lines="2" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มช่วงอัตรา" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_policies" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ช่วงวันที่</MudTh>
+            <MudTh>อัตรา (พนักงาน / บริษัท)</MudTh>
+            <MudTh>เพดานค่าจ้าง</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy") - @(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")</MudTd>
+            <MudTd>@context.EmployeeContributionRate.ToString("0.00")% / @context.CompanyContributionRate.ToString("0.00")%</MudTd>
+            <MudTd>@(context.WageCapPerMonth?.ToString("N2") ?? "ไม่มีเพดาน")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsEnabled ? Color.Warning : Color.Default)">
+                    @(context.IsEnabled ? "เปิดใช้งาน" : "ปิดอยู่")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีการตั้งค่าอัตราสำหรับบริษัทนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h6">ทดสอบคำนวณ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ป้อนค่าจ้างและวันที่ เพื่อดูว่าจะถูกหักเท่าไหร่ตามช่วงอัตราที่ตั้งไว้ (ไม่บันทึกข้อมูลใดๆ ใช้สำหรับตรวจสอบ config เท่านั้น)
+    </MudText>
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testWage" Label="ค่าจ้างต่อเดือน (บาท)" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ทดสอบ" @bind-Date="_testDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+    </MudGrid>
+    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreview">คำนวณ</MudButton>
+
+    @if (_previewResult is not null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">
+            @if (_previewResult.Value.Matched is null)
+            {
+                <text>ไม่พบช่วงอัตราที่ครอบคลุมวันที่นี้ (หรือยังไม่เปิดใช้งาน) — จะไม่มีการหักใดๆ</text>
+            }
+            else
+            {
+                <text>
+                    ใช้ช่วงอัตรา @_previewResult.Value.Matched.EffectiveFrom.ToString("dd/MM/yyyy") - @(_previewResult.Value.Matched.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")
+                    (@_previewResult.Value.Matched.EmployeeContributionRate.ToString("0.00")% / @_previewResult.Value.Matched.CompanyContributionRate.ToString("0.00")%)<br />
+                    หักจากพนักงาน: <b>@_previewResult.Value.Result.EmployeeAmount.ToString("N2")</b> บาท ·
+                    บริษัทสมทบ: <b>@_previewResult.Value.Result.CompanyAmount.ToString("N2")</b> บาท
+                    @if (!_previewResult.Value.Matched.IsEnabled)
+                    {
+                        <br />
+                        <text><i>(ช่วงอัตรานี้ยังปิดใช้งานอยู่ — ตัวเลขนี้เป็นการทดสอบเฉยๆ ไม่มีผลจริง)</i></text>
+                    }
+                </text>
+            }
+        </MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pay_WelfareFundPolicy> _policies = new();
+    private string? _error;
+    private long? _editingId;
+
+    private DateTime? _effectiveFrom = DateTime.Today;
+    private DateTime? _effectiveTo;
+    private decimal _employeeRate;
+    private decimal _companyRate;
+    private decimal? _wageCap;
+    private bool _isEnabled;
+    private string? _note;
+
+    private decimal _testWage = 20000m;
+    private DateTime? _testDate = new DateTime(2026, 10, 1);
+    private (Pay_WelfareFundPolicy? Matched, WelfareFundCalculator.Result Result)? _previewResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _policies = await context.Pay_WelfareFundPolicies
+            .Where(p => p.CompanyId == _companyId)
+            .OrderBy(p => p.EffectiveFrom)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Pay_WelfareFundPolicy policy)
+    {
+        _editingId = policy.Id;
+        _effectiveFrom = policy.EffectiveFrom.ToDateTime(TimeOnly.MinValue);
+        _effectiveTo = policy.EffectiveTo?.ToDateTime(TimeOnly.MinValue);
+        _employeeRate = policy.EmployeeContributionRate;
+        _companyRate = policy.CompanyContributionRate;
+        _wageCap = policy.WageCapPerMonth;
+        _isEnabled = policy.IsEnabled;
+        _note = policy.Note;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _effectiveFrom = DateTime.Today;
+        _effectiveTo = null;
+        _employeeRate = 0;
+        _companyRate = 0;
+        _wageCap = null;
+        _isEnabled = false;
+        _note = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (_effectiveFrom is null)
+        {
+            _error = "กรุณาระบุวันที่มีผล";
+            return;
+        }
+        if (_effectiveTo is not null && _effectiveTo < _effectiveFrom)
+        {
+            _error = "วันสิ้นสุดต้องไม่ก่อนวันที่มีผล";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var effectiveFrom = DateOnly.FromDateTime(_effectiveFrom.Value);
+        var effectiveTo = _effectiveTo is not null ? DateOnly.FromDateTime(_effectiveTo.Value) : (DateOnly?)null;
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Pay_WelfareFundPolicies.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบช่วงอัตราที่ต้องการแก้ไข";
+                return;
+            }
+            existing.EffectiveFrom = effectiveFrom;
+            existing.EffectiveTo = effectiveTo;
+            existing.EmployeeContributionRate = _employeeRate;
+            existing.CompanyContributionRate = _companyRate;
+            existing.WageCapPerMonth = _wageCap;
+            existing.IsEnabled = _isEnabled;
+            existing.Note = _note;
+        }
+        else
+        {
+            context.Pay_WelfareFundPolicies.Add(new Pay_WelfareFundPolicy
+            {
+                CompanyId = _companyId!,
+                EffectiveFrom = effectiveFrom,
+                EffectiveTo = effectiveTo,
+                EmployeeContributionRate = _employeeRate,
+                CompanyContributionRate = _companyRate,
+                WageCapPerMonth = _wageCap,
+                IsEnabled = _isEnabled,
+                Note = _note,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มช่วงอัตราเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private void RunPreview()
+    {
+        if (_testDate is null) return;
+
+        var testDate = DateOnly.FromDateTime(_testDate.Value);
+        var matched = _policies.FirstOrDefault(p =>
+            p.EffectiveFrom <= testDate && (p.EffectiveTo == null || p.EffectiveTo >= testDate));
+
+        if (matched is null)
+        {
+            _previewResult = (null, new WelfareFundCalculator.Result(0, 0));
+            return;
+        }
+
+        var result = WelfareFundCalculator.Calculate(_testWage, matched.EmployeeContributionRate, matched.CompanyContributionRate, matched.WageCapPerMonth);
+        _previewResult = (matched, result);
+    }
+}
