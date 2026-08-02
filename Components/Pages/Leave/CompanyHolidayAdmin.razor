@@ -1,0 +1,181 @@
+@page "/leave-requests/holidays"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ปฏิทินวันหยุดบริษัท</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ปฏิทินวันหยุดบริษัท (Company Holidays)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        วันหยุดที่กำหนดที่นี่จะไม่ถูกนับเป็นวันลา (ร่วมกับเสาร์-อาทิตย์) เมื่อยื่นคำขอลางาน
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มวันหยุดใหม่" : "แก้ไขวันหยุด")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6">
+            <MudDatePicker Label="วันที่" @bind-Date="_holidayDate" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="_name" Label="ชื่อวันหยุด" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มวันหยุด" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_holidays" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>วันที่</MudTh>
+            <MudTh>ชื่อวันหยุด</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.HolidayDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีวันหยุดบริษัทที่บันทึกไว้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Lve_CompanyHoliday> _holidays = new();
+    private string? _error;
+    private long? _editingId;
+
+    private DateTime? _holidayDate = DateTime.Today;
+    private string? _name;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _holidays = await context.Lve_CompanyHolidays
+            .Where(h => h.CompanyId == _companyId)
+            .OrderBy(h => h.HolidayDate)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Lve_CompanyHoliday holiday)
+    {
+        _editingId = holiday.Id;
+        _holidayDate = holiday.HolidayDate.ToDateTime(TimeOnly.MinValue);
+        _name = holiday.Name;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _holidayDate = DateTime.Today;
+        _name = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (_holidayDate is null || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุวันที่และชื่อวันหยุด";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var date = DateOnly.FromDateTime(_holidayDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Lve_CompanyHolidays.FirstOrDefaultAsync(h => h.Id == id && h.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบวันหยุดที่ต้องการแก้ไข";
+                return;
+            }
+            existing.HolidayDate = date;
+            existing.Name = _name;
+        }
+        else
+        {
+            var duplicate = await context.Lve_CompanyHolidays.AnyAsync(h => h.CompanyId == _companyId && h.HolidayDate == date);
+            if (duplicate)
+            {
+                _error = "มีวันหยุดในวันนี้อยู่แล้ว";
+                return;
+            }
+
+            context.Lve_CompanyHolidays.Add(new Lve_CompanyHoliday
+            {
+                CompanyId = _companyId!,
+                HolidayDate = date,
+                Name = _name,
+                IsActive = true,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มวันหยุดเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Lve_CompanyHoliday holiday)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lve_CompanyHolidays.FirstOrDefaultAsync(h => h.Id == holiday.Id && h.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

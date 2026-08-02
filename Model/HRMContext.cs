@@ -370,6 +370,10 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Lve_LeaveRequest> Lve_LeaveRequests { get; set; }
 
+    public virtual DbSet<Lve_LeavePolicy> Lve_LeavePolicies { get; set; }
+
+    public virtual DbSet<Lve_CompanyHoliday> Lve_CompanyHolidays { get; set; }
+
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }

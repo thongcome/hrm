@@ -1,5 +1,6 @@
 @page "/leave-requests"
 @using HRM.Models
+@using HRM.Services.Leave
 @using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -73,11 +74,11 @@
     <MudText Typo="Typo.h6">ยื่นคำขอลาใหม่</MudText>
     <MudGrid Class="mt-1">
         <MudItem xs="12" sm="6">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="v => _selectedEmployee = v"
+            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync"
                 SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" />
         </MudItem>
         <MudItem xs="12" sm="6">
-            <MudSelect T="LeaveType" @bind-Value="_leaveType" Label="ประเภทการลา">
+            <MudSelect T="LeaveType" @bind-Value="_leaveType" @bind-Value:after="RecomputeBalanceAsync" Label="ประเภทการลา">
                 <MudSelectItem T="LeaveType" Value="LeaveType.Sick">ลาป่วย</MudSelectItem>
                 <MudSelectItem T="LeaveType" Value="LeaveType.Personal">ลากิจ</MudSelectItem>
                 <MudSelectItem T="LeaveType" Value="LeaveType.Vacation">ลาพักร้อน</MudSelectItem>
@@ -86,8 +87,23 @@
                 <MudSelectItem T="LeaveType" Value="LeaveType.Other">อื่นๆ</MudSelectItem>
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มลา" @bind-Date="_startDate" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" /></MudItem>
+        @if (_selectedEmployee is not null)
+        {
+            <MudItem xs="12">
+                @if (_remainingBalance is decimal remaining)
+                {
+                    <MudAlert Severity="@(remaining > 0 ? Severity.Info : Severity.Warning)" Dense="true">
+                        สิทธิ@(LeaveTypeLabel(_leaveType))คงเหลือปีนี้: @remaining.ToString("0.#") วัน
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">ยังไม่ได้ตั้งค่าสิทธิ@(LeaveTypeLabel(_leaveType))สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink></MudAlert>
+                }
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มลา" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
         <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล" Lines="2" /></MudItem>
         <MudItem xs="12">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateRequestAsync">บันทึกคำขอ (ร่าง)</MudButton>
@@ -109,6 +125,7 @@
     private DateTime? _startDate = DateTime.Today;
     private DateTime? _endDate = DateTime.Today;
     private string? _reason;
+    private decimal? _remainingBalance;
 
     protected override async Task OnInitializedAsync()
     {
@@ -154,6 +171,44 @@
         _ => Color.Warning,
     };
 
+    private async Task OnEmployeeChangedAsync(Hremployee? employee)
+    {
+        _selectedEmployee = employee;
+        await RecomputeBalanceAsync();
+    }
+
+    private async Task RecomputeBalanceAsync()
+    {
+        if (_selectedEmployee is null)
+        {
+            _remainingBalance = null;
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p =>
+            p.CompanyId == _selectedEmployee.companyid && p.LeaveType == _leaveType && p.IsActive);
+        if (policy is null)
+        {
+            _remainingBalance = null;
+            return;
+        }
+
+        var currentYear = DateTime.Today.Year;
+        var completedRequests = await (
+            from r in context.Lve_LeaveRequests
+            join j in context.job_masters on r.JobMasterId equals j.jobmasterid
+            where r.HremployeeId == _selectedEmployee.id
+                  && r.LeaveType == _leaveType
+                  && r.StartDate.Year == currentYear
+                  && j.status == "COMPLETED"
+            select r.TotalDays
+        ).ToListAsync();
+
+        _remainingBalance = policy.EntitlementDaysPerYear - completedRequests.Sum();
+    }
+
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
     {
         await using var context = await DbFactory.CreateDbContextAsync(ct);
@@ -190,7 +245,7 @@
             LeaveType = _leaveType,
             StartDate = start,
             EndDate = end,
-            TotalDays = (end.DayNumber - start.DayNumber) + 1,
+            TotalDays = await CalculateWorkingDaysAsync(context, _selectedEmployee.companyid, start, end),
             Reason = _reason,
         });
         await context.SaveChangesAsync();
@@ -198,6 +253,7 @@
         _info = "บันทึกคำขอลาสำเร็จ (ยังเป็นร่าง กด \"ส่งขออนุมัติ\" เพื่อเข้าสู่ workflow)";
         _selectedEmployee = null;
         _reason = null;
+        _remainingBalance = null;
         await RefreshAsync();
     }
 
@@ -230,5 +286,15 @@
         {
             _error = "ส่งขออนุมัติไม่สำเร็จ: " + ex.Message;
         }
+    }
+
+    private static async Task<decimal> CalculateWorkingDaysAsync(HRMContext context, string? companyId, DateOnly start, DateOnly end)
+    {
+        var holidayDates = await context.Lve_CompanyHolidays
+            .Where(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate >= start && h.HolidayDate <= end)
+            .Select(h => h.HolidayDate)
+            .ToListAsync();
+
+        return LeaveDayCalculator.CalculateWorkingDays(start, end, holidayDates.ToHashSet());
     }
 }

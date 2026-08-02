@@ -1,0 +1,170 @@
+@page "/leave-requests/policy"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>สิทธิการลา (Leave Policy)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">สิทธิการลาต่อปี (Leave Policy)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดจำนวนวันลาต่อปีของแต่ละประเภท — ใช้คำนวณ "ยอดคงเหลือ" ที่หน้ายื่นคำขอลา ค่าเริ่มต้นตั้งไว้ตามขั้นต่ำ พ.ร.บ.คุ้มครองแรงงาน ปรับได้ตามนโยบายบริษัท
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    <MudTable Items="_policies" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ประเภทการลา</MudTh>
+            <MudTh>สิทธิ (วัน/ปี)</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@LeaveTypeLabel(context.LeaveType)</MudTd>
+            <MudTd>
+                @if (_editingId == context.Id)
+                {
+                    <MudNumericField T="decimal" @bind-Value="_editDays" Min="0" Format="0.#" />
+                }
+                else
+                {
+                    @context.EntitlementDaysPerYear.ToString("0.#")
+                }
+            </MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                @if (_editingId == context.Id)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีการตั้งค่าสิทธิการลาสำหรับบริษัทนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (_missingTypes.Count > 0)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.body2" Class="mb-2">ประเภทที่ยังไม่ได้ตั้งค่า:</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+            @foreach (var type in _missingTypes)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddPolicyAsync(type))">+ @LeaveTypeLabel(type)</MudButton>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Lve_LeavePolicy> _policies = new();
+    private string? _error;
+    private long? _editingId;
+    private decimal _editDays;
+
+    private List<LeaveType> _missingTypes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _policies = await context.Lve_LeavePolicies
+            .Where(p => p.CompanyId == _companyId)
+            .OrderBy(p => p.LeaveType)
+            .ToListAsync();
+
+        var existingTypes = _policies.Select(p => p.LeaveType).ToHashSet();
+        _missingTypes = Enum.GetValues<LeaveType>().Where(t => !existingTypes.Contains(t)).ToList();
+    }
+
+    private static string LeaveTypeLabel(LeaveType type) => type switch
+    {
+        LeaveType.Sick => "ลาป่วย",
+        LeaveType.Personal => "ลากิจ",
+        LeaveType.Vacation => "ลาพักร้อน",
+        LeaveType.Maternity => "ลาคลอด",
+        LeaveType.Ordination => "ลาบวช",
+        _ => "อื่นๆ",
+    };
+
+    private void StartEdit(Lve_LeavePolicy policy)
+    {
+        _editingId = policy.Id;
+        _editDays = policy.EntitlementDaysPerYear;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editingId is not long id) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบข้อมูลที่ต้องการแก้ไข";
+            return;
+        }
+
+        existing.EntitlementDaysPerYear = _editDays;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกสิทธิการลาเรียบร้อย", Severity.Success);
+        _editingId = null;
+        await LoadAsync();
+    }
+
+    private async Task AddPolicyAsync(LeaveType type)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Lve_LeavePolicies.Add(new Lve_LeavePolicy
+        {
+            CompanyId = _companyId!,
+            LeaveType = type,
+            EntitlementDaysPerYear = 0,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}
