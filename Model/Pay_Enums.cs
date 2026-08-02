@@ -34,7 +34,8 @@ public enum PayLineSourceType
     ProvidentFund = 4,
     Tax = 5,
     Allowance = 6,
-    Adjustment = 7
+    Adjustment = 7,
+    Insurance = 8
 }
 
 public enum PayAuditEventType
@@ -85,4 +86,12 @@ public enum Pay_LoanInstallmentStatus
     Pending = 0,
     Consumed = 1,
     Cancelled = 2
+}
+
+public enum Pay_InsurancePlanType
+{
+    Health = 0,
+    Life = 1,
+    Accident = 2,
+    Other = 9
 }

@@ -89,6 +89,12 @@ public class PayrollCalculationService
                          && (pe.EffectiveTo == null || pe.EffectiveTo >= run.PeriodStart))
             .ToListAsync(ct);
 
+        var insuranceEnrollments = await context.Pay_EmployeeInsuranceEnrollments
+            .Where(e => e.IsActive
+                        && e.EffectiveFrom <= run.PeriodEnd
+                        && (e.EffectiveTo == null || e.EffectiveTo >= run.PeriodStart))
+            .ToListAsync(ct);
+
         // assumes 12 monthly runs/year; remaining periods including this one
         var remainingPeriods = 13 - run.PeriodStart.Month;
 
@@ -140,6 +146,12 @@ public class PayrollCalculationService
             var pf = ProvidentFundCalculator.Calculate(grossEarnings, pfEmployeeRate, pfCompanyRate);
             if (pf.EmployeeAmount != 0)
                 lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, null, null));
+
+            var empInsuranceEnrollments = insuranceEnrollments.Where(e => e.HremployeeId == emp.id).ToList();
+            var insuranceEmployeeAmount = empInsuranceEnrollments.Sum(e => e.EmployeeAmount);
+            var insuranceCompanyAmount = empInsuranceEnrollments.Sum(e => e.CompanyAmount);
+            if (insuranceEmployeeAmount != 0)
+                lineItems.Add(NewLine(payItemTypes["INSURANCE"], PayLineSourceType.Insurance, insuranceEmployeeAmount, -1, ++seq, "Pay_EmployeeInsuranceEnrollment", null));
 
             var loanAmount = 0m;
             if (!string.IsNullOrWhiteSpace(emp.RefMembno))
@@ -208,7 +220,7 @@ public class PayrollCalculationService
             if (monthlyTax != 0)
                 lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null));
 
-            var totalDeductions = ssoAmount + pf.EmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
+            var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
             var netPayResult = NetPayGuardService.Ensure(grossEarnings - totalDeductions);
 
             payEmp.GrossEarnings = grossEarnings;
@@ -218,6 +230,8 @@ public class PayrollCalculationService
             payEmp.SocialSecurityAmount = ssoAmount;
             payEmp.ProvidentFundEmployeeAmount = pf.EmployeeAmount;
             payEmp.ProvidentFundCompanyAmount = pf.CompanyAmount;
+            payEmp.InsuranceEmployeeAmount = insuranceEmployeeAmount;
+            payEmp.InsuranceCompanyAmount = insuranceCompanyAmount;
             payEmp.IsNegativeNetPayFlag = netPayResult.WasNegative;
             payEmp.Pay_PayrollLineItems = lineItems;
 

@@ -439,6 +439,8 @@ public partial class Hremployee
 
     public virtual ICollection<Pay_EmployeeLoan> Pay_EmployeeLoans { get; set; } = new List<Pay_EmployeeLoan>();
 
+    public virtual ICollection<Pay_EmployeeInsuranceEnrollment> Pay_EmployeeInsuranceEnrollments { get; set; } = new List<Pay_EmployeeInsuranceEnrollment>();
+
     public virtual ICollection<HrwOt> HrwOts { get; set; } = new List<HrwOt>();
 
     [InverseProperty("Hremployee")]

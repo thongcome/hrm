@@ -1,0 +1,236 @@
+@page "/pay/employees/{HremployeeId:long}/insurance"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประกันกลุ่มพนักงาน</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+            <div>
+                <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
+            </div>
+            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">← กลับไปรายการพนักงาน</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudText Typo="Typo.h6">ลงทะเบียนแผนประกันใหม่</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            เลือกแผนจากที่บริษัทกำหนดไว้ — เบี้ยประกันจะถูกดึงมาจากค่าเริ่มต้นของแผน สามารถปรับได้เฉพาะรายกรณี (เช่น เลือกความคุ้มครองแบบมีผู้ติดตาม)
+        </MudText>
+
+        @if (_availablePlans.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                ยังไม่มีแผนประกันของบริษัทให้เลือก — ไปตั้งค่าที่หน้า <MudLink Href="/pay/admin/insurance-plans">แผนประกันกลุ่ม</MudLink> ก่อน
+            </MudAlert>
+        }
+        else
+        {
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" Value="_selectedPlanId" ValueChanged="OnPlanSelected" Label="แผนประกัน">
+                        @foreach (var plan in _availablePlans)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)plan.Id)">@plan.PlanCode — @plan.PlanName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Date="_effectiveFrom" DateChanged="@(d => _effectiveFrom = d)" Label="มีผลตั้งแต่"
+                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_employeeAmount" Label="เบี้ยประกันฝั่งพนักงาน (ต่องวด)" Format="N2" Min="0" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_companyAmount" Label="เบี้ยประกันฝั่งบริษัท (ต่องวด)" Format="N2" Min="0" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="EnrollAsync">ลงทะเบียน</MudButton>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">ประวัติการลงทะเบียนประกัน</MudText>
+
+        @if (_enrollments.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีการลงทะเบียนประกันสำหรับพนักงานคนนี้</MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Class="mt-2">
+                <thead>
+                    <tr><th>แผน</th><th>เบี้ยประกัน (พนักงาน / บริษัท)</th><th>มีผลตั้งแต่</th><th>สิ้นสุด</th><th>สถานะ</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var enrollment in _enrollments)
+                    {
+                        <tr>
+                            <td>@enrollment.Pay_InsurancePlan.PlanCode — @enrollment.Pay_InsurancePlan.PlanName</td>
+                            <td>@enrollment.EmployeeAmount.ToString("N2") / @enrollment.CompanyAmount.ToString("N2")</td>
+                            <td>@enrollment.EffectiveFrom.ToString("dd/MM/yyyy")</td>
+                            <td>@(enrollment.EffectiveTo?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@(enrollment.IsActive ? "ใช้งาน" : "สิ้นสุดแล้ว")</td>
+                            <td>
+                                @if (enrollment.IsActive)
+                                {
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => EndEnrollmentAsync(enrollment.Id))">สิ้นสุดความคุ้มครอง</MudButton>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long HremployeeId { get; set; }
+
+    private Hremployee? _employee;
+    private bool _notFound;
+    private List<Pay_InsurancePlan> _availablePlans = new();
+    private List<Pay_EmployeeInsuranceEnrollment> _enrollments = new();
+    private string? _companyId;
+
+    private long? _selectedPlanId;
+    private DateTime? _effectiveFrom = DateTime.Today;
+    private decimal _employeeAmount;
+    private decimal _companyAmount;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == HremployeeId && e.companyid == _companyId);
+        if (_employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _availablePlans = await context.Pay_InsurancePlans
+            .Where(p => p.CompanyId == _companyId && p.IsActive)
+            .OrderBy(p => p.SortOrder).ThenBy(p => p.PlanCode)
+            .ToListAsync();
+
+        _enrollments = await context.Pay_EmployeeInsuranceEnrollments
+            .Include(e => e.Pay_InsurancePlan)
+            .Where(e => e.HremployeeId == HremployeeId)
+            .OrderByDescending(e => e.EffectiveFrom)
+            .ToListAsync();
+    }
+
+    private void OnPlanSelected(long? planId)
+    {
+        _selectedPlanId = planId;
+        var plan = _availablePlans.FirstOrDefault(p => p.Id == planId);
+        if (plan is not null)
+        {
+            _employeeAmount = plan.DefaultEmployeeAmount;
+            _companyAmount = plan.DefaultCompanyAmount;
+        }
+    }
+
+    private async Task EnrollAsync()
+    {
+        _error = null;
+
+        if (_selectedPlanId is null)
+        {
+            _error = "กรุณาเลือกแผนประกัน";
+            return;
+        }
+        if (_effectiveFrom is null)
+        {
+            _error = "กรุณาระบุวันที่มีผล";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var alreadyEnrolled = await context.Pay_EmployeeInsuranceEnrollments.AnyAsync(e =>
+            e.HremployeeId == HremployeeId && e.PlanId == _selectedPlanId && e.IsActive);
+        if (alreadyEnrolled)
+        {
+            _error = "พนักงานคนนี้ลงทะเบียนแผนนี้อยู่แล้วและยังไม่สิ้นสุด";
+            return;
+        }
+
+        context.Pay_EmployeeInsuranceEnrollments.Add(new Pay_EmployeeInsuranceEnrollment
+        {
+            HremployeeId = HremployeeId,
+            PlanId = _selectedPlanId.Value,
+            EmployeeAmount = _employeeAmount,
+            CompanyAmount = _companyAmount,
+            EffectiveFrom = DateOnly.FromDateTime(_effectiveFrom.Value),
+            IsActive = true,
+            EnrolledByUserId = userId,
+        });
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("ลงทะเบียนประกันเรียบร้อย", Severity.Success);
+
+        _selectedPlanId = null;
+        _employeeAmount = 0;
+        _companyAmount = 0;
+        await LoadAsync();
+    }
+
+    private async Task EndEnrollmentAsync(long enrollmentId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_EmployeeInsuranceEnrollments
+            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.HremployeeId == HremployeeId);
+        if (existing is null) return;
+
+        existing.IsActive = false;
+        existing.EffectiveTo = DateOnly.FromDateTime(DateTime.Today);
+        await context.SaveChangesAsync();
+        Snackbar.Add("สิ้นสุดความคุ้มครองเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

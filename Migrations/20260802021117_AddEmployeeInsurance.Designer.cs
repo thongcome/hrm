@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260802021117_AddEmployeeInsurance")]
+    partial class AddEmployeeInsurance
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3532,55 +3535,6 @@ namespace HRM.Migrations
                         .HasName("PK_LOA");
 
                     b.ToTable("loa");
-                });
-
-            modelBuilder.Entity("HRM.Models.Lve_LeaveRequest", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("CompanyId")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<string>("EmpNo")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<DateOnly>("EndDate")
-                        .HasColumnType("date");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("LeaveType")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("RequestedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date");
-
-                    b.Property<decimal>("TotalDays")
-                        .HasColumnType("decimal(5,1)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HremployeeId");
-
-                    b.ToTable("Lve_LeaveRequest");
                 });
 
             modelBuilder.Entity("HRM.Models.PRRequisitionConfirm", b =>
@@ -15460,17 +15414,6 @@ namespace HRM.Migrations
                         .IsRequired();
 
                     b.Navigation("Kptempreceive");
-                });
-
-            modelBuilder.Entity("HRM.Models.Lve_LeaveRequest", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany()
-                        .HasForeignKey("HremployeeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Hremployee");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_AdhocPayItem", b =>

@@ -364,6 +364,12 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Pay_EmployeeLoanInstallment> Pay_EmployeeLoanInstallments { get; set; }
 
+    public virtual DbSet<Pay_InsurancePlan> Pay_InsurancePlans { get; set; }
+
+    public virtual DbSet<Pay_EmployeeInsuranceEnrollment> Pay_EmployeeInsuranceEnrollments { get; set; }
+
+    public virtual DbSet<Lve_LeaveRequest> Lve_LeaveRequests { get; set; }
+
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }
@@ -1420,6 +1426,27 @@ public partial class HRMContext : DbContext
             entity.HasOne(d => d.ConsumedByPayrollRun)
                 .WithMany()
                 .HasForeignKey(d => d.ConsumedByPayrollRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_EmployeeInsuranceEnrollment>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany(p => p.Pay_EmployeeInsuranceEnrollments)
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Pay_InsurancePlan)
+                .WithMany(p => p.Pay_EmployeeInsuranceEnrollments)
+                .HasForeignKey(d => d.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Lve_LeaveRequest>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

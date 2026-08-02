@@ -44,6 +44,11 @@ public class Pay_PayrollEmployee
     [Column(TypeName = "decimal(15,2)")]
     public decimal ProvidentFundCompanyAmount { get; set; }
 
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal InsuranceEmployeeAmount { get; set; }
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal InsuranceCompanyAmount { get; set; }
+
     // set by NetPayGuardService when calculated net pay would be negative;
     // ApproveAsync blocks the run while any employee has this set
     public bool IsNegativeNetPayFlag { get; set; }

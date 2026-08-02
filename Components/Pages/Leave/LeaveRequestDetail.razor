@@ -1,0 +1,106 @@
+@page "/leave-requests/detail/{Id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>รายละเอียดคำขอลางาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบคำขอลางานรายการนี้</MudAlert>
+    }
+    else if (_request is not null)
+    {
+        <MudText Typo="Typo.h5" Class="mb-2">คำขอลางาน #@_request.Id</MudText>
+
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@_employeeName" Label="พนักงานผู้ขอ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@LeaveTypeLabel(_request.LeaveType)" Label="ประเภทการลา" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.RequestedDate.ToString("dd/MM/yyyy HH:mm")" Label="วันที่ยื่นคำขอ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.StartDate.ToString("dd/MM/yyyy")" Label="เริ่มลา" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.EndDate.ToString("dd/MM/yyyy")" Label="สิ้นสุดลา" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_request.TotalDays.ToString("0.#")" Label="จำนวนวัน" ReadOnly="true" /></MudItem>
+            @if (!string.IsNullOrWhiteSpace(_request.Reason))
+            {
+                <MudItem xs="12"><MudTextField Value="@_request.Reason" Label="เหตุผล" ReadOnly="true" Lines="2" /></MudItem>
+            }
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        @if (_job is not null)
+        {
+            <MudText Typo="Typo.h6" Class="mb-2">สถานะการอนุมัติ</MudText>
+            <MudText Typo="Typo.body1" Class="mb-2">
+                สถานะ: <b>@_job.status</b> | ระดับปัจจุบัน: @_job.lastLevel / @_job.maxlevel
+                @(_job.isJobClosed == true ? " (ปิดงานแล้ว)" : "")
+            </MudText>
+            <MudTable Items="_job.job_user_lists" Dense="true">
+                <HeaderContent>
+                    <MudTh>ระดับ</MudTh>
+                    <MudTh>ผู้อนุมัติ (userid)</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh>วันที่</MudTh>
+                    <MudTh>ความเห็น</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.wlevel</MudTd>
+                    <MudTd>@context.userid</MudTd>
+                    <MudTd>@context.jobstatus</MudTd>
+                    <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@context.comment</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">คำขอนี้ยังไม่ถูกส่งเข้าสู่กระบวนการอนุมัติ (ร่าง)</MudAlert>
+        }
+
+        <MudButton Class="mt-4" Variant="Variant.Text" Href="/leave-requests">กลับไปหน้ารายการคำขอลางาน</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Lve_LeaveRequest? _request;
+    private job_master? _job;
+    private string _employeeName = "";
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == Id);
+        if (_request is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _request.HremployeeId);
+        _employeeName = emp is null ? _request.EmpNo : $"{emp.EmpName} {emp.EmpSurname} ({emp.EmpNo})";
+
+        if (_request.JobMasterId is not null)
+        {
+            _job = await context.job_masters
+                .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
+                .FirstOrDefaultAsync(j => j.jobmasterid == _request.JobMasterId);
+        }
+    }
+
+    private static string LeaveTypeLabel(LeaveType type) => type switch
+    {
+        LeaveType.Sick => "ลาป่วย",
+        LeaveType.Personal => "ลากิจ",
+        LeaveType.Vacation => "ลาพักร้อน",
+        LeaveType.Maternity => "ลาคลอด",
+        LeaveType.Ordination => "ลาบวช",
+        _ => "อื่นๆ",
+    };
+}

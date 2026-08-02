@@ -1,0 +1,244 @@
+@page "/pay/admin/insurance-plans"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>แผนประกันกลุ่ม (Insurance Plans)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">แผนประกันกลุ่ม / สวัสดิการ (Group Insurance Plans)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดแผนประกันของบริษัท (สุขภาพ/ชีวิต/อุบัติเหตุ/อื่นๆ) พร้อมเบี้ยประกันเริ่มต้น — ใช้เลือกให้พนักงานลงทะเบียนที่หน้า "ประกันกลุ่มพนักงาน"
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มแผนใหม่" : $"แก้ไขแผน — {_form.PlanCode}")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.PlanCode" Label="รหัสแผน" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_form.PlanName" Label="ชื่อแผน" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="Pay_InsurancePlanType" @bind-Value="_form.PlanType" Label="ประเภทแผน">
+                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Health">สุขภาพ</MudSelectItem>
+                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Life">ชีวิต</MudSelectItem>
+                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Accident">อุบัติเหตุ</MudSelectItem>
+                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Other">อื่นๆ</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_form.Provider" Label="บริษัทประกัน (ถ้ามี)" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.CoverageAmount" Label="วงเงินคุ้มครอง (ถ้ามี)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.DefaultEmployeeAmount" Label="เบี้ยประกันฝั่งพนักงาน (ต่องวด)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.DefaultCompanyAmount" Label="เบี้ยประกันฝั่งบริษัท (ต่องวด)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มแผน" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_plans" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อแผน</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>เบี้ยประกัน (พนักงาน / บริษัท)</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.PlanCode</MudTd>
+            <MudTd>@context.PlanName</MudTd>
+            <MudTd>@PlanTypeLabel(context.PlanType)</MudTd>
+            <MudTd>@context.DefaultEmployeeAmount.ToString("N2") / @context.DefaultCompanyAmount.ToString("N2")</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pay_InsurancePlan> _plans = new();
+    private string? _error;
+    private long? _editingId;
+
+    private class PlanForm
+    {
+        public string PlanCode { get; set; } = "";
+        public string PlanName { get; set; } = "";
+        public Pay_InsurancePlanType PlanType { get; set; } = Pay_InsurancePlanType.Health;
+        public string? Provider { get; set; }
+        public decimal? CoverageAmount { get; set; }
+        public decimal DefaultEmployeeAmount { get; set; }
+        public decimal DefaultCompanyAmount { get; set; }
+        public int SortOrder { get; set; }
+    }
+
+    private PlanForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private static string PlanTypeLabel(Pay_InsurancePlanType type) => type switch
+    {
+        Pay_InsurancePlanType.Health => "สุขภาพ",
+        Pay_InsurancePlanType.Life => "ชีวิต",
+        Pay_InsurancePlanType.Accident => "อุบัติเหตุ",
+        _ => "อื่นๆ",
+    };
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _plans = await context.Pay_InsurancePlans
+            .Where(p => p.CompanyId == _companyId)
+            .OrderBy(p => p.SortOrder).ThenBy(p => p.PlanCode)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Pay_InsurancePlan plan)
+    {
+        _editingId = plan.Id;
+        _form = new PlanForm
+        {
+            PlanCode = plan.PlanCode,
+            PlanName = plan.PlanName,
+            PlanType = plan.PlanType,
+            Provider = plan.Provider,
+            CoverageAmount = plan.CoverageAmount,
+            DefaultEmployeeAmount = plan.DefaultEmployeeAmount,
+            DefaultCompanyAmount = plan.DefaultCompanyAmount,
+            SortOrder = plan.SortOrder,
+        };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new PlanForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.PlanCode) || string.IsNullOrWhiteSpace(_form.PlanName))
+        {
+            _error = "กรุณากรอกรหัสแผนและชื่อแผน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Pay_InsurancePlans.AnyAsync(p =>
+            p.CompanyId == _companyId && p.PlanCode == _form.PlanCode && p.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"มีรหัสแผน {_form.PlanCode} อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Pay_InsurancePlans.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบแผนที่ต้องการแก้ไข";
+                return;
+            }
+            existing.PlanCode = _form.PlanCode;
+            existing.PlanName = _form.PlanName;
+            existing.PlanType = _form.PlanType;
+            existing.Provider = _form.Provider;
+            existing.CoverageAmount = _form.CoverageAmount;
+            existing.DefaultEmployeeAmount = _form.DefaultEmployeeAmount;
+            existing.DefaultCompanyAmount = _form.DefaultCompanyAmount;
+            existing.SortOrder = _form.SortOrder;
+        }
+        else
+        {
+            context.Pay_InsurancePlans.Add(new Pay_InsurancePlan
+            {
+                CompanyId = _companyId!,
+                PlanCode = _form.PlanCode,
+                PlanName = _form.PlanName,
+                PlanType = _form.PlanType,
+                Provider = _form.Provider,
+                CoverageAmount = _form.CoverageAmount,
+                DefaultEmployeeAmount = _form.DefaultEmployeeAmount,
+                DefaultCompanyAmount = _form.DefaultCompanyAmount,
+                SortOrder = _form.SortOrder,
+                IsActive = true,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มแผนเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Pay_InsurancePlan plan)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_InsurancePlans.FirstOrDefaultAsync(p => p.Id == plan.Id && p.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}
