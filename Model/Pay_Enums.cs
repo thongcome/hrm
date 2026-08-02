@@ -35,7 +35,8 @@ public enum PayLineSourceType
     Tax = 5,
     Allowance = 6,
     Adjustment = 7,
-    Insurance = 8
+    Insurance = 8,
+    WelfareFund = 9
 }
 
 public enum PayAuditEventType

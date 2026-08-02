@@ -95,6 +95,18 @@ public class PayrollCalculationService
                         && (e.EffectiveTo == null || e.EffectiveTo >= run.PeriodStart))
             .ToListAsync(ct);
 
+        // Company-wide (not per-employee) — resolves to at most one active,
+        // enabled rate tier for this run's period. Every seeded policy row
+        // ships with IsEnabled=false (see Pay_WelfareFundPolicy.cs), so this
+        // is a no-op for every company until HR explicitly turns a tier on
+        // via WelfareFundPolicyAdmin.razor.
+        var welfareFundPolicy = await context.Pay_WelfareFundPolicies
+            .Where(p => p.CompanyId == run.CompanyId
+                        && p.IsEnabled
+                        && p.EffectiveFrom <= run.PeriodEnd
+                        && (p.EffectiveTo == null || p.EffectiveTo >= run.PeriodStart))
+            .FirstOrDefaultAsync(ct);
+
         // assumes 12 monthly runs/year; remaining periods including this one
         var remainingPeriods = 13 - run.PeriodStart.Month;
 
@@ -152,6 +164,17 @@ public class PayrollCalculationService
             var insuranceCompanyAmount = empInsuranceEnrollments.Sum(e => e.CompanyAmount);
             if (insuranceEmployeeAmount != 0)
                 lineItems.Add(NewLine(payItemTypes["INSURANCE"], PayLineSourceType.Insurance, insuranceEmployeeAmount, -1, ++seq, "Pay_EmployeeInsuranceEnrollment", null));
+
+            var welfareFundEmployeeAmount = 0m;
+            var welfareFundCompanyAmount = 0m;
+            if (welfareFundPolicy is not null)
+            {
+                var wf = WelfareFundCalculator.Calculate(grossEarnings, welfareFundPolicy.EmployeeContributionRate, welfareFundPolicy.CompanyContributionRate, welfareFundPolicy.WageCapPerMonth);
+                welfareFundEmployeeAmount = wf.EmployeeAmount;
+                welfareFundCompanyAmount = wf.CompanyAmount;
+                if (welfareFundEmployeeAmount != 0)
+                    lineItems.Add(NewLine(payItemTypes["WELFAREFUND"], PayLineSourceType.WelfareFund, welfareFundEmployeeAmount, -1, ++seq, "Pay_WelfareFundPolicy", welfareFundPolicy.Id));
+            }
 
             var loanAmount = 0m;
             if (!string.IsNullOrWhiteSpace(emp.RefMembno))
@@ -220,7 +243,7 @@ public class PayrollCalculationService
             if (monthlyTax != 0)
                 lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null));
 
-            var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
+            var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + welfareFundEmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
             var netPayResult = NetPayGuardService.Ensure(grossEarnings - totalDeductions);
 
             payEmp.GrossEarnings = grossEarnings;
@@ -232,6 +255,8 @@ public class PayrollCalculationService
             payEmp.ProvidentFundCompanyAmount = pf.CompanyAmount;
             payEmp.InsuranceEmployeeAmount = insuranceEmployeeAmount;
             payEmp.InsuranceCompanyAmount = insuranceCompanyAmount;
+            payEmp.WelfareFundEmployeeAmount = welfareFundEmployeeAmount;
+            payEmp.WelfareFundCompanyAmount = welfareFundCompanyAmount;
             payEmp.IsNegativeNetPayFlag = netPayResult.WasNegative;
             payEmp.Pay_PayrollLineItems = lineItems;
 

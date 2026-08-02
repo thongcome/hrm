@@ -3,17 +3,29 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HRM.Models;
 
-// Config for the new Thai "กองทุนสงเคราะห์ลูกจ้าง" (Employee Welfare Fund)
-// under the Labour Protection Act, taking effect 1 Oct 2026 for employers
-// with 10+ employees (unless already covered by an equivalent Provident
-// Fund). Deliberately NOT wired into PayrollCalculationService yet — the
-// wage cap and exact remittance mechanics could not be confirmed against
-// the primary legal text as of 2026-08, only cross-referenced secondary
-// sources (rate + effective date are corroborated by multiple sources,
-// wage cap is not). IsEnabled defaults to false so no company is affected
-// until HR explicitly confirms details and turns it on. Time-versioned
-// (EffectiveFrom/EffectiveTo) because the published rate schedule already
-// includes a scheduled increase (0.25%->0.5% from 1 Oct 2031).
+// Config for the new Thai "กองทุนสงเคราะห์ลูกจ้าง" (Employee Welfare Fund),
+// Labour Protection Act B.E. 2541, Chapter 13 (มาตรา 126-138):
+//   - มาตรา 130: mandatory for employers with 10+ employees, EXCEPT those
+//     already providing an equivalent provident fund / statutory welfare
+//     scheme for all staff.
+//   - มาตรา 131: contribution rate (both employee "เงินสะสม" and employer
+//     "เงินสมทบ") is capped by statute at a MAXIMUM of 5% of wages; the
+//     actual rate is set by ministerial regulation (currently 0.25% each,
+//     stepping to 0.5% each per the published schedule) — the statute
+//     itself sets NO wage cap for the calculation base, only the 5% rate
+//     ceiling, confirmed 2026-08 against the statutory text directly (not
+//     just secondary sources). WageCapPerMonth below defaults to null
+//     (uncapped) accordingly.
+//   - มาตรา 133: employee (or beneficiary, on death) receives back their
+//     accumulated contributions + employer match + interest on ANY exit
+//     from employment, not just termination.
+// Collection start date (1 Oct 2026) is corroborated by the Department of
+// Labour Protection and Welfare's own site (ewf.labour.go.th) and multiple
+// secondary sources. The exact end date of the first rate tier (30 Sep
+// 2030 vs 2031) still has minor conflicting reports across sources as of
+// 2026-08 — seeded here using the majority-corroborated 2031 boundary.
+// IsEnabled defaults to false regardless, so no company is affected by any
+// of this until HR reviews and explicitly turns a rate tier on.
 [Table("Pay_WelfareFundPolicy")]
 public class Pay_WelfareFundPolicy
 {
