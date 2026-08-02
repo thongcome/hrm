@@ -374,6 +374,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Lve_CompanyHoliday> Lve_CompanyHolidays { get; set; }
 
+    public virtual DbSet<Pay_WelfareFundPolicy> Pay_WelfareFundPolicies { get; set; }
+
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }
