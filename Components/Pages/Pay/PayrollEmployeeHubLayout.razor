@@ -1,0 +1,116 @@
+@using System.Security.Claims
+@using System.Text.RegularExpressions
+@using HRM.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+
+@* Shared "frame" for every /pay/employees/{id}/* tab so the header + nav
+   menu stay visible across in-app navigation between tabs — LayoutComponentBase
+   doesn't get route parameters, so the employee id is parsed from the URL
+   directly and re-derived on every LocationChanged (switching between two
+   different employees' hubs, not just tabs of the same one, must reload). *@
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+}
+else
+{
+    <MudGrid Class="pa-2">
+        <MudItem xs="12" md="9">
+            <MudPaper Class="pa-4 mb-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
+                        @if (_employee.ResignDate is not null)
+                        {
+                            <MudChip T="string" Color="Color.Default" Size="Size.Small">ลาออกแล้ว (@_employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
+                        }
+                    </MudStack>
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">
+                        กลับไปรายการพนักงาน
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+
+            @Body
+        </MudItem>
+
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-2">
+                <MudNavMenu>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}")" Match="NavLinkMatch.All">ข้อมูลทั่วไป</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/pay-items")">เงินได้-เงินหัก</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/position-salary-history")">ประวัติปรับตำแหน่ง/เงินเดือน</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/loans")">เงินกู้พนักงาน</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/insurance")">ประกันกลุ่ม</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/provident-fund")">กองทุนสำรองเลี้ยงชีพ</MudNavLink>
+                </MudNavMenu>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private long _employeeId;
+    private Hremployee? _employee;
+    private bool _notFound;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        _ = LoadForCurrentUriAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await LoadForCurrentUriAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadForCurrentUriAsync()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var match = Regex.Match(relativePath, @"^pay/employees/(\d+)");
+        if (!match.Success)
+        {
+            _notFound = true;
+            return;
+        }
+
+        var id = long.Parse(match.Groups[1].Value);
+        if (id == _employeeId && _employee is not null) return; // same employee, just switched tabs — no reload needed
+
+        _employeeId = id;
+        _employee = null;
+        _notFound = false;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(companyId))
+        {
+            _notFound = true;
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == id && e.companyid == companyId);
+        if (_employee is null) _notFound = true;
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

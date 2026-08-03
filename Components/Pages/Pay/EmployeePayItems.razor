@@ -1,4 +1,5 @@
 @page "/pay/employees/{HremployeeId:long}/pay-items"
+@layout PayrollEmployeeHubLayout
 @using System.Security.Claims
 @using HRM.Models
 @using Microsoft.AspNetCore.Authorization
@@ -24,18 +25,7 @@ else if (_employee is null)
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
-            <div>
-                <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
-                <MudText Typo="Typo.body2" Class="mt-1">@_employee.DeptgrpCode / @_employee.PosCode</MudText>
-                <MudText Typo="Typo.body2">เงินเดือนฐาน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
-                @if (_employee.ResignDate is not null)
-                {
-                    <MudChip T="string" Color="Color.Default" Size="Size.Small" Class="mt-1">ลาออกแล้ว (@_employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
-                }
-            </div>
-            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">← กลับไปรายการพนักงาน</MudButton>
-        </MudStack>
+        <MudText Typo="Typo.body2">@_employee.DeptgrpCode / @_employee.PosCode &nbsp;·&nbsp; เงินเดือนฐาน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">

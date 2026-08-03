@@ -1,4 +1,5 @@
 @page "/pay/employees/{Id:long}"
+@layout PayrollEmployeeHubLayout
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Pay
@@ -29,29 +30,8 @@ else if (_employee is null)
 }
 else
 {
-    <MudGrid Class="pa-2">
-        <MudItem xs="12" md="9">
-            <MudPaper Class="pa-4 mb-4">
-                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
-                        @if (_employee.ResignDate is not null)
-                        {
-                            <MudChip T="string" Color="Color.Default" Size="Size.Small">ลาออกแล้ว (@_employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
-                        }
-                        else
-                        {
-                            <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
-                        }
-                    </MudStack>
-                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">
-                        กลับไปรายการพนักงาน
-                    </MudButton>
-                </MudStack>
-            </MudPaper>
-
-            <MudPaper Class="pa-4 mb-4">
-                <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลทั่วไป</MudText>
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลทั่วไป</MudText>
                 <EmployeeCoreFieldsForm Employee="_employee" IsCreating="false" CompanyId="@(_companyId!)"
                     Email="@_formEmployeeEmail" EmailChanged="@(v => _formEmployeeEmail = v)"
                     WorkDate="_workDate" WorkDateChanged="@(v => _workDate = v)"
@@ -188,21 +168,6 @@ else
                     <MudAlert Severity="Severity.Error" Class="mt-2">@_docError</MudAlert>
                 }
             </MudPaper>
-        </MudItem>
-
-        <MudItem xs="12" md="3">
-            <MudPaper Class="pa-2">
-                <MudNavMenu>
-                    <MudNavLink Href="@($"/pay/employees/{Id}")" Match="NavLinkMatch.All">ข้อมูลทั่วไป</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{Id}/pay-items")">เงินได้-เงินหัก</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{Id}/position-salary-history")">ประวัติปรับตำแหน่ง/เงินเดือน</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{Id}/loans")">เงินกู้พนักงาน</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{Id}/insurance")">ประกันกลุ่ม</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{Id}/provident-fund")">กองทุนสำรองเลี้ยงชีพ</MudNavLink>
-                </MudNavMenu>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
 }
 
 @code {
