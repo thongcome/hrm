@@ -1,0 +1,257 @@
+@page "/ess/provident-fund"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>กองทุนสำรองเลี้ยงชีพ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">กองทุนสำรองเลี้ยงชีพ</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    }
+    else if (_currentElection is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            คุณยังไม่มีการลงทะเบียนกองทุนสำรองเลี้ยงชีพ — กรุณาติดต่อฝ่ายบุคคลเพื่อสมัครเข้ากองทุนครั้งแรก
+            (ต้องกำหนดอัตราเงินสมทบฝั่งบริษัทด้วย ซึ่งพนักงานเลือกเองไม่ได้)
+        </MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mt-4">สถานะปัจจุบัน (อ่านอย่างเดียว)</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@($"{_currentElection.EmployeeContributionRate:0.00}%")" Label="อัตราเงินสะสมของคุณ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@($"{_currentElection.CompanyContributionRate:0.00}%")" Label="อัตราเงินสมทบบริษัท (ตั้งโดย HR)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_currentElection.EffectiveFrom.ToString("dd/MM/yyyy")" Label="มีผลตั้งแต่" ReadOnly="true" /></MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">ขอเปลี่ยนอัตราเงินสะสมของตัวเอง</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            เปลี่ยนได้เฉพาะอัตราเงินสะสมของคุณเอง (ในช่วง @_activePolicy?.MinEmployeeRate.ToString("0.0")-@_activePolicy?.MaxEmployeeRate.ToString("0.0")% และต้องไม่เกินอัตราเงินสมทบบริษัทปัจจุบัน)
+            — ถ้าต้องการอัตราสูงกว่านั้น กรุณาติดต่อฝ่ายบุคคลให้ปรับเงินสมทบบริษัทก่อน
+        </MudText>
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_newEmployeeRate" Label="อัตราเงินสะสมใหม่ (%)" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_newEffectiveFrom" DateChanged="@(d => _newEffectiveFrom = d)" Label="มีผลตั้งแต่" Editable="true" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_rateError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_rateError</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="ChangeRateAsync" Disabled="_saving">
+            ยืนยันเปลี่ยนอัตรา
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">เปลี่ยนนโยบายการลงทุน</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">เปลี่ยนได้ทุกเมื่อ ไม่จำกัดจำนวนครั้ง ไม่กระทบยอดเงินที่หัก</MudText>
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="8">
+                <MudSelect T="long?" @bind-Value="_newInvestmentPolicyId" Label="นโยบายการลงทุน">
+                    @foreach (var inv in _investmentPolicies)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)inv.Id)">@inv.Code — @inv.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_invError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_invError</MudAlert>
+        }
+
+        <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="ChangeInvestmentPolicyAsync" Disabled="_saving">
+            บันทึกนโยบายการลงทุน
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private bool _saving;
+    private Hremployee? _employee;
+    private Pay_ProvidentFundPolicy? _activePolicy;
+    private Pay_ProvidentFundElection? _currentElection;
+    private List<Pay_ProvidentFundInvestmentPolicy> _investmentPolicies = new();
+
+    private decimal _newEmployeeRate;
+    private DateTime? _newEffectiveFrom = DateTime.Today;
+    private string? _rateError;
+
+    private long? _newInvestmentPolicyId;
+    private string? _invError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        if (_employee is not null)
+        {
+            await LoadAsync();
+            await AuditLogger.LogAccessAsync("Pay_ProvidentFundElection", _employee.id.ToString(), isSensitive: true, note: "ESS provident fund view");
+        }
+
+        _loaded = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_employee is null) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _activePolicy = await context.Pay_ProvidentFundPolicies
+            .Where(p => p.CompanyId == _employee.companyid && p.IsEnabled
+                        && p.EffectiveFrom <= today && (p.EffectiveTo == null || p.EffectiveTo >= today))
+            .FirstOrDefaultAsync();
+
+        _investmentPolicies = await context.Pay_ProvidentFundInvestmentPolicies
+            .Where(p => p.CompanyId == _employee.companyid && p.IsActive)
+            .OrderBy(p => p.SortOrder)
+            .ToListAsync();
+
+        _currentElection = await context.Pay_ProvidentFundElections
+            .Where(e => e.HremployeeId == _employee.id && e.IsActive)
+            .OrderByDescending(e => e.EffectiveFrom)
+            .FirstOrDefaultAsync();
+
+        if (_currentElection is not null)
+        {
+            _newEmployeeRate = _currentElection.EmployeeContributionRate;
+            _newInvestmentPolicyId = _currentElection.InvestmentPolicyId;
+        }
+    }
+
+    private async Task ChangeRateAsync()
+    {
+        _rateError = null;
+        if (_employee is null || _currentElection is null) return;
+
+        if (_newEffectiveFrom is null)
+        {
+            _rateError = "กรุณาระบุวันที่มีผล";
+            return;
+        }
+        if (_activePolicy is not null && (_newEmployeeRate < _activePolicy.MinEmployeeRate || _newEmployeeRate > _activePolicy.MaxEmployeeRate))
+        {
+            _rateError = $"อัตราต้องอยู่ในช่วง {_activePolicy.MinEmployeeRate:0.0}-{_activePolicy.MaxEmployeeRate:0.0}%";
+            return;
+        }
+        if (_newEmployeeRate > _currentElection.CompanyContributionRate)
+        {
+            _rateError = "อัตราเงินสะสมต้องไม่เกินอัตราเงินสมทบบริษัทปัจจุบัน — กรุณาติดต่อฝ่ายบุคคลถ้าต้องการอัตราสูงกว่านี้";
+            return;
+        }
+        if (_activePolicy?.RateChangeLimitPerYear is int limit)
+        {
+            await using var checkContext = await DbFactory.CreateDbContextAsync();
+            var thisYear = DateTime.Today.Year;
+            var changesThisYear = await checkContext.Pay_ProvidentFundElections
+                .CountAsync(e => e.HremployeeId == _employee.id && e.ElectedDate.Year == thisYear);
+            if (changesThisYear >= limit)
+            {
+                _rateError = $"เปลี่ยนอัตราครบ {limit} ครั้งสำหรับปีนี้แล้ว ตามที่บริษัทกำหนดไว้";
+                return;
+            }
+        }
+
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var newEffectiveFrom = DateOnly.FromDateTime(_newEffectiveFrom.Value);
+
+            var existing = await context.Pay_ProvidentFundElections
+                .Where(e => e.HremployeeId == _employee.id && e.IsActive)
+                .ToListAsync();
+            foreach (var old in existing)
+            {
+                old.IsActive = false;
+                old.EffectiveTo = newEffectiveFrom.AddDays(-1);
+            }
+
+            var newElection = new Pay_ProvidentFundElection
+            {
+                HremployeeId = _employee.id,
+                EmployeeContributionRate = _newEmployeeRate,
+                CompanyContributionRate = _currentElection.CompanyContributionRate,
+                InvestmentPolicyId = _currentElection.InvestmentPolicyId,
+                EffectiveFrom = newEffectiveFrom,
+                IsActive = true,
+                ElectedByUserId = long.TryParse((await AuthProvider.GetAuthenticationStateAsync()).User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0,
+                ElectedDate = DateTime.Now,
+            };
+            context.Pay_ProvidentFundElections.Add(newElection);
+
+            await context.SaveChangesAsync();
+            await AuditLogger.LogChangeAsync(AuditActionType.Update, "Pay_ProvidentFundElection", _employee.id.ToString(),
+                oldValues: new { _currentElection.EmployeeContributionRate },
+                newValues: new { _newEmployeeRate },
+                isSensitive: true);
+
+            Snackbar.Add("เปลี่ยนอัตราเงินสะสมเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ChangeInvestmentPolicyAsync()
+    {
+        _invError = null;
+        if (_employee is null || _currentElection is null) return;
+
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.Pay_ProvidentFundElections
+                .FirstOrDefaultAsync(e => e.Id == _currentElection.Id);
+            if (existing is null)
+            {
+                _invError = "ไม่พบ election ปัจจุบัน";
+                return;
+            }
+
+            existing.InvestmentPolicyId = _newInvestmentPolicyId;
+            await context.SaveChangesAsync();
+            await AuditLogger.LogChangeAsync(AuditActionType.Update, "Pay_ProvidentFundElection", _employee.id.ToString(),
+                oldValues: null, newValues: new { _newInvestmentPolicyId }, isSensitive: false);
+
+            Snackbar.Add("บันทึกนโยบายการลงทุนเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

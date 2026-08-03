@@ -376,6 +376,10 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Pay_WelfareFundPolicy> Pay_WelfareFundPolicies { get; set; }
 
+    public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
+    public virtual DbSet<Pay_ProvidentFundVestingTier> Pay_ProvidentFundVestingTiers { get; set; }
+    public virtual DbSet<Pay_ProvidentFundInvestmentPolicy> Pay_ProvidentFundInvestmentPolicies { get; set; }
+
     public virtual DbSet<Com_ChartOfAccount> Com_ChartOfAccounts { get; set; }
 
     public virtual DbSet<Com_SectionType> Com_SectionTypes { get; set; }
@@ -1306,6 +1310,19 @@ public partial class HRMContext : DbContext
                 .WithMany(p => p.Pay_ProvidentFundElections)
                 .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.InvestmentPolicy)
+                .WithMany()
+                .HasForeignKey(d => d.InvestmentPolicyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundVestingTier>(entity =>
+        {
+            entity.HasOne(d => d.Policy)
+                .WithMany(p => p.VestingTiers)
+                .HasForeignKey(d => d.PolicyId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Pay_PayrollAuditLog>(entity =>

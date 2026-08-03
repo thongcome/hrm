@@ -107,6 +107,18 @@ public class PayrollCalculationService
                         && (p.EffectiveTo == null || p.EffectiveTo >= run.PeriodStart))
             .FirstOrDefaultAsync(ct);
 
+        // Same company-wide resolution as welfareFundPolicy above. Per
+        // มาตรา 130 พ.ร.บ.คุ้มครองแรงงาน, an employer with an active provident
+        // fund is exempt from the mandatory Employee Welfare Fund — used
+        // below to suppress the welfare fund deduction entirely when this
+        // is present, rather than running both side by side.
+        var providentFundPolicy = await context.Pay_ProvidentFundPolicies
+            .Where(p => p.CompanyId == run.CompanyId
+                        && p.IsEnabled
+                        && p.EffectiveFrom <= run.PeriodEnd
+                        && (p.EffectiveTo == null || p.EffectiveTo >= run.PeriodStart))
+            .FirstOrDefaultAsync(ct);
+
         // assumes 12 monthly runs/year; remaining periods including this one
         var remainingPeriods = 13 - run.PeriodStart.Month;
 
@@ -157,7 +169,7 @@ public class PayrollCalculationService
             var pfCompanyRate = election?.CompanyContributionRate ?? emp.ProvfCorprate ?? 0m;
             var pf = ProvidentFundCalculator.Calculate(grossEarnings, pfEmployeeRate, pfCompanyRate);
             if (pf.EmployeeAmount != 0)
-                lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, null, null));
+                lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, "Pay_ProvidentFundElection", election?.Id));
 
             var empInsuranceEnrollments = insuranceEnrollments.Where(e => e.HremployeeId == emp.id).ToList();
             var insuranceEmployeeAmount = empInsuranceEnrollments.Sum(e => e.EmployeeAmount);
@@ -167,7 +179,10 @@ public class PayrollCalculationService
 
             var welfareFundEmployeeAmount = 0m;
             var welfareFundCompanyAmount = 0m;
-            if (welfareFundPolicy is not null)
+            // มาตรา 130: an active provident fund exempts the company from
+            // the mandatory welfare fund — skip entirely rather than
+            // stacking both deductions.
+            if (welfareFundPolicy is not null && providentFundPolicy is null)
             {
                 var wf = WelfareFundCalculator.Calculate(grossEarnings, welfareFundPolicy.EmployeeContributionRate, welfareFundPolicy.CompanyContributionRate, welfareFundPolicy.WageCapPerMonth);
                 welfareFundEmployeeAmount = wf.EmployeeAmount;
