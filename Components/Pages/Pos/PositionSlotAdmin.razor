@@ -102,6 +102,12 @@
             กำลังกรองเฉพาะสังกัดที่เลือกมา — <MudLink OnClick="ClearOrgFilter" Style="cursor:pointer">ล้างตัวกรอง</MudLink>
         </MudAlert>
     }
+    @if (_filterEmployeeId is not null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+            กำลังกรองเฉพาะเลขที่อัตราของพนักงานที่เลือกมา — <MudLink OnClick="ClearEmployeeFilter" Style="cursor:pointer">ล้างตัวกรอง</MudLink>
+        </MudAlert>
+    }
 
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหาเลขที่อัตรา (เลขที่ / ชื่อตำแหน่ง)" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
@@ -151,6 +157,7 @@
     private string? _error;
     private long? _editingId;
     private long? _filterOrgId;
+    private long? _filterEmployeeId;
 
     private string? _posCode;
     private Pos_ExecType? _selectedExecType;
@@ -176,9 +183,14 @@
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         var uri = Nav.ToAbsoluteUri(Nav.Uri);
-        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("orgId", out var orgIdStr) && long.TryParse(orgIdStr, out var orgId))
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("orgId", out var orgIdStr) && long.TryParse(orgIdStr, out var orgId))
         {
             _filterOrgId = orgId;
+        }
+        if (query.TryGetValue("employeeId", out var empIdStr) && long.TryParse(empIdStr, out var empId))
+        {
+            _filterEmployeeId = empId;
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -190,6 +202,12 @@
     private void ClearOrgFilter()
     {
         _filterOrgId = null;
+        _ = LoadAsync();
+    }
+
+    private void ClearEmployeeFilter()
+    {
+        _filterEmployeeId = null;
         _ = LoadAsync();
     }
 
@@ -211,6 +229,8 @@
         var query = context.Pos_PositionSlots.Where(s => s.CompanyId == _companyId);
         if (_filterOrgId is not null)
             query = query.Where(s => s.OrganizationId == _filterOrgId);
+        if (_filterEmployeeId is not null)
+            query = query.Where(s => s.HremployeeId == _filterEmployeeId);
         query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Pos_PositionSlot.PosCode), nameof(Pos_PositionSlot.Name));
         _slots = await query.OrderBy(s => s.PosCode).ToListAsync();
 
@@ -324,10 +344,14 @@
         var name = _selectedExecType?.Name;
         var abbName = _selectedExecType?.AbbName;
 
+        Pos_PositionSlot slot;
+        long? oldHremployeeId;
+
         if (_editingId is long id)
         {
             var existing = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == _companyId);
             if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            oldHremployeeId = existing.HremployeeId; // captured before overwrite below
             existing.PosCode = _posCode;
             existing.PosExecTypeId = _selectedExecType?.Id;
             existing.OrganizationId = _selectedOrg?.id;
@@ -346,10 +370,11 @@
             existing.IsBoss = _isBoss;
             existing.IsActive = _isActive;
             existing.Remark = _remark;
+            slot = existing;
         }
         else
         {
-            context.Pos_PositionSlots.Add(new Pos_PositionSlot
+            slot = new Pos_PositionSlot
             {
                 CompanyId = _companyId!,
                 PosCode = _posCode,
@@ -371,8 +396,15 @@
                 IsActive = _isActive,
                 Remark = _remark,
                 CreateDate = DateTime.Now,
-            });
+            };
+            context.Pos_PositionSlots.Add(slot);
+            oldHremployeeId = null; // brand-new row — no prior occupant
         }
+
+        // Keep Hremployee.OrganizationId/orgcode/orgcodefull in sync with
+        // this slot's occupant — see EmployeePositionSync for why this runs
+        // before SaveChangesAsync rather than as a second round-trip.
+        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId);
 
         await context.SaveChangesAsync();
         Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);

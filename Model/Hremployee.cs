@@ -87,12 +87,13 @@ public partial class Hremployee
     // column, whereas com_organization.code has at least one confirmed
     // duplicate in real data (two rows both code='Ploan') so joining by
     // code string alone can't always tell which org row is meant.
-    // NULL for all existing employees after this migration — the
-    // DeptgrpCode-based linkage was already confirmed broken (doesn't match
-    // any com_organization.code for real employees), so there's no reliable
-    // source to auto-backfill from. Populate going forward via the org
-    // picker in PayrollEmployeeAdmin.razor, which fills OrganizationId +
-    // the two fields below together from the chosen com_organization row.
+    // Denormalized snapshot, NOT independently editable — single source of
+    // truth is Pos_PositionSlot.HremployeeId (see that model's doc comment).
+    // Kept in sync automatically by Services/Shared/EmployeePositionSync.cs
+    // whenever a Pos_PositionSlot's employee assignment, org, or active
+    // status changes. Do not write to this field directly from anywhere else
+    // — PayrollEmployeeAdmin.razor only displays it read-only now; HR
+    // assigns org/position via /pos/position-slots instead.
     public long? OrganizationId { get; set; }
 
     // Denormalized snapshot of the chosen org's own code/orgcodefull (see
