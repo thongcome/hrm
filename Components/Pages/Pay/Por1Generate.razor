@@ -2,12 +2,16 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Pay
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.EmailSender EmailSender
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>ภ.ง.ด.1 / ภ.ง.ด.1ก</PageTitle>
@@ -29,6 +33,23 @@
         เอกสารนี้เป็นเอกสารสรุปสำหรับใช้งานภายใน/ประกอบการยื่นแบบเท่านั้น
         การยื่นแบบจริงต่อกรมสรรพากร (รวมถึงไฟล์อิเล็กทรอนิกส์สำหรับ e-Filing) ต้องตรวจสอบรูปแบบและช่องทางล่าสุดจากกรมสรรพากรก่อนใช้งานจริงเสมอ
     </MudAlert>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="8">
+            <MudAutocomplete T="Hremployee" Label="พนักงานผู้รับเอกสาร (สำหรับส่งอีเมล)" Value="_selectedEmployee" ValueChanged="OnEmployeeSelected"
+                SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true"
+                HelperText="เลือกพนักงานที่จะส่งเอกสารนี้ให้ทางอีเมล — ระบบจะส่งไปยังอีเมลตามข้อมูลพนักงานในระบบเท่านั้น" />
+        </MudItem>
+    </MudGrid>
+
+    @if (_selectedEmployee is not null && string.IsNullOrWhiteSpace(_selectedEmployeeEmail))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-2" Dense="true">
+            พนักงานคนนี้ยังไม่มีอีเมลในระบบ — ไม่สามารถส่งอีเมลได้ กรุณาเพิ่มอีเมลที่หน้า <MudLink Href="/pay/employees">จัดการพนักงาน</MudLink> ก่อน
+        </MudAlert>
+    }
 
     <MudTabs Class="mt-4" Elevation="0" Rounded="true">
         <MudTabPanel Text="ภ.ง.ด.1 (รายเดือน)">
@@ -68,6 +89,28 @@
                     Href="@($"/pay/files/por1/monthly/{_companyId}/{_selectedPeriod}")" Target="_blank">
                     ดาวน์โหลด PDF (ภ.ง.ด.1)
                 </MudButton>
+                <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
+                    OnClick="SendMonthlyEmailAsync" Disabled="@(_selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sendingMonthly)">
+                    ส่งอีเมลให้พนักงานที่เลือก
+                </MudButton>
+
+                @if (_monthlySendHistory.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+                    <MudSimpleTable Dense="true" Class="mt-1">
+                        <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                        <tbody>
+                            @foreach (var log in _monthlySendHistory)
+                            {
+                                <tr>
+                                    <td>@log.EventDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@(log.ActorName ?? "-")</td>
+                                    <td>@(log.Note ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
             }
         </MudTabPanel>
 
@@ -108,6 +151,28 @@
                     Href="@($"/pay/files/por1/annual/{_companyId}/{_selectedYear}")" Target="_blank">
                     ดาวน์โหลด PDF (ภ.ง.ด.1ก)
                 </MudButton>
+                <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
+                    OnClick="SendAnnualEmailAsync" Disabled="@(_selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sendingAnnual)">
+                    ส่งอีเมลให้พนักงานที่เลือก
+                </MudButton>
+
+                @if (_annualSendHistory.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+                    <MudSimpleTable Dense="true" Class="mt-1">
+                        <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                        <tbody>
+                            @foreach (var log in _annualSendHistory)
+                            {
+                                <tr>
+                                    <td>@log.EventDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@(log.ActorName ?? "-")</td>
+                                    <td>@(log.Note ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
             }
         </MudTabPanel>
     </MudTabs>
@@ -125,6 +190,13 @@
     private int _selectedYear;
     private Por1KorAnnualData? _annualPreview;
     private string? _annualError;
+
+    private Hremployee? _selectedEmployee;
+    private string? _selectedEmployeeEmail;
+    private bool _sendingMonthly;
+    private bool _sendingAnnual;
+    private List<AuditLog> _monthlySendHistory = new();
+    private List<AuditLog> _annualSendHistory = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -174,5 +246,102 @@
         _annualPreview = await Por1DataService.BuildAnnualAsync(context, _companyId!, _selectedYear);
         if (_annualPreview is null)
             _annualError = $"ไม่พบข้อมูลเงินเดือนที่อนุมัติแล้วของบริษัทนี้ในปี {_selectedYear}";
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnEmployeeSelected(Hremployee? emp)
+    {
+        _selectedEmployee = emp;
+        _selectedEmployeeEmail = null;
+        _monthlySendHistory = new();
+        _annualSendHistory = new();
+        if (emp is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _selectedEmployeeEmail = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
+    }
+
+    private async Task SendMonthlyEmailAsync()
+    {
+        if (_monthlyPreview is null || _selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _selectedPeriod is null) return;
+
+        _sendingMonthly = true;
+        try
+        {
+            var bytes = Por1PdfService.GenerateMonthly(_monthlyPreview);
+            var fileName = $"por1_{_companyId}_{_selectedPeriod}.pdf";
+            var subject = $"แบบภ.ง.ด.1 งวด {FormatPeriod(_selectedPeriod)}";
+            var body = $"<p>แนบแบบภ.ง.ด.1 (รายเดือน) งวด {FormatPeriod(_selectedPeriod)} มาพร้อมนี้</p>";
+
+            await EmailSender.SendEmailWithAttachmentAsync(_selectedEmployeeEmail!, subject, body, fileName, bytes);
+
+            var recordId = $"{_companyId}:{_selectedPeriod}:{_selectedEmployee.id}";
+            await AuditLogger.LogAccessAsync("Por1MonthlyEmail", recordId, isSensitive: true,
+                note: $"ส่งอีเมลไปที่ {_selectedEmployeeEmail}");
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _monthlySendHistory = await context.AuditLogs
+                .Where(a => a.EntityType == "Por1MonthlyEmail" && a.RecordId == recordId)
+                .OrderByDescending(a => a.EventDate).Take(5).ToListAsync();
+
+            Snackbar.Add($"ส่งแบบภ.ง.ด.1 ไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "POR.1 monthly email send failed for company {CompanyId}, period {Period}", _companyId, _selectedPeriod);
+            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+        }
+        finally
+        {
+            _sendingMonthly = false;
+        }
+    }
+
+    private async Task SendAnnualEmailAsync()
+    {
+        if (_annualPreview is null || _selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _selectedYear == 0) return;
+
+        _sendingAnnual = true;
+        try
+        {
+            var bytes = Por1PdfService.GenerateAnnual(_annualPreview);
+            var fileName = $"por1kor_{_companyId}_{_selectedYear}.pdf";
+            var subject = $"แบบภ.ง.ด.1ก ปีภาษี {_selectedYear}";
+            var body = $"<p>แนบแบบภ.ง.ด.1ก (สรุปประจำปี) ปีภาษี {_selectedYear} มาพร้อมนี้</p>";
+
+            await EmailSender.SendEmailWithAttachmentAsync(_selectedEmployeeEmail!, subject, body, fileName, bytes);
+
+            var recordId = $"{_companyId}:{_selectedYear}:{_selectedEmployee.id}";
+            await AuditLogger.LogAccessAsync("Por1AnnualEmail", recordId, isSensitive: true,
+                note: $"ส่งอีเมลไปที่ {_selectedEmployeeEmail}");
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _annualSendHistory = await context.AuditLogs
+                .Where(a => a.EntityType == "Por1AnnualEmail" && a.RecordId == recordId)
+                .OrderByDescending(a => a.EventDate).Take(5).ToListAsync();
+
+            Snackbar.Add($"ส่งแบบภ.ง.ด.1ก ไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "POR.1 annual email send failed for company {CompanyId}, year {Year}", _companyId, _selectedYear);
+            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+        }
+        finally
+        {
+            _sendingAnnual = false;
+        }
     }
 }

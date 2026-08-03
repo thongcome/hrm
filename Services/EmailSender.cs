@@ -67,6 +67,56 @@ public class EmailSender : IEmailSender
         }
     }
 
+    public async Task SendEmailWithAttachmentAsync(string email, string subject, string htmlMessage,
+        string attachmentFileName, byte[] attachmentBytes, string attachmentContentType = "application/pdf")
+    {
+        var smtpSettings = _configuration.GetSection("SmtpSettings");
+        var host = smtpSettings["Host"] ?? throw new ArgumentNullException("SMTP Host is missing in configuration");
+        var port = int.TryParse(smtpSettings["Port"], out var smtpPort) ? smtpPort : throw new ArgumentNullException("SMTP Port is missing in configuration");
+        var enableSsl = bool.TryParse(smtpSettings["EnableSSL"], out var sslEnabled) && sslEnabled;
+        var sFrom = smtpSettings["SenderEmail"] ?? throw new ArgumentNullException("SenderEmail is missing in configuration");
+        var user = smtpSettings["Username"] ?? throw new ArgumentNullException("Username is missing in configuration");
+        var password = smtpSettings["Password"] ?? throw new ArgumentNullException("Password is missing in configuration");
+
+        try
+        {
+            using (var client = new SmtpClient(host, port))
+            {
+                client.Credentials = new NetworkCredential(user, password);
+                client.EnableSsl = enableSsl;
+                client.Timeout = 20000; // longer than the plain-text path (10000) — attachments take longer
+
+                using var mailMessage = new MailMessage
+                {
+                    From = new MailAddress(sFrom),
+                    Subject = subject,
+                    Body = htmlMessage,
+                    IsBodyHtml = true
+                };
+                mailMessage.To.Add(email);
+
+                using var attachmentStream = new MemoryStream(attachmentBytes);
+                mailMessage.Attachments.Add(new System.Net.Mail.Attachment(attachmentStream, attachmentFileName, attachmentContentType));
+
+                _logger.LogInformation("Attempting to send email with attachment {FileName} to {Recipient}", attachmentFileName, email);
+
+                await client.SendMailAsync(mailMessage);
+
+                _logger.LogInformation("Email with attachment sent successfully to {Recipient}", email);
+            }
+        }
+        catch (SmtpException smtpEx)
+        {
+            _logger.LogError(smtpEx, "SMTP error occurred while sending email with attachment to {Recipient}: {Message}", email, smtpEx.Message);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "General error occurred while sending email with attachment to {Recipient}: {Message}", email, ex.Message);
+            throw;
+        }
+    }
+
     //public async Task SendEmailAsync(string email, string subject, string htmlMessage)
     //{
     //    var smtpSettings = _configuration.GetSection("SmtpSettings");

@@ -128,6 +128,10 @@
                 <MudItem xs="12" sm="3">
                     <MudTextField @bind-Value="_formEmployee.EmpSurname" Label="นามสกุล" Required="true" />
                 </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_formEmployeeEmail" Label="อีเมล" Required="true" InputType="InputType.Email"
+                        HelperText="ใช้สำหรับส่งเอกสาร (สลิป/หนังสือรับรอง) และแจ้งบัญชีผู้ใช้ — ต้องเป็นอีเมลของพนักงานเอง" />
+                </MudItem>
 
                 <MudItem xs="12" sm="4">
                     <MudSelect T="string" @bind-Value="_formEmployee.EmptypeCode" Label="ประเภทพนักงาน">
@@ -447,6 +451,7 @@
     private string? _formError;
     private DateTime? _workDate;
     private DateTime? _birthDate;
+    private string? _formEmployeeEmail;
 
     // Only used when saving an edit that actually changes SalaryAmt/PosCode —
     // captured optionally alongside the change, not required (see SaveEmployeeAsync).
@@ -609,6 +614,7 @@
         _formError = null;
         _workDate = DateTime.Today;
         _birthDate = null;
+        _formEmployeeEmail = null;
         _formEmployee = new Hremployee { companyid = _companyId!, EmptypeCode = "01" };
         _formEmployee.EmpNo = await GenerateNextEmpNoAsync();
         _selectedCostCenter = null;
@@ -691,11 +697,15 @@
         };
 
         _selectedCostCenter = null;
-        if (!string.IsNullOrWhiteSpace(emp.CostCenterCode))
+        await using (var context = await DbFactory.CreateDbContextAsync())
         {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            _selectedCostCenter = await context.Com_ChartOfAccounts
-                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == emp.CostCenterCode);
+            _formEmployeeEmail = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
+
+            if (!string.IsNullOrWhiteSpace(emp.CostCenterCode))
+            {
+                _selectedCostCenter = await context.Com_ChartOfAccounts
+                    .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == emp.CostCenterCode);
+            }
         }
     }
 
@@ -706,9 +716,16 @@
         _formError = null;
 
         if (_formEmployee is null || string.IsNullOrWhiteSpace(_formEmployee.EmpNo)
-            || string.IsNullOrWhiteSpace(_formEmployee.EmpName) || string.IsNullOrWhiteSpace(_formEmployee.EmpSurname))
+            || string.IsNullOrWhiteSpace(_formEmployee.EmpName) || string.IsNullOrWhiteSpace(_formEmployee.EmpSurname)
+            || string.IsNullOrWhiteSpace(_formEmployeeEmail))
         {
-            _formError = "กรุณากรอกรหัสพนักงาน ชื่อ และนามสกุล";
+            _formError = "กรุณากรอกรหัสพนักงาน ชื่อ นามสกุล และอีเมล";
+            return;
+        }
+
+        if (!EmployeeEmailResolver.IsValidFormat(_formEmployeeEmail))
+        {
+            _formError = "รูปแบบอีเมลไม่ถูกต้อง";
             return;
         }
 
@@ -738,6 +755,7 @@
                 _formEmployee.BirthDate = _birthDate;
                 context.Hremployee.Add(_formEmployee);
                 await context.SaveChangesAsync();
+                await EmployeeEmailResolver.SetAsync(context, _formEmployee.id, _formEmployeeEmail!);
 
                 // Only auto-advance the stateful counter when the suggested code
                 // was used as-is — a manually typed code (unlocked) shouldn't
@@ -783,6 +801,7 @@
                 existing.WorkDate = _workDate;
                 existing.BirthDate = _birthDate;
                 await context.SaveChangesAsync();
+                await EmployeeEmailResolver.SetAsync(context, existing.id, _formEmployeeEmail!);
 
                 // Auto-capture into ประวัติปรับตำแหน่ง/เงินเดือน — only when
                 // position or salary actually changed, so a save that
@@ -960,7 +979,7 @@
         _userAccountRoles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
         var employeeRole = _userAccountRoles.FirstOrDefault(r => r.rolecode == "emp");
         _selectedUserAccountRoleIds = employeeRole is not null ? new HashSet<long> { employeeRole.roleid } : new HashSet<long>();
-        _userAccountEmail = await ResolveEmployeeEmailAsync(context, emp);
+        _userAccountEmail = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
     }
 
     private void ToggleUserAccountRole(long roleId, bool selected)
@@ -981,7 +1000,7 @@
         _resetPasswordEmployee = emp;
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        _resetPasswordEmail = await ResolveEmployeeEmailAsync(context, emp);
+        _resetPasswordEmail = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
     }
 
     private async Task ConfirmResetPasswordAsync()
@@ -1154,21 +1173,6 @@
         if (settings is null) return null;
         var combined = (settings.DefaultPasswordPart1 ?? "") + (settings.DefaultPasswordPart2 ?? "");
         return string.IsNullOrEmpty(combined) ? null : combined;
-    }
-
-    // Best-effort lookup so the "อีเมล" field in the create/reset panels
-    // comes pre-filled when we already have one on file, instead of forcing
-    // HR to look it up elsewhere first. address (type CUR = current/contact,
-    // id 2) is the current source of truth for employee email since the
-    // Feature A address-table migration; AdnEmail is the pre-migration flat
-    // field, kept as a fallback for records that predate that migration.
-    private static async Task<string?> ResolveEmployeeEmailAsync(HRMContext context, Hremployee emp)
-    {
-        var addr = await context.addresses
-            .Where(a => a.hremployeeid == emp.id && a.address_type_id == 2 && a.isactive && a.email != null)
-            .OrderByDescending(a => a.moddate ?? a.createdate)
-            .FirstOrDefaultAsync();
-        return addr?.email ?? emp.AdnEmail;
     }
 
     // Sends the plaintext credential by email per the user's explicit

@@ -2,12 +2,16 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Pay
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.EmailSender EmailSender
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>หนังสือรับรองเงินเดือน</PageTitle>
@@ -78,6 +82,35 @@
             Href="@BuildDownloadUrl()" Target="_blank">
             ดาวน์โหลด PDF
         </MudButton>
+
+        @if (string.IsNullOrWhiteSpace(_selectedEmployeeEmail))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
+                พนักงานคนนี้ยังไม่มีอีเมลในระบบ — ไม่สามารถส่งอีเมลได้ กรุณาเพิ่มอีเมลที่หน้า <MudLink Href="/pay/employees">จัดการพนักงาน</MudLink> ก่อน
+            </MudAlert>
+        }
+        <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
+            OnClick="SendEmailAsync" Disabled="@(string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sending)">
+            ส่งอีเมลให้พนักงาน
+        </MudButton>
+
+        @if (_sendHistory.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+            <MudSimpleTable Dense="true" Class="mt-1">
+                <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                <tbody>
+                    @foreach (var log in _sendHistory)
+                    {
+                        <tr>
+                            <td>@log.EventDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@(log.ActorName ?? "-")</td>
+                            <td>@(log.Note ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
     }
 </MudPaper>
 
@@ -86,6 +119,9 @@
     private Hremployee? _selectedEmployee;
     private SalaryCertificateData? _data;
     private string? _error;
+    private string? _selectedEmployeeEmail;
+    private bool _sending;
+    private List<AuditLog> _sendHistory = new();
 
     private string _position = "";
     private string _department = "";
@@ -134,6 +170,9 @@
         _department = _data.DepartmentDefault ?? "";
         _addressee = "";
         _purpose = "";
+
+        _selectedEmployeeEmail = await EmployeeEmailResolver.ResolveAsync(context, _selectedEmployee.id);
+        await LoadSendHistoryAsync(context, _selectedEmployee.id.ToString());
     }
 
     private string BuildDownloadUrl()
@@ -142,5 +181,48 @@
         var qs = $"position={Uri.EscapeDataString(_position)}&department={Uri.EscapeDataString(_department)}"
             + $"&purpose={Uri.EscapeDataString(_purpose)}&addressee={Uri.EscapeDataString(_addressee)}";
         return $"/pay/files/salary-cert/{_selectedEmployee.id}?{qs}";
+    }
+
+    private async Task LoadSendHistoryAsync(HRMContext context, string recordId)
+    {
+        _sendHistory = await context.AuditLogs
+            .Where(a => a.EntityType == "SalaryCertificateEmail" && a.RecordId == recordId)
+            .OrderByDescending(a => a.EventDate)
+            .Take(5)
+            .ToListAsync();
+    }
+
+    private async Task SendEmailAsync()
+    {
+        if (_data is null || _selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail)) return;
+
+        _sending = true;
+        try
+        {
+            var bytes = SalaryCertificatePdfService.Generate(_data, _position, _department, _purpose, _addressee, DateTime.Now);
+            var fileName = $"salary_cert_{_selectedEmployee.EmpNo}.pdf";
+            var subject = "หนังสือรับรองเงินเดือน";
+            var body = $"<p>เรียนคุณ {_data.EmployeeName}</p><p>แนบหนังสือรับรองเงินเดือนมาพร้อมนี้</p>";
+
+            await EmailSender.SendEmailWithAttachmentAsync(_selectedEmployeeEmail!, subject, body, fileName, bytes);
+
+            var recordId = _selectedEmployee.id.ToString();
+            await AuditLogger.LogAccessAsync("SalaryCertificateEmail", recordId, isSensitive: true,
+                note: $"ส่งอีเมลไปที่ {_selectedEmployeeEmail}");
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadSendHistoryAsync(context, recordId);
+
+            Snackbar.Add($"ส่งหนังสือรับรองไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Salary cert email send failed for employee {Id}", _selectedEmployee.id);
+            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+        }
+        finally
+        {
+            _sending = false;
+        }
     }
 }

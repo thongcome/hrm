@@ -2,6 +2,7 @@
 @using HRM.Models
 @using HRM.Services.Audit
 @using HRM.Services.Ess
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -54,7 +55,8 @@
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.postcode" Label="รหัสไปรษณีย์" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.tel" Label="โทรศัพท์" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.mobileno" Label="มือถือ" /></MudItem>
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_currentAddress.email" Label="อีเมล" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_currentAddress.email" Label="อีเมล" Required="true" InputType="InputType.Email"
+                HelperText="จำเป็นสำหรับรับเอกสาร (สลิปเงินเดือน ฯลฯ) ทางอีเมล" /></MudItem>
         </MudGrid>
 
         <MudText Typo="Typo.h6" Class="mt-4">ผู้ติดต่อฉุกเฉิน (แก้ไขได้)</MudText>
@@ -121,6 +123,18 @@
     {
         _error = null;
         if (_employee is null) return;
+
+        if (string.IsNullOrWhiteSpace(_currentAddress.email))
+        {
+            _error = "กรุณากรอกอีเมล — จำเป็นสำหรับรับเอกสาร (สลิปเงินเดือน ฯลฯ) และการแจ้งเตือนจากบริษัท";
+            return;
+        }
+        if (!EmployeeEmailResolver.IsValidFormat(_currentAddress.email))
+        {
+            _error = "รูปแบบอีเมลไม่ถูกต้อง";
+            return;
+        }
+
         _saving = true;
         try
         {

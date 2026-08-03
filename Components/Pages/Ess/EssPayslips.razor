@@ -1,12 +1,17 @@
 @page "/ess/payslips"
 @using HRM.Models
 @using HRM.Services.Ess
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.EmailSender EmailSender
+@inject HRM.Services.Pay.PrivateFileStorage FileStorage
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
 <PageTitle>สลิปเงินเดือน</PageTitle>
@@ -22,30 +27,51 @@
     {
         <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
     }
-    else if (_rows.Count == 0)
-    {
-        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีสลิปเงินเดือนที่เผยแพร่ให้คุณดู</MudAlert>
-    }
     else
     {
-        <MudSimpleTable Dense="true" Class="mt-3">
-            <thead><tr><th>งวด</th><th>วันที่-สิ้นสุดงวด</th><th style="text-align:right">สุทธิ</th><th></th></tr></thead>
-            <tbody>
-                @foreach (var row in _rows)
-                {
-                    <tr>
-                        <td>@row.Run.PayrollPeriod</td>
-                        <td>@row.Run.PeriodStart.ToString("dd/MM/yyyy") - @row.Run.PeriodEnd.ToString("dd/MM/yyyy")</td>
-                        <td style="text-align:right">@row.PayrollEmployee.NetPay.ToString("N2")</td>
-                        <td>
-                            <MudLink Href="@($"/ess/files/payslip/{row.Payslip.Id}")" Target="_blank">
-                                <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" /> ดาวน์โหลด
-                            </MudLink>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </MudSimpleTable>
+        @if (string.IsNullOrWhiteSpace(_ownEmail))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                คุณยังไม่ได้ระบุอีเมลในระบบ — <MudLink Href="/ess/profile">กรอกอีเมลที่หน้าข้อมูลส่วนตัว</MudLink> ก่อน จึงจะส่งสลิปเงินเดือนทางอีเมลได้
+            </MudAlert>
+        }
+
+        @if (_rows.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีสลิปเงินเดือนที่เผยแพร่ให้คุณดู</MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Class="mt-3">
+                <thead><tr><th>งวด</th><th>วันที่-สิ้นสุดงวด</th><th style="text-align:right">สุทธิ</th><th></th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td>@row.Run.PayrollPeriod</td>
+                            <td>@row.Run.PeriodStart.ToString("dd/MM/yyyy") - @row.Run.PeriodEnd.ToString("dd/MM/yyyy")</td>
+                            <td style="text-align:right">@row.PayrollEmployee.NetPay.ToString("N2")</td>
+                            <td>
+                                <MudLink Href="@($"/ess/files/payslip/{row.Payslip.Id}")" Target="_blank">
+                                    <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" /> ดาวน์โหลด
+                                </MudLink>
+                            </td>
+                            <td>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                    Disabled="@(string.IsNullOrWhiteSpace(_ownEmail) || _sendingIds.Contains(row.Payslip.Id))"
+                                    OnClick="@(() => SendPayslipAsync(row))">
+                                    <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" /> ส่งอีเมล
+                                </MudButton>
+                                @if (_lastSent.TryGetValue(row.Payslip.Id, out var sentAt))
+                                {
+                                    <MudText Typo="Typo.caption" Class="d-block">ส่งล่าสุด @sentAt.ToString("dd/MM/yyyy HH:mm")</MudText>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
     }
 </MudPaper>
 
@@ -55,6 +81,9 @@
     private bool _loaded;
     private Hremployee? _employee;
     private List<Row> _rows = new();
+    private string? _ownEmail;
+    private HashSet<long> _sendingIds = new();
+    private Dictionary<long, DateTime> _lastSent = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -72,8 +101,52 @@
                 .ToListAsync();
 
             _rows = payEmployees.Select(pe => new Row(pe.Pay_PayrollRun, pe, pe.Pay_Payslip!)).ToList();
+
+            _ownEmail = await EmployeeEmailResolver.ResolveAsync(context, _employee.id);
+
+            if (_rows.Count > 0)
+            {
+                var payslipIdStrings = _rows.Select(r => r.Payslip.Id.ToString()).ToList();
+                var latestByRecordId = await context.AuditLogs
+                    .Where(a => a.EntityType == "Pay_PayslipEmail" && payslipIdStrings.Contains(a.RecordId!))
+                    .GroupBy(a => a.RecordId)
+                    .Select(g => new { RecordId = g.Key!, Latest = g.Max(x => x.EventDate) })
+                    .ToListAsync();
+                _lastSent = latestByRecordId.ToDictionary(x => long.Parse(x.RecordId), x => x.Latest);
+            }
         }
 
         _loaded = true;
+    }
+
+    private async Task SendPayslipAsync(Row row)
+    {
+        if (_employee is null || string.IsNullOrWhiteSpace(_ownEmail)) return;
+
+        _sendingIds.Add(row.Payslip.Id);
+        try
+        {
+            var bytes = await FileStorage.ReadAsync(row.Payslip.PdfStoragePath);
+            var fileName = $"payslip_{row.PayrollEmployee.EmpNo}_{row.Run.PayrollPeriod}.pdf";
+            var subject = $"สลิปเงินเดือน งวด {row.Run.PayrollPeriod}";
+            var body = $"<p>เรียนคุณ {_employee.EmpName} {_employee.EmpSurname}</p><p>แนบสลิปเงินเดือนงวด {row.Run.PayrollPeriod} มาพร้อมนี้</p>";
+
+            await EmailSender.SendEmailWithAttachmentAsync(_ownEmail!, subject, body, fileName, bytes);
+
+            await AuditLogger.LogAccessAsync("Pay_PayslipEmail", row.Payslip.Id.ToString(), isSensitive: true,
+                note: $"ส่งอีเมลไปที่ {_ownEmail}");
+
+            _lastSent[row.Payslip.Id] = DateTime.Now;
+            Snackbar.Add($"ส่งสลิปเงินเดือนไปที่ {_ownEmail} เรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "ESS payslip email send failed for payslip {Id}", row.Payslip.Id);
+            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+        }
+        finally
+        {
+            _sendingIds.Remove(row.Payslip.Id);
+        }
     }
 }
