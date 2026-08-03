@@ -1,0 +1,174 @@
+@page "/employee/{Id:long}/education"
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติการศึกษา</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ประวัติการศึกษา — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="@($"/employee/{Id}")" Class="mt-1">‹ กลับไปข้อมูลทั่วไป</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการศึกษา" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_level" Label="ระดับการศึกษา" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_degree" Label="วุฒิการศึกษา" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_major" Label="สาขาวิชา" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_institute" Label="สถาบันการศึกษา" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_country" Label="ประเทศ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่เริ่มศึกษา" @bind-Date="_entryDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จบการศึกษา" @bind-Date="_finishedDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_gpa" Label="เกรดเฉลี่ย" Format="N2" Min="0" Max="4" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isHonors" Color="Color.Info" Label="เกียรตินิยม" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isHighest" Color="Color.Success" Label="วุฒิสูงสุด" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ระดับ</MudTh>
+                <MudTh>วุฒิ / สาขา</MudTh>
+                <MudTh>สถาบัน</MudTh>
+                <MudTh>ปีที่จบ</MudTh>
+                <MudTh>เกรดเฉลี่ย</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Level</MudTd>
+                <MudTd>@context.Degree @context.Major</MudTd>
+                <MudTd>@context.Institute</MudTd>
+                <MudTd>@(context.FinishedDate?.ToString("dd/MM/yyyy"))</MudTd>
+                <MudTd>@context.Gpa</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_Education> _items = new();
+    private long? _editingId;
+
+    private string? _level;
+    private string? _degree;
+    private string? _major;
+    private string? _institute;
+    private string? _country;
+    private DateTime? _entryDate;
+    private DateTime? _finishedDate;
+    private decimal? _gpa;
+    private bool _isHonors;
+    private bool _isHighest;
+    private string? _remark;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        await AuditLogger.LogAccessAsync("Hrd_Education", Id.ToString(), isSensitive: true, note: "employee education history view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_Educations.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.FinishedDate).ToListAsync();
+    }
+
+    private void StartEdit(Hrd_Education item)
+    {
+        _editingId = item.Id;
+        _level = item.Level;
+        _degree = item.Degree;
+        _major = item.Major;
+        _institute = item.Institute;
+        _country = item.Country;
+        _entryDate = item.EntryDate?.ToDateTime(TimeOnly.MinValue);
+        _finishedDate = item.FinishedDate?.ToDateTime(TimeOnly.MinValue);
+        _gpa = item.Gpa;
+        _isHonors = item.IsHonors;
+        _isHighest = item.IsHighestDegree;
+        _remark = item.Remark;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _level = null; _degree = null; _major = null; _institute = null; _country = null;
+        _entryDate = null; _finishedDate = null; _gpa = null; _isHonors = false; _isHighest = false; _remark = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var entryDate = _entryDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_entryDate.Value);
+        var finishedDate = _finishedDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_finishedDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_Educations.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) return;
+            existing.Level = _level; existing.Degree = _degree; existing.Major = _major;
+            existing.Institute = _institute; existing.Country = _country;
+            existing.EntryDate = entryDate; existing.FinishedDate = finishedDate;
+            existing.Gpa = _gpa; existing.IsHonors = _isHonors; existing.IsHighestDegree = _isHighest;
+            existing.Remark = _remark; existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_Educations.Add(new Hrd_Education
+            {
+                HremployeeId = Id, Level = _level, Degree = _degree, Major = _major,
+                Institute = _institute, Country = _country, EntryDate = entryDate, FinishedDate = finishedDate,
+                Gpa = _gpa, IsHonors = _isHonors, IsHighestDegree = _isHighest, Remark = _remark,
+                ModDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

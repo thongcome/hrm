@@ -378,6 +378,20 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Com_ChartOfAccount> Com_ChartOfAccounts { get; set; }
 
+    public virtual DbSet<Com_SectionType> Com_SectionTypes { get; set; }
+    public virtual DbSet<Com_SubSectionType> Com_SubSectionTypes { get; set; }
+
+    public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
+    public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
+    public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
+
+    public virtual DbSet<Hrd_Family> Hrd_Families { get; set; }
+    public virtual DbSet<Hrd_Marriage> Hrd_Marriages { get; set; }
+    public virtual DbSet<Hrd_Education> Hrd_Educations { get; set; }
+    public virtual DbSet<Hrd_Experience> Hrd_Experiences { get; set; }
+    public virtual DbSet<Hrd_NameChangeHistory> Hrd_NameChangeHistories { get; set; }
+    public virtual DbSet<Hrd_ContactPerson> Hrd_ContactPersons { get; set; }
+
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }

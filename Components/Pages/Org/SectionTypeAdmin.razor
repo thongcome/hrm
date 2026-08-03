@@ -1,0 +1,222 @@
+@page "/org/section-types"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>ข้อมูลประเภทสังกัด</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ข้อมูลประเภทสังกัด (Section Type)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ระดับชั้นของหน่วยงาน (เช่น กรรมการผู้จัดการใหญ่/ฝ่าย/ส่วน) — ใช้จำแนกว่าหน่วยงานแต่ละแห่งอยู่ระดับไหน
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" /></MudItem>
+        <MudItem xs="12" sm="8"><MudTextField @bind-Value="_name" Label="ชื่อระดับ" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbNameEn" Label="Abb. Name (English)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_levelNo" Label="ระดับ" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isTopLevel" Color="Color.Info" Label="เป็นระดับสูงสุด" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="คำอธิบาย" Lines="2" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อระดับ</MudTh>
+            <MudTh>ชื่อย่อ</MudTh>
+            <MudTh>เป็นระดับสูงสุด</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.AbbName</MudTd>
+            <MudTd>@(context.IsTopLevel ? "ใช่" : "ไม่ใช่")</MudTd>
+            <MudTd>@context.LevelNo</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Com_SectionType> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _abbName;
+    private string? _nameEn;
+    private string? _abbNameEn;
+    private int _levelNo;
+    private bool _isTopLevel;
+    private bool _isActive = true;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Com_SectionTypes.Where(t => t.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Com_SectionType.Code), nameof(Com_SectionType.Name), nameof(Com_SectionType.NameEn));
+        _items = await query.OrderBy(t => t.LevelNo).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Com_SectionType item)
+    {
+        _editingId = item.Id;
+        _code = item.Code;
+        _name = item.Name;
+        _abbName = item.AbbName;
+        _nameEn = item.NameEn;
+        _abbNameEn = item.AbbNameEn;
+        _levelNo = item.LevelNo;
+        _isTopLevel = item.IsTopLevel;
+        _isActive = item.IsActive;
+        _remark = item.Remark;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _abbName = null;
+        _nameEn = null;
+        _abbNameEn = null;
+        _levelNo = 0;
+        _isTopLevel = false;
+        _isActive = true;
+        _remark = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อระดับ";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Com_SectionTypes.AnyAsync(t => t.CompanyId == _companyId && t.Code == _code && t.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Com_SectionTypes.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.Code = _code;
+            existing.Name = _name;
+            existing.AbbName = _abbName;
+            existing.NameEn = _nameEn;
+            existing.AbbNameEn = _abbNameEn;
+            existing.LevelNo = _levelNo;
+            existing.IsTopLevel = _isTopLevel;
+            existing.IsActive = _isActive;
+            existing.Remark = _remark;
+            existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Com_SectionTypes.Add(new Com_SectionType
+            {
+                CompanyId = _companyId!,
+                Code = _code,
+                Name = _name,
+                AbbName = _abbName,
+                NameEn = _nameEn,
+                AbbNameEn = _abbNameEn,
+                LevelNo = _levelNo,
+                IsTopLevel = _isTopLevel,
+                IsActive = _isActive,
+                Remark = _remark,
+                CreateDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

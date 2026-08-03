@@ -1,0 +1,140 @@
+@page "/employee/{Id:long}/contact-person"
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>บุคคลติดต่อในยามฉุกเฉิน</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">บุคคลติดต่อในยามฉุกเฉิน — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="@($"/employee/{Id}")" Class="mt-1">‹ กลับไปข้อมูลทั่วไป</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบุคคลติดต่อ" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อ-สกุล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_relation" Label="ความสัมพันธ์" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_phone" Label="เบอร์โทรศัพท์" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_address" Label="ที่อยู่" Lines="2" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ชื่อ-สกุล</MudTh>
+                <MudTh>ความสัมพันธ์</MudTh>
+                <MudTh>เบอร์โทรศัพท์</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Relation</MudTd>
+                <MudTd>@context.Phone</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_ContactPerson> _items = new();
+    private long? _editingId;
+
+    private string? _name;
+    private string? _relation;
+    private string? _phone;
+    private string? _address;
+    private string? _remark;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        await AuditLogger.LogAccessAsync("Hrd_ContactPerson", Id.ToString(), isSensitive: true, note: "employee emergency contact view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_ContactPersons.Where(e => e.HremployeeId == Id).ToListAsync();
+    }
+
+    private void StartEdit(Hrd_ContactPerson item)
+    {
+        _editingId = item.Id;
+        _name = item.Name;
+        _relation = item.Relation;
+        _phone = item.Phone;
+        _address = item.Address;
+        _remark = item.Remark;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _name = null; _relation = null; _phone = null; _address = null; _remark = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_ContactPersons.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) return;
+            existing.Name = _name; existing.Relation = _relation; existing.Phone = _phone;
+            existing.Address = _address; existing.Remark = _remark; existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_ContactPersons.Add(new Hrd_ContactPerson
+            {
+                HremployeeId = Id, Name = _name, Relation = _relation, Phone = _phone,
+                Address = _address, Remark = _remark, ModDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

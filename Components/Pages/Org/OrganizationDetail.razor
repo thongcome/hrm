@@ -1,0 +1,140 @@
+@page "/org/organizations/{Id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>ข้อมูลสังกัด</PageTitle>
+
+@if (_org is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลสังกัดนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudText Typo="Typo.h5">ข้อมูลสังกัด</MudText>
+        <MudSimpleTable Dense="true" Class="mt-3">
+            <tbody>
+                <tr><td>ประเภทสังกัด</td><td>@_sectionTypeName</td><td>รหัสสังกัด</td><td>@_org.code</td></tr>
+                <tr><td>ชื่อสังกัด</td><td>@_org.name (@_org.abbr)</td><td>Name (English)</td><td>@_org.name_en (@_org.abbr_en)</td></tr>
+                <tr><td>อยู่ภายใต้สังกัด</td><td colspan="3">@(_parentName ?? "— ไม่มี (สังกัดสูงสุด) —")</td></tr>
+                <tr><td>รหัสสังกัด (การเงิน)</td><td>@_org.CostCenterCode</td><td>รหัสเต็ม</td><td>@_org.orgcodefull</td></tr>
+                <tr><td>ลักษณะของหน่วยงาน</td><td>@_subSectionTypeName</td><td>สังกัดสูงสุด</td><td>@(_org.istop ? "ใช่" : "ไม่ใช่")</td></tr>
+                <tr><td>นับอัตรากำลัง</td><td>@(_org.isManPowerCount ? "ใช่" : "ไม่ใช่")</td><td>สถานะ</td><td>@(_org.isActive ? "ใช้งาน" : "ไม่ใช้งาน")</td></tr>
+                <tr><td>วันที่เริ่มต้นสังกัด</td><td>@(_org.startdate?.ToString("dd/MM/yyyy") ?? "-")</td><td>วันที่ยกเลิกสังกัด</td><td>@(_org.enddate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                <tr><td>หัวหน้า</td><td colspan="3">@(_org.approver_name ?? "— ยังไม่ได้กำหนด —")</td></tr>
+                <tr><td>หมายเหตุ</td><td colspan="3">@_org.remark</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/org/organizations">แก้ไข / กลับไปหน้ารายการ</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _showTree = !_showTree)">
+                @(_showTree ? "ซ่อนสังกัดภายใต้" : "แสดงสังกัดภายใต้")
+            </MudButton>
+            <MudButton Variant="Variant.Text" Href="@($"/pos/position-slots?orgId={Id}")">แสดงอัตราในสังกัด</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (_showTree)
+    {
+        <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+            <MudText Typo="Typo.h6" Class="mb-2">โครงสร้างองค์กร (สังกัดภายใต้ @_org.name)</MudText>
+            <MudStack Row="true" Spacing="2" Class="mb-3">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(false))">ย่อทั้งหมด</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(true))">ขยายทั้งหมด</MudButton>
+            </MudStack>
+            @RenderNode(_org, 0)
+        </MudPaper>
+    }
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private com_organization? _org;
+    private string? _parentName;
+    private string? _sectionTypeName;
+    private string? _subSectionTypeName;
+    private bool _showTree;
+    private List<com_organization> _allOrgs = new();
+    private HashSet<long> _expanded = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == Id);
+        if (_org is null) return;
+
+        _allOrgs = await context.com_organizations.ToListAsync();
+
+        _parentName = _allOrgs.FirstOrDefault(o => o.code == _org.parent_code) is { } p ? $"{p.code} — {p.name}" : null;
+
+        if (!string.IsNullOrWhiteSpace(_org.SectionTypeCode))
+        {
+            var st = await context.Com_SectionTypes.FirstOrDefaultAsync(t => t.Code == _org.SectionTypeCode);
+            _sectionTypeName = st?.Name;
+        }
+        if (_org.SubSectionTypeId is not null)
+        {
+            var sst = await context.Com_SubSectionTypes.FirstOrDefaultAsync(t => t.Id == _org.SubSectionTypeId);
+            _subSectionTypeName = sst?.Name;
+        }
+
+        _expanded.Add(_org.id);
+    }
+
+    private void SetAllExpanded(bool expand)
+    {
+        if (expand)
+        {
+            _expanded = _allOrgs.Where(o => o.orgcodefull != null && _org!.orgcodefull != null && o.orgcodefull.StartsWith(_org.orgcodefull)).Select(o => o.id).ToHashSet();
+        }
+        else
+        {
+            _expanded = new HashSet<long> { _org!.id };
+        }
+    }
+
+    private RenderFragment RenderNode(com_organization node, int depth) => builder =>
+    {
+        var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var isExpanded = _expanded.Contains(node.id);
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0;");
+
+        if (children.Count > 0)
+        {
+            builder.OpenElement(2, "a");
+            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
+            builder.AddAttribute(4, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleExpand(node.id)));
+            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(6, "a");
+        builder.AddAttribute(7, "href", $"/org/organizations/{node.id}");
+        builder.AddContent(8, $"{node.orgcodefull} - {node.name} ({node.abbr})");
+        builder.CloseElement();
+
+        builder.CloseElement();
+
+        if (isExpanded)
+        {
+            foreach (var child in children)
+            {
+                builder.AddContent(9, RenderNode(child, depth + 1));
+            }
+        }
+    };
+
+    private void ToggleExpand(long id)
+    {
+        if (!_expanded.Add(id)) _expanded.Remove(id);
+    }
+}

@@ -161,4 +161,21 @@ public partial class com_organization
     // alone can't tell which of the two is meant.
     [StringLength(100)]
     public string? orgcodefull { get; set; }
+
+    // Soft-linked to Com_SectionType.Code — "ประเภทสังกัด" (org-level
+    // classification), e.g. กรมการผู้จัดการใหญ่/ฝ่าย/ส่วน. Same string-code
+    // convention as parent_code (not an enforced FK).
+    [StringLength(20)]
+    public string? SectionTypeCode { get; set; }
+
+    // Soft-linked to Com_SubSectionType.Id — "ลักษณะของหน่วยงาน" (nature of
+    // the unit, e.g. คณะกรรมการ/Front/Back/Support).
+    public long? SubSectionTypeId { get; set; }
+
+    public DateTime? createdate { get; set; }
+    [StringLength(50)]
+    public string? createby { get; set; }
+
+    [StringLength(50)]
+    public string? abbr_en { get; set; }
 }

@@ -1,0 +1,171 @@
+@page "/employee/{Id:long}/marriage"
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติการสมรส</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ประวัติการสมรส — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="@($"/employee/{Id}")" Class="mt-1">‹ กลับไปข้อมูลทั่วไป</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการสมรส" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_marriageNo" Label="เลขทะเบียนสมรส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_bookNo" Label="เล่มที่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_marriedAt" Label="จดทะเบียน ณ" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_spouseName" Label="ชื่อคู่สมรส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_spouseAge" Label="อายุคู่สมรส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_spouseCareer" Label="อาชีพคู่สมรส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_spouseIncome" Label="รายได้คู่สมรส" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childCount" Label="จำนวนบุตร" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childStudying" Label="กำลังศึกษา" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childNotStudying" Label="ไม่ได้ศึกษา" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>เลขทะเบียน</MudTh>
+                <MudTh>วันที่จดทะเบียน</MudTh>
+                <MudTh>คู่สมรส</MudTh>
+                <MudTh>จำนวนบุตร</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.MarriageNo</MudTd>
+                <MudTd>@(context.RegisterDate?.ToString("dd/MM/yyyy"))</MudTd>
+                <MudTd>@context.SpouseName</MudTd>
+                <MudTd>@context.ChildCount</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_Marriage> _items = new();
+    private long? _editingId;
+
+    private string? _marriageNo;
+    private string? _bookNo;
+    private DateTime? _registerDate;
+    private string? _marriedAt;
+    private string? _spouseName;
+    private int? _spouseAge;
+    private string? _spouseCareer;
+    private decimal? _spouseIncome;
+    private int? _childCount;
+    private int? _childStudying;
+    private int? _childNotStudying;
+    private string? _remark;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        await AuditLogger.LogAccessAsync("Hrd_Marriage", Id.ToString(), isSensitive: true, note: "employee marriage history view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_Marriages.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.RegisterDate).ToListAsync();
+    }
+
+    private void StartEdit(Hrd_Marriage item)
+    {
+        _editingId = item.Id;
+        _marriageNo = item.MarriageNo;
+        _bookNo = item.BookNo;
+        _registerDate = item.RegisterDate?.ToDateTime(TimeOnly.MinValue);
+        _marriedAt = item.MarriedAt;
+        _spouseName = item.SpouseName;
+        _spouseAge = item.SpouseAge;
+        _spouseCareer = item.SpouseCareer;
+        _spouseIncome = item.SpouseIncome;
+        _childCount = item.ChildCount;
+        _childStudying = item.ChildStudyingCount;
+        _childNotStudying = item.ChildNotStudyingCount;
+        _remark = item.Remark;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _marriageNo = null; _bookNo = null; _registerDate = null; _marriedAt = null; _spouseName = null;
+        _spouseAge = null; _spouseCareer = null; _spouseIncome = null; _childCount = null; _childStudying = null;
+        _childNotStudying = null; _remark = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var registerDate = _registerDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_registerDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_Marriages.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) return;
+            existing.MarriageNo = _marriageNo; existing.BookNo = _bookNo; existing.RegisterDate = registerDate;
+            existing.MarriedAt = _marriedAt; existing.SpouseName = _spouseName; existing.SpouseAge = _spouseAge;
+            existing.SpouseCareer = _spouseCareer; existing.SpouseIncome = _spouseIncome;
+            existing.ChildCount = _childCount; existing.ChildStudyingCount = _childStudying; existing.ChildNotStudyingCount = _childNotStudying;
+            existing.Remark = _remark; existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_Marriages.Add(new Hrd_Marriage
+            {
+                HremployeeId = Id, MarriageNo = _marriageNo, BookNo = _bookNo, RegisterDate = registerDate,
+                MarriedAt = _marriedAt, SpouseName = _spouseName, SpouseAge = _spouseAge, SpouseCareer = _spouseCareer,
+                SpouseIncome = _spouseIncome, ChildCount = _childCount, ChildStudyingCount = _childStudying,
+                ChildNotStudyingCount = _childNotStudying, Remark = _remark, ModDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

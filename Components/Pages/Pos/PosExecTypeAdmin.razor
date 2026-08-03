@@ -1,0 +1,248 @@
+@page "/pos/exec-types"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>ชื่อตำแหน่ง</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ข้อมูลชื่อตำแหน่ง (Position Title)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">ชื่อตำแหน่งที่ใช้กำหนดในตารางเลขที่อัตรา (ตำแหน่งหนึ่งใช้ซ้ำได้กับหลายอัตรา/หลายสังกัด)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูลชื่อตำแหน่ง" : "แก้ไข")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
+                @foreach (var et in _employeeTypes)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudRadioGroup T="bool" @bind-Value="_isTopLevel">
+                <MudText Typo="Typo.caption">ตำแหน่งสูงสุด:</MudText>
+                <MudRadio T="bool" Value="true" Color="Color.Primary">ใช่</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อตำแหน่ง (ไทย)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ (ไทย)" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อตำแหน่ง (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbNameEn" Label="ชื่อย่อ (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+        <MudItem xs="12" sm="4" />
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อตำแหน่ง</MudTh>
+            <MudTh>ประเภทพนักงาน</MudTh>
+            <MudTh>เป็นหัวหน้า</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name @(string.IsNullOrWhiteSpace(context.AbbName) ? "" : $"({context.AbbName})")</MudTd>
+            <MudTd>@EmployeeTypeName(context.EmployeeTypeId)</MudTd>
+            <MudTd>@(context.IsBoss ? "ใช่" : "")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pos_ExecType> _items = new();
+    private List<Pos_EmployeeType> _employeeTypes = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private long? _employeeTypeId;
+    private bool _isTopLevel;
+    private string? _code;
+    private string _name = "";
+    private string? _abbName;
+    private string? _nameEn;
+    private string? _abbNameEn;
+    private bool _isBoss;
+    private bool _isActive = true;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employeeTypes = await context.Pos_EmployeeTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
+
+        await LoadAsync();
+    }
+
+    private string EmployeeTypeName(long? id) => id is null ? "" : (_employeeTypes.FirstOrDefault(t => t.Id == id)?.Name ?? "");
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name), nameof(Pos_ExecType.NameEn));
+        _items = await query.OrderBy(t => t.Name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Pos_ExecType item)
+    {
+        _editingId = item.Id;
+        _employeeTypeId = item.EmployeeTypeId;
+        _isTopLevel = item.IsTopLevel;
+        _code = item.Code;
+        _name = item.Name;
+        _abbName = item.AbbName;
+        _nameEn = item.NameEn;
+        _abbNameEn = item.AbbNameEn;
+        _isBoss = item.IsBoss;
+        _isActive = item.IsActive;
+        _startDate = item.StartDate?.ToDateTime(TimeOnly.MinValue);
+        _endDate = item.EndDate?.ToDateTime(TimeOnly.MinValue);
+        _remark = item.Remark;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _employeeTypeId = null;
+        _isTopLevel = false;
+        _code = null;
+        _name = "";
+        _abbName = null;
+        _nameEn = null;
+        _abbNameEn = null;
+        _isBoss = false;
+        _isActive = true;
+        _startDate = null;
+        _endDate = null;
+        _remark = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อตำแหน่ง"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var startDate = _startDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_startDate.Value);
+        var endDate = _endDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_endDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.EmployeeTypeId = _employeeTypeId;
+            existing.IsTopLevel = _isTopLevel;
+            existing.Code = _code;
+            existing.Name = _name;
+            existing.AbbName = _abbName;
+            existing.NameEn = _nameEn;
+            existing.AbbNameEn = _abbNameEn;
+            existing.IsBoss = _isBoss;
+            existing.IsActive = _isActive;
+            existing.StartDate = startDate;
+            existing.EndDate = endDate;
+            existing.Remark = _remark;
+        }
+        else
+        {
+            context.Pos_ExecTypes.Add(new Pos_ExecType
+            {
+                CompanyId = _companyId!,
+                EmployeeTypeId = _employeeTypeId,
+                IsTopLevel = _isTopLevel,
+                Code = _code,
+                Name = _name,
+                AbbName = _abbName,
+                NameEn = _nameEn,
+                AbbNameEn = _abbNameEn,
+                IsBoss = _isBoss,
+                IsActive = _isActive,
+                StartDate = startDate,
+                EndDate = endDate,
+                Remark = _remark,
+                CreateDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

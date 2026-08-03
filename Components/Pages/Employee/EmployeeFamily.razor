@@ -1,0 +1,194 @@
+@page "/employee/{Id:long}/family"
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>บุคคลในครอบครัว</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">บุคคลในครอบครัว — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="@($"/employee/{Id}")" Class="mt-1">‹ กลับไปข้อมูลทั่วไป</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบุคคลในครอบครัว" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_familyType" Label="ความสัมพันธ์" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_firstName" Label="ชื่อ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_lastName" Label="นามสกุล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_cardId" Label="เลขบัตรประชาชน" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันเกิด" @bind-Date="_birthDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_career" Label="อาชีพ" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_isAlive" Color="Color.Success" Label="ยังมีชีวิตอยู่" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                @if (!_isAlive)
+                {
+                    <MudDatePicker Label="วันที่เสียชีวิต" @bind-Date="_deceasedDate" Editable="true" DateFormat="dd/MM/yyyy" />
+                }
+            </MudItem>
+            <MudText Typo="Typo.subtitle2" Class="ml-3 mt-2">สำหรับบุตร (ใช้คำนวณลดหย่อนภาษี)</MudText>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_isChild" Color="Color.Info" Label="เป็นบุตร" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_childStudying" Color="Color.Info" Label="กำลังศึกษา" Disabled="!_isChild" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_childDeductEligible" Color="Color.Info" Label="ลดหย่อนบุตรได้" Disabled="!_isChild" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_eduRefundEligible" Color="Color.Info" Label="ลดหย่อนค่าเล่าเรียนได้" Disabled="!_isChild" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_address" Label="ที่อยู่" Lines="2" /></MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ความสัมพันธ์</MudTh>
+                <MudTh>ชื่อ-สกุล</MudTh>
+                <MudTh>วันเกิด</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>ลดหย่อนบุตร</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.FamilyType</MudTd>
+                <MudTd>@context.FirstName @context.LastName</MudTd>
+                <MudTd>@(context.BirthDate?.ToString("dd/MM/yyyy"))</MudTd>
+                <MudTd>@(context.IsAlive ? "มีชีวิตอยู่" : "เสียชีวิต")</MudTd>
+                <MudTd>@(context.ChildDeductionEligible ? "ใช่" : "")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_Family> _items = new();
+    private long? _editingId;
+
+    private string? _familyType;
+    private string? _firstName;
+    private string? _lastName;
+    private string? _cardId;
+    private DateTime? _birthDate;
+    private string? _career;
+    private bool _isAlive = true;
+    private DateTime? _deceasedDate;
+    private bool _isChild;
+    private bool _childStudying;
+    private bool _childDeductEligible;
+    private bool _eduRefundEligible;
+    private string? _address;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        await AuditLogger.LogAccessAsync("Hrd_Family", Id.ToString(), isSensitive: true, note: "employee family history view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_Families.Where(e => e.HremployeeId == Id).OrderBy(e => e.FamilyType).ToListAsync();
+    }
+
+    private void StartEdit(Hrd_Family item)
+    {
+        _editingId = item.Id;
+        _familyType = item.FamilyType;
+        _firstName = item.FirstName;
+        _lastName = item.LastName;
+        _cardId = item.CardId;
+        _birthDate = item.BirthDate?.ToDateTime(TimeOnly.MinValue);
+        _career = item.Career;
+        _isAlive = item.IsAlive;
+        _deceasedDate = item.DeceasedDate?.ToDateTime(TimeOnly.MinValue);
+        _isChild = item.IsChild;
+        _childStudying = item.ChildStudying;
+        _childDeductEligible = item.ChildDeductionEligible;
+        _eduRefundEligible = item.EduRefundEligible;
+        _address = item.Address;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _familyType = null; _firstName = null; _lastName = null; _cardId = null; _birthDate = null;
+        _career = null; _isAlive = true; _deceasedDate = null; _isChild = false; _childStudying = false;
+        _childDeductEligible = false; _eduRefundEligible = false; _address = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var birthDate = _birthDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_birthDate.Value);
+        var deceasedDate = _deceasedDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_deceasedDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_Families.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) return;
+            existing.FamilyType = _familyType; existing.FirstName = _firstName; existing.LastName = _lastName;
+            existing.CardId = _cardId; existing.BirthDate = birthDate; existing.Career = _career;
+            existing.IsAlive = _isAlive; existing.DeceasedDate = deceasedDate;
+            existing.IsChild = _isChild; existing.ChildStudying = _childStudying;
+            existing.ChildDeductionEligible = _childDeductEligible; existing.EduRefundEligible = _eduRefundEligible;
+            existing.Address = _address; existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_Families.Add(new Hrd_Family
+            {
+                HremployeeId = Id, FamilyType = _familyType, FirstName = _firstName, LastName = _lastName,
+                CardId = _cardId, BirthDate = birthDate, Career = _career, IsAlive = _isAlive, DeceasedDate = deceasedDate,
+                IsChild = _isChild, ChildStudying = _childStudying, ChildDeductionEligible = _childDeductEligible,
+                EduRefundEligible = _eduRefundEligible, Address = _address, ModDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

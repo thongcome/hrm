@@ -1,0 +1,171 @@
+@page "/employee/{Id:long}/name-change"
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติการเปลี่ยนชื่อ-สกุล</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ประวัติการเปลี่ยนชื่อ-สกุล — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="@($"/employee/{Id}")" Class="mt-1">‹ กลับไปข้อมูลทั่วไป</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการเปลี่ยนชื่อ" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldFirstName" Label="ชื่อเดิม" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldLastName" Label="นามสกุลเดิม" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newFirstName" Label="ชื่อใหม่" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newLastName" Label="นามสกุลใหม่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_docNo" Label="เลขที่เอกสาร" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่เอกสาร" @bind-Date="_docDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_issuedBy" Label="ออกโดย" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ชื่อเดิม</MudTh>
+                <MudTh>ชื่อใหม่</MudTh>
+                <MudTh>วันที่จดทะเบียน</MudTh>
+                <MudTh>เลขที่เอกสาร</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.OldFirstName @context.OldLastName</MudTd>
+                <MudTd>@context.NewFirstName @context.NewLastName</MudTd>
+                <MudTd>@(context.RegisterDate?.ToString("dd/MM/yyyy"))</MudTd>
+                <MudTd>@context.DocNo</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_NameChangeHistory> _items = new();
+    private long? _editingId;
+
+    private string? _oldFirstName;
+    private string? _oldLastName;
+    private string? _newFirstName;
+    private string? _newLastName;
+    private string? _docNo;
+    private DateTime? _docDate;
+    private DateTime? _registerDate;
+    private string? _issuedBy;
+    private string? _remark;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        await AuditLogger.LogAccessAsync("Hrd_NameChangeHistory", Id.ToString(), isSensitive: true, note: "employee name change history view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_NameChangeHistories.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.RegisterDate).ToListAsync();
+    }
+
+    private void StartEdit(Hrd_NameChangeHistory item)
+    {
+        _editingId = item.Id;
+        _oldFirstName = item.OldFirstName;
+        _oldLastName = item.OldLastName;
+        _newFirstName = item.NewFirstName;
+        _newLastName = item.NewLastName;
+        _docNo = item.DocNo;
+        _docDate = item.DocDate?.ToDateTime(TimeOnly.MinValue);
+        _registerDate = item.RegisterDate?.ToDateTime(TimeOnly.MinValue);
+        _issuedBy = item.IssuedBy;
+        _remark = item.Remark;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _oldFirstName = null; _oldLastName = null; _newFirstName = null; _newLastName = null;
+        _docNo = null; _docDate = null; _registerDate = null; _issuedBy = null; _remark = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var docDate = _docDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_docDate.Value);
+        var registerDate = _registerDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_registerDate.Value);
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_NameChangeHistories.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) return;
+            existing.OldFirstName = _oldFirstName; existing.OldLastName = _oldLastName;
+            existing.NewFirstName = _newFirstName; existing.NewLastName = _newLastName;
+            existing.DocNo = _docNo; existing.DocDate = docDate; existing.RegisterDate = registerDate;
+            existing.IssuedBy = _issuedBy; existing.Remark = _remark; existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_NameChangeHistories.Add(new Hrd_NameChangeHistory
+            {
+                HremployeeId = Id, OldFirstName = _oldFirstName, OldLastName = _oldLastName,
+                NewFirstName = _newFirstName, NewLastName = _newLastName, DocNo = _docNo,
+                DocDate = docDate, RegisterDate = registerDate, IssuedBy = _issuedBy, Remark = _remark,
+                ModDate = DateTime.Now,
+            });
+
+            // Keep the employee's current name in sync with the latest change —
+            // matches what the legacy JSP flow does (the name-change form exists
+            // specifically to correct the live record, not just log history).
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+            if (emp is not null && !string.IsNullOrWhiteSpace(_newFirstName))
+            {
+                emp.EmpName = _newFirstName;
+                emp.EmpSurname = _newLastName;
+            }
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,382 @@
+@page "/pos/position-slots"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>เลขที่อัตรา</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudText Typo="Typo.h5">เลขที่อัตรา (Position Headcount Slot)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        อัตรากำลังแต่ละ "ที่นั่ง" — ผูกกับสังกัดและชื่อตำแหน่ง มีคนครองอยู่หรือว่างก็ได้
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มเลขที่อัตรา" : "แก้ไขเลขที่อัตรา")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_posCode" Label="เลขที่ตำแหน่ง" /></MudItem>
+        <MudItem xs="12" sm="8">
+            <MudAutocomplete T="Pos_ExecType" Label="ชื่อตำแหน่ง" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
+                SearchFunc="SearchExecTypesAsync"
+                ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="com_organization" Label="สังกัด" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
+                SearchFunc="SearchOrganizationsAsync"
+                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
+                @foreach (var et in _employeeTypes)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ตำแหน่งมีผล" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันสิ้นสุดการใช้ตำแหน่ง" @bind-Date="_expireDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_minGraduate" Label="ระดับการศึกษาขั้นต่ำ" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_paymentNo" Label="เลขที่จ่ายโดยตำแหน่ง" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Hremployee" Label="พนักงานในตำแหน่ง (เว้นว่าง = ว่าง)" Value="_selectedEmployee" ValueChanged="v => _selectedEmployee = v"
+                SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="อัตราเงินเดือนเริ่มต้น" Format="N2" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_normalSalary" Label="อัตราเงินเดือน" Format="N2" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="อัตราเงินเดือนสูงสุด" Format="N2" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudRadioGroup T="bool" @bind-Value="_isManpower">
+                <MudText Typo="Typo.caption">เงื่อนไขอัตรากำลัง:</MudText>
+                <MudRadio T="bool" Value="true" Color="Color.Primary">นับอัตรากำลัง</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่นับอัตรากำลัง</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="สถานะตำแหน่ง: ใช้อยู่" />
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    @if (_filterOrgId is not null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+            กำลังกรองเฉพาะสังกัดที่เลือกมา — <MudLink OnClick="ClearOrgFilter" Style="cursor:pointer">ล้างตัวกรอง</MudLink>
+        </MudAlert>
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหาเลขที่อัตรา (เลขที่ / ชื่อตำแหน่ง)" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_slots" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>เลขที่ตำแหน่ง</MudTh>
+            <MudTh>ชื่อตำแหน่ง</MudTh>
+            <MudTh>สังกัด</MudTh>
+            <MudTh>วันที่มีผล</MudTh>
+            <MudTh>ผู้ครองตำแหน่ง</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.PosCode</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@OrgName(context.OrganizationId)</MudTd>
+            <MudTd>@(context.StartDate?.ToString("dd/MM/yyyy"))</MudTd>
+            <MudTd>@(EmployeeName(context.HremployeeId) ?? "ว่าง")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้อยู่" : "ปิดใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Pos_PositionSlot> _slots = new();
+    private List<Pos_EmployeeType> _employeeTypes = new();
+    private Dictionary<long, string> _orgNames = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+    private long? _filterOrgId;
+
+    private string? _posCode;
+    private Pos_ExecType? _selectedExecType;
+    private com_organization? _selectedOrg;
+    private long? _employeeTypeId;
+    private DateTime? _startDate;
+    private DateTime? _expireDate;
+    private string? _minGraduate;
+    private string? _paymentNo;
+    private Hremployee? _selectedEmployee;
+    private decimal? _minSalary;
+    private decimal? _normalSalary;
+    private decimal? _maxSalary;
+    private bool _isManpower = true;
+    private bool _isBoss;
+    private bool _isActive = true;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("orgId", out var orgIdStr) && long.TryParse(orgIdStr, out var orgId))
+        {
+            _filterOrgId = orgId;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employeeTypes = await context.Pos_EmployeeTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
+
+        await LoadAsync();
+    }
+
+    private void ClearOrgFilter()
+    {
+        _filterOrgId = null;
+        _ = LoadAsync();
+    }
+
+    private string? OrgName(long? id)
+    {
+        if (id is null) return null;
+        return _orgNames.TryGetValue(id.Value, out var name) ? name : null;
+    }
+
+    private string? EmployeeName(long? id)
+    {
+        if (id is null) return null;
+        return _employeeNames.TryGetValue(id.Value, out var name) ? name : null;
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Pos_PositionSlots.Where(s => s.CompanyId == _companyId);
+        if (_filterOrgId is not null)
+            query = query.Where(s => s.OrganizationId == _filterOrgId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Pos_PositionSlot.PosCode), nameof(Pos_PositionSlot.Name));
+        _slots = await query.OrderBy(s => s.PosCode).ToListAsync();
+
+        var orgIds = _slots.Where(s => s.OrganizationId is not null).Select(s => s.OrganizationId!.Value).Distinct().ToList();
+        _orgNames = await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToDictionaryAsync(o => o.id, o => $"{o.code} — {o.name}");
+
+        var empIds = _slots.Where(s => s.HremployeeId is not null).Select(s => s.HremployeeId!.Value).Distinct().ToList();
+        _employeeNames = await context.Hremployee.Where(e => empIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}");
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void StartEdit(Pos_PositionSlot slot)
+    {
+        _editingId = slot.Id;
+        _posCode = slot.PosCode;
+        _employeeTypeId = slot.EmployeeTypeId;
+        _startDate = slot.StartDate?.ToDateTime(TimeOnly.MinValue);
+        _expireDate = slot.ExpireDate?.ToDateTime(TimeOnly.MinValue);
+        _minGraduate = slot.MinGraduate;
+        _paymentNo = slot.PaymentNo;
+        _minSalary = slot.MinSalary;
+        _normalSalary = slot.NormalSalary;
+        _maxSalary = slot.MaxSalary;
+        _isManpower = slot.IsManpower;
+        _isBoss = slot.IsBoss;
+        _isActive = slot.IsActive;
+        _remark = slot.Remark;
+        _selectedExecType = null;
+        _selectedOrg = null;
+        _selectedEmployee = null;
+        _error = null;
+        _ = LoadEditContextAsync(slot);
+    }
+
+    private async Task LoadEditContextAsync(Pos_PositionSlot slot)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (slot.PosExecTypeId is not null)
+            _selectedExecType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == slot.PosExecTypeId);
+        if (slot.OrganizationId is not null)
+            _selectedOrg = await context.com_organizations.FirstOrDefaultAsync(o => o.id == slot.OrganizationId);
+        if (slot.HremployeeId is not null)
+            _selectedEmployee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == slot.HremployeeId);
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _posCode = null;
+        _selectedExecType = null;
+        _selectedOrg = null;
+        _employeeTypeId = null;
+        _startDate = null;
+        _expireDate = null;
+        _minGraduate = null;
+        _paymentNo = null;
+        _selectedEmployee = null;
+        _minSalary = null;
+        _normalSalary = null;
+        _maxSalary = null;
+        _isManpower = true;
+        _isBoss = false;
+        _isActive = true;
+        _remark = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var startDate = _startDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_startDate.Value);
+        var expireDate = _expireDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_expireDate.Value);
+        var name = _selectedExecType?.Name;
+        var abbName = _selectedExecType?.AbbName;
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.PosCode = _posCode;
+            existing.PosExecTypeId = _selectedExecType?.Id;
+            existing.OrganizationId = _selectedOrg?.id;
+            existing.EmployeeTypeId = _employeeTypeId;
+            existing.Name = name;
+            existing.AbbName = abbName;
+            existing.StartDate = startDate;
+            existing.ExpireDate = expireDate;
+            existing.MinGraduate = _minGraduate;
+            existing.PaymentNo = _paymentNo;
+            existing.HremployeeId = _selectedEmployee?.id;
+            existing.MinSalary = _minSalary;
+            existing.NormalSalary = _normalSalary;
+            existing.MaxSalary = _maxSalary;
+            existing.IsManpower = _isManpower;
+            existing.IsBoss = _isBoss;
+            existing.IsActive = _isActive;
+            existing.Remark = _remark;
+        }
+        else
+        {
+            context.Pos_PositionSlots.Add(new Pos_PositionSlot
+            {
+                CompanyId = _companyId!,
+                PosCode = _posCode,
+                PosExecTypeId = _selectedExecType?.Id,
+                OrganizationId = _selectedOrg?.id,
+                EmployeeTypeId = _employeeTypeId,
+                Name = name,
+                AbbName = abbName,
+                StartDate = startDate,
+                ExpireDate = expireDate,
+                MinGraduate = _minGraduate,
+                PaymentNo = _paymentNo,
+                HremployeeId = _selectedEmployee?.id,
+                MinSalary = _minSalary,
+                NormalSalary = _normalSalary,
+                MaxSalary = _maxSalary,
+                IsManpower = _isManpower,
+                IsBoss = _isBoss,
+                IsActive = _isActive,
+                Remark = _remark,
+                CreateDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
