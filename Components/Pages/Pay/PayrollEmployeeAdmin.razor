@@ -6,7 +6,6 @@
 @using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -14,10 +13,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
-@inject PrivateFileStorage FileStorage
-@inject HRM.Services.Pay.SeveranceService SeveranceService
 @inject NavigationManager Nav
-@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject IPasswordHasher<sc_user> PasswordHasher
 @inject UserManager<ApplicationUser> UserManager
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
@@ -83,21 +79,9 @@
                 }
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenEditAsync(context))">แก้ไข</MudButton>
-                @if (context.ResignDate is null)
-                {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => OpenResign(context))">ลงวันที่ลาออก</MudButton>
-                }
-                else
-                {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => OpenSeveranceAsync(context))">คำนวณค่าชดเชย</MudButton>
-                }
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenDocsAsync(context))">เอกสาร</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/pay-items"))">เงินได้-เงินหัก</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/position-salary-history"))">ประวัติปรับตำแหน่ง/เงินเดือน</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/loans"))">เงินกู้พนักงาน</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/insurance"))">ประกันกลุ่ม</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}/provident-fund"))">กองทุนสำรองเลี้ยงชีพ</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                    EndIcon="@Icons.Material.Filled.ChevronRight"
+                    OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}"))">รายละเอียด</MudButton>
             </MudTd>
         </RowTemplate>
     </MudTable>
@@ -106,133 +90,18 @@
     {
         <MudPaper Class="pa-4 mt-4" Outlined="true">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">@(_isCreating ? "เพิ่มพนักงานใหม่" : $"แก้ไขพนักงาน — {_formEmployee.EmpNo}")</MudText>
+                <MudText Typo="Typo.h6">เพิ่มพนักงานใหม่</MudText>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _formEmployee = null)" />
             </MudStack>
 
-            <MudGrid Class="mt-2">
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.EmpNo" Label="รหัสพนักงาน" Required="true"
-                        ReadOnly="@(!_isCreating || !_empNoUnlocked)"
-                        Adornment="@(_isCreating && !_empNoUnlocked ? Adornment.End : Adornment.None)"
-                        AdornmentIcon="@Icons.Material.Filled.Edit" AdornmentColor="Color.Default"
-                        OnAdornmentClick="@(() => _empNoUnlocked = true)"
-                        HelperText="@(_isCreating && !_empNoUnlocked ? "สร้างอัตโนมัติ — กดไอคอนเพื่อแก้ไขเอง" : null)" />
-                </MudItem>
-                <MudItem xs="12" sm="2">
-                    <MudTextField @bind-Value="_formEmployee.PrenameCode" Label="คำนำหน้า" />
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudTextField @bind-Value="_formEmployee.EmpName" Label="ชื่อ" Required="true" />
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudTextField @bind-Value="_formEmployee.EmpSurname" Label="นามสกุล" Required="true" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployeeEmail" Label="อีเมล" Required="true" InputType="InputType.Email"
-                        HelperText="ใช้สำหรับส่งเอกสาร (สลิป/หนังสือรับรอง) และแจ้งบัญชีผู้ใช้ — ต้องเป็นอีเมลของพนักงานเอง" />
-                </MudItem>
-
-                <MudItem xs="12" sm="4">
-                    <MudSelect T="string" @bind-Value="_formEmployee.EmptypeCode" Label="ประเภทพนักงาน">
-                        <MudSelectItem T="string" Value="@("01")">พนักงานประจำ</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("02")">พนักงานชั่วคราว</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.DeptgrpCode" Label="แผนก" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.PosCode" Label="ตำแหน่ง" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสศูนย์ต้นทุน (Cost Center)" Value="_selectedCostCenter" ValueChanged="OnCostCenterSelected"
-                        SearchFunc="SearchCostCentersAsync"
-                        ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
-                        HelperText="ค้นหาจากผังบัญชี (รหัส/ชื่อไทย/ชื่ออังกฤษ) — ตั้งต้นจากหน่วยงานที่เลือก แก้ไขเองได้"
-                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudText Typo="Typo.caption" Class="mud-text-secondary">หน่วยงาน (ผังองค์กร)</MudText>
-                    <MudText Typo="Typo.body1">@(_currentOrgLabel ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</MudText>
-                    <MudText Typo="Typo.body2" Class="mud-text-secondary">ตำแหน่ง: @(_currentSlot?.Name ?? "—")</MudText>
-                    @if (!_isCreating)
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" Class="mt-1"
-                            OnClick="@(() => Nav.NavigateTo($"/pos/position-slots?employeeId={_formEmployee.id}"))">
-                            จัดการตำแหน่ง/สังกัด →
-                        </MudButton>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">
-                            กำหนดหน่วยงาน/ตำแหน่งได้หลังบันทึกพนักงาน ที่หน้าเลขที่อัตรา
-                        </MudText>
-                    }
-                </MudItem>
-
-                <MudItem xs="12" sm="4">
-                    <MudDatePicker @bind-Date="_workDate" Label="วันเริ่มงาน" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudDatePicker @bind-Date="_birthDate" Label="วันเกิด" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.IdCard" Label="เลขบัตรประชาชน" />
-                </MudItem>
-
-                <MudItem xs="12" sm="4">
-                    <MudNumericField @bind-Value="_formEmployee.SalaryAmt" Label="เงินเดือน" Format="N2" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudSelect T="long?" @bind-Value="_formEmployee.SalaryGradeId" Label="เกรดเงินเดือน" Clearable="true">
-                        @foreach (var grade in _salaryGrades)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)grade.Id)">@grade.GradeCode — @grade.GradeName</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.SalexpBank" Label="รหัสธนาคาร" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.SalexpBranch" Label="รหัสสาขา" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_formEmployee.SalexpAccid" Label="เลขบัญชี" />
-                </MudItem>
-                @{ var compaStatus = GetCompaRatioStatus(); }
-                @if (compaStatus is not null)
-                {
-                    <MudItem xs="12">
-                        <MudAlert Severity="compaStatus.Value.Severity" Dense="true">@compaStatus.Value.Text</MudAlert>
-                    </MudItem>
-                }
-            </MudGrid>
-
-            @if (!_isCreating)
-            {
-                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
-                    ถ้าเปลี่ยนตำแหน่งหรือเงินเดือนในฟอร์มด้านบน ระบบจะบันทึกลง "ประวัติปรับตำแหน่ง/เงินเดือน" ให้อัตโนมัติ — ช่องด้านล่างนี้ไม่บังคับ ใช้เผื่ออยากระบุรายละเอียดเพิ่ม
-                </MudAlert>
-                <MudGrid Class="mt-1">
-                    <MudItem xs="12" sm="4">
-                        <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="ประเภทการเปลี่ยนแปลง" Clearable="true">
-                            <MudSelectItem T="string" Value="@("P")">เลื่อนตำแหน่ง</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("D")">ลดตำแหน่ง</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("T")">โยกย้าย</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("S")">ปรับเงินเดือนอย่างเดียว</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("O")">อื่นๆ</MudSelectItem>
-                        </MudSelect>
-                    </MudItem>
-                    <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryOrderNo" Label="เลขที่คำสั่ง" />
-                    </MudItem>
-                    <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryReason" Label="หมายเหตุ/เหตุผล" />
-                    </MudItem>
-                </MudGrid>
-            }
+            <EmployeeCoreFieldsForm Employee="_formEmployee" IsCreating="true" EmpNoUnlocked="_empNoUnlocked" EmpNoUnlockedChanged="@(v => _empNoUnlocked = v)"
+                CompanyId="@(_companyId!)"
+                Email="_formEmployeeEmail" EmailChanged="@(v => _formEmployeeEmail = v)"
+                WorkDate="_workDate" WorkDateChanged="@(v => _workDate = v)"
+                BirthDate="_birthDate" BirthDateChanged="@(v => _birthDate = v)"
+                SalaryGrades="_salaryGrades"
+                SelectedCostCenter="_selectedCostCenter" SelectedCostCenterChanged="@(v => _selectedCostCenter = v)"
+                CurrentSlot="_currentSlot" CurrentOrgLabel="_currentOrgLabel" />
 
             @if (!string.IsNullOrEmpty(_formError))
             {
@@ -240,127 +109,6 @@
             }
 
             <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">บันทึก</MudButton>
-        </MudPaper>
-    }
-
-    @if (_resignEmployee is not null)
-    {
-        <MudPaper Class="pa-4 mt-4" Outlined="true">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">ลงวันที่ลาออก — @_resignEmployee.EmpNo @_resignEmployee.EmpName @_resignEmployee.EmpSurname</MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _resignEmployee = null)" />
-            </MudStack>
-            <MudDatePicker @bind-Date="_resignDate" Label="วันที่ลาออก" Class="mt-2" />
-            @if (!string.IsNullOrEmpty(_resignError))
-            {
-                <MudAlert Severity="Severity.Error" Class="mt-2">@_resignError</MudAlert>
-            }
-            <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="ConfirmResignAsync">ยืนยันลงวันที่ลาออก</MudButton>
-        </MudPaper>
-    }
-
-    @if (_severanceEmployee is not null)
-    {
-        <MudPaper Class="pa-4 mt-4" Outlined="true">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">คำนวณค่าชดเชย — @_severanceEmployee.EmpNo @_severanceEmployee.EmpName @_severanceEmployee.EmpSurname</MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _severanceEmployee = null)" />
-            </MudStack>
-
-            @if (!string.IsNullOrEmpty(_severanceError))
-            {
-                <MudAlert Severity="Severity.Error" Class="mt-3">@_severanceError</MudAlert>
-            }
-
-            @if (_severancePreview is not null)
-            {
-                <MudAlert Severity="Severity.Warning" Class="mt-3">
-                    ตรวจสอบก่อนว่าการเลิกจ้างเข้าข่ายข้อยกเว้นตามมาตรา 119 หรือไม่ (เช่น ทุจริต ฝ่าฝืนระเบียบร้ายแรง) หากเข้าข่ายข้อยกเว้น ไม่ต้องยื่นรายการนี้
-                </MudAlert>
-
-                <MudSimpleTable Dense="true" Class="mt-3">
-                    <tbody>
-                        <tr><td>อายุงาน</td><td>@_severancePreview.ContinuousServiceDays วัน</td></tr>
-                        <tr><td>เกณฑ์ที่เข้าเงื่อนไข</td><td>@_severancePreview.TierDescription</td></tr>
-                        <tr><td>จำนวนวันที่ได้รับ</td><td>@_severancePreview.EntitledDays วัน</td></tr>
-                        <tr><td>ค่าจ้างต่อวัน</td><td>@_severancePreview.DailyWage.ToString("N2")</td></tr>
-                        <tr><td>ยอดค่าชดเชยตามกฎหมาย (ขั้นต่ำ)</td><td>@_severancePreview.Amount.ToString("N2")</td></tr>
-                    </tbody>
-                </MudSimpleTable>
-
-                <MudGrid Class="mt-3">
-                    <MudItem xs="12" sm="4">
-                        <MudDatePicker @bind-Date="_severanceTargetMonth" Label="งวดที่จะจ่าย" Editable="true" />
-                    </MudItem>
-                    <MudItem xs="12" sm="4">
-                        <MudNumericField @bind-Value="_severanceAmount" Label="จำนวนเงินที่จะยื่น" Format="N2" />
-                    </MudItem>
-                </MudGrid>
-                <MudTextField @bind-Value="_severanceReason" Label="เหตุผล" Lines="2" Class="mt-2" />
-
-                <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeveranceAsync">ยื่นค่าชดเชย</MudButton>
-            }
-        </MudPaper>
-    }
-
-    @if (_docsEmployee is not null)
-    {
-        <MudPaper Class="pa-4 mt-4" Outlined="true">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">เอกสาร — @_docsEmployee.EmpNo @_docsEmployee.EmpName @_docsEmployee.EmpSurname</MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _docsEmployee = null)" />
-            </MudStack>
-
-            <MudSimpleTable Dense="true" Class="mt-2">
-                <thead>
-                    <tr><th>ประเภท</th><th>ชื่อไฟล์</th><th>วันที่อัปโหลด</th><th></th></tr>
-                </thead>
-                <tbody>
-                    @if (_docs.Count == 0)
-                    {
-                        <tr><td colspan="4"><MudText Typo="Typo.caption">ยังไม่มีเอกสารแนบ</MudText></td></tr>
-                    }
-                    @foreach (var doc in _docs)
-                    {
-                        <tr>
-                            <td>@DocTypeLabel(doc.DocumentType)</td>
-                            <td>@doc.FileName</td>
-                            <td>@doc.UploadedDate.ToString("dd/MM/yyyy HH:mm")</td>
-                            <td><MudLink Href="@($"/pay/files/employee-doc/{doc.Id}")" Target="_blank">ดาวน์โหลด</MudLink></td>
-                        </tr>
-                    }
-                </tbody>
-            </MudSimpleTable>
-
-            <MudGrid Class="mt-3">
-                <MudItem xs="12" sm="4">
-                    <MudSelect T="Pay_EmployeeDocumentType" @bind-Value="_uploadDocType" Label="ประเภทเอกสาร">
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.IdCard">บัตรประชาชน</MudSelectItem>
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Contract">สัญญาจ้าง</MudSelectItem>
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.EducationCertificate">วุฒิการศึกษา</MudSelectItem>
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ResignationLetter">ใบลาออก</MudSelectItem>
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.BankBook">สมุดบัญชีธนาคาร</MudSelectItem>
-                        <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Other">อื่นๆ</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
-                        <ActivatorContent>
-                            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
-                                @(_uploadFile?.Name ?? "เลือกไฟล์")
-                            </MudButton>
-                        </ActivatorContent>
-                    </MudFileUpload>
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UploadDocAsync" Disabled="_uploadFile is null">อัปโหลด</MudButton>
-                </MudItem>
-            </MudGrid>
-
-            @if (!string.IsNullOrEmpty(_docError))
-            {
-                <MudAlert Severity="Severity.Error" Class="mt-2">@_docError</MudAlert>
-            }
         </MudPaper>
     }
 
@@ -454,35 +202,11 @@
     private string _searchTerm = string.Empty;
 
     private Hremployee? _formEmployee;
-    private bool _isCreating;
     private bool _empNoUnlocked;
     private string? _formError;
     private DateTime? _workDate;
     private DateTime? _birthDate;
     private string? _formEmployeeEmail;
-
-    // Only used when saving an edit that actually changes SalaryAmt/PosCode —
-    // captured optionally alongside the change, not required (see SaveEmployeeAsync).
-    private string? _positionSalaryReason;
-    private string? _positionSalaryOrderNo;
-    private string? _positionSalaryChangeType;
-
-    private Hremployee? _resignEmployee;
-    private DateTime? _resignDate = DateTime.Today;
-    private string? _resignError;
-
-    private Hremployee? _severanceEmployee;
-    private HRM.Services.Pay.Calculators.SeveranceCalculator.SeveranceResult? _severancePreview;
-    private DateTime? _severanceTargetMonth = DateTime.Today;
-    private decimal _severanceAmount;
-    private string _severanceReason = string.Empty;
-    private string? _severanceError;
-
-    private Hremployee? _docsEmployee;
-    private List<Pay_EmployeeDocument> _docs = new();
-    private Pay_EmployeeDocumentType _uploadDocType = Pay_EmployeeDocumentType.Other;
-    private IBrowserFile? _uploadFile;
-    private string? _docError;
 
     private Dictionary<string, sc_user> _linkedUsers = new();
     private Hremployee? _userAccountEmployee;
@@ -519,41 +243,6 @@
         await LoadAsync();
     }
 
-    // null = ไม่ได้กำหนดเกรด; otherwise compares SalaryAmt against the
-    // selected grade's band and returns a short Thai label + severity for
-    // the alert shown next to the grade picker.
-    private (string Text, Severity Severity)? GetCompaRatioStatus()
-    {
-        if (_formEmployee?.SalaryGradeId is not long gradeId || _formEmployee.SalaryAmt is not decimal salary)
-            return null;
-
-        var grade = _salaryGrades.FirstOrDefault(g => g.Id == gradeId);
-        if (grade is null) return null;
-
-        var compaRatio = grade.MidSalary == 0 ? 0 : salary / grade.MidSalary * 100;
-
-        if (salary < grade.MinSalary)
-            return ($"ต่ำกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
-        if (salary > grade.MaxSalary)
-            return ($"สูงกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
-        return ($"อยู่ในช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Success);
-    }
-
-    private void OnCostCenterSelected(Com_ChartOfAccount? account)
-    {
-        if (_formEmployee is null) return;
-        _selectedCostCenter = account;
-        _formEmployee.CostCenterCode = account?.Code;
-    }
-
-    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId && a.IsCostCenter && a.IsActive);
-        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
-        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
-    }
-
     private async Task LoadAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -579,12 +268,8 @@
 
     private async Task OpenCreate()
     {
-        _resignEmployee = null;
-        _docsEmployee = null;
-        _severanceEmployee = null;
         _userAccountEmployee = null;
         _resetPasswordEmployee = null;
-        _isCreating = true;
         _empNoUnlocked = false;
         _formError = null;
         _workDate = DateTime.Today;
@@ -633,71 +318,6 @@
         return prefix + next.ToString(new string('0', digits));
     }
 
-    private async Task OpenEditAsync(Hremployee emp)
-    {
-        await AuditLogger.LogAccessAsync("Hremployee", emp.id.ToString(), isSensitive: true, note: "employee admin record opened");
-
-        _resignEmployee = null;
-        _docsEmployee = null;
-        _severanceEmployee = null;
-        _userAccountEmployee = null;
-        _resetPasswordEmployee = null;
-        _isCreating = false;
-        _formError = null;
-        _workDate = emp.WorkDate;
-        _birthDate = emp.BirthDate;
-        _positionSalaryReason = null;
-        _positionSalaryOrderNo = null;
-        _positionSalaryChangeType = null;
-        // work on a copy so cancelling doesn't leave the grid row mutated
-        _formEmployee = new Hremployee
-        {
-            id = emp.id,
-            companyid = emp.companyid,
-            EmpNo = emp.EmpNo,
-            PrenameCode = emp.PrenameCode,
-            EmpName = emp.EmpName,
-            EmpSurname = emp.EmpSurname,
-            EmptypeCode = emp.EmptypeCode,
-            DeptgrpCode = emp.DeptgrpCode,
-            PosCode = emp.PosCode,
-            CostCenterCode = emp.CostCenterCode,
-            IdCard = emp.IdCard,
-            SalaryAmt = emp.SalaryAmt,
-            SalaryGradeId = emp.SalaryGradeId,
-            SalexpBank = emp.SalexpBank,
-            SalexpBranch = emp.SalexpBranch,
-            SalexpAccid = emp.SalexpAccid,
-        };
-
-        _selectedCostCenter = null;
-        await using (var context = await DbFactory.CreateDbContextAsync())
-        {
-            _formEmployeeEmail = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
-
-            if (!string.IsNullOrWhiteSpace(emp.CostCenterCode))
-            {
-                _selectedCostCenter = await context.Com_ChartOfAccounts
-                    .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == emp.CostCenterCode);
-            }
-
-            // Read-only org/position display — sourced live from the active
-            // slot (same query EmployeeDetail.razor uses), not from
-            // Hremployee's own snapshot fields, so it self-heals even if the
-            // snapshot were ever momentarily stale.
-            _currentSlot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.HremployeeId == emp.id && s.IsActive);
-            if (_currentSlot?.OrganizationId is long orgId)
-            {
-                var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == orgId);
-                _currentOrgLabel = org is null ? null : $"{org.code} — {org.name}";
-            }
-            else
-            {
-                _currentOrgLabel = null;
-            }
-        }
-    }
-
     private const int MaxEmpNoLength = 6; // Hremployee.EmpNo StringLength(6)
 
     private async Task SaveEmployeeAsync()
@@ -728,92 +348,31 @@
         {
             await using var context = await DbFactory.CreateDbContextAsync();
 
-            if (_isCreating)
+            // Global, not company-scoped: EmpNo doubles as sc_user.loginname
+            // (see PayrollEmployeeAdmin's "สร้างบัญชีผู้ใช้" flow), which must
+            // be unique across the whole system regardless of company.
+            var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
+            if (duplicate)
             {
-                // Global, not company-scoped: EmpNo doubles as sc_user.loginname
-                // (see PayrollEmployeeAdmin's "สร้างบัญชีผู้ใช้" flow), which must
-                // be unique across the whole system regardless of company.
-                var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
-                if (duplicate)
-                {
-                    _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
-                    return;
-                }
-
-                _formEmployee.WorkDate = _workDate;
-                _formEmployee.BirthDate = _birthDate;
-                context.Hremployee.Add(_formEmployee);
-                await context.SaveChangesAsync();
-                await EmployeeEmailResolver.SetAsync(context, _formEmployee.id, _formEmployeeEmail!);
-
-                // Only auto-advance the stateful counter when the suggested code
-                // was used as-is — a manually typed code (unlocked) shouldn't
-                // silently move the counter based on a guess at its intent.
-                if (!_empNoUnlocked)
-                {
-                    var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
-                    if (settings?.EmpCodeNextNumber is not null)
-                    {
-                        settings.EmpCodeNextNumber++;
-                        await context.SaveChangesAsync();
-                    }
-                }
+                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
+                return;
             }
-            else
+
+            _formEmployee.WorkDate = _workDate;
+            _formEmployee.BirthDate = _birthDate;
+            context.Hremployee.Add(_formEmployee);
+            await context.SaveChangesAsync();
+            await EmployeeEmailResolver.SetAsync(context, _formEmployee.id, _formEmployeeEmail!);
+
+            // Only auto-advance the stateful counter when the suggested code
+            // was used as-is — a manually typed code (unlocked) shouldn't
+            // silently move the counter based on a guess at its intent.
+            if (!_empNoUnlocked)
             {
-                var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _formEmployee.id && e.companyid == _companyId);
-                if (existing is null)
+                var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+                if (settings?.EmpCodeNextNumber is not null)
                 {
-                    _formError = "ไม่พบข้อมูลพนักงาน";
-                    return;
-                }
-
-                existing.PrenameCode = _formEmployee.PrenameCode;
-                existing.EmpName = _formEmployee.EmpName;
-                existing.EmpSurname = _formEmployee.EmpSurname;
-                var oldPosCode = existing.PosCode;
-                var oldSalary = existing.SalaryAmt;
-
-                existing.EmptypeCode = _formEmployee.EmptypeCode;
-                existing.DeptgrpCode = _formEmployee.DeptgrpCode;
-                existing.PosCode = _formEmployee.PosCode;
-                existing.CostCenterCode = _formEmployee.CostCenterCode;
-                existing.IdCard = _formEmployee.IdCard;
-                existing.SalaryAmt = _formEmployee.SalaryAmt;
-                existing.SalaryGradeId = _formEmployee.SalaryGradeId;
-                existing.SalexpBank = _formEmployee.SalexpBank;
-                existing.SalexpBranch = _formEmployee.SalexpBranch;
-                existing.SalexpAccid = _formEmployee.SalexpAccid;
-                existing.WorkDate = _workDate;
-                existing.BirthDate = _birthDate;
-                await context.SaveChangesAsync();
-                await EmployeeEmailResolver.SetAsync(context, existing.id, _formEmployeeEmail!);
-
-                // Auto-capture into ประวัติปรับตำแหน่ง/เงินเดือน — only when
-                // position or salary actually changed, so a save that
-                // touches unrelated fields (bank account, address, etc.)
-                // doesn't create a spurious history row.
-                if (oldPosCode != existing.PosCode || oldSalary != existing.SalaryAmt)
-                {
-                    var state = await AuthProvider.GetAuthenticationStateAsync();
-                    var userIdClaim = state.User.FindFirstValue("sc_userid");
-                    var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
-
-                    context.Pay_PositionSalaryHistories.Add(new Pay_PositionSalaryHistory
-                    {
-                        HremployeeId = existing.id,
-                        EmpNo = existing.EmpNo,
-                        CompanyId = existing.companyid,
-                        OldPositionCode = oldPosCode,
-                        NewPositionCode = existing.PosCode,
-                        OldSalary = oldSalary,
-                        NewSalary = existing.SalaryAmt,
-                        ChangeType = string.IsNullOrWhiteSpace(_positionSalaryChangeType) ? null : _positionSalaryChangeType,
-                        OrderNo = string.IsNullOrWhiteSpace(_positionSalaryOrderNo) ? null : _positionSalaryOrderNo,
-                        OrderDate = DateTime.Today,
-                        Reason = string.IsNullOrWhiteSpace(_positionSalaryReason) ? null : _positionSalaryReason,
-                        ChangedByUserId = userId,
-                    });
+                    settings.EmpCodeNextNumber++;
                     await context.SaveChangesAsync();
                 }
             }
@@ -827,135 +386,14 @@
             return;
         }
 
-        Snackbar.Add(_isCreating ? "เพิ่มพนักงานเรียบร้อย" : "บันทึกข้อมูลเรียบร้อย", Severity.Success);
+        Snackbar.Add("เพิ่มพนักงานเรียบร้อย", Severity.Success);
         _formEmployee = null;
         await LoadAsync();
-    }
-
-    private void OpenResign(Hremployee emp)
-    {
-        _formEmployee = null;
-        _docsEmployee = null;
-        _severanceEmployee = null;
-        _userAccountEmployee = null;
-        _resetPasswordEmployee = null;
-        _resignError = null;
-        _resignDate = DateTime.Today;
-        _resignEmployee = emp;
-    }
-
-    private async Task ConfirmResignAsync()
-    {
-        _resignError = null;
-
-        if (_resignEmployee is null || _resignDate is null)
-        {
-            _resignError = "กรุณาระบุวันที่ลาออก";
-            return;
-        }
-
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _resignEmployee.id && e.companyid == _companyId);
-        if (existing is null)
-        {
-            _resignError = "ไม่พบข้อมูลพนักงาน";
-            return;
-        }
-
-        existing.ResignDate = _resignDate;
-        await context.SaveChangesAsync();
-
-        Snackbar.Add("บันทึกวันที่ลาออกเรียบร้อย", Severity.Success);
-        _resignEmployee = null;
-        await LoadAsync();
-    }
-
-    private async Task OpenSeveranceAsync(Hremployee emp)
-    {
-        _formEmployee = null;
-        _resignEmployee = null;
-        _docsEmployee = null;
-        _userAccountEmployee = null;
-        _resetPasswordEmployee = null;
-        _severanceError = null;
-        _severancePreview = null;
-        _severanceEmployee = emp;
-
-        try
-        {
-            _severancePreview = await SeveranceService.PreviewAsync(emp.id);
-            _severanceAmount = _severancePreview.Amount;
-            _severanceReason = $"ค่าชดเชยตามกฎหมาย มาตรา 118 ({_severancePreview.TierDescription})";
-            _severanceTargetMonth = DateTime.Today;
-        }
-        catch (InvalidOperationException ex)
-        {
-            _severanceError = ex.Message;
-        }
-    }
-
-    private async Task SubmitSeveranceAsync()
-    {
-        _severanceError = null;
-
-        if (_severanceEmployee is null || _severanceTargetMonth is null || _severanceAmount <= 0 || string.IsNullOrWhiteSpace(_severanceReason))
-        {
-            _severanceError = "กรุณากรอกข้อมูลให้ครบถ้วน";
-            return;
-        }
-
-        var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userIdClaim = state.User.FindFirstValue("sc_userid");
-        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
-
-        // InvariantCulture: ambient Thai culture formats "yyyy" as Buddhist
-        // year — TargetPeriod must stay Gregorian to match Pay_PayrollRun.
-        var targetPeriod = _severanceTargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
-
-        try
-        {
-            await SeveranceService.SubmitAsync(_severanceEmployee.id, targetPeriod, _severanceAmount, _severanceReason, userId);
-        }
-        catch (InvalidOperationException ex)
-        {
-            _severanceError = ex.Message;
-            return;
-        }
-
-        Snackbar.Add("ยื่นค่าชดเชยเรียบร้อย รออนุมัติที่หน้ารายการเฉพาะกิจ", Severity.Success);
-        _severanceEmployee = null;
-        Nav.NavigateTo($"/pay/adhoc/{targetPeriod}");
-    }
-
-    private async Task OpenDocsAsync(Hremployee emp)
-    {
-        _formEmployee = null;
-        _resignEmployee = null;
-        _severanceEmployee = null;
-        _userAccountEmployee = null;
-        _resetPasswordEmployee = null;
-        _docError = null;
-        _uploadFile = null;
-        _docsEmployee = emp;
-
-        await using var context = await DbFactory.CreateDbContextAsync();
-        _docs = await context.Pay_EmployeeDocuments
-            .Where(d => d.HremployeeId == emp.id)
-            .OrderByDescending(d => d.UploadedDate)
-            .ToListAsync();
-    }
-
-    private void OnFileSelected(IBrowserFile file)
-    {
-        _uploadFile = file;
     }
 
     private async Task OpenUserAccount(Hremployee emp)
     {
         _formEmployee = null;
-        _resignEmployee = null;
-        _severanceEmployee = null;
-        _docsEmployee = null;
         _resetPasswordEmployee = null;
         _userAccountError = null;
         _userAccountInfo = null;
@@ -977,9 +415,6 @@
     private async Task OpenResetPasswordAsync(Hremployee emp)
     {
         _formEmployee = null;
-        _resignEmployee = null;
-        _severanceEmployee = null;
-        _docsEmployee = null;
         _userAccountEmployee = null;
         _resetPasswordError = null;
         _resetPasswordInfo = null;
@@ -1187,56 +622,4 @@
         }
     }
 
-    private async Task UploadDocAsync()
-    {
-        _docError = null;
-
-        if (_docsEmployee is null || _uploadFile is null) return;
-
-        const long maxSize = 10 * 1024 * 1024; // 10 MB
-        if (_uploadFile.Size > maxSize)
-        {
-            _docError = "ไฟล์ใหญ่เกินไป (จำกัด 10 MB)";
-            return;
-        }
-
-        await using var stream = _uploadFile.OpenReadStream(maxSize);
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer);
-        var bytes = buffer.ToArray();
-
-        var storedFileName = $"{_docsEmployee.EmpNo}_{DateTime.Now:yyyyMMddHHmmss}_{_uploadFile.Name}";
-        var (relativePath, sha256) = await FileStorage.SaveAsync("employee-docs", storedFileName, bytes);
-
-        var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userIdClaim = state.User.FindFirstValue("sc_userid");
-        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
-
-        await using var context = await DbFactory.CreateDbContextAsync();
-        context.Pay_EmployeeDocuments.Add(new Pay_EmployeeDocument
-        {
-            HremployeeId = _docsEmployee.id,
-            DocumentType = _uploadDocType,
-            FileName = _uploadFile.Name,
-            StoragePath = relativePath,
-            Sha256 = sha256,
-            UploadedByUserId = userId,
-            UploadedDate = DateTime.Now,
-        });
-        await context.SaveChangesAsync();
-
-        Snackbar.Add("อัปโหลดเอกสารเรียบร้อย", Severity.Success);
-        _uploadFile = null;
-        await OpenDocsAsync(_docsEmployee);
-    }
-
-    private static string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
-    {
-        Pay_EmployeeDocumentType.IdCard => "บัตรประชาชน",
-        Pay_EmployeeDocumentType.Contract => "สัญญาจ้าง",
-        Pay_EmployeeDocumentType.EducationCertificate => "วุฒิการศึกษา",
-        Pay_EmployeeDocumentType.ResignationLetter => "ใบลาออก",
-        Pay_EmployeeDocumentType.BankBook => "สมุดบัญชีธนาคาร",
-        _ => "อื่นๆ",
-    };
 }

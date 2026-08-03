@@ -1,0 +1,162 @@
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+
+@* Shared core-fields form for an Hremployee, reused by both the create panel
+   (PayrollEmployeeAdmin.razor) and the edit tab (PayrollEmployeeDetail.razor)
+   — same entity, same fields, only IsCreating changes what's editable/shown. *@
+
+<MudGrid>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.EmpNo" Label="รหัสพนักงาน" Required="true"
+            ReadOnly="@(!IsCreating || !EmpNoUnlocked)"
+            Adornment="@(IsCreating && !EmpNoUnlocked ? Adornment.End : Adornment.None)"
+            AdornmentIcon="@Icons.Material.Filled.Edit" AdornmentColor="Color.Default"
+            OnAdornmentClick="@(() => EmpNoUnlockedChanged.InvokeAsync(true))"
+            HelperText="@(IsCreating && !EmpNoUnlocked ? "สร้างอัตโนมัติ — กดไอคอนเพื่อแก้ไขเอง" : null)" />
+    </MudItem>
+    <MudItem xs="12" sm="2">
+        <MudTextField @bind-Value="Employee.PrenameCode" Label="คำนำหน้า" />
+    </MudItem>
+    <MudItem xs="12" sm="3">
+        <MudTextField @bind-Value="Employee.EmpName" Label="ชื่อ" Required="true" />
+    </MudItem>
+    <MudItem xs="12" sm="3">
+        <MudTextField @bind-Value="Employee.EmpSurname" Label="นามสกุล" Required="true" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField Value="Email" ValueChanged="@((string v) => EmailChanged.InvokeAsync(v))" Label="อีเมล" Required="true" InputType="InputType.Email"
+            HelperText="ใช้สำหรับส่งเอกสาร (สลิป/หนังสือรับรอง) และแจ้งบัญชีผู้ใช้ — ต้องเป็นอีเมลของพนักงานเอง" />
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudSelect T="string" @bind-Value="Employee.EmptypeCode" Label="ประเภทพนักงาน">
+            <MudSelectItem T="string" Value="@("01")">พนักงานประจำ</MudSelectItem>
+            <MudSelectItem T="string" Value="@("02")">พนักงานชั่วคราว</MudSelectItem>
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.DeptgrpCode" Label="แผนก" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.PosCode" Label="ตำแหน่ง" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสศูนย์ต้นทุน (Cost Center)" Value="SelectedCostCenter" ValueChanged="OnCostCenterSelected"
+            SearchFunc="SearchCostCentersAsync"
+            ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
+            HelperText="ค้นหาจากผังบัญชี (รหัส/ชื่อไทย/ชื่ออังกฤษ) — ตั้งต้นจากหน่วยงานที่เลือก แก้ไขเองได้"
+            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">หน่วยงาน (ผังองค์กร)</MudText>
+        <MudText Typo="Typo.body1">@(CurrentOrgLabel ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">ตำแหน่ง: @(CurrentSlot?.Name ?? "—")</MudText>
+        @if (!IsCreating)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" Class="mt-1"
+                OnClick="@(() => Nav.NavigateTo($"/pos/position-slots?employeeId={Employee.id}"))">
+                จัดการตำแหน่ง/สังกัด →
+            </MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1">
+                กำหนดหน่วยงาน/ตำแหน่งได้หลังบันทึกพนักงาน ที่หน้าเลขที่อัตรา
+            </MudText>
+        }
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudDatePicker Date="WorkDate" DateChanged="@((DateTime? v) => WorkDateChanged.InvokeAsync(v))" Label="วันเริ่มงาน" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudDatePicker Date="BirthDate" DateChanged="@((DateTime? v) => BirthDateChanged.InvokeAsync(v))" Label="วันเกิด" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.IdCard" Label="เลขบัตรประชาชน" />
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudNumericField @bind-Value="Employee.SalaryAmt" Label="เงินเดือน" Format="N2" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudSelect T="long?" @bind-Value="Employee.SalaryGradeId" Label="เกรดเงินเดือน" Clearable="true">
+            @foreach (var grade in SalaryGrades)
+            {
+                <MudSelectItem T="long?" Value="@((long?)grade.Id)">@grade.GradeCode — @grade.GradeName</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.SalexpBank" Label="รหัสธนาคาร" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.SalexpBranch" Label="รหัสสาขา" />
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudTextField @bind-Value="Employee.SalexpAccid" Label="เลขบัญชี" />
+    </MudItem>
+    @{ var compaStatus = GetCompaRatioStatus(); }
+    @if (compaStatus is not null)
+    {
+        <MudItem xs="12">
+            <MudAlert Severity="compaStatus.Value.Severity" Dense="true">@compaStatus.Value.Text</MudAlert>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public Hremployee Employee { get; set; } = null!;
+    [Parameter] public bool IsCreating { get; set; }
+    [Parameter] public bool EmpNoUnlocked { get; set; }
+    [Parameter] public EventCallback<bool> EmpNoUnlockedChanged { get; set; }
+    [Parameter] public string? Email { get; set; }
+    [Parameter] public EventCallback<string?> EmailChanged { get; set; }
+    [Parameter] public DateTime? WorkDate { get; set; }
+    [Parameter] public EventCallback<DateTime?> WorkDateChanged { get; set; }
+    [Parameter] public DateTime? BirthDate { get; set; }
+    [Parameter] public EventCallback<DateTime?> BirthDateChanged { get; set; }
+    [Parameter] public List<Pay_SalaryGrade> SalaryGrades { get; set; } = new();
+    [Parameter] public Com_ChartOfAccount? SelectedCostCenter { get; set; }
+    [Parameter] public EventCallback<Com_ChartOfAccount?> SelectedCostCenterChanged { get; set; }
+    [Parameter, EditorRequired] public string CompanyId { get; set; } = null!;
+    [Parameter] public Pos_PositionSlot? CurrentSlot { get; set; }
+    [Parameter] public string? CurrentOrgLabel { get; set; }
+
+    private async Task OnCostCenterSelected(Com_ChartOfAccount? account)
+    {
+        Employee.CostCenterCode = account?.Code;
+        await SelectedCostCenterChanged.InvokeAsync(account);
+    }
+
+    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == CompanyId && a.IsCostCenter && a.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
+        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
+    }
+
+    // null = ไม่ได้กำหนดเกรด; otherwise compares SalaryAmt against the
+    // selected grade's band and returns a short Thai label + severity.
+    private (string Text, Severity Severity)? GetCompaRatioStatus()
+    {
+        if (Employee.SalaryGradeId is not long gradeId || Employee.SalaryAmt is not decimal salary)
+            return null;
+
+        var grade = SalaryGrades.FirstOrDefault(g => g.Id == gradeId);
+        if (grade is null) return null;
+
+        var compaRatio = grade.MidSalary == 0 ? 0 : salary / grade.MidSalary * 100;
+
+        if (salary < grade.MinSalary)
+            return ($"ต่ำกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
+        if (salary > grade.MaxSalary)
+            return ($"สูงกว่าช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Warning);
+        return ($"อยู่ในช่วงเงินเดือนของเกรด (Compa-ratio {compaRatio:N0}%)", Severity.Success);
+    }
+}
