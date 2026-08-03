@@ -33,6 +33,27 @@ public class Pay_EmployeeInsuranceEnrollment
     public long EnrolledByUserId { get; set; }
     public DateTime EnrolledDate { get; set; } = DateTime.Now;
 
+    // True only for rows created by the auto-enroll "Sync" button — HR hasn't
+    // looked at this specific enrollment yet. Deliberately separate from IsActive:
+    // this row is already live/deducting payroll the moment it's created, this
+    // flag is purely an HR triage aid, never read by PayrollCalculationService.
+    public bool NeedsReview { get; set; }
+
+    // Per-employee member certificate number under the plan's GroupPolicyNumber.
+    [StringLength(50)]
+    public string? MemberCertificateNumber { get; set; }
+
+    [StringLength(200)]
+    public string? BeneficiaryName { get; set; }
+    [StringLength(100)]
+    public string? BeneficiaryRelationship { get; set; }
+
+    public DateOnly? CardIssueDate { get; set; }
+    public DateOnly? CardExpiryDate { get; set; }
+
+    [StringLength(1000)]
+    public string? Remark { get; set; }
+
     public virtual Hremployee Hremployee { get; set; } = null!;
     public virtual Pay_InsurancePlan Pay_InsurancePlan { get; set; } = null!;
 }

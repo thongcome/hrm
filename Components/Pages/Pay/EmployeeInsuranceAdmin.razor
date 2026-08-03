@@ -57,6 +57,26 @@ else
                 <MudItem xs="12" sm="6">
                     <MudNumericField @bind-Value="_companyAmount" Label="เบี้ยประกันฝั่งบริษัท (ต่องวด)" Format="N2" Min="0" />
                 </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_memberCertificateNumber" Label="เลขบัตรสมาชิก/ใบรับรอง (Member Certificate No.)" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker Date="_cardIssueDate" DateChanged="@(d => _cardIssueDate = d)" Label="วันที่บัตรออก"
+                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker Date="_cardExpiryDate" DateChanged="@(d => _cardExpiryDate = d)" Label="วันที่บัตรหมดอายุ"
+                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_beneficiaryName" Label="ผู้รับผลประโยชน์ (ชื่อ-สกุล)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_beneficiaryRelationship" Label="ความสัมพันธ์กับผู้รับผลประโยชน์" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_remark" Label="หมายเหตุ/เงื่อนไขพิเศษ" Lines="2" />
+                </MudItem>
             </MudGrid>
 
             @if (!string.IsNullOrEmpty(_error))
@@ -79,17 +99,31 @@ else
         {
             <MudSimpleTable Dense="true" Class="mt-2">
                 <thead>
-                    <tr><th>แผน</th><th>เบี้ยประกัน (พนักงาน / บริษัท)</th><th>มีผลตั้งแต่</th><th>สิ้นสุด</th><th>สถานะ</th><th></th></tr>
+                    <tr><th>แผน</th><th>เลขบัตรสมาชิก</th><th>เบี้ยประกัน (พนักงาน / บริษัท)</th><th>มีผลตั้งแต่</th><th>สิ้นสุด</th><th>ผู้รับผลประโยชน์</th><th>สถานะ</th><th></th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var enrollment in _enrollments)
                     {
                         <tr>
                             <td>@enrollment.Pay_InsurancePlan.PlanCode — @enrollment.Pay_InsurancePlan.PlanName</td>
+                            <td>@(enrollment.MemberCertificateNumber ?? "-")</td>
                             <td>@enrollment.EmployeeAmount.ToString("N2") / @enrollment.CompanyAmount.ToString("N2")</td>
                             <td>@enrollment.EffectiveFrom.ToString("dd/MM/yyyy")</td>
                             <td>@(enrollment.EffectiveTo?.ToString("dd/MM/yyyy") ?? "-")</td>
-                            <td>@(enrollment.IsActive ? "ใช้งาน" : "สิ้นสุดแล้ว")</td>
+                            <td>@(string.IsNullOrEmpty(enrollment.BeneficiaryName) ? "-" : $"{enrollment.BeneficiaryName} ({enrollment.BeneficiaryRelationship ?? "-"})")</td>
+                            <td>
+                                @(enrollment.IsActive ? "ใช้งาน" : "สิ้นสุดแล้ว")
+                                @if (enrollment.NeedsReview)
+                                {
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-1">รอตรวจสอบ</MudChip>
+                                }
+                            </td>
+                            <td>
+                                @if (enrollment.NeedsReview)
+                                {
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => MarkReviewedAsync(enrollment.Id))">ทำเครื่องหมายว่าตรวจสอบแล้ว</MudButton>
+                                }
+                            </td>
                             <td>
                                 @if (enrollment.IsActive)
                                 {
@@ -117,6 +151,12 @@ else
     private DateTime? _effectiveFrom = DateTime.Today;
     private decimal _employeeAmount;
     private decimal _companyAmount;
+    private string? _memberCertificateNumber;
+    private DateTime? _cardIssueDate;
+    private DateTime? _cardExpiryDate;
+    private string? _beneficiaryName;
+    private string? _beneficiaryRelationship;
+    private string? _remark;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -201,6 +241,12 @@ else
             EffectiveFrom = DateOnly.FromDateTime(_effectiveFrom.Value),
             IsActive = true,
             EnrolledByUserId = userId,
+            MemberCertificateNumber = _memberCertificateNumber,
+            CardIssueDate = _cardIssueDate is DateTime issueDate ? DateOnly.FromDateTime(issueDate) : null,
+            CardExpiryDate = _cardExpiryDate is DateTime expiryDate ? DateOnly.FromDateTime(expiryDate) : null,
+            BeneficiaryName = _beneficiaryName,
+            BeneficiaryRelationship = _beneficiaryRelationship,
+            Remark = _remark,
         });
 
         await context.SaveChangesAsync();
@@ -209,6 +255,12 @@ else
         _selectedPlanId = null;
         _employeeAmount = 0;
         _companyAmount = 0;
+        _memberCertificateNumber = null;
+        _cardIssueDate = null;
+        _cardExpiryDate = null;
+        _beneficiaryName = null;
+        _beneficiaryRelationship = null;
+        _remark = null;
         await LoadAsync();
     }
 
@@ -223,6 +275,19 @@ else
         existing.EffectiveTo = DateOnly.FromDateTime(DateTime.Today);
         await context.SaveChangesAsync();
         Snackbar.Add("สิ้นสุดความคุ้มครองเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task MarkReviewedAsync(long enrollmentId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_EmployeeInsuranceEnrollments
+            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.HremployeeId == HremployeeId);
+        if (existing is null) return;
+
+        existing.NeedsReview = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ทำเครื่องหมายว่าตรวจสอบแล้ว", Severity.Success);
         await LoadAsync();
     }
 }

@@ -191,6 +191,7 @@ builder.Services.AddScoped<BankFileExportService>();
 builder.Services.AddScoped<GLExportService>();
 builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();
 builder.Services.AddScoped<HRM.Services.Pay.EmployeeLoanService>();
+builder.Services.AddScoped<HRM.Services.Pay.InsuranceAutoEnrollService>();
 builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
 // ----- end Pay_* module -----
 

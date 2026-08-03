@@ -5,9 +5,12 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using HRM.Services.Pay
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject InsuranceAutoEnrollService AutoEnrollService
+@inject IDialogService DialogService
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>แผนประกันกลุ่ม (Insurance Plans)</PageTitle>
@@ -45,6 +48,9 @@
         <MudItem xs="12" sm="8">
             <MudTextField @bind-Value="_form.Provider" Label="บริษัทประกัน (ถ้ามี)" />
         </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="_form.GroupPolicyNumber" Label="เลขกรมธรรม์กลุ่ม (Group Policy No.)" />
+        </MudItem>
         <MudItem xs="12" sm="4">
             <MudNumericField @bind-Value="_form.CoverageAmount" Label="วงเงินคุ้มครอง (ถ้ามี)" Format="N2" Min="0" />
         </MudItem>
@@ -56,6 +62,29 @@
         </MudItem>
         <MudItem xs="12" sm="4">
             <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.subtitle1">เงื่อนไขคุณสมบัติสำหรับ Auto-enroll</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">เว้นว่างไว้ = ไม่จำกัดเงื่อนไขนั้น</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12">
+            <MudText Typo="Typo.body2">ประเภทการจ้าง</MudText>
+            <MudCheckBox T="bool" @bind-Value="_form.EligibleType01" Label="พนักงานประจำ" />
+            <MudCheckBox T="bool" @bind-Value="_form.EligibleType02" Label="พนักงานชั่วคราว" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MinTenureDays" Label="อายุงานขั้นต่ำ (วัน)" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MinAge" Label="อายุขั้นต่ำ (ปี)" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.MaxAge" Label="อายุสูงสุด (ปี)" Min="0" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudSwitch T="bool" @bind-Value="_form.AutoEnrollEnabled" Label="เปิดใช้งาน Auto-enroll (ปุ่ม Sync จะใช้ได้เฉพาะแผนที่เปิดสวิตช์นี้)" Color="Color.Primary" />
         </MudItem>
     </MudGrid>
 
@@ -81,6 +110,7 @@
             <MudTh>รหัส</MudTh>
             <MudTh>ชื่อแผน</MudTh>
             <MudTh>ประเภท</MudTh>
+            <MudTh>เลขกรมธรรม์กลุ่ม</MudTh>
             <MudTh>เบี้ยประกัน (พนักงาน / บริษัท)</MudTh>
             <MudTh>สถานะ</MudTh>
             <MudTh></MudTh>
@@ -89,6 +119,7 @@
             <MudTd>@context.PlanCode</MudTd>
             <MudTd>@context.PlanName</MudTd>
             <MudTd>@PlanTypeLabel(context.PlanType)</MudTd>
+            <MudTd>@(context.GroupPolicyNumber ?? "-")</MudTd>
             <MudTd>@context.DefaultEmployeeAmount.ToString("N2") / @context.DefaultCompanyAmount.ToString("N2")</MudTd>
             <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
             <MudTd>
@@ -96,6 +127,12 @@
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
                     @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
                 </MudButton>
+                @if (context.AutoEnrollEnabled)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => SyncNowAsync(context))">
+                        ซิงค์สิทธิ์ตอนนี้
+                    </MudButton>
+                }
             </MudTd>
         </RowTemplate>
     </MudTable>
@@ -113,10 +150,17 @@
         public string PlanName { get; set; } = "";
         public Pay_InsurancePlanType PlanType { get; set; } = Pay_InsurancePlanType.Health;
         public string? Provider { get; set; }
+        public string? GroupPolicyNumber { get; set; }
         public decimal? CoverageAmount { get; set; }
         public decimal DefaultEmployeeAmount { get; set; }
         public decimal DefaultCompanyAmount { get; set; }
         public int SortOrder { get; set; }
+        public bool EligibleType01 { get; set; }
+        public bool EligibleType02 { get; set; }
+        public int? MinTenureDays { get; set; }
+        public int? MinAge { get; set; }
+        public int? MaxAge { get; set; }
+        public bool AutoEnrollEnabled { get; set; }
     }
 
     private PlanForm _form = new();
@@ -156,12 +200,27 @@
             PlanName = plan.PlanName,
             PlanType = plan.PlanType,
             Provider = plan.Provider,
+            GroupPolicyNumber = plan.GroupPolicyNumber,
             CoverageAmount = plan.CoverageAmount,
             DefaultEmployeeAmount = plan.DefaultEmployeeAmount,
             DefaultCompanyAmount = plan.DefaultCompanyAmount,
             SortOrder = plan.SortOrder,
+            EligibleType01 = (plan.EligibleEmploymentTypes ?? "").Split(',', StringSplitOptions.TrimEntries).Contains("01"),
+            EligibleType02 = (plan.EligibleEmploymentTypes ?? "").Split(',', StringSplitOptions.TrimEntries).Contains("02"),
+            MinTenureDays = plan.MinTenureDays,
+            MinAge = plan.MinAge,
+            MaxAge = plan.MaxAge,
+            AutoEnrollEnabled = plan.AutoEnrollEnabled,
         };
         _error = null;
+    }
+
+    private static string? BuildEligibleTypesCsv(PlanForm form)
+    {
+        var types = new List<string>();
+        if (form.EligibleType01) types.Add("01");
+        if (form.EligibleType02) types.Add("02");
+        return types.Count == 0 ? null : string.Join(",", types);
     }
 
     private void CancelEdit()
@@ -203,10 +262,16 @@
             existing.PlanName = _form.PlanName;
             existing.PlanType = _form.PlanType;
             existing.Provider = _form.Provider;
+            existing.GroupPolicyNumber = _form.GroupPolicyNumber;
             existing.CoverageAmount = _form.CoverageAmount;
             existing.DefaultEmployeeAmount = _form.DefaultEmployeeAmount;
             existing.DefaultCompanyAmount = _form.DefaultCompanyAmount;
             existing.SortOrder = _form.SortOrder;
+            existing.EligibleEmploymentTypes = BuildEligibleTypesCsv(_form);
+            existing.MinTenureDays = _form.MinTenureDays;
+            existing.MinAge = _form.MinAge;
+            existing.MaxAge = _form.MaxAge;
+            existing.AutoEnrollEnabled = _form.AutoEnrollEnabled;
         }
         else
         {
@@ -217,11 +282,17 @@
                 PlanName = _form.PlanName,
                 PlanType = _form.PlanType,
                 Provider = _form.Provider,
+                GroupPolicyNumber = _form.GroupPolicyNumber,
                 CoverageAmount = _form.CoverageAmount,
                 DefaultEmployeeAmount = _form.DefaultEmployeeAmount,
                 DefaultCompanyAmount = _form.DefaultCompanyAmount,
                 SortOrder = _form.SortOrder,
                 IsActive = true,
+                EligibleEmploymentTypes = BuildEligibleTypesCsv(_form),
+                MinTenureDays = _form.MinTenureDays,
+                MinAge = _form.MinAge,
+                MaxAge = _form.MaxAge,
+                AutoEnrollEnabled = _form.AutoEnrollEnabled,
             });
         }
 
@@ -240,5 +311,28 @@
         existing.IsActive = !existing.IsActive;
         await context.SaveChangesAsync();
         await LoadAsync();
+    }
+
+    private async Task SyncNowAsync(Pay_InsurancePlan plan)
+    {
+        var eligibleCount = await AutoEnrollService.PreviewEligibleCountAsync(plan.Id);
+        if (eligibleCount == 0)
+        {
+            Snackbar.Add("ไม่มีพนักงานที่เข้าเกณฑ์เพิ่มเติม — ทุกคนที่เข้าเงื่อนไขลงทะเบียนอยู่แล้ว", Severity.Info);
+            return;
+        }
+
+        var confirmed = await DialogService.ShowMessageBox(
+            "ยืนยันการซิงค์สิทธิ์",
+            $"จะลงทะเบียนพนักงานใหม่ {eligibleCount} คน เข้าแผน \"{plan.PlanName}\" ทันที (มีผลตั้งแต่วันนี้) ต้องการดำเนินการหรือไม่?",
+            yesText: "ยืนยัน", cancelText: "ยกเลิก");
+        if (confirmed != true) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        var enrolledCount = await AutoEnrollService.SyncNowAsync(plan.Id, userId);
+        Snackbar.Add($"ซิงค์สิทธิ์เรียบร้อย — ลงทะเบียนพนักงานใหม่ {enrolledCount} คน", Severity.Success);
     }
 }
