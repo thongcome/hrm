@@ -1,0 +1,144 @@
+@page "/perf/rater-directions"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>ทิศทางการประเมิน (Rater Direction)</PageTitle>
+
+<CrudScaffold TEntity="Perf_RaterDirectionConfig"
+    Title="ทิศทางการประเมิน (ใคร-ประเมินใคร)"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.Id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewDirection"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>ชื่อ</MudTh>
+        <MudTh>Self</MudTh>
+        <MudTh>หัวหน้า (ชั้น)</MudTh>
+        <MudTh>ลูกน้อง (ชั้น)</MudTh>
+        <MudTh>Peer</MudTh>
+        <MudTh>สถานะ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private string? _companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "PERF_ADMIN");
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+    }
+
+    private Perf_RaterDirectionConfig CreateNewDirection() => new()
+    {
+        CompanyId = _companyId ?? "001",
+        IsActive = true,
+        AllowSelf = true,
+        WeightSelf = 100,
+    };
+
+    private RenderFragment RenderRowColumns(Perf_RaterDirectionConfig row) => @<text>
+        <MudTd>@row.Name</MudTd>
+        <MudTd>@(row.AllowSelf ? $"{row.WeightSelf:0.#}%" : "-")</MudTd>
+        <MudTd>@(row.SuperiorLevels > 0 ? $"{row.SuperiorLevels} ชั้น ({row.WeightSuperior:0.#}%)" : "-")</MudTd>
+        <MudTd>@(row.SubordinateLevels > 0 ? $"{row.SubordinateLevels} ชั้น ({row.WeightSubordinate:0.#}%)" : "-")</MudTd>
+        <MudTd>@(row.IncludePeers ? $"{row.WeightPeer:0.#}%" : "-")</MudTd>
+        <MudTd>@(row.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(Perf_RaterDirectionConfig e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.Name" Label="ชื่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@(e.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.AllowSelf ? $"ประเมินตนเอง ({e.WeightSelf:0.#}%)" : "ไม่ประเมินตนเอง")" Label="Self" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@($"{e.SuperiorLevels} ชั้น ({e.WeightSuperior:0.#}%)")" Label="สายบังคับบัญชาขึ้น" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@($"{e.SubordinateLevels} ชั้น ({e.WeightSubordinate:0.#}%)")" Label="สายลูกน้องลง" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.IncludePeers ? $"รวม peer ({e.WeightPeer:0.#}%)" : "ไม่รวม peer")" Label="Peer" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(Perf_RaterDirectionConfig e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.Name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox T="bool" @bind-Value="e.IsActive" Label="ใช้งาน" /></MudItem>
+
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="e.AllowSelf" Label="ประเมินตนเอง (Self)" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="e.WeightSelf" Label="น้ำหนัก Self (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="int" @bind-Value="e.SuperiorLevels" Label="สายบังคับบัญชาขึ้นกี่ชั้น (0-3)" Min="0" Max="3" />
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="e.WeightSuperior" Label="น้ำหนักสายบังคับบัญชา (%)" Min="0" Max="100" /></MudItem>
+
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="int" @bind-Value="e.SubordinateLevels" Label="สายลูกน้องลงกี่ชั้น (0-3)" Min="0" Max="3" />
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="e.WeightSubordinate" Label="น้ำหนักสายลูกน้อง (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="e.IncludePeers" Label="รวมเพื่อนร่วมระดับ (Peer)" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="e.WeightPeer" Label="น้ำหนัก Peer (%)" Min="0" Max="100" /></MudItem>
+
+            @{
+                var total = (e.AllowSelf ? e.WeightSelf : 0) + (e.SuperiorLevels > 0 ? e.WeightSuperior : 0)
+                    + (e.SubordinateLevels > 0 ? e.WeightSubordinate : 0) + (e.IncludePeers ? e.WeightPeer : 0);
+            }
+            <MudItem xs="12">
+                <MudAlert Severity="@(total == 100 ? Severity.Success : Severity.Warning)" Dense="true">
+                    น้ำหนักรวมของทิศทางที่เปิดใช้งาน: @total.ToString("0.#")% @(total == 100 ? "(ครบ 100%)" : "— ต้องรวมให้ครบ 100% ก่อนบันทึก")
+                </MudAlert>
+            </MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<Perf_RaterDirectionConfig>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.Perf_RaterDirectionConfigs.AsQueryable(), term,
+            nameof(Perf_RaterDirectionConfig.Name));
+        return await query.OrderBy(e => e.Name).ToListAsync();
+    }
+
+    private async Task<Perf_RaterDirectionConfig> SaveAsync(Perf_RaterDirectionConfig entity)
+    {
+        var total = (entity.AllowSelf ? entity.WeightSelf : 0) + (entity.SuperiorLevels > 0 ? entity.WeightSuperior : 0)
+            + (entity.SubordinateLevels > 0 ? entity.WeightSubordinate : 0) + (entity.IncludePeers ? entity.WeightPeer : 0);
+        if (total != 100)
+            throw new InvalidOperationException($"น้ำหนักรวมของทิศทางที่เปิดใช้งานต้องเท่ากับ 100% (ตอนนี้ {total:0.#}%)");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.Id == 0)
+        {
+            context.Perf_RaterDirectionConfigs.Add(entity);
+        }
+        else
+        {
+            var existing = await context.Perf_RaterDirectionConfigs.FirstOrDefaultAsync(e => e.Id == entity.Id)
+                ?? throw new InvalidOperationException("ไม่พบทิศทางการประเมินนี้แล้ว");
+            existing.Name = entity.Name;
+            existing.AllowSelf = entity.AllowSelf;
+            existing.SuperiorLevels = entity.SuperiorLevels;
+            existing.SubordinateLevels = entity.SubordinateLevels;
+            existing.IncludePeers = entity.IncludePeers;
+            existing.WeightSelf = entity.WeightSelf;
+            existing.WeightSuperior = entity.WeightSuperior;
+            existing.WeightSubordinate = entity.WeightSubordinate;
+            existing.WeightPeer = entity.WeightPeer;
+            existing.IsActive = entity.IsActive;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

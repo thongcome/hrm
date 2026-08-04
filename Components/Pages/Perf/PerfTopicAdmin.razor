@@ -1,0 +1,235 @@
+@page "/perf/topics/{EvaluationTypeId:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>Topic / SubTopic / ตัวชี้วัด — @(_evalType?.Name)</PageTitle>
+
+@if (_evalType is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบแบบประเมินนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">Topic / SubTopic / ตัวชี้วัด — @_evalType.Name</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+            โครงสร้าง 2 ชั้น: Topic → SubTopic → ตัวชี้วัด — น้ำหนักรวมของ Topic ทุกตัวต้อง = 100%,
+            น้ำหนักรวมของ SubTopic ในแต่ละ Topic ต้อง = 100%, น้ำหนักรวมของตัวชี้วัดในแต่ละ SubTopic ต้อง = 100%
+        </MudText>
+
+        <MudAlert Severity="@(_topicWeightTotal == 100 ? Severity.Success : Severity.Warning)" Dense="true" Class="mb-3">
+            น้ำหนักรวมของ Topic ทั้งหมด: @_topicWeightTotal.ToString("0.#")% @(_topicWeightTotal == 100 ? "(ครบ)" : "— ยังไม่ครบ 100%")
+        </MudAlert>
+
+        <MudGrid>
+            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newTopicCode" Label="รหัส Topic" /></MudItem>
+            <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newTopicName" Label="ชื่อ Topic" /></MudItem>
+            <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="4" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddTopicAsync">เพิ่ม Topic</MudButton></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
+    </MudPaper>
+
+    @foreach (var topic in _topics)
+    {
+        <MudExpansionPanels Class="mb-3">
+            <MudExpansionPanel>
+                <TitleContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h6">@topic.Code — @topic.Name</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">น้ำหนัก @topic.Weight.ToString("0.#")%</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@(SubTopicWeightTotal(topic.Id) == 100 ? Color.Success : Color.Warning)">
+                            SubTopic รวม @SubTopicWeightTotal(topic.Id).ToString("0.#")%
+                        </MudChip>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                            OnClick="@(() => RemoveTopicAsync(topic.Id))" />
+                    </MudStack>
+                </TitleContent>
+                <ChildContent>
+                    <MudGrid Class="mb-2">
+                        <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newSubTopicCode" Label="รหัส SubTopic" /></MudItem>
+                        <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newSubTopicName" Label="ชื่อ SubTopic" /></MudItem>
+                        <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newSubTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                        <MudItem xs="4" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddSubTopicAsync(topic.Id))">เพิ่ม SubTopic</MudButton></MudItem>
+                    </MudGrid>
+
+                    @foreach (var subTopic in _subTopics.Where(s => s.TopicId == topic.Id))
+                    {
+                        <MudPaper Class="pa-3 mb-2" Outlined="true">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                                <MudText Typo="Typo.subtitle1">@subTopic.Code — @subTopic.Name</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">น้ำหนัก @subTopic.Weight.ToString("0.#")%</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="@(IndicatorWeightTotal(subTopic.Id) == 100 ? Color.Success : Color.Warning)">
+                                    ตัวชี้วัดรวม @IndicatorWeightTotal(subTopic.Id).ToString("0.#")%
+                                </MudChip>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                    OnClick="@(() => RemoveSubTopicAsync(subTopic.Id))" />
+                            </MudStack>
+
+                            <MudTable Items="_indicators.Where(i => i.SubTopicId == subTopic.Id)" Dense="true" Hover="true">
+                                <HeaderContent>
+                                    <MudTh>รหัส</MudTh>
+                                    <MudTh>ชื่อตัวชี้วัด</MudTh>
+                                    <MudTh>น้ำหนัก</MudTh>
+                                    <MudTh></MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>@context.Code</MudTd>
+                                    <MudTd>@context.Name</MudTd>
+                                    <MudTd>@context.Weight.ToString("0.#")%</MudTd>
+                                    <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveIndicatorAsync(context.Id))">ลบ</MudButton></MudTd>
+                                </RowTemplate>
+                                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตัวชี้วัด</MudText></NoRecordsContent>
+                            </MudTable>
+
+                            <MudGrid Class="mt-2">
+                                <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newIndicatorCode" Label="รหัส" /></MudItem>
+                                <MudItem xs="6" sm="4"><MudTextField @bind-Value="_newIndicatorName" Label="ชื่อตัวชี้วัด" /></MudItem>
+                                <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newIndicatorTarget" Label="คำอธิบายเกณฑ์เต็มคะแนน" /></MudItem>
+                                <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newIndicatorWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                                <MudItem xs="4" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddIndicatorAsync(subTopic.Id))">เพิ่ม</MudButton></MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+
+    <MudButton Variant="Variant.Text" Href="/perf/evaluation-types">กลับไปหน้าประเภทแบบประเมิน</MudButton>
+}
+
+@code {
+    [Parameter] public long EvaluationTypeId { get; set; }
+
+    private Perf_EvaluationType? _evalType;
+    private List<Perf_Topic> _topics = new();
+    private List<Perf_SubTopic> _subTopics = new();
+    private List<Perf_Indicator> _indicators = new();
+    private string? _error;
+
+    private decimal _topicWeightTotal => _topics.Sum(t => t.Weight);
+
+    private string _newTopicCode = ""; private string _newTopicName = ""; private decimal _newTopicWeight;
+    private string _newSubTopicCode = ""; private string _newSubTopicName = ""; private decimal _newSubTopicWeight;
+    private string _newIndicatorCode = ""; private string _newIndicatorName = ""; private string _newIndicatorTarget = ""; private decimal _newIndicatorWeight;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _evalType = await context.Perf_EvaluationTypes.FirstOrDefaultAsync(t => t.Id == EvaluationTypeId);
+        if (_evalType is null) return;
+
+        _topics = await context.Perf_Topics.Where(t => t.EvaluationTypeId == EvaluationTypeId).OrderBy(t => t.SortOrder).ToListAsync();
+        var topicIds = _topics.Select(t => t.Id).ToList();
+        _subTopics = await context.Perf_SubTopics.Where(s => topicIds.Contains(s.TopicId)).OrderBy(s => s.SortOrder).ToListAsync();
+        var subTopicIds = _subTopics.Select(s => s.Id).ToList();
+        _indicators = await context.Perf_Indicators.Where(i => subTopicIds.Contains(i.SubTopicId)).OrderBy(i => i.Code).ToListAsync();
+    }
+
+    private decimal SubTopicWeightTotal(long topicId) => _subTopics.Where(s => s.TopicId == topicId).Sum(s => s.Weight);
+    private decimal IndicatorWeightTotal(long subTopicId) => _indicators.Where(i => i.SubTopicId == subTopicId).Sum(i => i.Weight);
+
+    private async Task AddTopicAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newTopicCode) || string.IsNullOrWhiteSpace(_newTopicName)) { _error = "กรุณาระบุรหัสและชื่อ Topic"; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_Topics.Add(new Perf_Topic
+        {
+            EvaluationTypeId = EvaluationTypeId,
+            Code = _newTopicCode,
+            Name = _newTopicName,
+            Weight = _newTopicWeight,
+            SortOrder = _topics.Count,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+        _newTopicCode = ""; _newTopicName = ""; _newTopicWeight = 0;
+        await LoadAsync();
+    }
+
+    private async Task RemoveTopicAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var hasChildren = await context.Perf_SubTopics.AnyAsync(s => s.TopicId == id);
+        if (hasChildren) { _error = "ลบไม่ได้ — ยังมี SubTopic อยู่ภายใต้ Topic นี้"; return; }
+        var row = await context.Perf_Topics.FirstOrDefaultAsync(t => t.Id == id);
+        if (row is null) return;
+        context.Perf_Topics.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task AddSubTopicAsync(long topicId)
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newSubTopicCode) || string.IsNullOrWhiteSpace(_newSubTopicName)) { _error = "กรุณาระบุรหัสและชื่อ SubTopic"; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_SubTopics.Add(new Perf_SubTopic
+        {
+            TopicId = topicId,
+            Code = _newSubTopicCode,
+            Name = _newSubTopicName,
+            Weight = _newSubTopicWeight,
+            SortOrder = _subTopics.Count(s => s.TopicId == topicId),
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+        _newSubTopicCode = ""; _newSubTopicName = ""; _newSubTopicWeight = 0;
+        await LoadAsync();
+    }
+
+    private async Task RemoveSubTopicAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var hasChildren = await context.Perf_Indicators.AnyAsync(i => i.SubTopicId == id);
+        if (hasChildren) { _error = "ลบไม่ได้ — ยังมีตัวชี้วัดอยู่ภายใต้ SubTopic นี้"; return; }
+        var row = await context.Perf_SubTopics.FirstOrDefaultAsync(s => s.Id == id);
+        if (row is null) return;
+        context.Perf_SubTopics.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task AddIndicatorAsync(long subTopicId)
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newIndicatorCode) || string.IsNullOrWhiteSpace(_newIndicatorName)) { _error = "กรุณาระบุรหัสและชื่อตัวชี้วัด"; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_Indicators.Add(new Perf_Indicator
+        {
+            SubTopicId = subTopicId,
+            Code = _newIndicatorCode,
+            Name = _newIndicatorName,
+            TargetDescription = string.IsNullOrWhiteSpace(_newIndicatorTarget) ? null : _newIndicatorTarget,
+            Weight = _newIndicatorWeight,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0;
+        await LoadAsync();
+    }
+
+    private async Task RemoveIndicatorAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var hasScores = await context.Perf_Scores.AnyAsync(s => s.IndicatorId == id);
+        if (hasScores) { _error = "ลบไม่ได้ — มีคะแนนที่บันทึกไว้กับตัวชี้วัดนี้แล้ว"; return; }
+        var row = await context.Perf_Indicators.FirstOrDefaultAsync(i => i.Id == id);
+        if (row is null) return;
+        context.Perf_Indicators.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

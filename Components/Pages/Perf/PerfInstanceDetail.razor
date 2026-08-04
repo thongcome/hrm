@@ -1,0 +1,253 @@
+@page "/perf/instances/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfApprovalService ApprovalService
+@inject PerfMeritService MeritService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>รายละเอียดผลการประเมิน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบรายการประเมินนี้</MudAlert>
+        return;
+    }
+    @if (_instance is null)
+    {
+        return;
+    }
+
+    <MudText Typo="Typo.h5" Class="mb-2">ผลการประเมิน: @(_instance.SnapshotEmpName ?? $"#{_instance.HremployeeId}")</MudText>
+
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4"><MudTextField Value="@_instance.SnapshotEmpNo" Label="รหัสพนักงาน" ReadOnly="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField Value="@(_instance.SnapshotPositionName ?? "-")" Label="ตำแหน่ง" ReadOnly="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField Value="@(_instance.SnapshotOrganizationName ?? "-")" Label="หน่วยงาน" ReadOnly="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField Value="@(_instance.FinalScorePercent?.ToString("0.##") + "%" ?? "ยังไม่คำนวณ")" Label="คะแนนรวม" ReadOnly="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField Value="@(_instance.FinalGrade ?? "-")" Label="เกรด" ReadOnly="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField Value="@StatusLabel(_instance.Status)" Label="สถานะ" ReadOnly="true" /></MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6" Class="mb-2">ผู้ประเมินทั้งหมด</MudText>
+    <MudTable Items="_raters" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ทิศทาง</MudTh>
+            <MudTh>ผู้ประเมิน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>น้ำหนัก</MudTh>
+            <MudTh>ส่งเมื่อ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@DirectionLabel(context.Direction)</MudTd>
+            <MudTd>@(context.RaterHremployeeId is long id ? RaterName(id) : "-")</MudTd>
+            <MudTd>@RaterStatusLabel(context.Status)</MudTd>
+            <MudTd>@context.WeightInFinalScore.ToString("0.#")%</MudTd>
+            <MudTd>@context.SubmittedDate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudDivider Class="my-4" />
+
+    @if (_instance.JobMasterId is null)
+    {
+        @if (_instance.Status == PerfInstanceStatus.PendingApproval)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitForApprovalAsync">ส่งอนุมัติ</MudButton>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">รายการนี้ยังไม่พร้อมส่งอนุมัติ — ต้องรอผู้ประเมินให้คะแนนครบทุกคนก่อน</MudAlert>
+        }
+    }
+    else if (_job is not null)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">สถานะการอนุมัติ</MudText>
+        <MudText Typo="Typo.body1" Class="mb-2">
+            สถานะ: <b>@_job.status</b> | ระดับปัจจุบัน: @_job.lastLevel / @_job.maxlevel
+            @(_job.isJobClosed == true ? " (ปิดงานแล้ว)" : "")
+        </MudText>
+        <MudTable Items="_job.job_user_lists" Dense="true">
+            <HeaderContent>
+                <MudTh>ระดับ</MudTh>
+                <MudTh>ผู้อนุมัติ (userid)</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>วันที่</MudTh>
+                <MudTh>ความเห็น</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.wlevel</MudTd>
+                <MudTd>@context.userid</MudTd>
+                <MudTd>@context.jobstatus</MudTd>
+                <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.comment</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    @if (_instance.Status == PerfInstanceStatus.Approved)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-2">ปรับเงินเดือนตามผลประเมิน</MudText>
+
+        @if (_instance.IsMeritApplied)
+        {
+            <MudAlert Severity="Severity.Success">ปรับเงินเดือนแล้วเมื่อ @_instance.MeritAppliedDate?.ToString("dd/MM/yyyy HH:mm")</MudAlert>
+        }
+        else if (_meritPreview is not null)
+        {
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>เงินเดือนปัจจุบัน</td><td>@_meritPreview.CurrentSalary.ToString("N2")</td></tr>
+                    <tr><td>% ขึ้นเงินเดือน (เกรด @_meritPreview.Grade)</td><td>@_meritPreview.SalaryIncreasePercent.ToString("0.#")%</td></tr>
+                    <tr><td>เงินเดือนใหม่ที่แนะนำ</td><td>@_meritPreview.RecommendedNewSalary.ToString("N2")</td></tr>
+                    <tr><td>% โบนัส</td><td>@_meritPreview.BonusPercent.ToString("0.#")%</td></tr>
+                    <tr><td>โบนัสที่แนะนำ</td><td>@_meritPreview.RecommendedBonusAmount.ToString("N2")</td></tr>
+                </tbody>
+            </MudSimpleTable>
+            <MudButton Class="mt-3" Color="Color.Primary" Variant="Variant.Filled" OnClick="ApplyMeritAsync">ยืนยันปรับเงินเดือนจริง</MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="LoadMeritPreviewAsync">ดูตัวอย่างการปรับเงินเดือน</MudButton>
+        }
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudButton Class="mt-4" Variant="Variant.Text" Href="/perf/periods">กลับไปหน้ารอบการประเมิน</MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Perf_EvaluationInstance? _instance;
+    private List<Perf_RaterAssignment> _raters = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private job_master? _job;
+    private bool _notFound;
+    private string? _error;
+    private PerfMeritService.MeritPreview? _meritPreview;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ApprovalService.SyncStatusFromJobAsync(Id);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _instance = await context.Perf_EvaluationInstances.FirstOrDefaultAsync(i => i.Id == Id);
+        if (_instance is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _raters = await context.Perf_RaterAssignments.Where(r => r.EvaluationInstanceId == Id)
+            .OrderBy(r => r.Direction).ToListAsync();
+
+        var raterIds = _raters.Where(r => r.RaterHremployeeId is not null).Select(r => r.RaterHremployeeId!.Value).Distinct().ToList();
+        var employees = await context.Hremployee.Where(e => raterIds.Contains(e.id)).ToListAsync();
+        _employeeNames = employees.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
+
+        if (_instance.JobMasterId is not null)
+        {
+            _job = await context.job_masters
+                .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
+                .FirstOrDefaultAsync(j => j.jobmasterid == _instance.JobMasterId);
+        }
+    }
+
+    private string RaterName(long id) => _employeeNames.TryGetValue(id, out var name) ? name : $"#{id}";
+
+    private static string StatusLabel(PerfInstanceStatus s) => s switch
+    {
+        PerfInstanceStatus.Draft => "ร่าง (ยังไม่มีใครให้คะแนน)",
+        PerfInstanceStatus.InProgress => "กำลังให้คะแนน",
+        PerfInstanceStatus.PendingApproval => "รออนุมัติ",
+        PerfInstanceStatus.Approved => "อนุมัติแล้ว",
+        PerfInstanceStatus.Rejected => "ถูกปฏิเสธ",
+        PerfInstanceStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+
+    private static string RaterStatusLabel(PerfRaterStatus s) => s switch
+    {
+        PerfRaterStatus.Pending => "รอให้คะแนน",
+        PerfRaterStatus.Submitted => "ส่งแล้ว",
+        PerfRaterStatus.Skipped => "ข้าม (ไม่มีผู้ประเมิน)",
+        _ => s.ToString(),
+    };
+
+    private static string DirectionLabel(PerfRaterDirection d) => d switch
+    {
+        PerfRaterDirection.Self => "ตนเอง",
+        PerfRaterDirection.Superior1 => "หัวหน้าขั้นที่ 1",
+        PerfRaterDirection.Superior2 => "หัวหน้าขั้นที่ 2",
+        PerfRaterDirection.Superior3 => "หัวหน้าขั้นที่ 3",
+        PerfRaterDirection.Subordinate1 => "ลูกน้องขั้นที่ 1",
+        PerfRaterDirection.Subordinate2 => "ลูกน้องขั้นที่ 2",
+        PerfRaterDirection.Subordinate3 => "ลูกน้องขั้นที่ 3",
+        PerfRaterDirection.Peer => "เพื่อนร่วมระดับ",
+        _ => d.ToString(),
+    };
+
+    private async Task SubmitForApprovalAsync()
+    {
+        _error = null;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+            var empId = state.User.FindFirst("empno")?.Value;
+            await ApprovalService.SubmitForApprovalAsync(Id, userId, empId);
+            Snackbar.Add("ส่งอนุมัติแล้ว", Severity.Success);
+            await OnParametersSetAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task LoadMeritPreviewAsync()
+    {
+        _error = null;
+        try
+        {
+            _meritPreview = await MeritService.PreviewMeritIncreaseAsync(Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ApplyMeritAsync()
+    {
+        _error = null;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+            await MeritService.ApplyMeritIncreaseAsync(Id, userId);
+            Snackbar.Add("ปรับเงินเดือนสำเร็จ", Severity.Success);
+            _meritPreview = null;
+            await OnParametersSetAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

@@ -1,0 +1,100 @@
+@page "/perf/evaluation-types"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>ประเภทแบบประเมิน</PageTitle>
+
+<CrudScaffold TEntity="Perf_EvaluationType"
+    Title="ประเภทแบบประเมิน"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.Id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewType"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>รหัส</MudTh>
+        <MudTh>ชื่อ</MudTh>
+        <MudTh>สถานะ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private string? _companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "PERF_ADMIN");
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+    }
+
+    private Perf_EvaluationType CreateNewType() => new() { CompanyId = _companyId ?? "001", IsActive = true };
+
+    private RenderFragment RenderRowColumns(Perf_EvaluationType row) => @<text>
+        <MudTd>@row.Code</MudTd>
+        <MudTd>@row.Name</MudTd>
+        <MudTd>@(row.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(Perf_EvaluationType e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.Code" Label="รหัส" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.Name" Label="ชื่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.NameEn" Label="Name (English)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@(e.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Text" Href="@($"/perf/topics/{e.Id}")">จัดการ Topic / SubTopic / ตัวชี้วัด ของแบบประเมินนี้</MudButton>
+            </MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(Perf_EvaluationType e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.Code" Label="รหัส" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.Name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.NameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12"><MudCheckBox T="bool" @bind-Value="e.IsActive" Label="ใช้งาน" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<Perf_EvaluationType>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.Perf_EvaluationTypes.AsQueryable(), term,
+            nameof(Perf_EvaluationType.Code), nameof(Perf_EvaluationType.Name));
+        return await query.OrderBy(e => e.Code).ToListAsync();
+    }
+
+    private async Task<Perf_EvaluationType> SaveAsync(Perf_EvaluationType entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.Id == 0)
+        {
+            context.Perf_EvaluationTypes.Add(entity);
+        }
+        else
+        {
+            var existing = await context.Perf_EvaluationTypes.FirstOrDefaultAsync(e => e.Id == entity.Id)
+                ?? throw new InvalidOperationException("ไม่พบประเภทแบบประเมินนี้แล้ว");
+            existing.Code = entity.Code;
+            existing.Name = entity.Name;
+            existing.NameEn = entity.NameEn;
+            existing.IsActive = entity.IsActive;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

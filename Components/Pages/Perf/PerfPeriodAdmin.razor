@@ -1,0 +1,192 @@
+@page "/perf/periods"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.Perf.PerfConfigCarryForwardService CarryForwardService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>รอบการประเมินผลปฏิบัติงาน</PageTitle>
+
+<CrudScaffold TEntity="Perf_EvaluationPeriod"
+    Title="รอบการประเมินผลปฏิบัติงาน"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.Id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewPeriod"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>ชื่อรอบ</MudTh>
+        <MudTh>ประเภท</MudTh>
+        <MudTh>ช่วงเวลา</MudTh>
+        <MudTh>สถานะ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private string? _companyId;
+    private List<Perf_EvaluationPeriod> _allPeriods = new();
+    private long? _carryForwardSourceId;
+    private string? _carryForwardError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "PERF_ADMIN");
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+        _allPeriods = await LoadListAsync("");
+    }
+
+    private async Task CopyConfigAsync(long targetPeriodId)
+    {
+        _carryForwardError = null;
+        if (_carryForwardSourceId is null) { _carryForwardError = "กรุณาเลือกรอบต้นทางก่อน"; return; }
+        try
+        {
+            await CarryForwardService.CopyPeriodConfigAsync(_carryForwardSourceId.Value, targetPeriodId);
+            Snackbar.Add("ก็อปปี้เกณฑ์เกรด/มาตรวัดคะแนนสำเร็จ", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _carryForwardError = ex.Message;
+        }
+    }
+
+    private RenderFragment RenderRowColumns(Perf_EvaluationPeriod row) => @<text>
+        <MudTd>@row.Name</MudTd>
+        <MudTd>@PeriodTypeLabel(row.PeriodType)</MudTd>
+        <MudTd>@row.StartDate.ToString("dd/MM/yyyy") - @row.EndDate.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd>
+            @if (row.IsLocked)
+            {
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">ล็อก</MudChip>
+            }
+            else if (row.IsActive)
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">ใช้งาน</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">ไม่ใช้งาน</MudChip>
+            }
+        </MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(Perf_EvaluationPeriod e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.Name" Label="ชื่อรอบ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@PeriodTypeLabel(e.PeriodType)" Label="ประเภทรอบ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.StartDate.ToString("dd/MM/yyyy")" Label="วันที่เริ่ม" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.EndDate.ToString("dd/MM/yyyy")" Label="วันที่สิ้นสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.ScoreDueDate?.ToString("dd/MM/yyyy") ?? "-")" Label="กำหนดส่งคะแนน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@(e.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@(e.IsLocked ? "ล็อกแล้ว (แก้ config ไม่ได้)" : "ยังไม่ล็อก")" Label="สถานะล็อก" ReadOnly="true" /></MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Text" Href="@($"/perf/periods/{e.Id}/grades")">จัดการเกณฑ์เกรด / คำอธิบายมาตรวัดคะแนน</MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudSelect T="long?" @bind-Value="_carryForwardSourceId" Label="ก็อปปี้เกณฑ์เกรด/มาตรวัดจากรอบ" Style="min-width:250px">
+                        @foreach (var p in _allPeriods.Where(p => p.Id != e.Id))
+                        {
+                            <MudSelectItem Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="@(() => CopyConfigAsync(e.Id))">ก็อปปี้</MudButton>
+                </MudStack>
+                @if (!string.IsNullOrEmpty(_carryForwardError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_carryForwardError</MudAlert>
+                }
+            </MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(Perf_EvaluationPeriod e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.Name" Label="ชื่อรอบ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="PerfPeriodType" @bind-Value="e.PeriodType" Label="ประเภทรอบ">
+                    @foreach (PerfPeriodType t in Enum.GetValues<PerfPeriodType>())
+                    {
+                        <MudSelectItem Value="@t">@PeriodTypeLabel(t)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Label="วันที่เริ่ม" Date="@e.StartDate.ToDateTime(TimeOnly.MinValue)"
+                    DateChanged="@(d => e.StartDate = DateOnly.FromDateTime(d ?? DateTime.Today))" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Label="วันที่สิ้นสุด" Date="@e.EndDate.ToDateTime(TimeOnly.MinValue)"
+                    DateChanged="@(d => e.EndDate = DateOnly.FromDateTime(d ?? DateTime.Today))" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Label="กำหนดส่งคะแนน" Date="@(e.ScoreDueDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => e.ScoreDueDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox T="bool" @bind-Value="e.IsActive" Label="ใช้งาน" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudCheckBox T="bool" @bind-Value="e.IsLocked" Label="ล็อกรอบ (ห้ามแก้ Topic/SubTopic/Indicator/GradeBand อีก)" />
+            </MudItem>
+        </MudGrid>
+    </text>;
+
+    private Perf_EvaluationPeriod CreateNewPeriod() => new()
+    {
+        CompanyId = _companyId ?? "001",
+        StartDate = DateOnly.FromDateTime(DateTime.Today),
+        EndDate = DateOnly.FromDateTime(DateTime.Today.AddYears(1)),
+    };
+
+    private static string PeriodTypeLabel(PerfPeriodType t) => t switch
+    {
+        PerfPeriodType.Annual => "ประจำปี",
+        PerfPeriodType.SemiAnnual => "ครึ่งปี",
+        PerfPeriodType.Probation => "ทดลองงาน",
+        PerfPeriodType.Custom => "กำหนดเอง",
+        _ => t.ToString(),
+    };
+
+    private async Task<List<Perf_EvaluationPeriod>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.Perf_EvaluationPeriods.AsQueryable(), term,
+            nameof(Perf_EvaluationPeriod.Name));
+        return await query.OrderByDescending(e => e.StartDate).ToListAsync();
+    }
+
+    private async Task<Perf_EvaluationPeriod> SaveAsync(Perf_EvaluationPeriod entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.Id == 0)
+        {
+            context.Perf_EvaluationPeriods.Add(entity);
+        }
+        else
+        {
+            var existing = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(e => e.Id == entity.Id)
+                ?? throw new InvalidOperationException("ไม่พบรอบการประเมินนี้แล้ว");
+            existing.Name = entity.Name;
+            existing.PeriodType = entity.PeriodType;
+            existing.StartDate = entity.StartDate;
+            existing.EndDate = entity.EndDate;
+            existing.ScoreDueDate = entity.ScoreDueDate;
+            existing.IsActive = entity.IsActive;
+            existing.IsLocked = entity.IsLocked;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

@@ -202,6 +202,15 @@ builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
 // ----- end Att_* module -----
 
+// ----- Perf_* module (Performance / KPI) -----
+builder.Services.AddScoped<HRM.Services.Perf.PerfAssignmentResolverService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfScoringService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfApprovalService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfMeritService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfGoalService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
+// ----- end Perf_* module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 

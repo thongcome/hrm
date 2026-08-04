@@ -1,0 +1,182 @@
+@page "/perf/score/{RaterAssignmentId:long}"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Perf
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfScoringService ScoringService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ACCESS")]
+
+<PageTitle>ให้คะแนนการประเมิน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_notAuthorized)
+    {
+        <MudAlert Severity="Severity.Error">รายการนี้ไม่ใช่ของคุณ</MudAlert>
+        return;
+    }
+    @if (_form is null)
+    {
+        <MudAlert Severity="@(string.IsNullOrEmpty(_error) ? Severity.Info : Severity.Error)">@(_error ?? "กำลังโหลด...")</MudAlert>
+        return;
+    }
+
+    <MudText Typo="Typo.h5">
+        ให้คะแนน: @(_form.RaterAssignment.Direction == PerfRaterDirection.Self ? "ตนเอง" : _form.Instance.SnapshotEmpName)
+    </MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ตำแหน่ง: @(_form.Instance.SnapshotPositionName ?? "-") — หน่วยงาน: @(_form.Instance.SnapshotOrganizationName ?? "-")
+    </MudText>
+
+    @if (_form.RaterAssignment.Status == PerfRaterStatus.Submitted)
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">ส่งคะแนนแล้วเมื่อ @_form.RaterAssignment.SubmittedDate?.ToString("dd/MM/yyyy HH:mm")</MudAlert>
+        <MudButton Class="mt-3" Variant="Variant.Text" Href="/perf/my-evaluations">กลับไปหน้างานประเมินของฉัน</MudButton>
+        return;
+    }
+
+    @if (_form.ScaleDescriptions.Count > 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            มาตรวัดคะแนน: @string.Join(" / ", _form.ScaleDescriptions.Select(d => $"{d.ScorePoint}={d.Description}"))
+        </MudAlert>
+    }
+
+    @foreach (var topicGroup in _form.Indicators.GroupBy(i => new { i.TopicId, i.TopicName, i.TopicWeight }))
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true">
+            <MudText Typo="Typo.h6">@topicGroup.Key.TopicName <MudChip T="string" Size="Size.Small" Color="Color.Primary">น้ำหนัก @topicGroup.Key.TopicWeight.ToString("0.#")%</MudChip></MudText>
+
+            @foreach (var subGroup in topicGroup.GroupBy(i => new { i.SubTopicId, i.SubTopicName, i.SubTopicWeight }))
+            {
+                <MudText Typo="Typo.subtitle1" Class="mt-2">@subGroup.Key.SubTopicName <MudChip T="string" Size="Size.Small">น้ำหนัก @subGroup.Key.SubTopicWeight.ToString("0.#")%</MudChip></MudText>
+
+                @foreach (var ind in subGroup)
+                {
+                    <MudGrid Class="mb-2 ml-2">
+                        <MudItem xs="12" sm="5">
+                            <MudText Typo="Typo.body2"><b>@ind.IndicatorCode</b> — @ind.IndicatorName (น้ำหนัก @ind.IndicatorWeight.ToString("0.#")%)</MudText>
+                            @if (!string.IsNullOrWhiteSpace(ind.TargetDescription))
+                            {
+                                <MudText Typo="Typo.caption">@ind.TargetDescription</MudText>
+                            }
+                        </MudItem>
+                        <MudItem xs="6" sm="2">
+                            <MudNumericField T="decimal" Value="@GetScore(ind.IndicatorId)" ValueChanged="@(v => SetScore(ind.IndicatorId, v))"
+                                Label="คะแนน" Min="0" Max="@_form.MaxScorePoint" />
+                        </MudItem>
+                        <MudItem xs="6" sm="5">
+                            <MudTextField T="string" Value="@GetComment(ind.IndicatorId)" ValueChanged="@(v => SetComment(ind.IndicatorId, v))" Label="ความเห็น (ถ้ามี)" />
+                        </MudItem>
+                    </MudGrid>
+                }
+            }
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-3 mt-3" Outlined="true">
+        <MudText Typo="Typo.h6">ภาพรวม</MudText>
+        <MudTextField @bind-Value="_strengths" Label="จุดเด่น" Lines="2" Class="mt-2" />
+        <MudTextField @bind-Value="_areasToImprove" Label="จุดที่ควรปรับปรุง" Lines="2" Class="mt-2" />
+        <MudSelect T="PerfEthicsRating?" @bind-Value="_ethicsRating" Label="จริยธรรม" Class="mt-2">
+            <MudSelectItem T="PerfEthicsRating?" Value="null">ไม่ระบุ</MudSelectItem>
+            <MudSelectItem T="PerfEthicsRating?" Value="PerfEthicsRating.Ethical">มีจริยธรรม</MudSelectItem>
+            <MudSelectItem T="PerfEthicsRating?" Value="PerfEthicsRating.NeedsImprovement">มีจริยธรรม แต่ต้องปรับปรุง</MudSelectItem>
+            <MudSelectItem T="PerfEthicsRating?" Value="PerfEthicsRating.Unethical">ไม่มีจริยธรรม</MudSelectItem>
+        </MudSelect>
+    </MudPaper>
+
+    <MudPaper Class="pa-3 mt-3" Outlined="true">
+        <MudText Typo="Typo.h6">ชี้แจงเพิ่มเติม</MudText>
+        <MudText Typo="Typo.caption">จำเป็นต้องกรอกให้ครบทั้ง 3 ช่อง เฉพาะกรณีคะแนนรวมของคุณตกอยู่ในเกรดที่บริษัทกำหนดให้ต้องชี้แจง (เกรดสุดโต่ง) — ระบบจะแจ้งเตือนตอนกดส่งถ้าจำเป็น</MudText>
+        <MudTextField @bind-Value="_qualityJustification" Label="ชี้แจงด้านคุณภาพงาน" Lines="2" Class="mt-2" />
+        <MudTextField @bind-Value="_quantityJustification" Label="ชี้แจงด้านปริมาณงาน" Lines="2" Class="mt-2" />
+        <MudTextField @bind-Value="_efficiencyJustification" Label="ชี้แจงด้านประสิทธิภาพ" Lines="2" Class="mt-2" />
+    </MudPaper>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudButton Class="mt-3" Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">ส่งคะแนน</MudButton>
+    <MudButton Class="mt-3" Variant="Variant.Text" Href="/perf/my-evaluations">ยกเลิก</MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public long RaterAssignmentId { get; set; }
+
+    private PerfScoringService.ScoringFormData? _form;
+    private Dictionary<long, decimal> _scores = new();
+    private Dictionary<long, string?> _comments = new();
+    private string? _strengths;
+    private string? _areasToImprove;
+    private PerfEthicsRating? _ethicsRating;
+    private string? _qualityJustification;
+    private string? _quantityJustification;
+    private string? _efficiencyJustification;
+    private string? _error;
+    private bool _notAuthorized;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var me = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        try
+        {
+            _form = await ScoringService.GetScoringFormAsync(RaterAssignmentId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        if (me is null || _form.RaterAssignment.RaterHremployeeId != me.id)
+        {
+            _notAuthorized = true;
+            return;
+        }
+
+        foreach (var ind in _form.Indicators)
+        {
+            if (ind.ExistingScore is decimal s) _scores[ind.IndicatorId] = s;
+            if (ind.ExistingComment is string c) _comments[ind.IndicatorId] = c;
+        }
+        _strengths = _form.RaterAssignment.Strengths;
+        _areasToImprove = _form.RaterAssignment.AreasToImprove;
+        _ethicsRating = _form.RaterAssignment.EthicsRating;
+        _qualityJustification = _form.RaterAssignment.QualityJustification;
+        _quantityJustification = _form.RaterAssignment.QuantityJustification;
+        _efficiencyJustification = _form.RaterAssignment.EfficiencyJustification;
+    }
+
+    private decimal GetScore(long indicatorId) => _scores.TryGetValue(indicatorId, out var v) ? v : 0;
+    private void SetScore(long indicatorId, decimal v) => _scores[indicatorId] = v;
+    private string? GetComment(long indicatorId) => _comments.TryGetValue(indicatorId, out var v) ? v : null;
+    private void SetComment(long indicatorId, string? v) => _comments[indicatorId] = v;
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        try
+        {
+            await ScoringService.SubmitScoreAsync(RaterAssignmentId, _scores, _comments, _strengths, _areasToImprove, _ethicsRating,
+                _qualityJustification, _quantityJustification, _efficiencyJustification);
+            Snackbar.Add("ส่งคะแนนสำเร็จ", Severity.Success);
+            Nav.NavigateTo("/perf/my-evaluations");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

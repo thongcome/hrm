@@ -1,0 +1,185 @@
+@page "/perf/periods/{PeriodId:long}/grades"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>เกณฑ์เกรด — @(_period?.Name)</PageTitle>
+
+@if (_period is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบรอบการประเมินนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+        <MudText Typo="Typo.h5">เกณฑ์เกรด — @_period.Name</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            ช่วงคะแนน → เกรด → % ขึ้นเงินเดือน/โบนัส — เกรดที่ติ๊ก "บังคับชี้แจง" จะบังคับให้ผู้ประเมินเขียนเหตุผลคุณภาพ/ปริมาณงาน/ประสิทธิภาพก่อนส่งคะแนนได้
+        </MudText>
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="6" sm="2"><MudTextField @bind-Value="_gradeLabel" Label="เกรด" /></MudItem>
+            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMin" Label="คะแนนตั้งแต่ (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMax" Label="ถึง (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeSalaryPct" Label="% ขึ้นเงินเดือน" Min="0" /></MudItem>
+            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeBonusPct" Label="% โบนัส" Min="0" /></MudItem>
+            <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_gradeRequiresJustification" Label="บังคับชี้แจง" /></MudItem>
+        </MudGrid>
+        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddGradeBandAsync">เพิ่มเกรด</MudButton>
+
+        @if (!string.IsNullOrEmpty(_gradeError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_gradeError</MudAlert>
+        }
+
+        <MudTable Items="_gradeBands" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>เกรด</MudTh>
+                <MudTh>ช่วงคะแนน</MudTh>
+                <MudTh>% ขึ้นเงินเดือน</MudTh>
+                <MudTh>% โบนัส</MudTh>
+                <MudTh>บังคับชี้แจง</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Grade</MudTd>
+                <MudTd>@context.MinPercent.ToString("0.#")% - @context.MaxPercent.ToString("0.#")%</MudTd>
+                <MudTd>@context.SalaryIncreasePercent.ToString("0.##")%</MudTd>
+                <MudTd>@context.BonusPercent.ToString("0.##")%</MudTd>
+                <MudTd>@(context.RequiresJustification ? "ใช่" : "")</MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveGradeBandAsync(context.Id))">ลบ</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีเกรด</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+        <MudText Typo="Typo.h6">คำอธิบายมาตรวัดคะแนน</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            อธิบายความหมายของแต้มคะแนนแต่ละระดับ (เช่น 5=ดีเยี่ยม) ให้ผู้ประเมินเห็นตอนกรอกคะแนน — เปลี่ยนได้ทุกรอบโดยไม่กระทบรอบเก่า
+        </MudText>
+        <MudGrid Class="mt-2">
+            <MudItem xs="4" sm="2"><MudNumericField T="int" @bind-Value="_scoreDescPoint" Label="แต้ม" Min="1" /></MudItem>
+            <MudItem xs="8" sm="7"><MudTextField @bind-Value="_scoreDescText" Label="คำอธิบาย" /></MudItem>
+            <MudItem xs="12" sm="3"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddRatingDescAsync">เพิ่ม</MudButton></MudItem>
+        </MudGrid>
+        <MudTable Items="_ratingDescs" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>แต้ม</MudTh>
+                <MudTh>คำอธิบาย</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ScorePoint</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveRatingDescAsync(context.Id))">ลบ</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีคำอธิบาย</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudButton Variant="Variant.Text" Href="/perf/periods">กลับไปหน้ารอบการประเมิน</MudButton>
+}
+
+@code {
+    [Parameter] public long PeriodId { get; set; }
+
+    private Perf_EvaluationPeriod? _period;
+    private List<Perf_GradeBand> _gradeBands = new();
+    private List<Perf_RatingScaleDescription> _ratingDescs = new();
+    private string? _gradeError;
+
+    private string _gradeLabel = "";
+    private decimal _gradeMin;
+    private decimal _gradeMax = 100;
+    private decimal _gradeSalaryPct;
+    private decimal _gradeBonusPct;
+    private bool _gradeRequiresJustification;
+
+    private int _scoreDescPoint = 1;
+    private string _scoreDescText = "";
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _period = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(p => p.Id == PeriodId);
+        if (_period is null) return;
+
+        _gradeBands = await context.Perf_GradeBands
+            .Where(g => g.EvaluationPeriodId == PeriodId)
+            .OrderByDescending(g => g.MinPercent)
+            .ToListAsync();
+        _ratingDescs = await context.Perf_RatingScaleDescriptions
+            .Where(d => d.EvaluationPeriodId == PeriodId)
+            .OrderBy(d => d.ScorePoint)
+            .ToListAsync();
+    }
+
+    private async Task AddGradeBandAsync()
+    {
+        _gradeError = null;
+        if (string.IsNullOrWhiteSpace(_gradeLabel)) { _gradeError = "กรุณาระบุชื่อเกรด"; return; }
+        if (_gradeMax < _gradeMin) { _gradeError = "คะแนนสูงสุดต้องไม่น้อยกว่าคะแนนต่ำสุด"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_GradeBands.Add(new Perf_GradeBand
+        {
+            EvaluationPeriodId = PeriodId,
+            Grade = _gradeLabel,
+            MinPercent = _gradeMin,
+            MaxPercent = _gradeMax,
+            SalaryIncreasePercent = _gradeSalaryPct,
+            BonusPercent = _gradeBonusPct,
+            RequiresJustification = _gradeRequiresJustification,
+            SortOrder = _gradeBands.Count,
+        });
+        await context.SaveChangesAsync();
+
+        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeRequiresJustification = false;
+        await LoadAsync();
+    }
+
+    private async Task RemoveGradeBandAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Perf_GradeBands.FirstOrDefaultAsync(g => g.Id == id);
+        if (row is null) return;
+        context.Perf_GradeBands.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task AddRatingDescAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_scoreDescText)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_RatingScaleDescriptions.Add(new Perf_RatingScaleDescription
+        {
+            EvaluationPeriodId = PeriodId,
+            ScorePoint = _scoreDescPoint,
+            Description = _scoreDescText,
+        });
+        await context.SaveChangesAsync();
+        _scoreDescText = "";
+        await LoadAsync();
+    }
+
+    private async Task RemoveRatingDescAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Perf_RatingScaleDescriptions.FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return;
+        context.Perf_RatingScaleDescriptions.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

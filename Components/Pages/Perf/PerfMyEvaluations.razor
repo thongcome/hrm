@@ -1,0 +1,92 @@
+@page "/perf/my-evaluations"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Perf
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfScoringService ScoringService
+@attribute [Authorize(Policy = "Menu:PERF_ACCESS")]
+
+<PageTitle>งานประเมินของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานประเมินของฉัน (My Evaluations)</MudText>
+
+    @if (_myEmployee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด — ติดต่อ HR</MudAlert>
+        return;
+    }
+
+    <MudText Typo="Typo.body2" Class="mt-1">@_myEmployee.EmpName @_myEmployee.EmpSurname (@_myEmployee.EmpNo)</MudText>
+
+    <MudTabs Class="mt-4">
+        <MudTabPanel Text="@($"รอให้คะแนน ({_pending.Count})")">
+            <MudTable Items="_pending" Dense="true" Hover="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>รอบ</MudTh>
+                    <MudTh>ประเมิน</MudTh>
+                    <MudTh>ทิศทาง</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PeriodName</MudTd>
+                    <MudTd>@(context.Direction == PerfRaterDirection.Self ? "ตนเอง" : context.SubjectEmpName)</MudTd>
+                    <MudTd>@DirectionLabel(context.Direction)</MudTd>
+                    <MudTd><MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" Href="@($"/perf/score/{context.RaterAssignmentId}")">ให้คะแนน</MudButton></MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีงานรอให้คะแนน</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+        <MudTabPanel Text="@($"ส่งแล้ว ({_submitted.Count})")">
+            <MudTable Items="_submitted" Dense="true" Hover="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>รอบ</MudTh>
+                    <MudTh>ประเมิน</MudTh>
+                    <MudTh>ทิศทาง</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PeriodName</MudTd>
+                    <MudTd>@(context.Direction == PerfRaterDirection.Self ? "ตนเอง" : context.SubjectEmpName)</MudTd>
+                    <MudTd>@DirectionLabel(context.Direction)</MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการที่ส่งแล้ว</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    private Hremployee? _myEmployee;
+    private List<PerfScoringService.MyEvaluationItem> _pending = new();
+    private List<PerfScoringService.MyEvaluationItem> _submitted = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _myEmployee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_myEmployee is null) return;
+
+        var items = await ScoringService.GetMyEvaluationsAsync(_myEmployee.id);
+        _pending = items.Where(i => i.Status == PerfRaterStatus.Pending).ToList();
+        _submitted = items.Where(i => i.Status == PerfRaterStatus.Submitted).ToList();
+    }
+
+    private static string DirectionLabel(PerfRaterDirection d) => d switch
+    {
+        PerfRaterDirection.Self => "ประเมินตนเอง",
+        PerfRaterDirection.Superior1 => "หัวหน้าขั้นที่ 1",
+        PerfRaterDirection.Superior2 => "หัวหน้าขั้นที่ 2",
+        PerfRaterDirection.Superior3 => "หัวหน้าขั้นที่ 3",
+        PerfRaterDirection.Subordinate1 => "ลูกน้องขั้นที่ 1",
+        PerfRaterDirection.Subordinate2 => "ลูกน้องขั้นที่ 2",
+        PerfRaterDirection.Subordinate3 => "ลูกน้องขั้นที่ 3",
+        PerfRaterDirection.Peer => "เพื่อนร่วมระดับ",
+        _ => d.ToString(),
+    };
+}

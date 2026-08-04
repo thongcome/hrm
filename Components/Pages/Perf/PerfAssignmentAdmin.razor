@@ -1,0 +1,285 @@
+@page "/perf/assignments"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfAssignmentResolverService ResolverService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>มอบหมายการประเมิน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">มอบหมายการประเมิน (Assignment)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดว่ารอบนี้ แบบประเมินนี้ ทิศทางนี้ ให้ใช้กับใคร (หน่วยงาน/ชื่อตำแหน่ง/รายบุคคล) — จากนั้นกด "สร้างรายการประเมินจริง" เพื่อ resolve เป็นรายการประเมินและผู้ประเมินจริง
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudExpansionPanels Class="mt-4">
+        <MudExpansionPanel Text="สร้างกติกาการมอบหมายใหม่">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="long?" @bind-Value="_newEvaluationPeriodId" Label="รอบการประเมิน" Required="true">
+                        @foreach (var p in _periods)
+                        {
+                            <MudSelectItem Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="long?" @bind-Value="_newEvaluationTypeId" Label="แบบประเมิน" Required="true">
+                        @foreach (var t in _types)
+                        {
+                            <MudSelectItem Value="@((long?)t.Id)">@t.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="long?" @bind-Value="_newRaterDirectionConfigId" Label="ทิศทางการประเมิน" Required="true">
+                        @foreach (var c in _directionConfigs)
+                        {
+                            <MudSelectItem Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="PerfTargetScope" @bind-Value="_newTargetScope" Label="ขอบเขตเป้าหมาย">
+                        <MudSelectItem Value="PerfTargetScope.Organization">ทั้งหน่วยงาน (รวมหน่วยงานย่อย)</MudSelectItem>
+                        <MudSelectItem Value="PerfTargetScope.Position">ตามชื่อตำแหน่ง</MudSelectItem>
+                        <MudSelectItem Value="PerfTargetScope.Employee">รายบุคคล</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                @if (_newTargetScope == PerfTargetScope.Organization)
+                {
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_newTargetOrg" ValueChanged="v => _newTargetOrg = v"
+                            SearchFunc="SearchOrganizationsAsync"
+                            ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                    </MudItem>
+                }
+                else if (_newTargetScope == PerfTargetScope.Position)
+                {
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudSelect T="long?" @bind-Value="_newTargetPosExecTypeId" Label="ชื่อตำแหน่ง">
+                            @foreach (var pt in _posExecTypes)
+                            {
+                                <MudSelectItem Value="@((long?)pt.Id)">@pt.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+                else if (_newTargetScope == PerfTargetScope.Employee)
+                {
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudAutocomplete T="Hremployee" Label="พนักงาน (ค้นหาด้วยรหัสหรือชื่อ)" Value="_newTargetEmployee" ValueChanged="v => _newTargetEmployee = v"
+                            SearchFunc="SearchEmployeesAsync"
+                            ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                    </MudItem>
+                }
+
+                <MudItem xs="12">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAssignmentAsync">สร้างกติกา</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">@_error</MudAlert>
+    }
+
+    <MudTable Items="_assignments" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>รอบ</MudTh>
+            <MudTh>แบบประเมิน</MudTh>
+            <MudTh>ทิศทาง</MudTh>
+            <MudTh>ขอบเขต</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@PeriodName(context.EvaluationPeriodId)</MudTd>
+            <MudTd>@TypeName(context.EvaluationTypeId)</MudTd>
+            <MudTd>@DirectionName(context.RaterDirectionConfigId)</MudTd>
+            <MudTd>@ScopeDescription(context)</MudTd>
+            <MudTd>
+                @if (context.IsResolved)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">สร้างรายการแล้ว @context.ResolvedDate?.ToString("dd/MM/yyyy HH:mm")</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ยังไม่สร้าง</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (!context.IsResolved)
+                {
+                    <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined"
+                        OnClick="@(() => ResolveAsync(context.Id))">สร้างรายการประเมินจริง</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private string? _error;
+
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private List<Perf_EvaluationType> _types = new();
+    private List<Perf_RaterDirectionConfig> _directionConfigs = new();
+    private List<Pos_ExecType> _posExecTypes = new();
+    private List<Perf_EvaluationAssignment> _assignments = new();
+
+    private long? _newEvaluationPeriodId;
+    private long? _newEvaluationTypeId;
+    private long? _newRaterDirectionConfigId;
+    private PerfTargetScope _newTargetScope = PerfTargetScope.Organization;
+    private com_organization? _newTargetOrg;
+    private long? _newTargetPosExecTypeId;
+    private Hremployee? _newTargetEmployee;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId))
+            return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods.Where(p => p.CompanyId == _companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+        _types = await context.Perf_EvaluationTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Code).ToListAsync();
+        _directionConfigs = await context.Perf_RaterDirectionConfigs.Where(c => c.CompanyId == _companyId && c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        _posExecTypes = await context.Pos_ExecTypes.Where(p => p.CompanyId == _companyId && p.IsActive).OrderBy(p => p.Name).ToListAsync();
+
+        var periodIds = _periods.Select(p => p.Id).ToList();
+        _assignments = await context.Perf_EvaluationAssignments
+            .Where(a => periodIds.Contains(a.EvaluationPeriodId))
+            .OrderByDescending(a => a.CreatedDate)
+            .ToListAsync();
+    }
+
+    private string PeriodName(long id) => _periods.FirstOrDefault(p => p.Id == id)?.Name ?? $"#{id}";
+    private string TypeName(long id) => _types.FirstOrDefault(t => t.Id == id)?.Name ?? $"#{id}";
+    private string DirectionName(long id) => _directionConfigs.FirstOrDefault(c => c.Id == id)?.Name ?? $"#{id}";
+
+    private string ScopeDescription(Perf_EvaluationAssignment a) => a.TargetScope switch
+    {
+        PerfTargetScope.Organization => $"หน่วยงาน #{a.TargetOrganizationId}",
+        PerfTargetScope.Position => $"ตำแหน่ง #{a.TargetPosExecTypeId}",
+        PerfTargetScope.Employee => $"พนักงาน #{a.TargetHremployeeId}",
+        _ => "-",
+    };
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task CreateAssignmentAsync()
+    {
+        _error = null;
+
+        if (_newEvaluationPeriodId is null || _newEvaluationTypeId is null || _newRaterDirectionConfigId is null)
+        {
+            _error = "กรุณาเลือกรอบ, แบบประเมิน และทิศทางการประเมินให้ครบ";
+            return;
+        }
+
+        var assignment = new Perf_EvaluationAssignment
+        {
+            EvaluationPeriodId = _newEvaluationPeriodId.Value,
+            EvaluationTypeId = _newEvaluationTypeId.Value,
+            RaterDirectionConfigId = _newRaterDirectionConfigId.Value,
+            TargetScope = _newTargetScope,
+            CreatedByUserId = await GetCurrentUserIdAsync(),
+        };
+
+        switch (_newTargetScope)
+        {
+            case PerfTargetScope.Organization:
+                if (_newTargetOrg is null) { _error = "กรุณาเลือกหน่วยงาน"; return; }
+                assignment.TargetOrganizationId = _newTargetOrg.id;
+                break;
+            case PerfTargetScope.Position:
+                if (_newTargetPosExecTypeId is null) { _error = "กรุณาเลือกชื่อตำแหน่ง"; return; }
+                assignment.TargetPosExecTypeId = _newTargetPosExecTypeId;
+                break;
+            case PerfTargetScope.Employee:
+                if (_newTargetEmployee is null) { _error = "กรุณาเลือกพนักงาน"; return; }
+                assignment.TargetHremployeeId = _newTargetEmployee.id;
+                break;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Perf_EvaluationAssignments.Add(assignment);
+        await context.SaveChangesAsync();
+
+        _newTargetOrg = null;
+        _newTargetPosExecTypeId = null;
+        _newTargetEmployee = null;
+        Snackbar.Add("สร้างกติกาการมอบหมายแล้ว", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task ResolveAsync(long assignmentId)
+    {
+        _error = null;
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            var count = await ResolverService.CreateInstancesAsync(assignmentId, actorUserId);
+            Snackbar.Add($"สร้างรายการประเมินจริงแล้ว {count} รายการ", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"สร้างรายการไม่สำเร็จ: {ex.Message}";
+        }
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+    }
+}

@@ -21,7 +21,12 @@ public class Perf_RaterAssignment
     // Soft link to Hremployee.id — no navigation/FK constraint, to avoid a
     // second SQL Server cascade path into Hremployee alongside
     // Perf_EvaluationInstance.HremployeeId (see that file's comment).
-    public long RaterHremployeeId { get; set; }
+    // Nullable because PerfAssignmentResolverService creates a row here even
+    // when no one could be resolved for a Superior chain level (missing
+    // com_organization.approver_empid partway up) — Status=Skipped with
+    // RaterHremployeeId=null documents the gap instead of silently omitting
+    // the level, mirroring Pos_PositionSlot.HremployeeId's vacant-slot convention.
+    public long? RaterHremployeeId { get; set; }
 
     public PerfRaterDirection Direction { get; set; }
 

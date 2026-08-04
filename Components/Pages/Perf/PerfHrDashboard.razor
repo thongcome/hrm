@@ -1,0 +1,140 @@
+@page "/perf/hr-dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>ภาพรวมการประเมิน (HR Dashboard)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ภาพรวมการประเมินผลปฏิบัติงาน</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudSelect T="long?" Value="_selectedPeriodId" ValueChanged="OnPeriodChangedAsync" Label="รอบการประเมิน" Class="mt-3">
+        @foreach (var p in _periods)
+        {
+            <MudSelectItem Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    @if (_selectedPeriodId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">เลือกรอบการประเมินก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_instances.Count</MudText><MudText Typo="Typo.caption">ทั้งหมด</MudText></MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CountByStatus(PerfInstanceStatus.Draft)</MudText><MudText Typo="Typo.caption">ร่าง</MudText></MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CountByStatus(PerfInstanceStatus.InProgress)</MudText><MudText Typo="Typo.caption">กำลังให้คะแนน</MudText></MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CountByStatus(PerfInstanceStatus.PendingApproval)</MudText><MudText Typo="Typo.caption">รออนุมัติ</MudText></MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CountByStatus(PerfInstanceStatus.Approved)</MudText><MudText Typo="Typo.caption">อนุมัติแล้ว</MudText></MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_instances.Count(i => i.IsMeritApplied)</MudText><MudText Typo="Typo.caption">ปรับเงินเดือนแล้ว</MudText></MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @{
+        var pendingScoring = _raterAssignments.Where(r => r.Status == PerfRaterStatus.Pending).ToList();
+    }
+    @if (pendingScoring.Count > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">มีผู้ประเมินที่ยังไม่ให้คะแนน @pendingScoring.Count รายการ</MudAlert>
+    }
+
+    <MudTable Items="_instances" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>หน่วยงาน</MudTh>
+            <MudTh>คะแนนรวม</MudTh>
+            <MudTh>เกรด</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>ผู้ประเมินคงเหลือ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.SnapshotEmpNo</MudTd>
+            <MudTd>@context.SnapshotEmpName</MudTd>
+            <MudTd>@(context.SnapshotOrganizationName ?? "-")</MudTd>
+            <MudTd>@(context.FinalScorePercent?.ToString("0.#") + "%" ?? "-")</MudTd>
+            <MudTd>@(context.FinalGrade ?? "-")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            <MudTd>@PendingCount(context.Id)</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/perf/instances/{context.Id}")">ดูรายละเอียด</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการประเมินในรอบนี้ — สร้างจากหน้า "มอบหมายการประเมิน"</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private long? _selectedPeriodId;
+    private List<Perf_EvaluationInstance> _instances = new();
+    private List<Perf_RaterAssignment> _raterAssignments = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods.Where(p => p.CompanyId == _companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+    }
+
+    private async Task OnPeriodChangedAsync(long? periodId)
+    {
+        _selectedPeriodId = periodId;
+        if (periodId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _instances = await context.Perf_EvaluationInstances.Where(i => i.EvaluationPeriodId == periodId).ToListAsync();
+        var instanceIds = _instances.Select(i => i.Id).ToList();
+        _raterAssignments = await context.Perf_RaterAssignments.Where(r => instanceIds.Contains(r.EvaluationInstanceId)).ToListAsync();
+    }
+
+    private int CountByStatus(PerfInstanceStatus s) => _instances.Count(i => i.Status == s);
+    private int PendingCount(long instanceId) => _raterAssignments.Count(r => r.EvaluationInstanceId == instanceId && r.Status == PerfRaterStatus.Pending);
+
+    private static string StatusLabel(PerfInstanceStatus s) => s switch
+    {
+        PerfInstanceStatus.Draft => "ร่าง",
+        PerfInstanceStatus.InProgress => "กำลังให้คะแนน",
+        PerfInstanceStatus.PendingApproval => "รออนุมัติ",
+        PerfInstanceStatus.Approved => "อนุมัติแล้ว",
+        PerfInstanceStatus.Rejected => "ถูกปฏิเสธ",
+        PerfInstanceStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(PerfInstanceStatus s) => s switch
+    {
+        PerfInstanceStatus.Approved => Color.Success,
+        PerfInstanceStatus.PendingApproval => Color.Warning,
+        PerfInstanceStatus.Rejected => Color.Error,
+        PerfInstanceStatus.InProgress => Color.Info,
+        _ => Color.Default,
+    };
+}

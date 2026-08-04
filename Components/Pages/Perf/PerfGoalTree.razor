@@ -1,0 +1,340 @@
+@page "/perf/goals"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfGoalService GoalService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>เป้าหมาย OKR</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เป้าหมาย OKR (บริษัท → หน่วยงาน → บุคคล)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudSelect T="long?" Value="_selectedPeriodId" ValueChanged="OnPeriodChangedAsync" Label="รอบการประเมิน" Class="mt-3">
+        @foreach (var p in _periods)
+        {
+            <MudSelectItem Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    @if (_selectedPeriodId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">เลือกรอบการประเมินก่อน</MudAlert>
+        return;
+    }
+
+    <MudExpansionPanels Class="mt-4">
+        <MudExpansionPanel Text="เพิ่มเป้าหมายใหม่">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="PerfGoalOwnerType" @bind-Value="_newOwnerType" Label="ระดับเจ้าของเป้าหมาย">
+                        <MudSelectItem Value="PerfGoalOwnerType.Company">บริษัท</MudSelectItem>
+                        <MudSelectItem Value="PerfGoalOwnerType.Organization">หน่วยงาน</MudSelectItem>
+                        <MudSelectItem Value="PerfGoalOwnerType.Employee">บุคคล</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                @if (_newOwnerType == PerfGoalOwnerType.Organization)
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_newOwnerOrg" ValueChanged="v => _newOwnerOrg = v"
+                            SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                    </MudItem>
+                }
+                else if (_newOwnerType == PerfGoalOwnerType.Employee)
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_newOwnerEmployee" ValueChanged="v => _newOwnerEmployee = v"
+                            SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="long?" @bind-Value="_newParentGoalId" Label="เป้าหมายแม่ (ถ้ามี)">
+                        <MudSelectItem T="long?" Value="null">— ไม่มี (เป้าหมายราก) —</MudSelectItem>
+                        @foreach (var g in _goals)
+                        {
+                            <MudSelectItem Value="@((long?)g.Id)">@g.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="6"><MudTextField @bind-Value="_newTitle" Label="ชื่อเป้าหมาย" /></MudItem>
+                <MudItem xs="12" sm="8"><MudTextField @bind-Value="_newDescription" Label="รายละเอียด" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal?" @bind-Value="_newTargetValue" Label="เป้าหมาย (ตัวเลข)" /></MudItem>
+                <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newTargetUnit" Label="หน่วย" /></MudItem>
+                <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddGoalAsync">เพิ่มเป้าหมาย</MudButton></MudItem>
+            </MudGrid>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudPaper Class="pa-3 mt-4" Outlined="true">
+        @foreach (var root in _goals.Where(g => g.ParentGoalId is null))
+        {
+            @RenderNode(root, 0)
+        }
+        @if (!_goals.Any())
+        {
+            <MudText Typo="Typo.body2">ยังไม่มีเป้าหมายในรอบนี้</MudText>
+        }
+    </MudPaper>
+
+    @if (_goals.Any())
+    {
+        <MudExpansionPanels Class="mt-4">
+            <MudExpansionPanel Text="บันทึกความคืบหน้า (Check-in)">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="long?" @bind-Value="_checkInGoalId" Label="เป้าหมาย">
+                            @foreach (var g in _goals)
+                            {
+                                <MudSelectItem Value="@((long?)g.Id)">@g.Title</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="6" sm="2"><MudNumericField T="decimal?" @bind-Value="_checkInValue" Label="ค่าปัจจุบัน" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_checkInNote" Label="หมายเหตุ" /></MudItem>
+                    <MudItem xs="12" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="RecordCheckInAsync">บันทึก</MudButton></MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private long? _selectedPeriodId;
+    private List<Perf_Goal> _goals = new();
+    private Dictionary<long, string> _orgNames = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private string? _error;
+
+    private PerfGoalOwnerType _newOwnerType = PerfGoalOwnerType.Company;
+    private com_organization? _newOwnerOrg;
+    private Hremployee? _newOwnerEmployee;
+    private long? _newParentGoalId;
+    private string _newTitle = "";
+    private string _newDescription = "";
+    private decimal? _newTargetValue;
+    private string _newTargetUnit = "";
+    private long? _checkInGoalId;
+    private decimal? _checkInValue;
+    private string _checkInNote = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods.Where(p => p.CompanyId == _companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+    }
+
+    private async Task OnPeriodChangedAsync(long? periodId)
+    {
+        _selectedPeriodId = periodId;
+        if (periodId is not null)
+            await LoadGoalsAsync();
+    }
+
+    private async Task LoadGoalsAsync()
+    {
+        if (_selectedPeriodId is null) return;
+        _goals = await GoalService.GetGoalsForPeriodAsync(_selectedPeriodId.Value);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var orgIds = _goals.Where(g => g.OwnerOrganizationId is not null).Select(g => g.OwnerOrganizationId!.Value).Distinct().ToList();
+        var empIds = _goals.Where(g => g.OwnerHremployeeId is not null).Select(g => g.OwnerHremployeeId!.Value).Distinct().ToList();
+        _orgNames = await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToDictionaryAsync(o => o.id, o => $"{o.code} — {o.name}");
+        _employeeNames = await context.Hremployee.Where(e => empIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}");
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search) || (e.EmpName != null && e.EmpName.Contains(search)) || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddGoalAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newTitle)) { _error = "กรุณาระบุชื่อเป้าหมาย"; return; }
+
+        var goal = new Perf_Goal
+        {
+            EvaluationPeriodId = _selectedPeriodId!.Value,
+            OwnerType = _newOwnerType,
+            ParentGoalId = _newParentGoalId,
+            Title = _newTitle,
+            Description = string.IsNullOrWhiteSpace(_newDescription) ? null : _newDescription,
+            TargetValue = _newTargetValue,
+            TargetUnit = string.IsNullOrWhiteSpace(_newTargetUnit) ? null : _newTargetUnit,
+            CreatedByUserId = await GetCurrentUserIdAsync(),
+        };
+        if (_newOwnerType == PerfGoalOwnerType.Organization) goal.OwnerOrganizationId = _newOwnerOrg?.id;
+        if (_newOwnerType == PerfGoalOwnerType.Employee) goal.OwnerHremployeeId = _newOwnerEmployee?.id;
+
+        try
+        {
+            await GoalService.CreateGoalAsync(goal);
+            _newTitle = ""; _newDescription = ""; _newTargetValue = null; _newTargetUnit = ""; _newOwnerOrg = null; _newOwnerEmployee = null; _newParentGoalId = null;
+            Snackbar.Add("เพิ่มเป้าหมายแล้ว", Severity.Success);
+            await LoadGoalsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteGoalAsync(long goalId)
+    {
+        _error = null;
+        try
+        {
+            await GoalService.DeleteGoalAsync(goalId);
+            await LoadGoalsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private string OwnerLabel(Perf_Goal g) => g.OwnerType switch
+    {
+        PerfGoalOwnerType.Company => "บริษัท",
+        PerfGoalOwnerType.Organization => g.OwnerOrganizationId is long oid && _orgNames.TryGetValue(oid, out var oname) ? oname : "หน่วยงาน",
+        PerfGoalOwnerType.Employee => g.OwnerHremployeeId is long eid && _employeeNames.TryGetValue(eid, out var ename) ? ename : "บุคคล",
+        _ => g.OwnerType.ToString(),
+    };
+
+    private static string StatusLabel(PerfGoalStatus s) => s switch
+    {
+        PerfGoalStatus.NotStarted => "ยังไม่เริ่ม",
+        PerfGoalStatus.OnTrack => "เป็นไปตามแผน",
+        PerfGoalStatus.AtRisk => "เสี่ยงล่าช้า",
+        PerfGoalStatus.Completed => "สำเร็จแล้ว",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(PerfGoalStatus s) => s switch
+    {
+        PerfGoalStatus.OnTrack => Color.Success,
+        PerfGoalStatus.AtRisk => Color.Warning,
+        PerfGoalStatus.Completed => Color.Info,
+        _ => Color.Default,
+    };
+
+    private RenderFragment RenderNode(Perf_Goal node, int depth) => builder =>
+    {
+        var children = _goals.Where(g => g.ParentGoalId == node.Id).OrderBy(g => g.Title).ToList();
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0; border-left: 2px solid #ddd; padding-left: 8px;");
+
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "style", "display:flex; align-items:center; gap:8px; flex-wrap:wrap;");
+
+        builder.OpenComponent<MudText>(4);
+        builder.AddAttribute(5, "Typo", Typo.body1);
+        builder.AddAttribute(6, "ChildContent", (RenderFragment)(b => b.AddContent(0, $"{node.Title} — {OwnerLabel(node)}")));
+        builder.CloseComponent();
+
+        builder.OpenComponent<MudChip<string>>(7);
+        builder.AddAttribute(8, "Color", StatusColor(node.Status));
+        builder.AddAttribute(9, "Size", Size.Small);
+        builder.AddAttribute(10, "ChildContent", (RenderFragment)(b => b.AddContent(0, StatusLabel(node.Status))));
+        builder.CloseComponent();
+
+        if (node.TargetValue is not null)
+        {
+            builder.OpenComponent<MudText>(11);
+            builder.AddAttribute(12, "Typo", Typo.caption);
+            builder.AddAttribute(13, "ChildContent", (RenderFragment)(b => b.AddContent(0,
+                $"ความคืบหน้า: {node.CurrentValue?.ToString("N2") ?? "-"} / {node.TargetValue?.ToString("N2")} {node.TargetUnit}")));
+            builder.CloseComponent();
+        }
+
+        builder.OpenComponent<MudIconButton>(14);
+        builder.AddAttribute(15, "Icon", Icons.Material.Filled.Delete);
+        builder.AddAttribute(16, "Size", Size.Small);
+        builder.AddAttribute(17, "Color", Color.Error);
+        builder.AddAttribute(18, "OnClick", EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, () => DeleteGoalAsync(node.Id)));
+        builder.CloseComponent();
+
+        builder.CloseElement(); // flex row
+
+        if (!string.IsNullOrWhiteSpace(node.Description))
+        {
+            builder.OpenComponent<MudText>(19);
+            builder.AddAttribute(20, "Typo", Typo.caption);
+            builder.AddAttribute(21, "ChildContent", (RenderFragment)(b => b.AddContent(0, node.Description)));
+            builder.CloseComponent();
+        }
+
+        foreach (var child in children)
+        {
+            builder.AddContent(22, RenderNode(child, depth + 1));
+        }
+
+        builder.CloseElement(); // outer div
+    };
+
+    private async Task RecordCheckInAsync()
+    {
+        _error = null;
+        if (_checkInGoalId is null) { _error = "กรุณาเลือกเป้าหมายที่จะบันทึกความคืบหน้า"; return; }
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            await GoalService.RecordCheckInAsync(_checkInGoalId.Value, _checkInValue, string.IsNullOrWhiteSpace(_checkInNote) ? null : _checkInNote, userId);
+            _checkInValue = null; _checkInNote = ""; _checkInGoalId = null;
+            Snackbar.Add("บันทึกความคืบหน้าแล้ว", Severity.Success);
+            await LoadGoalsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+    }
+}
