@@ -196,6 +196,7 @@ builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.A
 // ----- end Pay_* module -----
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
+builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();

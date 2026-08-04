@@ -1,0 +1,219 @@
+@page "/org/change-history"
+@using HRM.Models
+@using HRM.Services.Org
+@using HRM.Services.Shared
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject OrgChangeRequestService ChangeRequestService
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>ประวัติการปรับผังองค์กร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ประวัติการปรับผังองค์กร</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แยกเป็น 2 ส่วน — คำขอที่ยังไม่มีผล (รออนุมัติ/รอวันที่มีผล) และประวัติการเปลี่ยนแปลงที่มีผลแล้วจริง
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6" Class="mb-2">รอมีผล / อยู่ระหว่างดำเนินการ</MudText>
+    @if (_pendingRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ไม่มีคำขอที่ยังค้างอยู่</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_pendingRows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>หน่วยงาน</MudTh>
+                <MudTh>รายละเอียด</MudTh>
+                <MudTh>วันที่มีผล</MudTh>
+                <MudTh>ผู้ขอ</MudTh>
+                <MudTh>วันที่ขอ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@ChangeTypeLabel(context.Request.ChangeType)</MudTd>
+                <MudTd>@(context.Request.TargetOrganizationCode ?? context.Request.NewCode)</MudTd>
+                <MudTd>@OrgChangeAuditFormatter.DescribeRequest(context.Request)</MudTd>
+                <MudTd>@context.Request.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@(context.Request.RequestedByEmpId ?? context.Request.RequestedByUserId.ToString())</MudTd>
+                <MudTd>@context.Request.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd><MudChip T="string" Color="@context.StatusColor" Size="Size.Small">@context.StatusText</MudChip></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/change-requests/{context.Request.Id}")">ดู</MudButton></MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6" Class="mb-2">ประวัติที่มีผลแล้ว</MudText>
+    <MudGrid Class="mb-2">
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="com_organization" Label="กรองตามหน่วยงาน (ถ้ามี)" Value="_filterOrg" ValueChanged="OnFilterOrgChanged"
+                SearchFunc="SearchOrganizationsAsync"
+                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_fromDate" Label="จากวันที่" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_toDate" Label="ถึงวันที่" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAppliedAsync" Class="mt-2">ค้นหา</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_appliedRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ไม่พบประวัติในช่วงที่เลือก</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_appliedRows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>เวลา</MudTh>
+                <MudTh>รายละเอียด</MudTh>
+                <MudTh>ผู้ทำรายการ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Log.EventDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>@context.ActorDisplay</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private record PendingRow(Org_OrganizationChangeRequest Request, string StatusText, Color StatusColor);
+    private record AppliedRow(AuditLog Log, string Description, string ActorDisplay);
+
+    private List<PendingRow> _pendingRows = new();
+    private List<AppliedRow> _appliedRows = new();
+    private com_organization? _filterOrg;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-90);
+    private DateTime? _toDate = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ChangeRequestService.ApplyDueChangesAsync();
+        await LoadPendingAsync();
+        await LoadAppliedAsync();
+    }
+
+    private async Task LoadPendingAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var requests = await context.Org_OrganizationChangeRequests
+            .Where(r => !r.IsApplied)
+            .OrderBy(r => r.EffectiveFrom)
+            .ToListAsync();
+
+        var jobIds = requests.Where(r => r.JobMasterId != null).Select(r => r.JobMasterId!.Value).Distinct().ToList();
+        var jobs = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid)).ToDictionaryAsync(j => j.jobmasterid);
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _pendingRows = requests.Select(r =>
+        {
+            job_master? job = r.JobMasterId is long jid && jobs.TryGetValue(jid, out var j) ? j : null;
+            var (text, color) = DescribeStatus(r, job, today);
+            return new PendingRow(r, text, color);
+        }).ToList();
+    }
+
+    private static (string, Color) DescribeStatus(Org_OrganizationChangeRequest req, job_master? job, DateOnly today)
+    {
+        if (job is null) return ("รอเริ่มงานอนุมัติ", Color.Warning);
+        if (job.isJobClosed != true) return ($"รออนุมัติ (ระดับ {job.lastLevel}/{job.maxlevel})", Color.Warning);
+        if (job.status == WorkflowEngineService.StatusRejected) return ("ถูกปฏิเสธ", Color.Error);
+        if (job.status == WorkflowEngineService.StatusCompleted)
+            return req.EffectiveFrom <= today ? ("อนุมัติแล้ว รอนำไปใช้", Color.Success) : ($"อนุมัติแล้ว รอถึงวันที่มีผล ({req.EffectiveFrom:dd/MM/yyyy})", Color.Info);
+        return (job.status ?? "ไม่ทราบสถานะ", Color.Default);
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnFilterOrgChanged(com_organization? org)
+    {
+        _filterOrg = org;
+        await LoadAppliedAsync();
+    }
+
+    private async Task LoadAppliedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.AuditLogs.Where(a => a.EntityType == "com_organization");
+
+        if (_fromDate is not null) query = query.Where(a => a.EventDate >= _fromDate.Value.Date);
+        if (_toDate is not null) query = query.Where(a => a.EventDate < _toDate.Value.Date.AddDays(1));
+        if (_filterOrg is not null) query = query.Where(a => a.RecordId == _filterOrg.id.ToString());
+
+        var logs = await query.OrderByDescending(a => a.EventDate).Take(300).ToListAsync();
+
+        // Cross-reference applied gated-change requests to attribute the real
+        // requester (not the system) for rows that came from the lazy-apply
+        // step — AuditLog's own ActorUserId is null there since HRMContext
+        // isn't request-scoped when ApplyDueChangesAsync runs.
+        var appliedRequests = await context.Org_OrganizationChangeRequests
+            .Where(r => r.IsApplied && r.TargetOrganizationId != null)
+            .ToListAsync();
+
+        var employeeNames = await ResolveEmployeeNamesAsync(context, appliedRequests.Select(r => r.RequestedByEmpId));
+
+        _appliedRows = logs.Select(log =>
+        {
+            var description = OrgChangeAuditFormatter.Describe(log);
+            var actor = ResolveActor(log, appliedRequests, employeeNames);
+            return new AppliedRow(log, description, actor);
+        }).ToList();
+    }
+
+    private static string ResolveActor(AuditLog log, List<Org_OrganizationChangeRequest> appliedRequests, Dictionary<string, string> employeeNames)
+    {
+        var match = appliedRequests.FirstOrDefault(r =>
+            r.TargetOrganizationId!.Value.ToString() == log.RecordId &&
+            r.AppliedDate is not null &&
+            Math.Abs((r.AppliedDate.Value - log.EventDate).TotalSeconds) < 30);
+
+        if (match is not null)
+        {
+            if (!string.IsNullOrEmpty(match.RequestedByEmpId) && employeeNames.TryGetValue(match.RequestedByEmpId, out var name))
+                return name;
+            return match.RequestedByEmpId ?? match.RequestedByUserId.ToString();
+        }
+
+        return log.ActorName ?? log.ActorUserId?.ToString() ?? "ไม่ทราบผู้ทำรายการ";
+    }
+
+    private async Task<Dictionary<string, string>> ResolveEmployeeNamesAsync(HRMContext context, IEnumerable<string?> empIds)
+    {
+        var ids = empIds.Where(e => !string.IsNullOrEmpty(e)).Select(e => e!).Distinct().ToList();
+        if (ids.Count == 0) return new();
+        return await context.Hremployee
+            .Where(e => ids.Contains(e.EmpNo))
+            .ToDictionaryAsync(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+    }
+
+    private static string ChangeTypeLabel(OrgOrganizationChangeType t) => t switch
+    {
+        OrgOrganizationChangeType.NewOrganization => "สร้างหน่วยงานใหม่",
+        OrgOrganizationChangeType.ChangeParent => "ย้ายสังกัด",
+        OrgOrganizationChangeType.ChangeApprover => "เปลี่ยนหัวหน้า",
+        _ => t.ToString(),
+    };
+}

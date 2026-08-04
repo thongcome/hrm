@@ -1,11 +1,16 @@
 @page "/org/set-boss"
+@using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Org
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthProvider
+@inject OrgChangeRequestService ChangeRequestService
 @attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
 
 <PageTitle>แสดงกำหนดหัวหน้า</PageTitle>
@@ -26,8 +31,15 @@
                 SearchFunc="SearchEmployeesAsync"
                 ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            <MudDatePicker Label="วันที่มีผล" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" Required="true" Class="mt-2" />
+            <MudTextField @bind-Value="_requestNote" Label="เหตุผล/หมายเหตุคำขอ (ถ้ามี)" Class="mt-2" />
+            <MudAlert Severity="Severity.Info" Class="mt-2">การเปลี่ยนหัวหน้าต้องผ่านการอนุมัติก่อนจึงจะมีผลจริง</MudAlert>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
             <MudStack Row="true" Spacing="2" Class="mt-3">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBossAsync">บันทึก</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBossAsync">ส่งคำขอ</MudButton>
                 <MudButton Variant="Variant.Text" OnClick="@(() => _assigningOrg = null)">ยกเลิก</MudButton>
             </MudStack>
         </MudPaper>
@@ -65,8 +77,21 @@
     private string? _searchTerm;
     private com_organization? _assigningOrg;
     private Hremployee? _selectedEmployee;
+    private DateTime? _effectiveFrom = DateTime.Today.AddDays(1);
+    private string? _requestNote;
+    private string? _error;
+    private long _actorUserId;
+    private string? _actorEmpId;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirstValue("empno");
+
+        await ChangeRequestService.ApplyDueChangesAsync();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -86,6 +111,9 @@
     {
         _assigningOrg = org;
         _selectedEmployee = null;
+        _effectiveFrom = DateTime.Today.AddDays(1);
+        _requestNote = null;
+        _error = null;
     }
 
     private void OnEmployeeSelected(Hremployee? emp) => _selectedEmployee = emp;
@@ -105,18 +133,36 @@
 
     private async Task SaveBossAsync()
     {
+        _error = null;
         if (_assigningOrg is null || _selectedEmployee is null) return;
+        if (_effectiveFrom is null)
+        {
+            _error = "กรุณาระบุวันที่มีผล";
+            return;
+        }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.com_organizations.FirstOrDefaultAsync(o => o.id == _assigningOrg.id);
-        if (existing is null) return;
+        try
+        {
+            var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
+            {
+                ChangeType = OrgOrganizationChangeType.ChangeApprover,
+                TargetOrganizationId = _assigningOrg.id,
+                TargetOrganizationCode = _assigningOrg.code,
+                OldApproverEmpId = _assigningOrg.approver_empid,
+                OldApproverName = _assigningOrg.approver_name,
+                NewApproverEmpId = _selectedEmployee.EmpNo,
+                NewApproverName = $"{_selectedEmployee.EmpName} {_selectedEmployee.EmpSurname}",
+                EffectiveFrom = DateOnly.FromDateTime(_effectiveFrom.Value),
+                RequestNote = _requestNote,
+            }, _actorUserId, _actorEmpId);
 
-        existing.approver_empid = _selectedEmployee.EmpNo;
-        existing.approver_name = $"{_selectedEmployee.EmpName} {_selectedEmployee.EmpSurname}";
-
-        await context.SaveChangesAsync();
-        Snackbar.Add("กำหนดหัวหน้าเรียบร้อย", Severity.Success);
-        _assigningOrg = null;
-        await LoadAsync();
+            Snackbar.Add($"ส่งคำขอเปลี่ยนหัวหน้าเข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะมีผลวันที่ {_effectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
+            _assigningOrg = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ส่งคำขอไม่สำเร็จ: " + ex.Message;
+        }
     }
 }

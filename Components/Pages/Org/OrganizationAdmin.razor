@@ -2,14 +2,17 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Org
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using System.Security.Claims
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject OrgChangeRequestService ChangeRequestService
 @attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
 
 <PageTitle>ข้อมูลสังกัด</PageTitle>
@@ -21,6 +24,7 @@
             <MudButton Variant="Variant.Text" Href="/org/section-types">ข้อมูลประเภทสังกัด</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/subsection-types">ลักษณะของหน่วยงาน</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/set-boss">แสดงกำหนดหัวหน้า</MudButton>
+            <MudButton Variant="Variant.Text" Href="/org/change-history">ประวัติการปรับผังองค์กร</MudButton>
         </MudStack>
     </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1">
@@ -100,6 +104,23 @@
         <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="3" /></MudItem>
     </MudGrid>
 
+    @if (_editingId is null || ParentWillChange())
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">
+            @(_editingId is null
+                ? "การสร้างหน่วยงานใหม่ต้องผ่านการอนุมัติ — ระบุวันที่ต้องการให้มีผลจริง"
+                : "การย้ายสังกัดต้องผ่านการอนุมัติ — ระบุวันที่ต้องการให้มีผลจริง (ฟิลด์อื่นที่แก้ไขพร้อมกันจะถูกบันทึกทันที)")
+        </MudAlert>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Label="วันที่มีผล" @bind-Date="_pendingEffectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_pendingRequestNote" Label="เหตุผล/หมายเหตุคำขอ (ถ้ามี)" />
+            </MudItem>
+        </MudGrid>
+    }
+
     @if (!string.IsNullOrEmpty(_error))
     {
         <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
@@ -177,6 +198,11 @@
     private string? _remark;
     private com_organization? _selectedParent;
     private Com_ChartOfAccount? _selectedCostCenter;
+    private string? _editingOriginalParentCode;
+    private DateTime? _pendingEffectiveFrom = DateTime.Today.AddDays(1);
+    private string? _pendingRequestNote;
+    private long _actorUserId;
+    private string? _actorEmpId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -184,11 +210,23 @@
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirstValue("empno");
+
+        await ChangeRequestService.ApplyDueChangesAsync();
+
         await using var context = await DbFactory.CreateDbContextAsync();
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
         _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
 
         await LoadAsync();
+    }
+
+    private bool ParentWillChange()
+    {
+        if (_editingId is null) return false;
+        var newParentCode = _isTop ? null : _selectedParent?.code;
+        return newParentCode != _editingOriginalParentCode;
     }
 
     private string SectionTypeName(string? code) => string.IsNullOrEmpty(code) ? "" : (_sectionTypes.FirstOrDefault(t => t.Code == code)?.Name ?? code);
@@ -281,6 +319,9 @@
         _remark = org.remark;
         _selectedParent = null;
         _selectedCostCenter = null;
+        _editingOriginalParentCode = org.parent_code;
+        _pendingEffectiveFrom = DateTime.Today.AddDays(1);
+        _pendingRequestNote = null;
         _error = null;
         _ = LoadEditContextAsync(org);
     }
@@ -317,31 +358,10 @@
         _remark = null;
         _selectedParent = null;
         _selectedCostCenter = null;
+        _editingOriginalParentCode = null;
+        _pendingEffectiveFrom = DateTime.Today.AddDays(1);
+        _pendingRequestNote = null;
         _error = null;
-    }
-
-    // Fixed-width hierarchical path, 2 digits per level, no delimiter — same
-    // scheme as the existing backfilled orgcodefull values (see com_organization.cs
-    // comment). Computed once at create time by taking the next available 2-digit
-    // suffix among siblings; never recomputed on edit (existing values came from a
-    // one-time recursive-CTE backfill this increment logic doesn't need to match
-    // retroactively, only extend going forward).
-    private async Task<string> ComputeNextOrgCodeFullAsync(HRMContext context, string? parentOrgCodeFull)
-    {
-        IQueryable<com_organization> siblings = string.IsNullOrEmpty(parentOrgCodeFull)
-            ? context.com_organizations.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code))
-            : context.com_organizations.Where(o => o.orgcodefull != null && o.orgcodefull.StartsWith(parentOrgCodeFull) && o.orgcodefull.Length == parentOrgCodeFull.Length + 2);
-
-        var siblingCodes = await siblings.Select(o => o.orgcodefull).ToListAsync();
-        var maxSuffix = 0;
-        foreach (var full in siblingCodes)
-        {
-            if (string.IsNullOrEmpty(full) || full.Length < 2) continue;
-            var suffix = full[^2..];
-            if (int.TryParse(suffix, out var n) && n > maxSuffix) maxSuffix = n;
-        }
-        var nextSuffix = (maxSuffix + 1).ToString("D2");
-        return (parentOrgCodeFull ?? "") + nextSuffix;
     }
 
     private async Task SaveAsync()
@@ -359,77 +379,115 @@
             return;
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-
-        var duplicate = await context.com_organizations.AnyAsync(o => o.code == _code && o.id != (_editingId ?? 0));
-        if (duplicate)
-        {
-            _error = "มีรหัสสังกัดนี้อยู่แล้ว";
-            return;
-        }
-
         var newParentCode = _isTop ? null : _selectedParent?.code;
         var newCostCenterCode = _selectedCostCenter?.Code;
         var newSectionTypeCode = _sectionTypeId is null ? null : _sectionTypes.FirstOrDefault(t => t.Id == _sectionTypeId)?.Code;
         var startDateTime = _startDate;
         var endDateTime = _endDate;
 
-        if (_editingId is long id)
+        try
         {
-            var existing = await context.com_organizations.FirstOrDefaultAsync(o => o.id == id);
-            if (existing is null)
+            if (_editingId is long id)
             {
-                _error = "ไม่พบข้อมูลสังกัดที่ต้องการแก้ไข";
-                return;
+                await using var context = await DbFactory.CreateDbContextAsync();
+
+                var duplicate = await context.com_organizations.AnyAsync(o => o.code == _code && o.id != id);
+                if (duplicate)
+                {
+                    _error = "มีรหัสสังกัดนี้อยู่แล้ว";
+                    return;
+                }
+
+                var existing = await context.com_organizations.FirstOrDefaultAsync(o => o.id == id);
+                if (existing is null)
+                {
+                    _error = "ไม่พบข้อมูลสังกัดที่ต้องการแก้ไข";
+                    return;
+                }
+
+                var parentChanged = existing.parent_code != newParentCode;
+
+                // Minor fields save directly, same as before this feature — parent_code,
+                // istop, and orgcodefull are deliberately never touched here, only via
+                // the gated ChangeParent request below (istop is a derivative of
+                // parent_code, so it travels with it, not with the direct-save fields).
+                existing.code = _code;
+                existing.name = _name;
+                existing.name_en = _nameEn;
+                existing.abbr = _abbr;
+                existing.abbr_en = _abbrEn;
+                existing.isActive = _isActive;
+                existing.isManPowerCount = _isManPowerCount;
+                existing.SectionTypeCode = newSectionTypeCode;
+                existing.SubSectionTypeId = _subSectionTypeId;
+                existing.CostCenterCode = newCostCenterCode;
+                existing.startdate = startDateTime;
+                existing.enddate = endDateTime;
+                existing.remark = _remark;
+                await context.SaveChangesAsync();
+
+                if (parentChanged)
+                {
+                    if (_pendingEffectiveFrom is null)
+                    {
+                        _error = "กรุณาระบุวันที่มีผลสำหรับการย้ายสังกัด";
+                        return;
+                    }
+                    var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
+                    {
+                        ChangeType = OrgOrganizationChangeType.ChangeParent,
+                        TargetOrganizationId = id,
+                        TargetOrganizationCode = existing.code,
+                        OldParentCode = existing.parent_code,
+                        NewParentCode = newParentCode,
+                        NewIsTop = _isTop,
+                        EffectiveFrom = DateOnly.FromDateTime(_pendingEffectiveFrom.Value),
+                        RequestNote = _pendingRequestNote,
+                    }, _actorUserId, _actorEmpId);
+                    Snackbar.Add($"บันทึกข้อมูลอื่นเรียบร้อย และส่งคำขอย้ายสังกัดเข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะมีผลวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
+                }
+                else
+                {
+                    Snackbar.Add("บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+                }
             }
-            var parentChanged = existing.parent_code != newParentCode;
-            existing.code = _code;
-            existing.name = _name;
-            existing.name_en = _nameEn;
-            existing.abbr = _abbr;
-            existing.abbr_en = _abbrEn;
-            existing.istop = _isTop;
-            existing.isActive = _isActive;
-            existing.isManPowerCount = _isManPowerCount;
-            existing.SectionTypeCode = newSectionTypeCode;
-            existing.SubSectionTypeId = _subSectionTypeId;
-            existing.parent_code = newParentCode;
-            existing.CostCenterCode = newCostCenterCode;
-            existing.startdate = startDateTime;
-            existing.enddate = endDateTime;
-            existing.remark = _remark;
-            if (parentChanged)
+            else
             {
-                existing.orgcodefull = await ComputeNextOrgCodeFullAsync(context, _selectedParent?.orgcodefull);
+                if (_pendingEffectiveFrom is null)
+                {
+                    _error = "กรุณาระบุวันที่มีผลสำหรับการสร้างหน่วยงานใหม่";
+                    return;
+                }
+                var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
+                {
+                    ChangeType = OrgOrganizationChangeType.NewOrganization,
+                    NewCode = _code,
+                    NewName = _name,
+                    NewNameEn = _nameEn,
+                    NewAbbr = _abbr,
+                    NewAbbrEn = _abbrEn,
+                    NewIsTop = _isTop,
+                    NewIsActive = _isActive,
+                    NewIsManPowerCount = _isManPowerCount,
+                    NewSectionTypeCode = newSectionTypeCode,
+                    NewSubSectionTypeId = _subSectionTypeId,
+                    NewParentCode = newParentCode,
+                    NewCostCenterCode = newCostCenterCode,
+                    NewStartDate = startDateTime,
+                    NewEndDate = endDateTime,
+                    NewRemark = _remark,
+                    EffectiveFrom = DateOnly.FromDateTime(_pendingEffectiveFrom.Value),
+                    RequestNote = _pendingRequestNote,
+                }, _actorUserId, _actorEmpId);
+                Snackbar.Add($"ส่งคำขอสร้างหน่วยงานใหม่เข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะสร้างจริงวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
             }
         }
-        else
+        catch (Exception ex)
         {
-            var orgcodefull = await ComputeNextOrgCodeFullAsync(context, _selectedParent?.orgcodefull);
-            context.com_organizations.Add(new com_organization
-            {
-                code = _code,
-                name = _name,
-                name_en = _nameEn,
-                abbr = _abbr,
-                abbr_en = _abbrEn,
-                istop = _isTop,
-                isActive = _isActive,
-                isManPowerCount = _isManPowerCount,
-                SectionTypeCode = newSectionTypeCode,
-                SubSectionTypeId = _subSectionTypeId,
-                parent_code = newParentCode,
-                CostCenterCode = newCostCenterCode,
-                orgcodefull = orgcodefull,
-                startdate = startDateTime,
-                enddate = endDateTime,
-                remark = _remark,
-                createdate = DateTime.Now,
-            });
+            _error = ex.Message;
+            return;
         }
 
-        await context.SaveChangesAsync();
-        Snackbar.Add(_editingId is null ? "เพิ่มข้อมูลสังกัดเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
         CancelEdit();
         await LoadAsync();
     }

@@ -410,6 +410,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Att_ShiftDefinition> Att_ShiftDefinitions { get; set; }
     public virtual DbSet<Att_ShiftAssignment> Att_ShiftAssignments { get; set; }
     public virtual DbSet<Att_DailyAttendance> Att_DailyAttendances { get; set; }
+    public virtual DbSet<Org_OrganizationChangeRequest> Org_OrganizationChangeRequests { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

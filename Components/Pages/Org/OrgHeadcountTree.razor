@@ -1,0 +1,166 @@
+@page "/org/headcount"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>อัตรากำลังตามผังองค์กร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">อัตรากำลังตามผังองค์กร</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+        จำนวนเลขที่อัตราทั้งหมด/ว่าง ต่อหน่วยงาน — อัตราที่มีคนครองแสดงชื่อพนักงานไว้ให้เลย
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mb-3">
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(false))">ย่อทั้งหมด</MudButton>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(true))">ขยายทั้งหมด</MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_roots.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ไม่พบข้อมูลผังองค์กร</MudAlert>
+    }
+    else
+    {
+        @foreach (var root in _roots)
+        {
+            @RenderNode(root, 0)
+        }
+    }
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+    private string? _companyId;
+    private List<com_organization> _allOrgs = new();
+    private List<com_organization> _roots = new();
+    private ILookup<string, Pos_PositionSlot> _slotsByOrgCode = Enumerable.Empty<Pos_PositionSlot>().ToLookup(s => "");
+    private Dictionary<long, string> _employeeNames = new();
+    private HashSet<long> _expanded = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _allOrgs = await context.com_organizations.ToListAsync();
+        _roots = _allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
+
+        var slots = await context.Pos_PositionSlots
+            .Where(s => s.CompanyId == _companyId && s.IsActive && s.OrganizationId != null)
+            .ToListAsync();
+
+        var orgIdToCode = _allOrgs.ToDictionary(o => o.id, o => o.code);
+        _slotsByOrgCode = slots
+            .Where(s => orgIdToCode.ContainsKey(s.OrganizationId!.Value))
+            .ToLookup(s => orgIdToCode[s.OrganizationId!.Value]);
+
+        var empIds = slots.Where(s => s.HremployeeId is not null).Select(s => s.HremployeeId!.Value).Distinct().ToList();
+        _employeeNames = await context.Hremployee
+            .Where(e => empIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+
+        foreach (var root in _roots) _expanded.Add(root.id);
+        _loading = false;
+    }
+
+    private void SetAllExpanded(bool expand)
+    {
+        _expanded = expand ? _allOrgs.Select(o => o.id).ToHashSet() : _roots.Select(o => o.id).ToHashSet();
+    }
+
+    private (int total, int vacant) SlotCounts(string orgCode)
+    {
+        var slots = _slotsByOrgCode[orgCode].ToList();
+        return (slots.Count, slots.Count(s => s.HremployeeId is null));
+    }
+
+    private RenderFragment RenderNode(com_organization node, int depth) => builder =>
+    {
+        var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var slots = _slotsByOrgCode[node.code].OrderBy(s => s.PosCode).ToList();
+        var (total, vacant) = (slots.Count, slots.Count(s => s.HremployeeId is null));
+        var isExpanded = _expanded.Contains(node.id);
+        var hasContent = children.Count > 0 || slots.Count > 0;
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0;");
+
+        if (hasContent)
+        {
+            builder.OpenElement(2, "a");
+            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
+            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => ToggleExpand(node.id)));
+            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(6, "a");
+        builder.AddAttribute(7, "href", $"/org/organizations/{node.id}");
+        builder.AddContent(8, $"{node.orgcodefull} - {node.name} ({node.abbr})");
+        builder.CloseElement();
+
+        if (total > 0)
+        {
+            builder.OpenComponent<MudChip<string>>(9);
+            builder.AddAttribute(10, "Color", vacant > 0 ? Color.Warning : Color.Success);
+            builder.AddAttribute(11, "Size", Size.Small);
+            builder.AddAttribute(12, "Class", "ml-2");
+            builder.AddAttribute(13, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, $"{total} อัตรา, ว่าง {vacant}")));
+            builder.CloseComponent();
+        }
+
+        builder.CloseElement();
+
+        if (isExpanded)
+        {
+            if (slots.Count > 0)
+            {
+                builder.OpenElement(14, "div");
+                builder.AddAttribute(15, "style", $"margin-left:{(depth + 1) * 24 + 18}px;");
+                foreach (var slot in slots)
+                {
+                    var occupantName = slot.HremployeeId is long empId && _employeeNames.TryGetValue(empId, out var name) ? name : null;
+                    builder.OpenElement(16, "div");
+                    builder.AddAttribute(17, "style", "padding:2px 0; font-size:0.875rem;");
+                    builder.AddContent(18, $"• {slot.PosCode ?? "(ไม่มีเลขที่)"} — {slot.Name} — ");
+                    builder.OpenElement(19, "span");
+                    builder.AddAttribute(20, "style", occupantName is null ? "color:var(--mud-palette-warning);font-weight:600;" : "color:var(--mud-palette-success);font-weight:600;");
+                    builder.AddContent(21, occupantName ?? "ว่าง");
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+                builder.CloseElement();
+            }
+
+            foreach (var child in children)
+            {
+                builder.AddContent(22, RenderNode(child, depth + 1));
+            }
+        }
+    };
+
+    private void ToggleExpand(long id)
+    {
+        if (!_expanded.Add(id)) _expanded.Remove(id);
+    }
+}
