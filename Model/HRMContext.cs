@@ -411,6 +411,20 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Att_ShiftAssignment> Att_ShiftAssignments { get; set; }
     public virtual DbSet<Att_DailyAttendance> Att_DailyAttendances { get; set; }
     public virtual DbSet<Org_OrganizationChangeRequest> Org_OrganizationChangeRequests { get; set; }
+    public virtual DbSet<Perf_EvaluationPeriod> Perf_EvaluationPeriods { get; set; }
+    public virtual DbSet<Perf_EvaluationType> Perf_EvaluationTypes { get; set; }
+    public virtual DbSet<Perf_Topic> Perf_Topics { get; set; }
+    public virtual DbSet<Perf_SubTopic> Perf_SubTopics { get; set; }
+    public virtual DbSet<Perf_Indicator> Perf_Indicators { get; set; }
+    public virtual DbSet<Perf_RatingScaleDescription> Perf_RatingScaleDescriptions { get; set; }
+    public virtual DbSet<Perf_GradeBand> Perf_GradeBands { get; set; }
+    public virtual DbSet<Perf_RaterDirectionConfig> Perf_RaterDirectionConfigs { get; set; }
+    public virtual DbSet<Perf_EvaluationAssignment> Perf_EvaluationAssignments { get; set; }
+    public virtual DbSet<Perf_EvaluationInstance> Perf_EvaluationInstances { get; set; }
+    public virtual DbSet<Perf_RaterAssignment> Perf_RaterAssignments { get; set; }
+    public virtual DbSet<Perf_Score> Perf_Scores { get; set; }
+    public virtual DbSet<Perf_Goal> Perf_Goals { get; set; }
+    public virtual DbSet<Perf_GoalCheckIn> Perf_GoalCheckIns { get; set; }
     // ----- end Pay_* module -----
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -1557,6 +1571,20 @@ public partial class HRMContext : DbContext
 
             entity.HasIndex(d => new { d.HremployeeId, d.WorkDate }).IsUnique();
         });
+
+        // Perf_Score has two required FKs (Perf_RaterAssignment and
+        // Perf_Indicator) that both trace back to Perf_EvaluationType via
+        // cascade (Instance->RaterAssignment->Score, and separately
+        // Indicator->SubTopic->Topic->EvaluationType) — SQL Server rejects
+        // that as a multiple-cascade-paths cycle. Breaking the
+        // Instance->EvaluationType edge to Restrict is the natural fix:
+        // deleting an EvaluationType shouldn't silently cascade-delete every
+        // instance/score recorded against it anyway.
+        modelBuilder.Entity<Perf_EvaluationInstance>()
+            .HasOne(i => i.EvaluationType)
+            .WithMany()
+            .HasForeignKey(i => i.EvaluationTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Pay_PayrollPeriod>().HasData(
             new Pay_PayrollPeriod { Id = 1, CompanyId = "001", Year = 2026, Month = 7, TermNo = 1, Label = "ก.ค. 2569 งวดที่ 1", PeriodStart = new DateOnly(2026, 7, 1), PeriodEnd = new DateOnly(2026, 7, 31), IsActive = true },
