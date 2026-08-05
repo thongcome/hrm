@@ -1,0 +1,138 @@
+@page "/hr/grievances"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject GrievanceService GrievanceService
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:HR_GRIEVANCE_ADMIN")]
+
+<PageTitle>เรื่องร้องเรียน (HR)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">เรื่องร้องเรียนทั้งหมด (HR)</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Warning">PDPA</MudChip>
+    </MudStack>
+
+    <MudTable Items="_grievances" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>เลขที่</MudTh>
+            <MudTh>ผู้แจ้ง</MudTh>
+            <MudTh>หมวดหมู่</MudTh>
+            <MudTh>หัวข้อ</MudTh>
+            <MudTh>วันที่แจ้ง</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>#@context.Id</MudTd>
+            <MudTd>@(context.IsAnonymous ? "(ไม่ระบุตัวตน)" : _reporterNames.GetValueOrDefault(context.ReporterHremployeeId ?? 0, "-"))</MudTd>
+            <MudTd>@GrievanceService.CategoryLabel(context.Category)</MudTd>
+            <MudTd>@context.Subject</MudTd>
+            <MudTd>@context.CreatedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@GrievanceService.StatusLabel(context.Status)</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenAsync(context))">เปิดดู</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>ยังไม่มีเรื่องร้องเรียน</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (_selected is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudText Typo="Typo.h6">รายละเอียด #@_selected.Id</MudText>
+            <MudText Class="mt-2" Style="white-space:pre-wrap">@_selected.Description</MudText>
+            @if (!string.IsNullOrWhiteSpace(_selected.InvolvedPersons))
+            {
+                <MudText Class="mt-2"><b>บุคคลที่เกี่ยวข้อง:</b> @_selected.InvolvedPersons</MudText>
+            }
+
+            @if (_selected.Status is GrievanceStatus.Submitted or GrievanceStatus.UnderInvestigation)
+            {
+                <MudTextField @bind-Value="_resolutionNotes" Label="ผลการดำเนินการ" Lines="4" Class="mt-3" />
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="@(() => ResolveAsync(false))">ดำเนินการแล้วเสร็จ</MudButton>
+                    <MudButton Color="Color.Default" Variant="Variant.Outlined" OnClick="@(() => ResolveAsync(true))">ยุติเรื่อง</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudText Class="mt-3"><b>ผลการดำเนินการ:</b></MudText>
+                <MudText Style="white-space:pre-wrap">@_selected.ResolutionNotes</MudText>
+            }
+
+            <MudButton Variant="Variant.Text" Class="mt-4" OnClick="@(() => _selected = null)">ปิด</MudButton>
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Hr_Grievance> _grievances = new();
+    private Dictionary<long, string> _reporterNames = new();
+    private Hr_Grievance? _selected;
+    private string _resolutionNotes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _grievances = await GrievanceService.GetAllAsync(_companyId!);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var empIds = _grievances.Where(g => g.ReporterHremployeeId != null).Select(g => g.ReporterHremployeeId!.Value).Distinct().ToList();
+        _reporterNames = await context.Hremployee.Where(e => empIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
+    }
+
+    private async Task OpenAsync(Hr_Grievance g)
+    {
+        _selected = g;
+        _resolutionNotes = g.ResolutionNotes ?? "";
+        await AuditLogger.LogAccessAsync("Hr_Grievance", g.Id.ToString(), isSensitive: true, note: "HR view");
+    }
+
+    private async Task ResolveAsync(bool dismissed)
+    {
+        if (_selected is null) return;
+        try
+        {
+            await GrievanceService.ResolveAsync(_selected.Id, _resolutionNotes, dismissed);
+            Snackbar.Add("บันทึกผลการดำเนินการแล้ว", Severity.Success);
+            _selected = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private static Color StatusColor(GrievanceStatus status) => status switch
+    {
+        GrievanceStatus.Submitted => Color.Warning,
+        GrievanceStatus.UnderInvestigation => Color.Info,
+        GrievanceStatus.Resolved => Color.Success,
+        GrievanceStatus.Dismissed => Color.Default,
+        _ => Color.Default,
+    };
+}

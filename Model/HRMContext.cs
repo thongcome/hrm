@@ -369,6 +369,11 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_EmployeeInsuranceEnrollment> Pay_EmployeeInsuranceEnrollments { get; set; }
 
     public virtual DbSet<Lve_LeaveRequest> Lve_LeaveRequests { get; set; }
+    public virtual DbSet<Exp_ExpenseCategory> Exp_ExpenseCategories { get; set; }
+    public virtual DbSet<Exp_ClaimHeader> Exp_ClaimHeaders { get; set; }
+    public virtual DbSet<Exp_ClaimLineItem> Exp_ClaimLineItems { get; set; }
+    public virtual DbSet<Hr_DisciplinaryCase> Hr_DisciplinaryCases { get; set; }
+    public virtual DbSet<Hr_Grievance> Hr_Grievances { get; set; }
 
     public virtual DbSet<Lve_LeavePolicy> Lve_LeavePolicies { get; set; }
 
@@ -395,6 +400,9 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Hrd_Experience> Hrd_Experiences { get; set; }
     public virtual DbSet<Hrd_NameChangeHistory> Hrd_NameChangeHistories { get; set; }
     public virtual DbSet<Hrd_ContactPerson> Hrd_ContactPersons { get; set; }
+    public virtual DbSet<Hrd_LifecycleTaskTemplate> Hrd_LifecycleTaskTemplates { get; set; }
+    public virtual DbSet<Hrd_LifecycleTaskInstance> Hrd_LifecycleTaskInstances { get; set; }
+    public virtual DbSet<Hrd_ExitInterview> Hrd_ExitInterviews { get; set; }
 
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 

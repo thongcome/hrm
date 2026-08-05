@@ -1,0 +1,76 @@
+@page "/ess/grievance/my"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject GrievanceService GrievanceService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>เรื่องร้องเรียนของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.h5">เรื่องร้องเรียนของฉัน</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Nav.NavigateTo("/ess/grievance/new"))">แจ้งเรื่องใหม่</MudButton>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">รายการนี้แสดงเฉพาะเรื่องที่แจ้งแบบระบุตัวตน — เรื่องที่แจ้งแบบไม่ระบุตัวตนจะไม่ปรากฏที่นี่ (ระบบไม่เก็บว่าเป็นใคร)</MudText>
+
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">ไม่พบข้อมูลพนักงานของบัญชีนี้</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_grievances" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>เลขที่</MudTh>
+                <MudTh>หมวดหมู่</MudTh>
+                <MudTh>หัวข้อ</MudTh>
+                <MudTh>วันที่แจ้ง</MudTh>
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>#@context.Id</MudTd>
+                <MudTd>@GrievanceService.CategoryLabel(context.Category)</MudTd>
+                <MudTd>@context.Subject</MudTd>
+                <MudTd>@context.CreatedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@GrievanceService.StatusLabel(context.Status)</MudChip>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>ยังไม่มีเรื่องร้องเรียนที่แจ้งไว้</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private bool _notFound;
+    private List<Hr_Grievance> _grievances = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (employee is null) { _notFound = true; return; }
+
+        _grievances = await GrievanceService.GetMineAsync(employee.id);
+    }
+
+    private static Color StatusColor(GrievanceStatus status) => status switch
+    {
+        GrievanceStatus.Submitted => Color.Warning,
+        GrievanceStatus.UnderInvestigation => Color.Info,
+        GrievanceStatus.Resolved => Color.Success,
+        GrievanceStatus.Dismissed => Color.Default,
+        _ => Color.Default,
+    };
+}

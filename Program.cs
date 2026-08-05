@@ -213,6 +213,10 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 
 // ----- info_message module (HR announcements) -----
 builder.Services.AddScoped<HRM.Services.Hr.InfoMessageService>();
+builder.Services.AddScoped<HRM.Services.Hrd.LifecycleTaskService>();
+builder.Services.AddScoped<HRM.Services.Exp.ExpenseClaimService>();
+builder.Services.AddScoped<HRM.Services.Hr.DisciplinaryActionService>();
+builder.Services.AddScoped<HRM.Services.Hr.GrievanceService>();
 // ----- end info_message module -----
 
 builder.Services.AddAuthorization();
@@ -307,7 +311,9 @@ app.MapPayrollFileEndpoints();
 // runs.
 app.MapLoginEndpoints();
 app.MapEssFileEndpoints();
+app.MapExpenseFileEndpoints();
 app.MapWorkflowFileEndpoints();
 app.MapInfoMessageFileEndpoints();
+app.MapHrFileEndpoints();
 
 app.Run();

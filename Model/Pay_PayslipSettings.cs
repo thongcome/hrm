@@ -62,6 +62,12 @@ public class Pay_PayslipSettings
     // year-to-date window and period grouping.
     public int FiscalYearStartMonth { get; set; } = 1;
 
+    // Calendar days (not business days) from Hremployee.WorkDate to the
+    // suggested probation end date — Thai employers commonly use 119 days
+    // to stay just under the Section 118 (120-day) severance threshold.
+    // HR can still override the suggested date per employee.
+    public int DefaultProbationDays { get; set; } = 119;
+
     // Initial/reset login password for newly-created (or reset) sc_user +
     // ApplicationUser accounts = Part1 + Part2 concatenated verbatim (e.g.
     // "Abcd" + "2025" -> "Abcd2025"). Company-wide and static — unlike

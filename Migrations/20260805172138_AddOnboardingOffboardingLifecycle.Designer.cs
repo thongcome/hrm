@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260805172138_AddOnboardingOffboardingLifecycle")]
+    partial class AddOnboardingOffboardingLifecycle
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1545,119 +1548,6 @@ namespace HRM.Migrations
                     b.ToTable("employeetype");
                 });
 
-            modelBuilder.Entity("HRM.Models.Exp_ClaimHeader", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("AdhocPayItemId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("CompanyId")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<string>("EmpNo")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("RequestedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("TotalAmount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HremployeeId");
-
-                    b.ToTable("Exp_ClaimHeader");
-                });
-
-            modelBuilder.Entity("HRM.Models.Exp_ClaimLineItem", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<long>("CategoryId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ClaimHeaderId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateOnly>("ExpenseDate")
-                        .HasColumnType("date");
-
-                    b.Property<long?>("ReceiptDocCenterId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CategoryId");
-
-                    b.HasIndex("ClaimHeaderId");
-
-                    b.ToTable("Exp_ClaimLineItem");
-                });
-
-            modelBuilder.Entity("HRM.Models.Exp_ExpenseCategory", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("CompanyId")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Exp_ExpenseCategory");
-                });
-
             modelBuilder.Entity("HRM.Models.HRPayAccum", b =>
                 {
                     b.Property<long>("id")
@@ -1968,122 +1858,6 @@ namespace HRM.Migrations
                         .HasName("PK_HOLIDAY");
 
                     b.ToTable("Holiday");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_DisciplinaryCase", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("ActionType")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CompanyId")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateOnly?>("EffectiveDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("EmpNo")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateOnly>("IncidentDate")
-                        .HasColumnType("date");
-
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("RuleViolated")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int?>("SuspensionDays")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HremployeeId");
-
-                    b.ToTable("Hr_DisciplinaryCases");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_Grievance", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("AssignedToUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Category")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CompanyId")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateOnly?>("IncidentDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("InvolvedPersons")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<bool>("IsAnonymous")
-                        .HasColumnType("bit");
-
-                    b.Property<long?>("ReporterHremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ResolutionNotes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("ResolvedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ReporterHremployeeId");
-
-                    b.ToTable("Hr_Grievances");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrbasepayrollfixed", b =>
@@ -17594,56 +17368,6 @@ namespace HRM.Migrations
                     b.Navigation("masdoc");
                 });
 
-            modelBuilder.Entity("HRM.Models.Exp_ClaimHeader", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany()
-                        .HasForeignKey("HremployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Hremployee");
-                });
-
-            modelBuilder.Entity("HRM.Models.Exp_ClaimLineItem", b =>
-                {
-                    b.HasOne("HRM.Models.Exp_ExpenseCategory", "Category")
-                        .WithMany()
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("HRM.Models.Exp_ClaimHeader", "ClaimHeader")
-                        .WithMany("Exp_ClaimLineItems")
-                        .HasForeignKey("ClaimHeaderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Category");
-
-                    b.Navigation("ClaimHeader");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_DisciplinaryCase", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany()
-                        .HasForeignKey("HremployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Hremployee");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_Grievance", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany()
-                        .HasForeignKey("ReporterHremployeeId");
-
-                    b.Navigation("Hremployee");
-                });
-
             modelBuilder.Entity("HRM.Models.Hremployee", b =>
                 {
                     b.HasOne("HRM.Models.Employee", "Employee")
@@ -18590,11 +18314,6 @@ namespace HRM.Migrations
             modelBuilder.Entity("HRM.Models.Employee", b =>
                 {
                     b.Navigation("Hremployees");
-                });
-
-            modelBuilder.Entity("HRM.Models.Exp_ClaimHeader", b =>
-                {
-                    b.Navigation("Exp_ClaimLineItems");
                 });
 
             modelBuilder.Entity("HRM.Models.Hremployee", b =>

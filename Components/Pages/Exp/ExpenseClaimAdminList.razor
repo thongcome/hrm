@@ -1,0 +1,153 @@
+@page "/exp/admin/claims"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Exp
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ExpenseClaimService ClaimService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:EXP_ADMIN")]
+
+<PageTitle>ใบเบิกค่าใช้จ่ายทั้งหมด</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ใบเบิกค่าใช้จ่ายทั้งหมด (HR Oversight)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เมื่อใบเบิกได้รับการอนุมัติครบทุกระดับแล้ว กด "ผลักเข้า Payroll" เพื่อสร้างรายการเบิกจ่ายคืน (ไม่เสียภาษี) เข้า Pay_AdhocPayItem
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudTable Items="_claims" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>เลขที่</MudTh>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>ยอดรวม</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>Payroll</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>#@context.Id</MudTd>
+            <MudTd>@(_employeeNames.GetValueOrDefault(context.HremployeeId, context.EmpNo))</MudTd>
+            <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(_statuses.GetValueOrDefault(context.Id, "-"))">
+                    @StatusLabel(_statuses.GetValueOrDefault(context.Id, "-"))
+                </MudChip>
+            </MudTd>
+            <MudTd>@(context.AdhocPayItemId is not null ? "ผลักแล้ว" : "-")</MudTd>
+            <MudTd>
+                @if (_statuses.GetValueOrDefault(context.Id, "-") == "COMPLETED" && context.AdhocPayItemId is null)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenPushDialog(context.Id))">ผลักเข้า Payroll</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>ยังไม่มีใบเบิกค่าใช้จ่าย</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (_pushingClaimId is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudText Typo="Typo.subtitle1">ผลักใบเบิก #@_pushingClaimId เข้า Payroll</MudText>
+            <MudTextField @bind-Value="_targetPeriod" Label="งวดเงินเดือน (YYYYMM)" Placeholder="เช่น 202608" Class="mt-2" />
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmPushAsync">ยืนยัน</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _pushingClaimId = null)">ยกเลิก</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Exp_ClaimHeader> _claims = new();
+    private Dictionary<long, string> _statuses = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private string? _error;
+
+    private long? _pushingClaimId;
+    private string _targetPeriod = DateTime.Today.ToString("yyyyMM");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _claims = await ClaimService.GetAllClaimsAsync(_companyId!);
+        _statuses = await ClaimService.GetJobStatusesAsync(_claims.Select(c => c.Id));
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var empIds = _claims.Select(c => c.HremployeeId).Distinct().ToList();
+        _employeeNames = await context.Hremployee.Where(e => empIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
+    }
+
+    private void OpenPushDialog(long claimId)
+    {
+        _pushingClaimId = claimId;
+        _targetPeriod = DateTime.Today.ToString("yyyyMM");
+        _error = null;
+    }
+
+    private async Task ConfirmPushAsync()
+    {
+        if (_pushingClaimId is null) return;
+        _error = null;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userIdClaim = state.User.FindFirstValue("sc_userid");
+            var actorUserId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+            await ClaimService.PushToPayrollAsync(_pushingClaimId.Value, _targetPeriod, actorUserId);
+            Snackbar.Add("ผลักเข้า Payroll สำเร็จ", Severity.Success);
+            _pushingClaimId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "-" => "ร่าง",
+        "COMPLETED" => "อนุมัติแล้ว",
+        "REJECTED" or "RETURNED" => "ไม่อนุมัติ",
+        _ => "รออนุมัติ",
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "-" => Color.Default,
+        "COMPLETED" => Color.Success,
+        "REJECTED" or "RETURNED" => Color.Error,
+        _ => Color.Warning,
+    };
+}

@@ -1,0 +1,268 @@
+@page "/exp/my-claims/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Exp
+@using HRM.Services.Pay
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ExpenseClaimService ClaimService
+@inject WorkflowEngineService Engine
+@inject PrivateFileStorage FileStorage
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:EXP_ACCESS")]
+
+<PageTitle>ใบเบิกค่าใช้จ่าย #@Id</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบใบเบิกนี้ หรือไม่ใช่ใบเบิกของคุณ</MudAlert>
+}
+else if (_header is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    var isDraft = _header.JobMasterId is null;
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ใบเบิกค่าใช้จ่าย #@Id</MudText>
+            <MudChip T="string" Size="Size.Small" Color="@StatusColor(_jobStatus)">@StatusLabel(_jobStatus)</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1">ยอดรวม: @_header.TotalAmount.ToString("N2") บาท</MudText>
+
+        <MudTextField @bind-Value="_header.Reason" Label="หมายเหตุ (ถ้ามี)" Class="mt-3" Disabled="@(!isDraft)" />
+        @if (isDraft)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" Class="mt-1" OnClick="SaveReasonAsync">บันทึกหมายเหตุ</MudButton>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">รายการค่าใช้จ่าย</MudText>
+
+        <MudSimpleTable Dense="true" Class="mt-2">
+            <thead>
+                <tr><th>วันที่</th><th>ประเภท</th><th>รายละเอียด</th><th>จำนวนเงิน</th><th>ใบเสร็จ</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var line in _lines)
+                {
+                    <tr>
+                        <td>@line.ExpenseDate.ToString("dd/MM/yyyy")</td>
+                        <td>@(_categories.FirstOrDefault(c => c.Id == line.CategoryId)?.Name ?? "-")</td>
+                        <td>@line.Description</td>
+                        <td>@line.Amount.ToString("N2")</td>
+                        <td>
+                            @if (line.ReceiptDocCenterId is not null)
+                            {
+                                <MudLink Href="@($"/exp/files/receipt/{line.ReceiptDocCenterId}")" Target="_blank">
+                                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                </MudLink>
+                            }
+                            else if (isDraft)
+                            {
+                                <InputFile OnChange="@(e => UploadReceiptAsync(e, line.Id))" />
+                            }
+                        </td>
+                        <td>
+                            @if (isDraft)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveLineAsync(line.Id))">ลบ</MudButton>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+
+        @if (isDraft)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker Date="_newDate" DateChanged="@(d => _newDate = d)" Label="วันที่" Editable="true" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="long?" @bind-Value="_newCategoryId" Label="ประเภท">
+                        @foreach (var cat in _categories)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)cat.Id)">@cat.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_newDescription" Label="รายละเอียด" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudNumericField @bind-Value="_newAmount" Label="จำนวนเงิน" Format="N2" Min="0" />
+                </MudItem>
+                <MudItem xs="12" sm="1" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" OnClick="AddLineAsync">เพิ่ม</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">ส่งอนุมัติ</MudButton>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _notFound;
+    private Exp_ClaimHeader? _header;
+    private List<Exp_ClaimLineItem> _lines = new();
+    private List<Exp_ExpenseCategory> _categories = new();
+    private string _jobStatus = "-";
+    private string? _error;
+
+    private DateTime? _newDate = DateTime.Today;
+    private long? _newCategoryId;
+    private string? _newDescription;
+    private decimal _newAmount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _header = await context.Exp_ClaimHeaders.FirstOrDefaultAsync(h => h.Id == Id && h.HremployeeId == employee.id);
+        if (_header is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _categories = await context.Exp_ExpenseCategories
+            .Where(c => c.CompanyId == employee.companyid && c.IsActive)
+            .OrderBy(c => c.SortOrder).ToListAsync();
+
+        await LoadLinesAsync();
+
+        if (_header.JobMasterId is not null)
+        {
+            var statuses = await ClaimService.GetJobStatusesAsync(new[] { Id });
+            _jobStatus = statuses.GetValueOrDefault(Id, "-");
+        }
+    }
+
+    private async Task LoadLinesAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _lines = await context.Exp_ClaimLineItems.Where(l => l.ClaimHeaderId == Id).OrderBy(l => l.Id).ToListAsync();
+        _header = await context.Exp_ClaimHeaders.FirstOrDefaultAsync(h => h.Id == Id);
+    }
+
+    private async Task SaveReasonAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Exp_ClaimHeaders.FirstOrDefaultAsync(h => h.Id == Id);
+        if (existing is null) return;
+        existing.Reason = _header!.Reason;
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกหมายเหตุแล้ว", Severity.Success);
+    }
+
+    private async Task AddLineAsync()
+    {
+        _error = null;
+        if (_newDate is null || _newCategoryId is null || _newAmount <= 0)
+        {
+            _error = "กรุณาระบุวันที่ ประเภท และจำนวนเงินให้ครบ";
+            return;
+        }
+
+        try
+        {
+            await ClaimService.AddLineItemAsync(Id, DateOnly.FromDateTime(_newDate.Value), _newCategoryId.Value, _newDescription, _newAmount);
+            _newDescription = null;
+            _newAmount = 0;
+            await LoadLinesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RemoveLineAsync(long lineId)
+    {
+        try
+        {
+            await ClaimService.RemoveLineItemAsync(lineId);
+            await LoadLinesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task UploadReceiptAsync(InputFileChangeEventArgs e, long lineId)
+    {
+        const long maxSize = 10 * 1024 * 1024;
+        var file = e.File;
+        await using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var storedFileName = $"{lineId}_{Guid.NewGuid():N}_{file.Name}";
+        var (relativePath, _) = await FileStorage.SaveAsync("expense-receipts", storedFileName, ms.ToArray());
+        await ClaimService.AttachReceiptAsync(lineId, file.Name, relativePath);
+        await LoadLinesAsync();
+        Snackbar.Add("แนบใบเสร็จแล้ว", Severity.Success);
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userIdClaim = state.User.FindFirstValue("sc_userid");
+            var actorUserId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+            var jobId = await ClaimService.SubmitAsync(Id, actorUserId, Engine);
+            Snackbar.Add($"ส่งอนุมัติสำเร็จ (Job #{jobId})", Severity.Success);
+            await OnInitializedAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ส่งอนุมัติไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "-" => "ร่าง",
+        "COMPLETED" => "อนุมัติแล้ว",
+        "REJECTED" or "RETURNED" => "ไม่อนุมัติ",
+        _ => "รออนุมัติ",
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "-" => Color.Default,
+        "COMPLETED" => Color.Success,
+        "REJECTED" or "RETURNED" => Color.Error,
+        _ => Color.Warning,
+    };
+}

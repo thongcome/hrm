@@ -1,0 +1,232 @@
+@page "/pay/admin/lifecycle-task-templates"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>Checklist Onboarding/Offboarding</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">รายการงาน Onboarding / Offboarding (Checklist)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดรายการงานมาตรฐานของบริษัท — เมื่อ HR กด "เริ่ม Onboarding/Offboarding" ให้พนักงานคนใดคนหนึ่ง
+        ระบบจะคัดลอกรายการที่ยัง "ใช้งาน" ในทิศทางนั้นมาเป็นงานของพนักงานคนนั้นโดยอัตโนมัติ
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มรายการงานใหม่" : $"แก้ไขรายการงาน — {_form.Title}")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="LifecycleTaskDirection" @bind-Value="_form.Direction" Label="ทิศทาง">
+                <MudSelectItem Value="LifecycleTaskDirection.Onboarding">Onboarding (พนักงานใหม่)</MudSelectItem>
+                <MudSelectItem Value="LifecycleTaskDirection.Offboarding">Offboarding (พนักงานลาออก)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.Code" Label="รหัสงาน" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="12">
+            <MudTextField @bind-Value="_form.Title" Label="ชื่องาน" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_form.Description" Label="รายละเอียด (ถ้ามี)" Lines="2" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.DefaultAssigneeRole" Label="ผู้รับผิดชอบ (เช่น IT, HR, หัวหน้างาน)" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มรายการงาน" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTabs>
+        <MudTabPanel Text="Onboarding">
+            @RenderTemplateTable(_templates.Where(t => t.Direction == LifecycleTaskDirection.Onboarding))
+        </MudTabPanel>
+        <MudTabPanel Text="Offboarding">
+            @RenderTemplateTable(_templates.Where(t => t.Direction == LifecycleTaskDirection.Offboarding))
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Hrd_LifecycleTaskTemplate> _templates = new();
+    private string? _error;
+    private long? _editingId;
+
+    private class TemplateForm
+    {
+        public LifecycleTaskDirection Direction { get; set; } = LifecycleTaskDirection.Onboarding;
+        public string Code { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public int SortOrder { get; set; }
+        public string? DefaultAssigneeRole { get; set; }
+    }
+
+    private TemplateForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _templates = await context.Hrd_LifecycleTaskTemplates
+            .Where(t => t.CompanyId == _companyId)
+            .OrderBy(t => t.Direction).ThenBy(t => t.SortOrder).ThenBy(t => t.Code)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Hrd_LifecycleTaskTemplate template)
+    {
+        _editingId = template.Id;
+        _form = new TemplateForm
+        {
+            Direction = template.Direction,
+            Code = template.Code,
+            Title = template.Title,
+            Description = template.Description,
+            SortOrder = template.SortOrder,
+            DefaultAssigneeRole = template.DefaultAssigneeRole,
+        };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new TemplateForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Code) || string.IsNullOrWhiteSpace(_form.Title))
+        {
+            _error = "กรุณากรอกรหัสงานและชื่องาน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Hrd_LifecycleTaskTemplates.AnyAsync(t =>
+            t.CompanyId == _companyId && t.Direction == _form.Direction && t.Code == _form.Code && t.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"มีรหัสงาน {_form.Code} อยู่แล้วในทิศทางนี้";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_LifecycleTaskTemplates.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบรายการงานที่ต้องการแก้ไข";
+                return;
+            }
+            existing.Direction = _form.Direction;
+            existing.Code = _form.Code;
+            existing.Title = _form.Title;
+            existing.Description = _form.Description;
+            existing.SortOrder = _form.SortOrder;
+            existing.DefaultAssigneeRole = _form.DefaultAssigneeRole;
+        }
+        else
+        {
+            context.Hrd_LifecycleTaskTemplates.Add(new Hrd_LifecycleTaskTemplate
+            {
+                CompanyId = _companyId!,
+                Direction = _form.Direction,
+                Code = _form.Code,
+                Title = _form.Title,
+                Description = _form.Description,
+                SortOrder = _form.SortOrder,
+                DefaultAssigneeRole = _form.DefaultAssigneeRole,
+                IsActive = true,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มรายการงานเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Hrd_LifecycleTaskTemplate template)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Hrd_LifecycleTaskTemplates.FirstOrDefaultAsync(t => t.Id == template.Id && t.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private RenderFragment RenderTemplateTable(IEnumerable<Hrd_LifecycleTaskTemplate> items) => @<text>
+        <MudTable Items="items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ลำดับ</MudTh>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่องาน</MudTh>
+                <MudTh>ผู้รับผิดชอบ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate Context="row">
+                <MudTd>@row.SortOrder</MudTd>
+                <MudTd>@row.Code</MudTd>
+                <MudTd>@row.Title</MudTd>
+                <MudTd>@row.DefaultAssigneeRole</MudTd>
+                <MudTd>@(row.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(row))">
+                        @(row.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </text>;
+}

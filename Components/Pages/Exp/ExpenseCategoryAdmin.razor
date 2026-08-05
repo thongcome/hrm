@@ -1,0 +1,189 @@
+@page "/exp/admin/categories"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:EXP_ADMIN")]
+
+<PageTitle>ประเภทค่าใช้จ่าย</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ประเภทค่าใช้จ่าย (Expense Categories)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดรายการประเภทค่าใช้จ่ายที่พนักงานเลือกได้เวลาเพิ่มรายการในใบเบิก
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทใหม่" : $"แก้ไขประเภท — {_form.Name}")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.Code" Label="รหัส" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_form.Name" Label="ชื่อประเภท" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มประเภท" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_categories" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ลำดับ</MudTh>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อประเภท</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.SortOrder</MudTd>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Exp_ExpenseCategory> _categories = new();
+    private string? _error;
+    private long? _editingId;
+
+    private class CategoryForm
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int SortOrder { get; set; }
+    }
+
+    private CategoryForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _categories = await context.Exp_ExpenseCategories
+            .Where(c => c.CompanyId == _companyId)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Code)
+            .ToListAsync();
+    }
+
+    private void StartEdit(Exp_ExpenseCategory category)
+    {
+        _editingId = category.Id;
+        _form = new CategoryForm { Code = category.Code, Name = category.Name, SortOrder = category.SortOrder };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new CategoryForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Code) || string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _error = "กรุณากรอกรหัสและชื่อประเภท";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Exp_ExpenseCategories.AnyAsync(c =>
+            c.CompanyId == _companyId && c.Code == _form.Code && c.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"มีรหัส {_form.Code} อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Exp_ExpenseCategories.FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == _companyId);
+            if (existing is null)
+            {
+                _error = "ไม่พบประเภทที่ต้องการแก้ไข";
+                return;
+            }
+            existing.Code = _form.Code;
+            existing.Name = _form.Name;
+            existing.SortOrder = _form.SortOrder;
+        }
+        else
+        {
+            context.Exp_ExpenseCategories.Add(new Exp_ExpenseCategory
+            {
+                CompanyId = _companyId!,
+                Code = _form.Code,
+                Name = _form.Name,
+                SortOrder = _form.SortOrder,
+                IsActive = true,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มประเภทเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Exp_ExpenseCategory category)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Exp_ExpenseCategories.FirstOrDefaultAsync(c => c.Id == category.Id && c.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

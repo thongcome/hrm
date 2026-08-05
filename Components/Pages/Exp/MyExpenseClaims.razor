@@ -1,0 +1,104 @@
+@page "/exp/my-claims"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Exp
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ExpenseClaimService ClaimService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:EXP_ACCESS")]
+
+<PageTitle>เบิกค่าใช้จ่าย (ของฉัน)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงานของคุณ — ติดต่อ HR</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h5">ใบเบิกค่าใช้จ่ายของฉัน</MudText>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateDraftAsync">สร้างใบเบิกใหม่</MudButton>
+        </MudStack>
+
+        <MudTable Items="_claims" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>เลขที่</MudTh>
+                <MudTh>วันที่ยื่น</MudTh>
+                <MudTh>ยอดรวม</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>#@context.Id</MudTd>
+                <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(_statuses.GetValueOrDefault(context.Id, "-"))">
+                        @StatusLabel(_statuses.GetValueOrDefault(context.Id, "-"))
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/exp/my-claims/{context.Id}"))">เปิด</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>ยังไม่มีใบเบิกค่าใช้จ่าย</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _notFound;
+    private long _hremployeeId;
+    private List<Exp_ClaimHeader> _claims = new();
+    private Dictionary<long, string> _statuses = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+        _hremployeeId = employee.id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _claims = await ClaimService.GetClaimsForEmployeeAsync(_hremployeeId);
+        _statuses = await ClaimService.GetJobStatusesAsync(_claims.Select(c => c.Id));
+    }
+
+    private async Task CreateDraftAsync()
+    {
+        var id = await ClaimService.CreateDraftAsync(_hremployeeId);
+        Nav.NavigateTo($"/exp/my-claims/{id}");
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "-" => "ร่าง",
+        "COMPLETED" => "อนุมัติแล้ว",
+        "REJECTED" or "RETURNED" => "ไม่อนุมัติ",
+        _ => "รออนุมัติ",
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "-" => Color.Default,
+        "COMPLETED" => Color.Success,
+        "REJECTED" or "RETURNED" => Color.Error,
+        _ => Color.Warning,
+    };
+}

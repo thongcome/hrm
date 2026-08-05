@@ -211,6 +211,16 @@ public partial class Hremployee
     [Column("RESIGN_DATE", TypeName = "DATE")]
     public DateTime? ResignDate { get; set; }
 
+    // Onboarding/offboarding lifecycle module: suggested/edited probation
+    // end date (WorkDate + company's DefaultProbationDays, editable by HR)
+    // and the date HR confirmed the employee passed probation (null = not
+    // yet confirmed). See Services/Hrd/LifecycleTaskService.cs.
+    [Column("PROBATION_END_DATE", TypeName = "DATE")]
+    public DateTime? ProbationEndDate { get; set; }
+
+    [Column("PROBATION_CONFIRMED_DATE", TypeName = "DATE")]
+    public DateTime? ProbationConfirmedDate { get; set; }
+
     [Column("CONTAIN_DATE", TypeName = "DATE")]
     public DateTime? ContainDate { get; set; }
 

@@ -96,6 +96,15 @@
 
         <MudDivider Class="my-5" />
 
+        <MudText Typo="Typo.h6" Class="mb-2">ทดลองงาน (Probation)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            จำนวนวัน (ปฏิทิน) นับจากวันเริ่มงาน ใช้เป็นค่าแนะนำวันครบทดลองงานที่แท็บ Onboarding/Offboarding ของพนักงานแต่ละคน — HR แก้ไขต่อคนได้เสมอ
+        </MudText>
+        <MudNumericField @bind-Value="_settings.DefaultProbationDays" Label="จำนวนวันทดลองงานเริ่มต้น" Min="0" Style="max-width: 300px;" />
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProbationSettingsAsync">บันทึกค่าทดลองงาน</MudButton>
+
+        <MudDivider Class="my-5" />
+
         <MudText Typo="Typo.h6" Class="mb-2">รหัสผ่านเริ่มต้นสำหรับสร้าง/รีเซ็ตบัญชีผู้ใช้พนักงาน</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
             ใช้ตอนกด "สร้างบัญชีผู้ใช้" หรือ "รีเซ็ตรหัสผ่าน" ในหน้าจัดการพนักงาน — รหัสผ่านจริงคือค่าทั้งสองช่องต่อกันตรงๆ
@@ -320,6 +329,27 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกปีบัญชีเรียบร้อย", Severity.Success);
+    }
+
+    private async Task SaveProbationSettingsAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.DefaultProbationDays = _settings.DefaultProbationDays;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกค่าทดลองงานเรียบร้อย", Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()

@@ -1,0 +1,104 @@
+@page "/ess/grievance/new"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject GrievanceService GrievanceService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>แจ้งเรื่องร้องเรียน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แจ้งเรื่องร้องเรียน (Grievance)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เรื่องที่แจ้งจะถูกส่งตรงถึงฝ่ายบุคคลเท่านั้น หากเลือก "ไม่ระบุตัวตน" ระบบจะไม่บันทึกว่าเป็นใครเป็นผู้แจ้งเลย
+    </MudText>
+
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">ไม่พบข้อมูลพนักงานของบัญชีนี้</MudAlert>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_isAnonymous" Label="ไม่ระบุตัวตน (Anonymous)" Color="Color.Warning" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="GrievanceCategory" @bind-Value="_category" Label="หมวดหมู่">
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Harassment">การล่วงละเมิด</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Discrimination">การเลือกปฏิบัติ</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.WorkingConditions">สภาพการทำงาน</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Compensation">ค่าตอบแทน</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Management">การบริหารจัดการ</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Other">อื่นๆ</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_incidentDate" DateChanged="@(d => _incidentDate = d)" Label="วันที่เกิดเหตุ (ถ้าทราบ)" Editable="true" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_subject" Label="หัวข้อ" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="รายละเอียด" Lines="6" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_involvedPersons" Label="บุคคลที่เกี่ยวข้อง (ถ้ามี)" />
+            </MudItem>
+        </MudGrid>
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">ส่งเรื่อง</MudButton>
+    }
+</MudPaper>
+
+@code {
+    private bool _notFound;
+    private Hremployee? _employee;
+
+    private bool _isAnonymous;
+    private GrievanceCategory _category = GrievanceCategory.Other;
+    private DateTime? _incidentDate;
+    private string _subject = "";
+    private string _description = "";
+    private string? _involvedPersons;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) _notFound = true;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (_employee is null) return;
+
+        try
+        {
+            var id = await GrievanceService.SubmitAsync(_employee.id, _employee.companyid, _isAnonymous, _category,
+                _subject, _description, _incidentDate is null ? null : DateOnly.FromDateTime(_incidentDate.Value), _involvedPersons);
+            Snackbar.Add($"ส่งเรื่องร้องเรียนสำเร็จ (เลขที่ #{id})", Severity.Success);
+            Nav.NavigateTo(_isAnonymous ? "/ess" : "/ess/grievance/my");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
