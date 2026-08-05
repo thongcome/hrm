@@ -3,6 +3,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HRM.Models;
 
+// Legacy JSP-era table (originally scaffolded with 0 rows referencing it) — Id
+// is a real IDENTITY column (verified via sys.columns.is_identity), so the
+// normal entity.Id==0 -> Add pattern works; no NextIdAsync needed.
 [Table("info_message")]
 public class info_message
 {
@@ -18,8 +21,24 @@ public class info_message
 
     public bool? isactive { get; set; }
 
-    [StringLength(1000)]
+    [Column(TypeName = "nvarchar(max)")]
     public string? message { get; set; }
 
     public DateTime CreatedDate { get; set; } = DateTime.Now;
+
+    [StringLength(6)]
+    public string CompanyId { get; set; } = null!;
+
+    public InfoMessagePriority PriorityLevel { get; set; } = InfoMessagePriority.Normal;
+
+    // HR's editorial choice to feature this on the home-page widget —
+    // deliberately separate from PriorityLevel (priority tells the reader
+    // how urgent it is; pinned is HR choosing what to spotlight).
+    public bool IsPinned { get; set; }
+
+    public long CreatedByUserId { get; set; }
+
+    public DateTime? ModifiedDate { get; set; }
+
+    public long? ModifiedByUserId { get; set; }
 }

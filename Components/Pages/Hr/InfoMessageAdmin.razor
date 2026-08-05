@@ -1,0 +1,99 @@
+@page "/hr/announcements/admin"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject InfoMessageService InfoService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:HR_ANNOUNCE_ADMIN")]
+
+<PageTitle>จัดการประกาศ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">จัดการประกาศ/ข่าวสาร</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/hr/announcements/admin/0">เพิ่มประกาศใหม่</MudButton>
+    </MudStack>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudTable Items="_messages" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh></MudTh>
+            <MudTh>หัวข้อ</MudTh>
+            <MudTh>ความสำคัญ</MudTh>
+            <MudTh>ช่วงวันที่แสดง</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>ปักหมุด</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudIcon Icon="@PriorityIcon(context.PriorityLevel)" Color="@PriorityColor(context.PriorityLevel)" /></MudTd>
+            <MudTd>@context.subject</MudTd>
+            <MudTd>@PriorityLabel(context.PriorityLevel)</MudTd>
+            <MudTd>@DateRangeLabel(context)</MudTd>
+            <MudTd>
+                @if (context.isactive == true)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">ใช้งาน</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ระงับชั่วคราว</MudChip>
+                }
+            </MudTd>
+            <MudTd>@(context.IsPinned ? "📌" : "")</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/hr/announcements/admin/{context.Id}")">แก้ไข</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประกาศ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<info_message> _messages = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _messages = await InfoService.GetAllForAdminAsync(_companyId);
+    }
+
+    private static string DateRangeLabel(info_message m)
+    {
+        var start = m.startdate?.ToString("dd/MM/yyyy") ?? "ไม่กำหนด";
+        var end = m.enddate?.ToString("dd/MM/yyyy") ?? "ไม่กำหนด";
+        return $"{start} — {end}";
+    }
+
+    private static string PriorityLabel(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => "ด่วนมาก",
+        InfoMessagePriority.Important => "สำคัญ",
+        _ => "ทั่วไป",
+    };
+
+    private static string PriorityIcon(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Icons.Material.Filled.ReportProblem,
+        InfoMessagePriority.Important => Icons.Material.Filled.PriorityHigh,
+        _ => Icons.Material.Filled.Campaign,
+    };
+
+    private static Color PriorityColor(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Color.Error,
+        InfoMessagePriority.Important => Color.Warning,
+        _ => Color.Default,
+    };
+}

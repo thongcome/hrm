@@ -1,11 +1,13 @@
 @page "/ess"
 @using HRM.Models
 @using HRM.Services.Ess
+@using HRM.Services.Hr
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
+@inject InfoMessageService InfoService
 @inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
@@ -27,6 +29,26 @@
             รหัสพนักงาน @_employee.EmpNo
             @if (!string.IsNullOrWhiteSpace(_employee.PosCode)) { <text> — ตำแหน่ง @_employee.PosCode</text> }
         </MudText>
+
+        @if (_pinnedAnnouncements.Count > 0)
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-1" Style="vertical-align:middle;" />ประกาศสำคัญ
+                    </MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/hr/announcements">ดูประกาศทั้งหมด</MudButton>
+                </MudStack>
+                <MudStack Spacing="1" Class="mt-2">
+                    @foreach (var m in _pinnedAnnouncements)
+                    {
+                        <MudLink Href="@($"/hr/announcements/{m.Id}")" Class="d-flex align-center">
+                            <MudIcon Icon="@PriorityIcon(m.PriorityLevel)" Color="@PriorityColor(m.PriorityLevel)" Size="Size.Small" Class="mr-2" />@m.subject
+                        </MudLink>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
 
         <MudGrid Class="mt-4">
             <MudItem xs="12" sm="6">
@@ -72,12 +94,32 @@
 @code {
     private bool _loaded;
     private Hremployee? _employee;
+    private List<info_message> _pinnedAnnouncements = new();
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         await using var context = await DbFactory.CreateDbContextAsync();
         _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            _pinnedAnnouncements = (await InfoService.GetVisibleAnnouncementsAsync(context, _employee, pinnedOnly: true))
+                .Take(5).ToList();
+        }
         _loaded = true;
     }
+
+    private static string PriorityIcon(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Icons.Material.Filled.ReportProblem,
+        InfoMessagePriority.Important => Icons.Material.Filled.PriorityHigh,
+        _ => Icons.Material.Filled.Campaign,
+    };
+
+    private static Color PriorityColor(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Color.Error,
+        InfoMessagePriority.Important => Color.Warning,
+        _ => Color.Default,
+    };
 }

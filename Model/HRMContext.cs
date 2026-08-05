@@ -399,6 +399,10 @@ public partial class HRMContext : DbContext
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
     public virtual DbSet<info_message> info_messages { get; set; }
+
+    public virtual DbSet<Info_MessageTarget> Info_MessageTargets { get; set; }
+
+    public virtual DbSet<Info_MessageReadLog> Info_MessageReadLogs { get; set; }
     public virtual DbSet<Pay_PayslipSettings> Pay_PayslipSettings { get; set; }
     public virtual DbSet<Pay_PayrollPeriod> Pay_PayrollPeriods { get; set; }
     public virtual DbSet<Pay_EmployeeDocument> Pay_EmployeeDocuments { get; set; }

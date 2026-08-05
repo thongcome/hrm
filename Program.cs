@@ -211,6 +211,10 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfGoalService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 // ----- end Perf_* module -----
 
+// ----- info_message module (HR announcements) -----
+builder.Services.AddScoped<HRM.Services.Hr.InfoMessageService>();
+// ----- end info_message module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 
@@ -304,5 +308,6 @@ app.MapPayrollFileEndpoints();
 app.MapLoginEndpoints();
 app.MapEssFileEndpoints();
 app.MapWorkflowFileEndpoints();
+app.MapInfoMessageFileEndpoints();
 
 app.Run();

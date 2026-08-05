@@ -1,0 +1,48 @@
+namespace HRM.Endpoints;
+
+using HRM.Models;
+using HRM.Services.Audit;
+using HRM.Services.Ess;
+using HRM.Services.Hr;
+using HRM.Services.Pay;
+using Microsoft.EntityFrameworkCore;
+
+// Download side of the announcement attachment flow (upload happens
+// in-process inside InfoMessageAdminDetail.razor via PrivateFileStorage,
+// same as the workflow attachment pattern — see WorkflowFileEndpoints.cs).
+// Re-checks visibility here rather than trusting the caller reached this
+// link through the UI, so guessing a docCenterId can't leak a file from an
+// announcement this employee isn't a target of.
+public static class InfoMessageFileEndpoints
+{
+    public static void MapInfoMessageFileEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/hr/files").RequireAuthorization("Menu:HR_ANNOUNCE_ACCESS");
+
+        group.MapGet("/announcement/{docId:long}", async (
+            long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory,
+            InfoMessageService infoService, PrivateFileStorage storage, IAuditLogger auditLogger) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+
+            var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docId && d.doctypecode == "HR_ANNOUNCEMENT");
+            if (doc is null || doc.refid is not long infoMessageId || string.IsNullOrWhiteSpace(doc.path) || string.IsNullOrWhiteSpace(doc.files))
+                return Results.NotFound();
+
+            var employee = await EssEmployeeResolver.ResolveAsync(context, httpContext.User);
+            if (employee is null)
+                return Results.Forbid();
+
+            var visible = await infoService.GetVisibleAnnouncementsAsync(context, employee, pinnedOnly: false);
+            if (!visible.Any(m => m.Id == infoMessageId))
+                return Results.Forbid();
+
+            await infoService.MarkDownloadedAsync(infoMessageId, employee.id, docId);
+            await auditLogger.LogAccessAsync("doc_center", docId.ToString(), isSensitive: false,
+                note: $"announcement attachment download ({doc.files})");
+
+            var bytes = await storage.ReadAsync(doc.path);
+            return Results.File(bytes, "application/octet-stream", doc.files);
+        });
+    }
+}

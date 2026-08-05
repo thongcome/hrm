@@ -1,0 +1,98 @@
+@page "/hr/announcements/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject InfoMessageService InfoService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:HR_ANNOUNCE_ACCESS")]
+
+<PageTitle>@(_message?.subject ?? "ประกาศ")</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (_message is null)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบประกาศนี้ หรือคุณไม่มีสิทธิ์เข้าถึง</MudAlert>
+        <MudButton Variant="Variant.Text" Href="/hr/announcements" Class="mt-2">กลับไปหน้าประชาสัมพันธ์</MudButton>
+    }
+    else
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@PriorityIcon(_message.PriorityLevel)" Color="@PriorityColor(_message.PriorityLevel)" Size="Size.Large" />
+            <MudText Typo="Typo.h5">@_message.subject</MudText>
+        </MudStack>
+        <MudText Typo="Typo.caption" Class="mt-1" Style="opacity:.6;">
+            @(_message.startdate?.ToString("dd/MM/yyyy"))@(_message.enddate is not null ? $" — {_message.enddate:dd/MM/yyyy}" : "")
+        </MudText>
+
+        <MudText Typo="Typo.body1" Class="mt-4" Style="white-space:pre-wrap;">@_message.message</MudText>
+
+        @if (_attachments.Count > 0)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1">ไฟล์แนบ</MudText>
+            <MudStack Spacing="1" Class="mt-1">
+                @foreach (var f in _attachments)
+                {
+                    <MudLink Href="@($"/hr/files/announcement/{f.id}")" Target="_blank">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="mr-1" />@f.files
+                    </MudLink>
+                }
+            </MudStack>
+        }
+
+        <MudButton Variant="Variant.Text" Href="/hr/announcements" Class="mt-4">กลับไปหน้าประชาสัมพันธ์</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _loaded;
+    private info_message? _message;
+    private List<doc_center> _attachments = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (employee is null)
+        {
+            _loaded = true;
+            return;
+        }
+
+        var visible = await InfoService.GetVisibleAnnouncementsAsync(context, employee, pinnedOnly: false);
+        _message = visible.FirstOrDefault(m => m.Id == Id);
+
+        if (_message is not null)
+        {
+            _attachments = await InfoService.GetAttachmentsAsync(Id);
+            await InfoService.MarkViewedAsync(Id, employee.id);
+        }
+        _loaded = true;
+    }
+
+    private static string PriorityIcon(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Icons.Material.Filled.ReportProblem,
+        InfoMessagePriority.Important => Icons.Material.Filled.PriorityHigh,
+        _ => Icons.Material.Filled.Campaign,
+    };
+
+    private static Color PriorityColor(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Color.Error,
+        InfoMessagePriority.Important => Color.Warning,
+        _ => Color.Default,
+    };
+}

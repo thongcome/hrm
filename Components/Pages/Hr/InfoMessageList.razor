@@ -1,0 +1,92 @@
+@page "/hr/announcements"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject InfoMessageService InfoService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:HR_ANNOUNCE_ACCESS")]
+
+<PageTitle>ประชาสัมพันธ์</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ประชาสัมพันธ์</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    }
+    else if (_messages.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีประกาศในขณะนี้</MudAlert>
+    }
+    else
+    {
+        <MudStack Spacing="2" Class="mt-4">
+            @foreach (var m in _messages)
+            {
+                <MudPaper Class="pa-3" Outlined="true" Style="cursor:pointer;" @onclick="@(() => Nav.NavigateTo($"/hr/announcements/{m.Id}"))">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@PriorityIcon(m.PriorityLevel)" Color="@PriorityColor(m.PriorityLevel)" />
+                        @if (m.IsPinned)
+                        {
+                            <MudTooltip Text="ปักหมุด"><MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Small" /></MudTooltip>
+                        }
+                        <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@m.subject</MudText>
+                        <MudText Typo="Typo.caption" Style="opacity:.6;">@(m.startdate?.ToString("dd/MM/yyyy"))</MudText>
+                    </MudStack>
+                    @if (!string.IsNullOrWhiteSpace(m.message))
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.75;">@Snippet(m.message)</MudText>
+                    }
+                </MudPaper>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = null!;
+
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<info_message> _messages = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+            _messages = await InfoService.GetVisibleAnnouncementsAsync(context, _employee, pinnedOnly: false);
+        _loaded = true;
+    }
+
+    private static string Snippet(string message)
+    {
+        var oneLine = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        return oneLine.Length > 140 ? oneLine[..140] + "..." : oneLine;
+    }
+
+    private static string PriorityIcon(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Icons.Material.Filled.ReportProblem,
+        InfoMessagePriority.Important => Icons.Material.Filled.PriorityHigh,
+        _ => Icons.Material.Filled.Campaign,
+    };
+
+    private static Color PriorityColor(InfoMessagePriority p) => p switch
+    {
+        InfoMessagePriority.Urgent => Color.Error,
+        InfoMessagePriority.Important => Color.Warning,
+        _ => Color.Default,
+    };
+}
