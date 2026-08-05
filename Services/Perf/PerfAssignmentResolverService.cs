@@ -31,13 +31,7 @@ public class PerfAssignmentResolverService(IDbContextFactory<HRMContext> dbFacto
             {
                 if (assignment.TargetOrganizationId is not long orgId)
                     return new();
-                var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == orgId, ct);
-                if (org is null || string.IsNullOrWhiteSpace(org.orgcodefull))
-                    return new();
-                return await context.Hremployee
-                    .Where(e => e.companyid == companyId && e.ResignDate == null
-                        && e.orgcodefull != null && e.orgcodefull.StartsWith(org.orgcodefull))
-                    .ToListAsync(ct);
+                return await HRM.Services.Shared.OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, companyId, orgId, ct);
             }
             case PerfTargetScope.Position:
             {

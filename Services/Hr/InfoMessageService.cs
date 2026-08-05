@@ -147,18 +147,10 @@ public class InfoMessageService(IDbContextFactory<HRMContext> dbFactory)
 
         var orgIds = targets.Where(t => t.TargetType == InfoMessageTargetType.Organization && t.TargetOrganizationId != null)
             .Select(t => t.TargetOrganizationId!.Value).Distinct().ToList();
-        if (orgIds.Count > 0)
+        foreach (var orgId in orgIds)
         {
-            var orgs = await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToListAsync(ct);
-            foreach (var org in orgs)
-            {
-                if (string.IsNullOrWhiteSpace(org.orgcodefull)) continue;
-                var inOrg = await context.Hremployee
-                    .Where(e => e.companyid == companyId && e.ResignDate == null
-                        && e.orgcodefull != null && e.orgcodefull.StartsWith(org.orgcodefull))
-                    .ToListAsync(ct);
-                foreach (var e in inOrg) result[e.id] = e;
-            }
+            var inOrg = await HRM.Services.Shared.OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, companyId, orgId, ct);
+            foreach (var e in inOrg) result[e.id] = e;
         }
 
         return result.Values.ToList();
