@@ -6,10 +6,9 @@ using Microsoft.EntityFrameworkCore;
 // Lightweight self/manager competency-proficiency assessment + gap analysis
 // against the employee's current Job Profile (Pos_ExecType via the active
 // Pos_PositionSlot). Deliberately NOT a multi-rater engine like Perf_* — see
-// the plan's "จงใจไม่ทำในรอบนี้" section. GetDirectReportsAsync mirrors
-// Services/Perf/PerfAssignmentResolverService.cs's level-1 subordinate-chain
-// query exactly (find orgs whose approver_empid is this manager's EmpNo,
-// then employees whose OrganizationId is in that set).
+// the plan's "จงใจไม่ทำในรอบนี้" section. GetDirectReportsAsync delegates to
+// Services/Shared/DirectReportResolverHelper.cs (extracted from here once
+// Talent Management needed the identical level-1 direct-report lookup).
 public class IdpAssessmentService(IDbContextFactory<HRMContext> dbFactory)
 {
     public record CompetencyGapRow(
@@ -103,16 +102,6 @@ public class IdpAssessmentService(IDbContextFactory<HRMContext> dbFactory)
         if (manager is null)
             return new();
 
-        var reportOrgIds = await context.com_organizations
-            .Where(o => o.approver_empid != null && o.approver_empid == manager.EmpNo)
-            .Select(o => o.id)
-            .ToListAsync(ct);
-
-        if (reportOrgIds.Count == 0)
-            return new();
-
-        return await context.Hremployee
-            .Where(e => e.ResignDate == null && e.OrganizationId != null && reportOrgIds.Contains(e.OrganizationId!.Value) && e.id != manager.id)
-            .ToListAsync(ct);
+        return await HRM.Services.Shared.DirectReportResolverHelper.ResolveDirectReportsAsync(context, manager, ct);
     }
 }

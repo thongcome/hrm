@@ -1,0 +1,142 @@
+@page "/talent/team-rating"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Talent
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject TalentGridService GridService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:TALENT_ACCESS")]
+
+<PageTitle>ให้คะแนนศักยภาพทีม (Talent)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_manager is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ให้คะแนนศักยภาพทีม — Talent Management (9-Box)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            คะแนนผลงาน (Performance) มาจากรอบประเมิน Perf ที่อนุมัติแล้วโดยอัตโนมัติ — ส่วนนี้ใช้ให้คะแนน "ศักยภาพ" (Potential) ของแต่ละคนเท่านั้น
+        </MudText>
+
+        <MudSelect T="long" Value="_selectedPeriodId" ValueChanged="OnPeriodChangedAsync" Label="รอบประเมิน" Class="mt-3" Style="max-width:400px">
+            @foreach (var period in _periods)
+            {
+                <MudSelectItem T="long" Value="period.Id">@period.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        @if (_periods.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีรอบประเมิน Perf ในระบบ</MudAlert>
+        }
+        else if (_reports.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ไม่พบลูกทีมที่ผูกกับคุณในผังองค์กร (ต้องตั้ง "ผู้อนุมัติ" ของหน่วยงานให้ตรงกับคุณก่อนที่ /org/set-boss)</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_reports" Dense="true" Hover="true" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>พนักงาน</MudTh>
+                    <MudTh>ตำแหน่ง</MudTh>
+                    <MudTh>คะแนนผลงานรอบนี้</MudTh>
+                    <MudTh>เกรด</MudTh>
+                    <MudTh>ศักยภาพ (Potential)</MudTh>
+                    <MudTh>หมายเหตุ</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Name (@context.EmpNo)</MudTd>
+                    <MudTd>@(context.PositionName ?? "-")</MudTd>
+                    <MudTd>@(context.FinalScorePercent?.ToString("N2") ?? "ยังไม่มีผลอนุมัติ")</MudTd>
+                    <MudTd>@(context.FinalGrade ?? "-")</MudTd>
+                    <MudTd>
+                        <MudSelect T="PotentialLevel" Value="@GetPotentialDraft(context)" ValueChanged="@(v => _potentialDrafts[context.HremployeeId] = v)" Dense="true" Style="width:120px">
+                            <MudSelectItem T="PotentialLevel" Value="PotentialLevel.Low">ต่ำ</MudSelectItem>
+                            <MudSelectItem T="PotentialLevel" Value="PotentialLevel.Medium">ปานกลาง</MudSelectItem>
+                            <MudSelectItem T="PotentialLevel" Value="PotentialLevel.High">สูง</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudTextField T="string" Value="@GetNoteDraft(context)" ValueChanged="@(v => _noteDrafts[context.HremployeeId] = v)" Dense="true" Placeholder="หมายเหตุ (ถ้ามี)" />
+                    </MudTd>
+                    <MudTd><MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small" OnClick="@(() => SavePotentialAsync(context.HremployeeId))" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    private Hremployee? _manager;
+    private bool _notFound;
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private long _selectedPeriodId;
+    private List<TalentGridService.GridEmployeeRow> _reports = new();
+    private readonly Dictionary<long, PotentialLevel> _potentialDrafts = new();
+    private readonly Dictionary<long, string?> _noteDrafts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _manager = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_manager is null) { _notFound = true; return; }
+
+        _periods = await context.Perf_EvaluationPeriods
+            .Where(p => p.CompanyId == _manager.companyid)
+            .OrderByDescending(p => p.StartDate)
+            .ToListAsync();
+
+        if (_periods.Count > 0)
+        {
+            _selectedPeriodId = _periods[0].Id;
+            await LoadReportsAsync();
+        }
+    }
+
+    private async Task OnPeriodChangedAsync(long periodId)
+    {
+        _selectedPeriodId = periodId;
+        _potentialDrafts.Clear();
+        _noteDrafts.Clear();
+        await LoadReportsAsync();
+    }
+
+    private async Task LoadReportsAsync()
+    {
+        if (_manager is null || _selectedPeriodId == 0) return;
+        _reports = await GridService.GetDirectReportsWithScoresAsync(_manager.id, _selectedPeriodId);
+    }
+
+    private PotentialLevel GetPotentialDraft(TalentGridService.GridEmployeeRow row)
+        => _potentialDrafts.TryGetValue(row.HremployeeId, out var v) ? v : (row.Potential ?? PotentialLevel.Medium);
+
+    private string? GetNoteDraft(TalentGridService.GridEmployeeRow row)
+        => _noteDrafts.TryGetValue(row.HremployeeId, out var v) ? v : null;
+
+    private async Task SavePotentialAsync(long hremployeeId)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var level = GetPotentialDraft(_reports.First(r => r.HremployeeId == hremployeeId));
+        var note = GetNoteDraft(_reports.First(r => r.HremployeeId == hremployeeId));
+
+        await GridService.SubmitPotentialRatingAsync(hremployeeId, _selectedPeriodId, level, userId, note);
+        Snackbar.Add("บันทึกคะแนนศักยภาพเรียบร้อย", Severity.Success);
+        await LoadReportsAsync();
+    }
+}

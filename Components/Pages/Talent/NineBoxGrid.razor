@@ -1,0 +1,194 @@
+@page "/talent/nine-box"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Talent
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject TalentGridService GridService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:TALENT_ADMIN")]
+
+<PageTitle>9-Box Grid — Talent Management</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.h5">9-Box Grid — ผลงาน × ศักยภาพ</MudText>
+            <MudButton Variant="Variant.Text" Href="/talent/settings">ตั้งค่าเกณฑ์ผลงาน</MudButton>
+        </MudStack>
+
+        <MudSelect T="long" Value="_selectedPeriodId" ValueChanged="OnPeriodChangedAsync" Label="รอบประเมิน" Class="mt-3" Style="max-width:400px">
+            @foreach (var period in _periods)
+            {
+                <MudSelectItem T="long" Value="period.Id">@period.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </MudPaper>
+
+    @if (_periods.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-4">ยังไม่มีรอบประเมิน Perf ในระบบ</MudAlert>
+    }
+    else if (_result is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudGrid>
+                <MudItem xs="1" Class="d-flex align-center justify-center">
+                    <MudText Typo="Typo.subtitle2" Style="writing-mode: vertical-rl; transform: rotate(180deg);">ศักยภาพ (Potential)</MudText>
+                </MudItem>
+                <MudItem xs="11">
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        @foreach (var potentialTier in new[] { 3, 2, 1 })
+                        {
+                            @foreach (var performanceTier in new[] { 1, 2, 3 })
+                            {
+                                var cellKey = (performanceTier, potentialTier);
+                                var rows = _result.Cells[cellKey];
+                                var isExpanded = _expandedCell == cellKey;
+                                <MudPaper Class="pa-3" Style="@GetCellStyle(performanceTier, potentialTier)" Outlined="true">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudText Typo="Typo.subtitle2">@GetCellLabel(performanceTier, potentialTier)</MudText>
+                                        <MudChip T="string" Size="Size.Small">@rows.Count คน</MudChip>
+                                    </MudStack>
+                                    @if (rows.Count > 0)
+                                    {
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleCell(cellKey))" Class="mt-1">
+                                            @(isExpanded ? "ย่อ" : "ดูรายชื่อ")
+                                        </MudButton>
+                                    }
+                                    @if (isExpanded)
+                                    {
+                                        @foreach (var row in rows)
+                                        {
+                                            <MudPaper Class="pa-2 mt-1" Outlined="true">
+                                                <MudText Typo="Typo.body2">@row.Name (@row.EmpNo)</MudText>
+                                                <MudText Typo="Typo.caption">@(row.PositionName ?? "-") — @row.FinalScorePercent?.ToString("N1")% (@row.FinalGrade)</MudText>
+                                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => AddToPoolAsync(row.HremployeeId))">
+                                                    เพิ่มเข้า Talent Pool
+                                                </MudButton>
+                                            </MudPaper>
+                                        }
+                                    }
+                                </MudPaper>
+                            }
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center" Style="display:block">ผลงาน (Performance) — ต่ำ → สูง</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">ยังไม่ได้ประเมินศักยภาพ (@_result.NotYetRatedForPotential.Count คน)</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">มีผลประเมินผลงานรอบนี้แล้ว แต่หัวหน้ายังไม่ได้ให้คะแนนศักยภาพที่ /talent/team-rating</MudText>
+            @if (_result.NotYetRatedForPotential.Count == 0)
+            {
+                <MudText Typo="Typo.body2">— ไม่มี —</MudText>
+            }
+            else
+            {
+                @foreach (var row in _result.NotYetRatedForPotential)
+                {
+                    <MudText Typo="Typo.body2">@row.Name (@row.EmpNo) — @(row.PositionName ?? "-")</MudText>
+                }
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">ไม่มีผลประเมินผลงานรอบนี้ (@_result.NoPerformanceDataThisPeriod.Count คน)</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">มีคะแนนศักยภาพจากหัวหน้าแล้ว แต่ยังไม่มีผลประเมิน Perf ที่อนุมัติแล้วในรอบนี้</MudText>
+            @if (_result.NoPerformanceDataThisPeriod.Count == 0)
+            {
+                <MudText Typo="Typo.body2">— ไม่มี —</MudText>
+            }
+            else
+            {
+                @foreach (var row in _result.NoPerformanceDataThisPeriod)
+                {
+                    <MudText Typo="Typo.body2">@row.Name (@row.EmpNo)</MudText>
+                }
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private long _selectedPeriodId;
+    private TalentGridService.NineBoxResult? _result;
+    private (int, int)? _expandedCell;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods
+            .Where(p => p.CompanyId == _companyId)
+            .OrderByDescending(p => p.StartDate)
+            .ToListAsync();
+
+        if (_periods.Count > 0)
+        {
+            _selectedPeriodId = _periods[0].Id;
+            await LoadGridAsync();
+        }
+    }
+
+    private async Task OnPeriodChangedAsync(long periodId)
+    {
+        _selectedPeriodId = periodId;
+        _expandedCell = null;
+        await LoadGridAsync();
+    }
+
+    private async Task LoadGridAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId) || _selectedPeriodId == 0) return;
+        _result = await GridService.GetGridAsync(_companyId, _selectedPeriodId);
+    }
+
+    private void ToggleCell((int, int) cellKey) => _expandedCell = _expandedCell == cellKey ? null : cellKey;
+
+    private async Task AddToPoolAsync(long hremployeeId)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        await GridService.AddToPoolAsync(hremployeeId, userId, reason: null);
+        Snackbar.Add("เพิ่มเข้า Talent Pool เรียบร้อย", Severity.Success);
+    }
+
+    private static string GetCellLabel(int performanceTier, int potentialTier) => (performanceTier, potentialTier) switch
+    {
+        (3, 3) => "ดาวเด่น (Star)",
+        (1, 1) => "ต้องเฝ้าระวัง",
+        (3, 1) or (1, 3) => "ปริศนา/ต้องพัฒนา",
+        _ => "กำลังพัฒนา",
+    };
+
+    private static string GetCellStyle(int performanceTier, int potentialTier)
+    {
+        var score = performanceTier + potentialTier; // 2..6
+        var color = score switch
+        {
+            6 => "background-color:rgba(76,175,80,0.25)",   // top-right: star
+            2 => "background-color:rgba(244,67,54,0.15)",   // bottom-left: risk
+            5 => "background-color:rgba(139,195,74,0.15)",
+            3 => "background-color:rgba(255,152,0,0.12)",
+            _ => "background-color:rgba(255,235,59,0.12)",
+        };
+        return $"{color}; min-height:140px";
+    }
+}

@@ -224,6 +224,10 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 
+// ----- Talent_* module (Talent Management / 9-Box) -----
+builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
+// ----- end Talent_* module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 

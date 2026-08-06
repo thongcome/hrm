@@ -403,6 +403,12 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
     public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }
 
+    // ----- Talent_* module (Talent Management / 9-Box) -----
+    public virtual DbSet<Talent_PotentialRating> Talent_PotentialRatings { get; set; }
+    public virtual DbSet<Talent_NineBoxSettings> Talent_NineBoxSettingsList { get; set; }
+    public virtual DbSet<Talent_PoolEntry> Talent_PoolEntries { get; set; }
+    // ----- end Talent_* module -----
+
     public virtual DbSet<Hrd_Family> Hrd_Families { get; set; }
     public virtual DbSet<Hrd_Marriage> Hrd_Marriages { get; set; }
     public virtual DbSet<Hrd_Education> Hrd_Educations { get; set; }
