@@ -448,9 +448,23 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Perf_GoalCheckIn> Perf_GoalCheckIns { get; set; }
     // ----- end Pay_* module -----
 
+    // No hardcoded connection-string fallback here on purpose — this
+    // context is always constructed via AddDbContextFactory<HRMContext> in
+    // Program.cs, which configures it through DI (options.IsConfigured is
+    // already true by the time OnConfiguring runs), so this override is
+    // unreachable at runtime. A previous EF-scaffold-generated fallback
+    // that hardcoded the DB password directly in source was removed here —
+    // see appsettings.json for where the connection string actually comes
+    // from now (user secrets / environment variable, never checked in).
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Data Source=.;Initial Catalog=hrm;User Id=hrm;Password=hrm;TrustServerCertificate=True;Encrypt=True;MultipleActiveResultSets=true");
+    {
+        if (!optionsBuilder.IsConfigured)
+        {
+            throw new InvalidOperationException(
+                "HRMContext must be configured via DI (AddDbContextFactory in Program.cs) — " +
+                "no fallback connection string is defined in source.");
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
