@@ -219,6 +219,11 @@ builder.Services.AddScoped<HRM.Services.Hr.DisciplinaryActionService>();
 builder.Services.AddScoped<HRM.Services.Hr.GrievanceService>();
 // ----- end info_message module -----
 
+// ----- Idp_* module (Individual Development Plan) -----
+builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
+builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
+// ----- end Idp_* module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 

@@ -1,0 +1,230 @@
+@page "/competency/library"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+<PageTitle>คลังสมรรถนะ (Competency Library)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">คลังสมรรถนะ (Competency Library)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+        โครงสร้าง: หมวด → สมรรถนะ → คำอธิบายเชิงพฤติกรรม 5 ระดับ (1-5) — คำอธิบายแต่ละระดับทำให้ตัวเลขที่ระบุใน Job Profile
+        มีความหมายจริง ไม่ใช่แค่ตัวเลขลอยๆ (ผู้ประเมินหลายคนจะเข้าใจ "ระดับ 3" ตรงกัน)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_categories.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            ยังไม่มีหมวดสมรรถนะ — ไปตั้งค่าที่ <MudLink Href="/competency/categories">หมวดสมรรถนะ</MudLink> ก่อน
+        </MudAlert>
+        return;
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหาสมรรถนะ" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    @foreach (var category in _categories)
+    {
+        <MudExpansionPanels Class="mb-3">
+            <MudExpansionPanel>
+                <TitleContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h6">@category.Name</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@CategoryTypeLabel(category.CategoryType)</MudChip>
+                        <MudChip T="string" Size="Size.Small">@CompetenciesOf(category.Id).Count() สมรรถนะ</MudChip>
+                    </MudStack>
+                </TitleContent>
+                <ChildContent>
+                    <MudGrid Class="mb-3">
+                        <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newCompCode" Label="รหัส" /></MudItem>
+                        <MudItem xs="6" sm="4"><MudTextField @bind-Value="_newCompName" Label="ชื่อสมรรถนะ" /></MudItem>
+                        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newCompDescription" Label="คำอธิบายสั้นๆ" /></MudItem>
+                        <MudItem xs="12" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => AddCompetencyAsync(category.Id))">เพิ่มสมรรถนะ</MudButton></MudItem>
+                    </MudGrid>
+
+                    @foreach (var comp in CompetenciesOf(category.Id))
+                    {
+                        var completedCount = LevelDraftCompleteCount(comp.Id);
+                        <MudPaper Class="pa-3 mb-2" Outlined="true">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                                <MudText Typo="Typo.subtitle1">@comp.Code — @comp.Name</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@(completedCount == 5 ? Color.Success : Color.Warning)">
+                                    คำอธิบายครบ @completedCount/5 ระดับ
+                                </MudChip>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                    OnClick="@(() => RemoveCompetencyAsync(comp.Id))" />
+                            </MudStack>
+
+                            @for (var level = 1; level <= 5; level++)
+                            {
+                                var lvl = level;
+                                <MudTextField T="string" Value="@GetLevelDraft(comp.Id, lvl)" ValueChanged="@(v => SetLevelDraft(comp.Id, lvl, v))"
+                                    Label="@($"ระดับ {lvl}")" Lines="2" Class="mt-2" />
+                            }
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                                OnClick="@(() => SaveLevelsAsync(comp.Id))">บันทึกคำอธิบายระดับ</MudButton>
+                        </MudPaper>
+                    }
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Comp_Category> _categories = new();
+    private List<Comp_Competency> _competencies = new();
+    private List<Comp_ProficiencyLevel> _levels = new();
+    private Dictionary<long, string[]> _levelDrafts = new(); // competencyId -> [level1..level5]
+    private string? _searchTerm;
+    private string? _error;
+
+    private string _newCompCode = "";
+    private string _newCompName = "";
+    private string _newCompDescription = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _categories = await context.Comp_Categories.Where(c => c.CompanyId == _companyId && c.IsActive).OrderBy(c => c.SortOrder).ToListAsync();
+        var categoryIds = _categories.Select(c => c.Id).ToList();
+
+        var compQuery = context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId));
+        compQuery = EntitySearchHelper.ApplyTextSearch(compQuery, _searchTerm, nameof(Comp_Competency.Code), nameof(Comp_Competency.Name), nameof(Comp_Competency.NameEn));
+        _competencies = await compQuery.OrderBy(c => c.SortOrder).ToListAsync();
+
+        var competencyIds = _competencies.Select(c => c.Id).ToList();
+        _levels = await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync();
+
+        _levelDrafts = new Dictionary<long, string[]>();
+        foreach (var comp in _competencies)
+        {
+            var arr = new string[5];
+            for (var i = 0; i < 5; i++)
+                arr[i] = _levels.FirstOrDefault(l => l.CompetencyId == comp.Id && l.Level == i + 1)?.Description ?? "";
+            _levelDrafts[comp.Id] = arr;
+        }
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private IEnumerable<Comp_Competency> CompetenciesOf(long categoryId) => _competencies.Where(c => c.CategoryId == categoryId);
+
+    private string GetLevelDraft(long competencyId, int level) => _levelDrafts.TryGetValue(competencyId, out var arr) ? arr[level - 1] : "";
+    private void SetLevelDraft(long competencyId, int level, string value)
+    {
+        if (!_levelDrafts.TryGetValue(competencyId, out var arr)) { arr = new string[5]; _levelDrafts[competencyId] = arr; }
+        arr[level - 1] = value;
+    }
+    private int LevelDraftCompleteCount(long competencyId) =>
+        _levelDrafts.TryGetValue(competencyId, out var arr) ? arr.Count(s => !string.IsNullOrWhiteSpace(s)) : 0;
+
+    private async Task AddCompetencyAsync(long categoryId)
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newCompCode) || string.IsNullOrWhiteSpace(_newCompName)) { _error = "กรุณาระบุรหัสและชื่อสมรรถนะ"; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Comp_Competencies.Add(new Comp_Competency
+        {
+            CategoryId = categoryId,
+            Code = _newCompCode,
+            Name = _newCompName,
+            Description = string.IsNullOrWhiteSpace(_newCompDescription) ? null : _newCompDescription,
+            SortOrder = _competencies.Count(c => c.CategoryId == categoryId),
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+        _newCompCode = ""; _newCompName = ""; _newCompDescription = "";
+        await LoadAsync();
+    }
+
+    private async Task RemoveCompetencyAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var inUse = await context.Job_CompetencyRequirements.AnyAsync(r => r.CompetencyId == id);
+        if (inUse) { _error = "ลบไม่ได้ — สมรรถนะนี้ถูกใช้เป็นข้อกำหนดของ Job Profile อยู่แล้ว"; return; }
+
+        var inUseByIdp = await context.Idp_CompetencyAssessments.AnyAsync(a => a.CompetencyId == id)
+            || await context.Idp_DevelopmentActions.AnyAsync(a => a.CompetencyId == id);
+        if (inUseByIdp) { _error = "ลบไม่ได้ — สมรรถนะนี้ถูกใช้ในการประเมิน/แผนพัฒนารายบุคคล (IDP) ของพนักงานอยู่แล้ว"; return; }
+
+        var levels = context.Comp_ProficiencyLevels.Where(l => l.CompetencyId == id);
+        context.Comp_ProficiencyLevels.RemoveRange(levels);
+        var row = await context.Comp_Competencies.FirstOrDefaultAsync(c => c.Id == id);
+        if (row is not null) context.Comp_Competencies.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task SaveLevelsAsync(long competencyId)
+    {
+        if (!_levelDrafts.TryGetValue(competencyId, out var draft)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Comp_ProficiencyLevels.Where(l => l.CompetencyId == competencyId).ToListAsync();
+
+        for (var level = 1; level <= 5; level++)
+        {
+            var text = draft[level - 1];
+            var row = existing.FirstOrDefault(l => l.Level == level);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                if (row is not null) context.Comp_ProficiencyLevels.Remove(row);
+            }
+            else if (row is not null)
+            {
+                row.Description = text;
+            }
+            else
+            {
+                context.Comp_ProficiencyLevels.Add(new Comp_ProficiencyLevel { CompetencyId = competencyId, Level = level, Description = text });
+            }
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกคำอธิบายระดับเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+
+    private static string CategoryTypeLabel(CompetencyCategoryType t) => t switch
+    {
+        CompetencyCategoryType.Core => "Core",
+        CompetencyCategoryType.Leadership => "Leadership",
+        CompetencyCategoryType.Functional => "Functional",
+        _ => t.ToString(),
+    };
+}

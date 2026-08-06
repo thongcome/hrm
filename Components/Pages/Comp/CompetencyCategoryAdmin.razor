@@ -1,0 +1,201 @@
+@page "/competency/categories"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+<PageTitle>หมวดสมรรถนะ (Competency Category)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">หมวดสมรรถนะ (Competency Category)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        3 กลุ่มมาตรฐานสากล — Core (ทุกคนต้องมี), Leadership (เฉพาะตำแหน่งบริหาร), Functional (เฉพาะสายอาชีพนั้นๆ)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มหมวดสมรรถนะ" : "แก้ไข")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="CompetencyCategoryType" @bind-Value="_categoryType" Label="ประเภท">
+                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Core">Core (ทุกคนต้องมี)</MudSelectItem>
+                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Leadership">Leadership (สายบริหาร)</MudSelectItem>
+                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Functional">Functional (เฉพาะสายอาชีพ)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
+        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_name" Label="ชื่อหมวด" Required="true" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อหมวด (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_sortOrder" Label="ลำดับแสดงผล" /></MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อหมวด</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@CategoryTypeLabel(context.CategoryType)</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Href="/competency/library">ไปที่คลังสมรรถนะ</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Comp_Category> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private CompetencyCategoryType _categoryType = CompetencyCategoryType.Core;
+    private string? _code;
+    private string _name = "";
+    private string? _nameEn;
+    private int _sortOrder;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Comp_Categories.Where(c => c.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Comp_Category.Code), nameof(Comp_Category.Name), nameof(Comp_Category.NameEn));
+        _items = await query.OrderBy(c => c.SortOrder).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Comp_Category item)
+    {
+        _editingId = item.Id;
+        _categoryType = item.CategoryType;
+        _code = item.Code;
+        _name = item.Name;
+        _nameEn = item.NameEn;
+        _sortOrder = item.SortOrder;
+        _isActive = item.IsActive;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _categoryType = CompetencyCategoryType.Core;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _sortOrder = 0;
+        _isActive = true;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อหมวด"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Comp_Categories.FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.CategoryType = _categoryType;
+            existing.Code = _code;
+            existing.Name = _name;
+            existing.NameEn = _nameEn;
+            existing.SortOrder = _sortOrder;
+            existing.IsActive = _isActive;
+        }
+        else
+        {
+            context.Comp_Categories.Add(new Comp_Category
+            {
+                CompanyId = _companyId!,
+                CategoryType = _categoryType,
+                Code = _code,
+                Name = _name,
+                NameEn = _nameEn,
+                SortOrder = _sortOrder,
+                IsActive = _isActive,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private static string CategoryTypeLabel(CompetencyCategoryType t) => t switch
+    {
+        CompetencyCategoryType.Core => "Core",
+        CompetencyCategoryType.Leadership => "Leadership",
+        CompetencyCategoryType.Functional => "Functional",
+        _ => t.ToString(),
+    };
+}

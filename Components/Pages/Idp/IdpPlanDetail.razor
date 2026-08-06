@@ -1,0 +1,145 @@
+@page "/idp/plans/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Idp
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject IdpPlanService PlanService
+@inject IDbContextFactory<HRMContext> DbFactory
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Policy = "Menu:IDP_ACCESS")]
+
+<PageTitle>แผนพัฒนา (IDP) — @(_employee?.EmpName) @(_employee?.EmpSurname)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบแผนพัฒนานี้</MudAlert>
+}
+else if (_plan is null)
+{
+    <MudText Class="ma-4">กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">แผนพัฒนา (IDP) ปี @_plan.Year — @_employee?.EmpName @_employee?.EmpSurname</MudText>
+            <MudChip T="string" Size="Size.Small" Color="StatusColor(_plan.Status)">@StatusLabel(_plan.Status)</MudChip>
+        </MudStack>
+
+        @if (_plan.Status == IdpPlanStatus.PendingApproval)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                รายการนี้อยู่ระหว่างรออนุมัติ — ไปที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ</MudLink> เพื่อดำเนินการ
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.body2" Class="mt-2">ส่งอนุมัติเมื่อ: @(_plan.SubmittedDate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+        @if (_plan.ApprovedDate is not null)
+        {
+            <MudText Typo="Typo.body2">อนุมัติเมื่อ: @_plan.ApprovedDate.Value.ToString("dd/MM/yyyy HH:mm")</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">สมรรถนะ ณ ตอนส่ง (Gap Analysis)</MudText>
+        @if (_gapRows.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">ไม่มีข้อมูล</MudText>
+        }
+        else
+        {
+            <MudTable Items="_gapRows" Dense="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>สมรรถนะ</MudTh>
+                    <MudTh>ระดับที่ต้องการ</MudTh>
+                    <MudTh>ประเมินตนเอง</MudTh>
+                    <MudTh>ประเมินโดยหัวหน้า</MudTh>
+                    <MudTh>ช่องว่าง</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.CompetencyName @(context.IsCritical ? "(จำเป็น)" : "")</MudTd>
+                    <MudTd>@context.RequiredLevel</MudTd>
+                    <MudTd>@(context.SelfLevel?.ToString() ?? "-")</MudTd>
+                    <MudTd>@(context.ManagerLevel?.ToString() ?? "-")</MudTd>
+                    <MudTd>@(context.Gap?.ToString() ?? "-")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">รายการพัฒนา</MudText>
+        <MudTable Items="_actions" Dense="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>รายการ</MudTh>
+                <MudTh>สมรรถนะที่เกี่ยวข้อง</MudTh>
+                <MudTh>กำหนดเสร็จ</MudTh>
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>@(context.Competency?.Name ?? "-")</MudTd>
+                <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd>@ActionStatusLabel(context.Status)</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการพัฒนา</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Idp_Plan? _plan;
+    private Hremployee? _employee;
+    private List<Idp_DevelopmentAction> _actions = new();
+    private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
+    private bool _notFound;
+
+    [Inject] private IdpAssessmentService AssessmentService { get; set; } = null!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Lazy apply-on-read: syncs Status from the workflow job if it has
+        // closed since the last load — no scheduler exists in this codebase.
+        await PlanService.SyncStatusFromJobAsync(Id);
+
+        var detail = await PlanService.GetPlanDetailAsync(Id);
+        if (detail is null) { _notFound = true; return; }
+
+        _plan = detail.Value.Plan;
+        _actions = detail.Value.Actions;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _plan.HremployeeId);
+
+        _gapRows = await AssessmentService.GetGapAnalysisAsync(_plan.HremployeeId);
+    }
+
+    private static Color StatusColor(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => Color.Default,
+        IdpPlanStatus.PendingApproval => Color.Warning,
+        IdpPlanStatus.Approved => Color.Success,
+        IdpPlanStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => "ฉบับร่าง",
+        IdpPlanStatus.PendingApproval => "รออนุมัติ",
+        IdpPlanStatus.Approved => "อนุมัติแล้ว",
+        IdpPlanStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+
+    private static string ActionStatusLabel(IdpActionStatus status) => status switch
+    {
+        IdpActionStatus.NotStarted => "ยังไม่เริ่ม",
+        IdpActionStatus.InProgress => "กำลังทำ",
+        IdpActionStatus.Completed => "เสร็จแล้ว",
+        IdpActionStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+}

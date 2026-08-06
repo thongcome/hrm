@@ -1,0 +1,346 @@
+@page "/idp/my-plans"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Idp
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IdpAssessmentService AssessmentService
+@inject IdpPlanService PlanService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:IDP_ACCESS")]
+
+<PageTitle>สมรรถนะ + แผนพัฒนาของฉัน (IDP)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">สมรรถนะของฉัน (เทียบกับตำแหน่งปัจจุบัน)</MudText>
+
+        @if (_gapRows.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีข้อมูลตำแหน่งปัจจุบัน หรือตำแหน่งของคุณยังไม่ได้กำหนดสมรรถนะที่ต้องการ (Job Profile)</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_gapRows" Dense="true" Hover="true" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>สมรรถนะ</MudTh>
+                    <MudTh>ระดับที่ต้องการ</MudTh>
+                    <MudTh>ประเมินตนเอง</MudTh>
+                    <MudTh>หัวหน้าประเมิน</MudTh>
+                    <MudTh>ช่องว่าง (Gap)</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        @context.CompetencyName
+                        @if (context.IsCritical)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">จำเป็น</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>@context.RequiredLevel</MudTd>
+                    <MudTd>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudSelect T="int" Value="@GetSelfDraft(context)" ValueChanged="@(v => _selfDrafts[context.CompetencyId] = v)" Dense="true" Style="width:80px">
+                                @for (var lvl = 1; lvl <= 5; lvl++)
+                                {
+                                    var l = lvl;
+                                    <MudSelectItem T="int" Value="l">@l</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small" OnClick="@(() => SaveSelfRatingAsync(context.CompetencyId))" />
+                        </MudStack>
+                    </MudTd>
+                    <MudTd>@(context.ManagerLevel?.ToString() ?? "-")</MudTd>
+                    <MudTd>
+                        @if (context.Gap is int gap)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(gap > 0 ? (context.IsCritical ? Color.Error : Color.Warning) : Color.Success)">@gap</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2">ยังไม่ประเมิน</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">แผนพัฒนา (IDP) ของฉัน</MudText>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
+            <MudNumericField T="int" @bind-Value="_newPlanYear" Label="ปี" Style="width:120px" />
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateDraftAsync">สร้างแผนใหม่</MudButton>
+        </MudStack>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudTable Items="_plans" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>ปี</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>ส่งเมื่อ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Year</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd>@(context.SubmittedDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd>
+                    @if (context.Status == IdpPlanStatus.Draft)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SelectPlanAsync(context.Id))">จัดการ</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/idp/plans/{context.Id}")">ดูรายละเอียด</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแผนพัฒนา</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    @if (_selectedPlan is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">จัดการแผนปี @_selectedPlan.Year (ฉบับร่าง)</MudText>
+
+            <MudTable Items="_selectedPlanActions" Dense="true" Hover="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>รายการ</MudTh>
+                    <MudTh>สมรรถนะที่เกี่ยวข้อง</MudTh>
+                    <MudTh>กำหนดเสร็จ</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Title</MudTd>
+                    <MudTd>@(context.Competency?.Name ?? "-")</MudTd>
+                    <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                    <MudTd>
+                        <MudSelect T="IdpActionStatus" Value="context.Status" ValueChanged="@(v => UpdateActionStatusAsync(context.Id, v))" Dense="true">
+                            @foreach (IdpActionStatus s in Enum.GetValues<IdpActionStatus>())
+                            {
+                                <MudSelectItem T="IdpActionStatus" Value="s">@ActionStatusLabel(s)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveActionAsync(context.Id))" /></MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการพัฒนา</MudText></NoRecordsContent>
+            </MudTable>
+
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="4">
+                    <MudAutocomplete T="Comp_Competency" Label="ผูกกับสมรรถนะ (ไม่บังคับ)" @bind-Value="_newActionCompetency"
+                        SearchFunc="SearchCompetenciesAsync" ToStringFunc="@(c => c == null ? null : c.Name)"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newActionTitle" Label="ชื่อรายการ" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="กำหนดเสร็จ" @bind-Date="_newActionTargetDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_newActionDescription" Label="รายละเอียด" Lines="2" /></MudItem>
+                <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddActionAsync">เพิ่มรายการ</MudButton></MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+            <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="SubmitForApprovalAsync">ส่งอนุมัติ</MudButton>
+        </MudPaper>
+    }
+}
+
+@code {
+    private Hremployee? _employee;
+    private bool _notFound;
+    private string? _error;
+
+    private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
+    private readonly Dictionary<long, int> _selfDrafts = new();
+
+    private List<Idp_Plan> _plans = new();
+    private int _newPlanYear = DateTime.Now.Year;
+
+    private Idp_Plan? _selectedPlan;
+    private List<Idp_DevelopmentAction> _selectedPlanActions = new();
+    private List<Comp_Competency> _allCompetencies = new();
+    private Comp_Competency? _newActionCompetency;
+    private string _newActionTitle = "";
+    private string? _newActionDescription;
+    private DateTime? _newActionTargetDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) { _notFound = true; return; }
+
+        _allCompetencies = await context.Comp_Competencies.Where(c => c.IsActive).ToListAsync();
+
+        await LoadGapAsync();
+        await LoadPlansAsync();
+    }
+
+    private async Task LoadGapAsync()
+    {
+        _gapRows = await AssessmentService.GetGapAnalysisAsync(_employee!.id);
+        _selfDrafts.Clear();
+    }
+
+    private async Task LoadPlansAsync()
+    {
+        _plans = await PlanService.GetPlansForEmployeeAsync(_employee!.id);
+    }
+
+    private int GetSelfDraft(IdpAssessmentService.CompetencyGapRow row)
+        => _selfDrafts.TryGetValue(row.CompetencyId, out var v) ? v : (row.SelfLevel ?? 3);
+
+    private async Task<(long UserId, string? EmpId)> GetActorAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var empId = state.User.FindFirst("empno")?.Value;
+        return (userId, empId);
+    }
+
+    private async Task SaveSelfRatingAsync(long competencyId)
+    {
+        var (userId, _) = await GetActorAsync();
+        var level = GetSelfDraft(_gapRows.First(r => r.CompetencyId == competencyId));
+        await AssessmentService.SubmitAssessmentAsync(_employee!.id, competencyId, IdpAssessmentSource.Self, level, userId, null);
+        Snackbar.Add("บันทึกการประเมินตนเองเรียบร้อย", Severity.Success);
+        await LoadGapAsync();
+    }
+
+    private async Task CreateDraftAsync()
+    {
+        _error = null;
+        try
+        {
+            var (userId, _) = await GetActorAsync();
+            await PlanService.CreateDraftAsync(_employee!.id, _newPlanYear, userId);
+            await LoadPlansAsync();
+            Snackbar.Add("สร้างแผนใหม่เรียบร้อย", Severity.Success);
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task SelectPlanAsync(long planId)
+    {
+        var detail = await PlanService.GetPlanDetailAsync(planId);
+        if (detail is null) return;
+        _selectedPlan = detail.Value.Plan;
+        _selectedPlanActions = detail.Value.Actions;
+    }
+
+    private async Task RefreshSelectedPlanAsync()
+    {
+        if (_selectedPlan is null) return;
+        var detail = await PlanService.GetPlanDetailAsync(_selectedPlan.Id);
+        if (detail is null) { _selectedPlan = null; _selectedPlanActions = new(); return; }
+        _selectedPlan = detail.Value.Plan;
+        _selectedPlanActions = detail.Value.Actions;
+    }
+
+    private Task<IEnumerable<Comp_Competency>> SearchCompetenciesAsync(string search, CancellationToken ct)
+    {
+        var query = _allCompetencies.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(c => c.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(query.OrderBy(c => c.Name).Take(20));
+    }
+
+    private async Task AddActionAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newActionTitle)) { _error = "กรุณาระบุชื่อรายการ"; return; }
+        try
+        {
+            var (userId, _) = await GetActorAsync();
+            var targetDate = _newActionTargetDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_newActionTargetDate.Value);
+            await PlanService.AddActionAsync(_selectedPlan!.Id, _newActionCompetency?.Id, _newActionTitle, _newActionDescription, targetDate, userId);
+            _newActionCompetency = null;
+            _newActionTitle = "";
+            _newActionDescription = null;
+            _newActionTargetDate = null;
+            await RefreshSelectedPlanAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task UpdateActionStatusAsync(long actionId, IdpActionStatus status)
+    {
+        await PlanService.UpdateActionStatusAsync(actionId, status, null);
+        await RefreshSelectedPlanAsync();
+    }
+
+    private async Task RemoveActionAsync(long actionId)
+    {
+        try
+        {
+            await PlanService.RemoveActionAsync(actionId);
+            await RefreshSelectedPlanAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task SubmitForApprovalAsync()
+    {
+        _error = null;
+        try
+        {
+            var (userId, empId) = await GetActorAsync();
+            await PlanService.SubmitForApprovalAsync(_selectedPlan!.Id, userId, empId);
+            Snackbar.Add("ส่งอนุมัติแล้ว", Severity.Success);
+            _selectedPlan = null;
+            _selectedPlanActions = new();
+            await LoadPlansAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private static Color StatusColor(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => Color.Default,
+        IdpPlanStatus.PendingApproval => Color.Warning,
+        IdpPlanStatus.Approved => Color.Success,
+        IdpPlanStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => "ฉบับร่าง",
+        IdpPlanStatus.PendingApproval => "รออนุมัติ",
+        IdpPlanStatus.Approved => "อนุมัติแล้ว",
+        IdpPlanStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+
+    private static string ActionStatusLabel(IdpActionStatus status) => status switch
+    {
+        IdpActionStatus.NotStarted => "ยังไม่เริ่ม",
+        IdpActionStatus.InProgress => "กำลังทำ",
+        IdpActionStatus.Completed => "เสร็จแล้ว",
+        IdpActionStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+}

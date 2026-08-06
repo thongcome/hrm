@@ -1,0 +1,130 @@
+@page "/idp/hr-overview"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Idp
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IdpAssessmentService AssessmentService
+@attribute [Authorize(Policy = "Menu:IDP_ADMIN")]
+
+<PageTitle>ภาพรวม IDP ทั้งบริษัท</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ภาพรวมแผนพัฒนารายบุคคล (IDP) — ทั้งบริษัท</MudText>
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="IdpPlanStatus?" @bind-Value="_filterStatus" Label="กรองตามสถานะ" Clearable="true">
+                    @foreach (IdpPlanStatus s in Enum.GetValues<IdpPlanStatus>())
+                    {
+                        <MudSelectItem T="IdpPlanStatus?" Value="@((IdpPlanStatus?)s)">@StatusLabel(s)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="_filterYear" Label="กรองตามปี" Clearable="true" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="FilteredPlans" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>พนักงาน</MudTh>
+                <MudTh>ปี</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@EmployeeName(context.HremployeeId)</MudTd>
+                <MudTd>@context.Year</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/idp/plans/{context.Id}")">ดูรายละเอียด</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่พบแผนพัฒนาตามเงื่อนไข</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">สรุปช่องว่างสมรรถนะ (Critical Gap)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            พนักงานที่มีตำแหน่งกำหนดสมรรถนะไว้: @_employeesWithPosition.Count คน —
+            พบช่องว่างจำเป็น (Critical Gap) ที่ยังไม่ปิด: @_criticalGapEmployeeIds.Count คน
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private List<Idp_Plan> _plans = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private List<Hremployee> _employeesWithPosition = new();
+    private HashSet<long> _criticalGapEmployeeIds = new();
+
+    private IdpPlanStatus? _filterStatus;
+    private int? _filterYear;
+
+    private IEnumerable<Idp_Plan> FilteredPlans => _plans
+        .Where(p => _filterStatus is null || p.Status == _filterStatus)
+        .Where(p => _filterYear is null || p.Year == _filterYear)
+        .OrderByDescending(p => p.Year);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var companyEmployeeIds = await context.Hremployee.Where(e => e.companyid == _companyId).Select(e => e.id).ToListAsync();
+        _plans = await context.Idp_Plans.Where(p => companyEmployeeIds.Contains(p.HremployeeId)).ToListAsync();
+
+        var names = await context.Hremployee.Where(e => companyEmployeeIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname }).ToListAsync();
+        _employeeNames = names.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}");
+
+        var slotEmployeeIds = await context.Pos_PositionSlots
+            .Where(s => s.CompanyId == _companyId && s.IsActive && s.HremployeeId != null && s.PosExecTypeId != null)
+            .Select(s => s.HremployeeId!.Value)
+            .ToListAsync();
+        _employeesWithPosition = await context.Hremployee
+            .Where(e => e.companyid == _companyId && e.ResignDate == null && slotEmployeeIds.Contains(e.id))
+            .ToListAsync();
+
+        foreach (var emp in _employeesWithPosition)
+        {
+            var gapRows = await AssessmentService.GetGapAnalysisAsync(emp.id);
+            if (gapRows.Any(r => r.IsCritical && r.Gap is int gap && gap > 0))
+                _criticalGapEmployeeIds.Add(emp.id);
+        }
+    }
+
+    private string EmployeeName(long hremployeeId) => _employeeNames.TryGetValue(hremployeeId, out var n) ? n : $"#{hremployeeId}";
+
+    private static Color StatusColor(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => Color.Default,
+        IdpPlanStatus.PendingApproval => Color.Warning,
+        IdpPlanStatus.Approved => Color.Success,
+        IdpPlanStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => "ฉบับร่าง",
+        IdpPlanStatus.PendingApproval => "รออนุมัติ",
+        IdpPlanStatus.Approved => "อนุมัติแล้ว",
+        IdpPlanStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+}

@@ -49,4 +49,20 @@ public class Pos_ExecType
     public DateTime? CreateDate { get; set; }
     [StringLength(50)]
     public string? CreateBy { get; set; }
+
+    // --- Job Profile fields (Job & Competency Management) ---
+    // Pos_ExecType is the "Job" concept in the Job/Position split (Job =
+    // reusable role definition, Position = Pos_PositionSlot's individual
+    // headcount seat) — so job-architecture and required-competency data
+    // belongs here, not on Pos_PositionSlot. Soft links, matching
+    // EmployeeTypeId's existing convention above (no [ForeignKey]/nav).
+    public long? JobFamilyId { get; set; }
+    public CareerTrack? CareerTrack { get; set; }
+    public long? JobLevelId { get; set; }
+
+    [StringLength(500)]
+    public string? Purpose { get; set; }
+
+    [Column(TypeName = "nvarchar(max)")]
+    public string? KeyAccountabilities { get; set; }
 }

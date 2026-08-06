@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260806003142_SeedJobCompetencyMenu")]
+    partial class SeedJobCompetencyMenu
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3766,131 +3769,6 @@ namespace HRM.Migrations
                     b.HasIndex("companyid", "EmpNo");
 
                     b.ToTable("HRW_OT");
-                });
-
-            modelBuilder.Entity("HRM.Models.Idp_CompetencyAssessment", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("CompetencyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<long>("RatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("RatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("RatedLevel")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Source")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompetencyId");
-
-                    b.ToTable("Idp_CompetencyAssessment");
-                });
-
-            modelBuilder.Entity("HRM.Models.Idp_DevelopmentAction", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("CompetencyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("CompletedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<long>("PlanId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateOnly?>("TargetDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(250)
-                        .HasColumnType("nvarchar(250)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompetencyId");
-
-                    b.HasIndex("PlanId");
-
-                    b.ToTable("Idp_DevelopmentAction");
-                });
-
-            modelBuilder.Entity("HRM.Models.Idp_Plan", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("ApprovedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("SubmittedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Summary")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Idp_Plan");
                 });
 
             modelBuilder.Entity("HRM.Models.Info_MessageReadLog", b =>
@@ -18065,34 +17943,6 @@ namespace HRM.Migrations
                         .IsRequired();
 
                     b.Navigation("Hremployee");
-                });
-
-            modelBuilder.Entity("HRM.Models.Idp_CompetencyAssessment", b =>
-                {
-                    b.HasOne("HRM.Models.Comp_Competency", "Competency")
-                        .WithMany()
-                        .HasForeignKey("CompetencyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Competency");
-                });
-
-            modelBuilder.Entity("HRM.Models.Idp_DevelopmentAction", b =>
-                {
-                    b.HasOne("HRM.Models.Comp_Competency", "Competency")
-                        .WithMany()
-                        .HasForeignKey("CompetencyId");
-
-                    b.HasOne("HRM.Models.Idp_Plan", "Plan")
-                        .WithMany()
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Competency");
-
-                    b.Navigation("Plan");
                 });
 
             modelBuilder.Entity("HRM.Models.Job_CompetencyRequirement", b =>

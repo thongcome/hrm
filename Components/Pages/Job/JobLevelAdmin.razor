@@ -1,0 +1,204 @@
+@page "/job/levels"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+<PageTitle>ระดับสายอาชีพ (Job Level)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ระดับสายอาชีพ (Job Level)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แบ่งเป็น 2 สาย (Dual Career Ladder): สายผู้เชี่ยวชาญ (Individual Contributor) และสายบริหาร (Managerial) —
+        พนักงานเติบโตได้โดยไม่ต้องเป็นหัวหน้าคน
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มระดับ" : "แก้ไข")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="CareerTrack" @bind-Value="_careerTrack" Label="สาย (Career Track)">
+                <MudSelectItem T="CareerTrack" Value="CareerTrack.IndividualContributor">สายผู้เชี่ยวชาญ (Individual Contributor)</MudSelectItem>
+                <MudSelectItem T="CareerTrack" Value="CareerTrack.Managerial">สายบริหาร (Managerial)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_levelNumber" Label="ลำดับระดับ" Min="1" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส (เช่น IC3, M2)" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="ชื่อระดับ (เช่น Senior)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อระดับ (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_description" Label="คำอธิบาย" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudText Typo="Typo.subtitle1" Class="mt-4">สายผู้เชี่ยวชาญ (Individual Contributor)</MudText>
+    @RenderLevelTable(_items.Where(i => i.CareerTrack == CareerTrack.IndividualContributor).OrderBy(i => i.LevelNumber))
+
+    <MudText Typo="Typo.subtitle1" Class="mt-6">สายบริหาร (Managerial)</MudText>
+    @RenderLevelTable(_items.Where(i => i.CareerTrack == CareerTrack.Managerial).OrderBy(i => i.LevelNumber))
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Job_Level> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private CareerTrack _careerTrack = CareerTrack.IndividualContributor;
+    private int _levelNumber = 1;
+    private string? _code;
+    private string _name = "";
+    private string? _nameEn;
+    private string? _description;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Job_Levels.Where(l => l.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Job_Level.Code), nameof(Job_Level.Name), nameof(Job_Level.NameEn));
+        _items = await query.ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Job_Level item)
+    {
+        _editingId = item.Id;
+        _careerTrack = item.CareerTrack;
+        _levelNumber = item.LevelNumber;
+        _code = item.Code;
+        _name = item.Name;
+        _nameEn = item.NameEn;
+        _description = item.Description;
+        _isActive = item.IsActive;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _careerTrack = CareerTrack.IndividualContributor;
+        _levelNumber = 1;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _description = null;
+        _isActive = true;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อระดับ"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Job_Levels.FirstOrDefaultAsync(l => l.Id == id && l.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.CareerTrack = _careerTrack;
+            existing.LevelNumber = _levelNumber;
+            existing.Code = _code;
+            existing.Name = _name;
+            existing.NameEn = _nameEn;
+            existing.Description = _description;
+            existing.IsActive = _isActive;
+        }
+        else
+        {
+            context.Job_Levels.Add(new Job_Level
+            {
+                CompanyId = _companyId!,
+                CareerTrack = _careerTrack,
+                LevelNumber = _levelNumber,
+                Code = _code,
+                Name = _name,
+                NameEn = _nameEn,
+                Description = _description,
+                IsActive = _isActive,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private RenderFragment RenderLevelTable(IEnumerable<Job_Level> levels) => @<MudTable Items="levels" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>ลำดับ</MudTh>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อระดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            <MudTd>@row.LevelNumber</MudTd>
+            <MudTd>@row.Code</MudTd>
+            <MudTd>@row.Name @(string.IsNullOrWhiteSpace(row.NameEn) ? "" : $"({row.NameEn})")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(row.IsActive ? Color.Success : Color.Default)">
+                    @(row.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>;
+}

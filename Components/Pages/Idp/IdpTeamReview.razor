@@ -1,0 +1,166 @@
+@page "/idp/team"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Idp
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IdpAssessmentService AssessmentService
+@inject IdpPlanService PlanService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:IDP_ACCESS")]
+
+<PageTitle>ทีมของฉัน (IDP)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_manager is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ทีมของฉัน — ประเมินสมรรถนะ (หัวหน้า)</MudText>
+
+        @if (_reports.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ไม่พบลูกทีมที่ผูกกับคุณในผังองค์กร (ต้องตั้ง "ผู้อนุมัติ" ของหน่วยงานให้ตรงกับคุณก่อนที่ /org/set-boss)</MudAlert>
+        }
+        else
+        {
+            @foreach (var report in _reports)
+            {
+                <MudPaper Class="pa-3 mb-3" Outlined="true">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                        <MudText Typo="Typo.subtitle1">@report.EmpName @report.EmpSurname (@report.EmpNo)</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleReportAsync(report.id))">
+                            @(_expandedReportId == report.id ? "ย่อ" : "ขยาย")
+                        </MudButton>
+                    </MudStack>
+
+                    @if (_expandedReportId == report.id)
+                    {
+                        @if (_reportGapRows.Count == 0)
+                        {
+                            <MudAlert Severity="Severity.Info">ยังไม่มีตำแหน่ง/สมรรถนะที่ต้องการสำหรับพนักงานคนนี้</MudAlert>
+                        }
+                        else
+                        {
+                            <MudTable Items="_reportGapRows" Dense="true" Hover="true">
+                                <HeaderContent>
+                                    <MudTh>สมรรถนะ</MudTh>
+                                    <MudTh>ระดับที่ต้องการ</MudTh>
+                                    <MudTh>ประเมินตนเอง</MudTh>
+                                    <MudTh>ประเมินโดยหัวหน้า</MudTh>
+                                    <MudTh></MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        @context.CompetencyName
+                                        @if (context.IsCritical)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">จำเป็น</MudChip>
+                                        }
+                                    </MudTd>
+                                    <MudTd>@context.RequiredLevel</MudTd>
+                                    <MudTd>@(context.SelfLevel?.ToString() ?? "-")</MudTd>
+                                    <MudTd>
+                                        <MudSelect T="int" Value="@GetManagerDraft(context)" ValueChanged="@(v => _managerDrafts[context.CompetencyId] = v)" Dense="true" Style="width:80px">
+                                            @for (var lvl = 1; lvl <= 5; lvl++)
+                                            {
+                                                var l = lvl;
+                                                <MudSelectItem T="int" Value="l">@l</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudTd>
+                                    <MudTd><MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small" OnClick="@(() => SaveManagerRatingAsync(report.id, context.CompetencyId))" /></MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+
+                        <MudDivider Class="my-3" />
+
+                        @if (_reportPlans.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2">ยังไม่มีแผนพัฒนา</MudText>
+                        }
+                        else
+                        {
+                            @foreach (var plan in _reportPlans)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/idp/plans/{plan.Id}")" Class="mr-2">
+                                    แผนปี @plan.Year (@StatusLabel(plan.Status))
+                                </MudButton>
+                            }
+                        }
+                    }
+                </MudPaper>
+            }
+        }
+    </MudPaper>
+}
+
+@code {
+    private Hremployee? _manager;
+    private bool _notFound;
+    private List<Hremployee> _reports = new();
+
+    private long? _expandedReportId;
+    private List<IdpAssessmentService.CompetencyGapRow> _reportGapRows = new();
+    private List<Idp_Plan> _reportPlans = new();
+    private readonly Dictionary<long, int> _managerDrafts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _manager = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_manager is null) { _notFound = true; return; }
+
+        _reports = await AssessmentService.GetDirectReportsAsync(_manager.id);
+    }
+
+    private async Task ToggleReportAsync(long hremployeeId)
+    {
+        if (_expandedReportId == hremployeeId)
+        {
+            _expandedReportId = null;
+            return;
+        }
+
+        _expandedReportId = hremployeeId;
+        _managerDrafts.Clear();
+        _reportGapRows = await AssessmentService.GetGapAnalysisAsync(hremployeeId);
+        _reportPlans = await PlanService.GetPlansForEmployeeAsync(hremployeeId);
+    }
+
+    private int GetManagerDraft(IdpAssessmentService.CompetencyGapRow row)
+        => _managerDrafts.TryGetValue(row.CompetencyId, out var v) ? v : (row.ManagerLevel ?? 3);
+
+    private async Task SaveManagerRatingAsync(long reportHremployeeId, long competencyId)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var level = GetManagerDraft(_reportGapRows.First(r => r.CompetencyId == competencyId));
+
+        await AssessmentService.SubmitAssessmentAsync(reportHremployeeId, competencyId, IdpAssessmentSource.Manager, level, userId, null);
+        Snackbar.Add("บันทึกการประเมินเรียบร้อย", Severity.Success);
+        _reportGapRows = await AssessmentService.GetGapAnalysisAsync(reportHremployeeId);
+    }
+
+    private static string StatusLabel(IdpPlanStatus status) => status switch
+    {
+        IdpPlanStatus.Draft => "ฉบับร่าง",
+        IdpPlanStatus.PendingApproval => "รออนุมัติ",
+        IdpPlanStatus.Approved => "อนุมัติแล้ว",
+        IdpPlanStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+}

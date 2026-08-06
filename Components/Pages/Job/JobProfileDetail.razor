@@ -1,0 +1,224 @@
+@page "/job/profiles/{PosExecTypeId:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+<PageTitle>Job Profile — @(_execType?.Name)</PageTitle>
+
+@if (_execType is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบตำแหน่งนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">Job Profile — @_execType.Name</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">นิยามบทบาทของตำแหน่งนี้: สายอาชีพ/ระดับ, วัตถุประสงค์, ความรับผิดชอบหลัก และสมรรถนะที่ต้องการ</MudText>
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_jobFamilyId" Label="สายอาชีพ (Job Family)" Clearable="true">
+                    @foreach (var f in _families)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)f.Id)">@f.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="CareerTrack?" @bind-Value="_careerTrack" Label="สาย (Career Track)" Clearable="true">
+                    <MudSelectItem T="CareerTrack?" Value="CareerTrack.IndividualContributor">สายผู้เชี่ยวชาญ (IC)</MudSelectItem>
+                    <MudSelectItem T="CareerTrack?" Value="CareerTrack.Managerial">สายบริหาร (Managerial)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_jobLevelId" Label="ระดับ (Job Level)" Clearable="true">
+                    @foreach (var l in _levels.Where(l => _careerTrack == null || l.CareerTrack == _careerTrack))
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)l.Id)">@l.Name (@l.Code)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_purpose" Label="วัตถุประสงค์ของตำแหน่ง (Purpose)" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_keyAccountabilities" Label="ความรับผิดชอบหลัก (Key Accountabilities)" Lines="5" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProfileAsync">บันทึก Job Profile</MudButton>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">สมรรถนะที่ต้องการ (Required Competencies)</MudText>
+
+        <MudTable Items="_requirements" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>สมรรถนะ</MudTh>
+                <MudTh>ระดับที่ต้องการ</MudTh>
+                <MudTh>จำเป็น</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@CompetencyName(context.CompetencyId)</MudTd>
+                <MudTd>ระดับ @context.RequiredLevel — @LevelDescription(context.CompetencyId, context.RequiredLevel)</MudTd>
+                <MudTd>@(context.IsCritical ? "จำเป็น (Critical)" : "ควรมี")</MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveRequirementAsync(context.Id))">ลบ</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีสมรรถนะที่กำหนด</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="5">
+                <MudAutocomplete T="Comp_Competency" Label="เลือกสมรรถนะ" @bind-Value="_selectedCompetency"
+                    SearchFunc="SearchCompetenciesAsync"
+                    ToStringFunc="@(c => c == null ? null : $"{c.Code} — {c.Name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_selectedLevel" Label="ระดับที่ต้องการ">
+                    @for (var lvl = 1; lvl <= 5; lvl++)
+                    {
+                        var l = lvl;
+                        <MudSelectItem T="int" Value="l">ระดับ @l @(_selectedCompetency is null ? "" : $"— {LevelDescription(_selectedCompetency.Id, l)}")</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="8" sm="2">
+                <MudSwitch T="bool" @bind-Value="_selectedCritical" Color="Color.Warning" Label="จำเป็น (Critical)" />
+            </MudItem>
+            <MudItem xs="4" sm="1">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddRequirementAsync">เพิ่ม</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pos/exec-types"))">กลับไปหน้าชื่อตำแหน่ง</MudButton>
+}
+
+@code {
+    [Parameter] public long PosExecTypeId { get; set; }
+
+    private Pos_ExecType? _execType;
+    private List<Job_Family> _families = new();
+    private List<Job_Level> _levels = new();
+    private List<Job_CompetencyRequirement> _requirements = new();
+    private List<Comp_Competency> _allCompetencies = new();
+    private List<Comp_ProficiencyLevel> _allLevels = new();
+    private string? _error;
+
+    private long? _jobFamilyId;
+    private CareerTrack? _careerTrack;
+    private long? _jobLevelId;
+    private string? _purpose;
+    private string? _keyAccountabilities;
+
+    private Comp_Competency? _selectedCompetency;
+    private int _selectedLevel = 3;
+    private bool _selectedCritical;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
+        if (_execType is null) return;
+
+        _families = await context.Job_Families.Where(f => f.CompanyId == _execType.CompanyId && f.IsActive).OrderBy(f => f.Name).ToListAsync();
+        _levels = await context.Job_Levels.Where(l => l.CompanyId == _execType.CompanyId && l.IsActive).OrderBy(l => l.CareerTrack).ThenBy(l => l.LevelNumber).ToListAsync();
+
+        _jobFamilyId = _execType.JobFamilyId;
+        _careerTrack = _execType.CareerTrack;
+        _jobLevelId = _execType.JobLevelId;
+        _purpose = _execType.Purpose;
+        _keyAccountabilities = _execType.KeyAccountabilities;
+
+        _requirements = await context.Job_CompetencyRequirements.Where(r => r.PosExecTypeId == PosExecTypeId).OrderBy(r => r.SortOrder).ToListAsync();
+
+        var categoryIds = await context.Comp_Categories.Where(c => c.CompanyId == _execType.CompanyId).Select(c => c.Id).ToListAsync();
+        _allCompetencies = await context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId) && c.IsActive).ToListAsync();
+        var competencyIds = _allCompetencies.Select(c => c.Id).ToList();
+        _allLevels = await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync();
+    }
+
+    private string CompetencyName(long competencyId) => _allCompetencies.FirstOrDefault(c => c.Id == competencyId) is { } c ? $"{c.Code} — {c.Name}" : "-";
+    private string LevelDescription(long competencyId, int level)
+    {
+        var desc = _allLevels.FirstOrDefault(l => l.CompetencyId == competencyId && l.Level == level)?.Description;
+        return string.IsNullOrWhiteSpace(desc) ? "(ยังไม่มีคำอธิบาย)" : desc;
+    }
+
+    private Task<IEnumerable<Comp_Competency>> SearchCompetenciesAsync(string search, CancellationToken ct)
+    {
+        var query = _allCompetencies.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(c => c.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Code.Contains(search, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(query.OrderBy(c => c.Name).Take(20));
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
+        if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+
+        existing.JobFamilyId = _jobFamilyId;
+        existing.CareerTrack = _careerTrack;
+        existing.JobLevelId = _jobLevelId;
+        existing.Purpose = string.IsNullOrWhiteSpace(_purpose) ? null : _purpose;
+        existing.KeyAccountabilities = string.IsNullOrWhiteSpace(_keyAccountabilities) ? null : _keyAccountabilities;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึก Job Profile เรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task AddRequirementAsync()
+    {
+        _error = null;
+        if (_selectedCompetency is null) { _error = "กรุณาเลือกสมรรถนะ"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var dup = await context.Job_CompetencyRequirements.AnyAsync(r => r.PosExecTypeId == PosExecTypeId && r.CompetencyId == _selectedCompetency.Id);
+        if (dup) { _error = "สมรรถนะนี้ถูกเพิ่มไว้แล้ว"; return; }
+
+        context.Job_CompetencyRequirements.Add(new Job_CompetencyRequirement
+        {
+            PosExecTypeId = PosExecTypeId,
+            CompetencyId = _selectedCompetency.Id,
+            RequiredLevel = _selectedLevel,
+            IsCritical = _selectedCritical,
+            SortOrder = _requirements.Count,
+        });
+        await context.SaveChangesAsync();
+
+        _selectedCompetency = null;
+        _selectedLevel = 3;
+        _selectedCritical = false;
+        await LoadAsync();
+    }
+
+    private async Task RemoveRequirementAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Job_CompetencyRequirements.FirstOrDefaultAsync(r => r.Id == id);
+        if (row is null) return;
+        context.Job_CompetencyRequirements.Remove(row);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

@@ -393,6 +393,15 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
     public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
     public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
+    public virtual DbSet<Job_Family> Job_Families { get; set; }
+    public virtual DbSet<Job_Level> Job_Levels { get; set; }
+    public virtual DbSet<Comp_Category> Comp_Categories { get; set; }
+    public virtual DbSet<Comp_Competency> Comp_Competencies { get; set; }
+    public virtual DbSet<Comp_ProficiencyLevel> Comp_ProficiencyLevels { get; set; }
+    public virtual DbSet<Job_CompetencyRequirement> Job_CompetencyRequirements { get; set; }
+    public virtual DbSet<Idp_CompetencyAssessment> Idp_CompetencyAssessments { get; set; }
+    public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
+    public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }
 
     public virtual DbSet<Hrd_Family> Hrd_Families { get; set; }
     public virtual DbSet<Hrd_Marriage> Hrd_Marriages { get; set; }
