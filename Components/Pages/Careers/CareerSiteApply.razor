@@ -1,0 +1,83 @@
+@page "/careers/{PostingId:long}/apply"
+@using HRM.Models
+@using HRM.Services.Rec
+@using MudBlazor
+@inject RecJobPostingService PostingService
+
+@* Deliberately public — no [Authorize]. The actual submission posts via a
+   plain HTML form (not a Blazor event handler) to
+   /careers/{id}/apply-handler, a real HTTP endpoint — see
+   Endpoints/CareerEndpoints.cs for why: it's the only way ASP.NET Core's
+   rate limiter can see per-submission traffic, mirroring
+   Components/Login/Login.razor's plain-form pattern. *@
+
+<PageTitle>สมัครงาน — @(_posting?.Title ?? "")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="pa-4">
+    @if (_posting is null)
+    {
+        <MudAlert Severity="Severity.Warning">ไม่พบตำแหน่งงานนี้ หรือปิดรับสมัครแล้ว</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h4" Class="mb-2">สมัครงาน: @_posting.Title</MudText>
+
+        @if (Submitted == "true")
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-3">ส่งใบสมัครสำเร็จ ขอบคุณที่สนใจร่วมงานกับเรา ทีมงานจะติดต่อกลับหากผ่านการคัดเลือกเบื้องต้น</MudAlert>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@Error</MudAlert>
+            }
+
+            <form method="post" action="@($"/careers/{PostingId}/apply-handler")" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label>ชื่อ</label>
+                    <input class="form-control" name="firstName" required />
+                </div>
+                <div class="mb-3">
+                    <label>นามสกุล</label>
+                    <input class="form-control" name="lastName" required />
+                </div>
+                <div class="mb-3">
+                    <label>อีเมล</label>
+                    <input class="form-control" name="email" type="email" required />
+                </div>
+                <div class="mb-3">
+                    <label>เบอร์โทร</label>
+                    <input class="form-control" name="phone" />
+                </div>
+                <div class="mb-3">
+                    <label>เรซูเม่ (PDF, DOC, DOCX ไม่เกิน 5MB)</label>
+                    <input class="form-control" name="resume" type="file" accept=".pdf,.doc,.docx" />
+                </div>
+                <div class="mb-3">
+                    <label>
+                        <input type="checkbox" name="consent" /> ข้าพเจ้ายินยอมให้บริษัทเก็บรวบรวมและใช้ข้อมูลส่วนบุคคลของข้าพเจ้าเพื่อวัตถุประสงค์ในการพิจารณาสมัครงานนี้ ตามนโยบายความเป็นส่วนตัวของบริษัท
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">ส่งใบสมัคร</button>
+            </form>
+        }
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long PostingId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "submitted")]
+    private string? Submitted { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? Error { get; set; }
+
+    private Rec_JobPosting? _posting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _posting = await PostingService.GetOpenPostingPublicAsync(PostingId);
+    }
+}

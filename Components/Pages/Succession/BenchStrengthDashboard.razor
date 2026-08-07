@@ -1,0 +1,104 @@
+@page "/succession/bench-strength"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Succession
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject SuccessionService SuccService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
+
+<PageTitle>Bench Strength — Succession Planning</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudButton Class="mb-2" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/key-positions"))">← กลับไปตำแหน่งสำคัญ</MudButton>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">รายงาน Bench Strength</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">ข้อมูลเป็นความลับ</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            สรุปว่าตำแหน่งสำคัญไหนมีผู้สืบทอดพร้อมกี่คน — ตำแหน่งที่ไม่มีผู้สืบทอดเลยถือเป็นความเสี่ยง "Single Point of Failure"
+        </MudText>
+
+        @if (_rows.Any(r => r.IsSinglePointOfFailure))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">
+                มี @_rows.Count(r => r.IsSinglePointOfFailure) ตำแหน่งที่ไม่มีผู้สืบทอดเลย (Single Point of Failure)
+            </MudAlert>
+        }
+
+        <MudTable Items="_rows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ตำแหน่ง</MudTh>
+                <MudTh>Business Impact</MudTh>
+                <MudTh>Replacement Difficulty</MudTh>
+                <MudTh>พร้อมทันที (Ready Now)</MudTh>
+                <MudTh>ผู้สืบทอดทั้งหมด</MudTh>
+                <MudTh>ความเสี่ยง</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudLink OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{context.KeyPositionId}"))">@context.PosExecTypeName</MudLink>
+                </MudTd>
+                <MudTd>@ImpactLabel(context.BusinessImpact)</MudTd>
+                <MudTd>@DifficultyLabel(context.ReplacementDifficulty)</MudTd>
+                <MudTd>@context.ReadyNowCount</MudTd>
+                <MudTd>@context.TotalSuccessorCount</MudTd>
+                <MudTd>
+                    @if (context.IsSinglePointOfFailure)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">Single Point of Failure</MudChip>
+                    }
+                    else if (context.ReadyNowCount == 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">ยังไม่มีคนพร้อมทันที</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">ปกติ</MudChip>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตำแหน่งสำคัญที่กำหนดไว้</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private List<SuccessionService.BenchStrengthRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _rows = await SuccService.GetBenchStrengthAsync(_companyId);
+    }
+
+    private static string ImpactLabel(BusinessImpactLevel v) => v switch
+    {
+        BusinessImpactLevel.Low => "ต่ำ",
+        BusinessImpactLevel.Medium => "ปานกลาง",
+        BusinessImpactLevel.High => "สูง",
+        _ => v.ToString(),
+    };
+
+    private static string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
+    {
+        ReplacementDifficultyLevel.Low => "ต่ำ",
+        ReplacementDifficultyLevel.Medium => "ปานกลาง",
+        ReplacementDifficultyLevel.High => "สูง",
+        _ => v.ToString(),
+    };
+}

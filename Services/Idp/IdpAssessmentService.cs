@@ -94,6 +94,40 @@ public class IdpAssessmentService(IDbContextFactory<HRMContext> dbFactory)
         return rows;
     }
 
+    // Succession Planning's gap-analysis-against-a-target-position needs this
+    // exact shape but against a *target* Job, not the successor's own current
+    // one — GetGapAnalysisAsync above hardcodes "current position" via
+    // GetRequiredCompetenciesAsync(hremployeeId), so that method can't be
+    // reused as-is. This overload takes targetPosExecTypeId directly instead
+    // of resolving it from the employee's active Pos_PositionSlot.
+    public async Task<List<CompetencyGapRow>> GetGapAnalysisForTargetPositionAsync(long hremployeeId, long targetPosExecTypeId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var requirements = await context.Job_CompetencyRequirements
+            .Include(r => r.Competency)
+            .Where(r => r.PosExecTypeId == targetPosExecTypeId)
+            .OrderBy(r => r.SortOrder)
+            .ToListAsync(ct);
+        if (requirements.Count == 0)
+            return new();
+
+        var assessments = await context.Idp_CompetencyAssessments.Where(a => a.HremployeeId == hremployeeId).ToListAsync(ct);
+
+        var rows = new List<CompetencyGapRow>();
+        foreach (var req in requirements)
+        {
+            var selfLevel = assessments.FirstOrDefault(a => a.CompetencyId == req.CompetencyId && a.Source == IdpAssessmentSource.Self)?.RatedLevel;
+            var managerLevel = assessments.FirstOrDefault(a => a.CompetencyId == req.CompetencyId && a.Source == IdpAssessmentSource.Manager)?.RatedLevel;
+            var effectiveLevel = managerLevel ?? selfLevel;
+            var gap = effectiveLevel is int eff ? req.RequiredLevel - eff : (int?)null;
+
+            rows.Add(new CompetencyGapRow(req.CompetencyId, req.Competency.Name, req.RequiredLevel, req.IsCritical, selfLevel, managerLevel, effectiveLevel, gap));
+        }
+
+        return rows;
+    }
+
     public async Task<List<Hremployee>> GetDirectReportsAsync(long managerHremployeeId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);

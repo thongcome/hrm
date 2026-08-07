@@ -1,0 +1,89 @@
+@page "/rec/offers"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RecOfferService OfferService
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>ข้อเสนอจ้างงาน (Offers)</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ข้อเสนอจ้างงาน</MudText>
+
+        <MudTable Items="_offers" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>ผู้สมัคร</MudTh>
+                <MudTh>เงินเดือนที่เสนอ</MudTh>
+                <MudTh>วันที่เริ่มงาน</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Id</MudTd>
+                <MudTd>@CandidateName(context.ApplicationId)</MudTd>
+                <MudTd>@context.OfferedSalary.ToString("N2")</MudTd>
+                <MudTd>@context.StartDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/rec/offers/{context.Id}")">รายละเอียด</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อเสนอจ้างงาน</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private List<Rec_Offer> _offers = new();
+    private Dictionary<long, string> _candidateNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _offers = await OfferService.GetAllForCompanyAsync(_companyId);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var appIds = _offers.Select(o => o.ApplicationId).Distinct().ToList();
+        var apps = await context.Rec_Applications.Where(a => appIds.Contains(a.Id)).ToListAsync();
+        var candidateIds = apps.Select(a => a.CandidateId).Distinct().ToList();
+        var candidates = await context.Rec_Candidates.Where(c => candidateIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => $"{c.FirstName} {c.LastName}");
+        _candidateNames = apps.Where(a => candidates.ContainsKey(a.CandidateId)).ToDictionary(a => a.Id, a => candidates[a.CandidateId]);
+    }
+
+    private string CandidateName(long applicationId) => _candidateNames.TryGetValue(applicationId, out var n) ? n : $"#{applicationId}";
+
+    private static string StatusLabel(OfferStatus s) => s switch
+    {
+        OfferStatus.Draft => "ร่าง",
+        OfferStatus.PendingApproval => "รออนุมัติ",
+        OfferStatus.Sent => "ส่งแล้ว",
+        OfferStatus.Accepted => "ตอบรับ",
+        OfferStatus.Declined => "ปฏิเสธ",
+        OfferStatus.Expired => "หมดอายุ",
+        OfferStatus.Withdrawn => "ถอน",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(OfferStatus s) => s switch
+    {
+        OfferStatus.Accepted => Color.Success,
+        OfferStatus.Declined or OfferStatus.Expired or OfferStatus.Withdrawn => Color.Error,
+        OfferStatus.Sent => Color.Info,
+        _ => Color.Warning,
+    };
+}

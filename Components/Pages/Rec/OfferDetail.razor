@@ -1,0 +1,181 @@
+@page "/rec/offers/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RecOfferService OfferService
+@inject HRM.Services.EmailSender EmailSender
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>ข้อเสนอจ้างงาน #@Id</PageTitle>
+
+@if (_offer is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อเสนอนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ข้อเสนอจ้างงาน #@_offer.Id — @_candidateName</MudText>
+        <MudButton Variant="Variant.Text" Href="/rec/offers" Class="mb-2">กลับ</MudButton>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-2">@_info</MudAlert>
+        }
+
+        <MudStack Spacing="1">
+            <MudText Typo="Typo.body1"><b>อีเมลผู้สมัคร:</b> @_candidateEmail</MudText>
+            <MudText Typo="Typo.body1"><b>เงินเดือนที่เสนอ:</b> @_offer.OfferedSalary.ToString("N2")</MudText>
+            <MudText Typo="Typo.body1"><b>วันที่เริ่มงาน:</b> @_offer.StartDate.ToString("dd/MM/yyyy")</MudText>
+            <MudText Typo="Typo.body1"><b>ข้อเสนอมีผลถึง:</b> @(_offer.ExpiryDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>สถานะ:</b> <MudChip T="string" Size="Size.Small">@_offer.Status</MudChip></MudText>
+        </MudStack>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            @if (_offer.Status == OfferStatus.Draft)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitForApprovalAsync">ส่งอนุมัติ</MudButton>
+            }
+            @if (_offer.JobMasterId is not null && _offer.Status == OfferStatus.PendingApproval)
+            {
+                <MudButton Variant="Variant.Text" Href="/wf/my-inbox">ดูในกล่องอนุมัติ</MudButton>
+            }
+            @if (_approved && _offer.Status == OfferStatus.PendingApproval)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SendOfferAsync">ส่งอีเมล Offer Letter</MudButton>
+            }
+            @if (_offer.Status == OfferStatus.Sent)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="@(() => RecordResponseAsync(true))">บันทึกผลตอบรับ (ตอบรับ)</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => RecordResponseAsync(false))">บันทึกผลตอบรับ (ปฏิเสธ)</MudButton>
+            }
+            @if (_offer.Status == OfferStatus.Accepted && _offer.HiredHremployeeId is null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="HireAsync">จ้าง (สร้างพนักงานใหม่)</MudButton>
+            }
+            @if (_offer.HiredHremployeeId is not null)
+            {
+                <MudChip T="string" Color="Color.Success">จ้างแล้ว — พนักงาน #@_offer.HiredHremployeeId</MudChip>
+                <MudButton Variant="Variant.Text" Href="@($"/pay/employees/{_offer.HiredHremployeeId}")">ดูโปรไฟล์พนักงาน</MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Rec_Offer? _offer;
+    private string _candidateName = "";
+    private string _candidateEmail = "";
+    private long _actorUserId;
+    private string? _actorEmpId;
+    private bool _approved;
+    private string? _error;
+    private string? _info;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirstValue("empno");
+
+        await OfferService.SyncStatusFromJobAsync(Id);
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _offer = await OfferService.GetByIdAsync(Id);
+        if (_offer is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var app = await context.Rec_Applications.FirstOrDefaultAsync(a => a.Id == _offer.ApplicationId);
+        if (app is not null)
+        {
+            var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.Id == app.CandidateId);
+            if (candidate is not null)
+            {
+                _candidateName = $"{candidate.FirstName} {candidate.LastName}";
+                _candidateEmail = candidate.Email;
+            }
+        }
+
+        _approved = _offer.JobMasterId is not null &&
+            await context.job_masters.AnyAsync(j => j.jobmasterid == _offer.JobMasterId && j.isJobClosed == true
+                && j.status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted);
+    }
+
+    private async Task SubmitForApprovalAsync()
+    {
+        _error = null; _info = null;
+        try
+        {
+            var jobId = await OfferService.SubmitForApprovalAsync(Id, _actorUserId, _actorEmpId);
+            _info = $"ส่งอนุมัติสำเร็จ (Job #{jobId})";
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task SendOfferAsync()
+    {
+        _error = null; _info = null;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync();
+            var slot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == _offer!.TargetPositionSlotId);
+
+            var pdf = RecOfferLetterPdfService.Generate(
+                settings?.CompanyName ?? "บริษัท", settings?.CompanyAddress,
+                _candidateName, slot?.Name ?? "-", _offer!.OfferedSalary, _offer.StartDate, _offer.ExpiryDate, DateTime.Now);
+
+            await EmailSender.SendEmailWithAttachmentAsync(_candidateEmail, "ข้อเสนอการจ้างงาน (Offer of Employment)",
+                "กรุณาดูรายละเอียดข้อเสนอการจ้างงานในเอกสารแนบ", $"offer_{_offer.Id}.pdf", pdf);
+
+            await OfferService.MarkSentAsync(Id);
+            await AuditLogger.LogChangeAsync(AuditActionType.Update, "Rec_Offer", Id.ToString(), null, new { Status = "Sent" }, isSensitive: true);
+
+            _info = "ส่งอีเมล Offer Letter สำเร็จ";
+            await RefreshAsync();
+        }
+        catch (Exception ex) { _error = "ส่งอีเมลไม่สำเร็จ: " + ex.Message; }
+    }
+
+    private async Task RecordResponseAsync(bool accepted)
+    {
+        _error = null; _info = null;
+        try
+        {
+            await OfferService.RecordResponseAsync(Id, accepted);
+            _info = accepted ? "บันทึกผลตอบรับ: ตอบรับ" : "บันทึกผลตอบรับ: ปฏิเสธ";
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task HireAsync()
+    {
+        _error = null; _info = null;
+        try
+        {
+            var empId = await OfferService.HireAsync(Id, _actorUserId);
+            _info = $"จ้างสำเร็จ — สร้างพนักงานใหม่ #{empId} และเริ่มกระบวนการ Onboarding แล้ว";
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+}

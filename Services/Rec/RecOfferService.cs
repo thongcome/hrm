@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 // lazy status sync -> send -> record candidate response -> HireAsync (the
 // most consequential method in the whole Rec_* module — creates the real
 // Hremployee row and hands off to onboarding).
-public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEngineService engine, LifecycleTaskService lifecycleTaskService)
+public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEngineService engine, LifecycleTaskService lifecycleTaskService, RecRequisitionService requisitionService)
 {
     public async Task<long> CreateDraftAsync(Rec_Offer draft, CancellationToken ct = default)
     {
@@ -176,6 +176,10 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
         await context.SaveChangesAsync(ct);
 
         await lifecycleTaskService.StartOnboardingAsync(emp.id, actorUserId, ct);
+
+        var posting = await context.Rec_JobPostings.FirstOrDefaultAsync(p => p.Id == app.JobPostingId, ct);
+        if (posting is not null)
+            await requisitionService.MarkFilledIfCompleteAsync(posting.RequisitionId, ct);
 
         return emp.id;
     }

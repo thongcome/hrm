@@ -226,6 +226,7 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 
 // ----- Talent_* module (Talent Management / 9-Box) -----
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
+builder.Services.AddScoped<HRM.Services.Succession.SuccessionService>();
 // ----- end Talent_* module -----
 
 // ----- Rec_* module (Recruitment / ATS) -----

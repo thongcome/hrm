@@ -1,0 +1,45 @@
+@page "/careers"
+@using HRM.Models
+@using HRM.Services.Rec
+@using MudBlazor
+@inject RecJobPostingService PostingService
+
+@* Deliberately public — no [Authorize] here, mirroring Home/Login. Reads
+   only open postings via GetOpenPostingsPublicAsync, which never joins
+   internal requisition/candidate data. *@
+
+<PageTitle>ร่วมงานกับเรา</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+    <MudText Typo="Typo.h4" Class="mb-4">ตำแหน่งงานที่เปิดรับสมัคร</MudText>
+
+    @if (_postings.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ขณะนี้ยังไม่มีตำแหน่งงานที่เปิดรับสมัคร</MudAlert>
+    }
+    else
+    {
+        @foreach (var posting in _postings)
+        {
+            <MudPaper Class="pa-4 mb-3" Outlined="true">
+                <MudText Typo="Typo.h6">@posting.Title</MudText>
+                @if (!string.IsNullOrWhiteSpace(posting.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1" Style="white-space:pre-wrap">@Truncate(posting.Description)</MudText>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" Href="@($"/careers/{posting.Id}/apply")">สมัครงานนี้</MudButton>
+            </MudPaper>
+        }
+    }
+</MudContainer>
+
+@code {
+    private List<Rec_JobPosting> _postings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _postings = await PostingService.GetOpenPostingsPublicAsync();
+    }
+
+    private static string Truncate(string text) => text.Length > 300 ? text[..300] + "..." : text;
+}

@@ -1,0 +1,129 @@
+@page "/rec/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>ภาพรวมการสรรหาบุคลากร</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ภาพรวมการสรรหาบุคลากร</MudText>
+    </MudPaper>
+
+    <MudGrid Class="mb-4">
+        @foreach (var (label, count, color) in _requisitionTiles)
+        {
+            <MudItem xs="6" sm="4" md="2">
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudText Typo="Typo.h4" Color="color">@count</MudText>
+                    <MudText Typo="Typo.body2">@label</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Funnel ผู้สมัคร (ทุกประกาศ)</MudText>
+        <MudTable Items="_funnelRows" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>ขั้นตอน</MudTh>
+                <MudTh>จำนวน</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Label</MudTd>
+                <MudTd>@context.Count</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">Time-to-fill (คำขอที่บรรจุครบแล้ว)</MudText>
+        <MudTable Items="_timeToFillRows" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>คำขอ #</MudTh>
+                <MudTh>วันที่ขอ</MudTh>
+                <MudTh>วันที่จ้างล่าสุด</MudTh>
+                <MudTh>จำนวนวัน</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.RequisitionId</MudTd>
+                <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.HiredDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.Days</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีคำขอที่บรรจุครบแล้ว</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private record FunnelRow(string Label, int Count);
+    private record TimeToFillRow(long RequisitionId, DateTime RequestedDate, DateTime HiredDate, int Days);
+
+    private string? _companyId;
+    private List<(string Label, int Count, Color Color)> _requisitionTiles = new();
+    private List<FunnelRow> _funnelRows = new();
+    private List<TimeToFillRow> _timeToFillRows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var requisitions = await context.Rec_Requisitions.Where(r => r.CompanyId == _companyId).ToListAsync();
+        _requisitionTiles = new()
+        {
+            ("ร่าง", requisitions.Count(r => r.Status == RequisitionStatus.Draft), Color.Default),
+            ("รออนุมัติ", requisitions.Count(r => r.Status == RequisitionStatus.PendingApproval), Color.Warning),
+            ("อนุมัติแล้ว", requisitions.Count(r => r.Status == RequisitionStatus.Approved), Color.Info),
+            ("บรรจุครบแล้ว", requisitions.Count(r => r.Status == RequisitionStatus.Filled), Color.Success),
+            ("ไม่อนุมัติ", requisitions.Count(r => r.Status == RequisitionStatus.Rejected), Color.Error),
+            ("ยกเลิก", requisitions.Count(r => r.Status == RequisitionStatus.Cancelled), Color.Default),
+        };
+
+        var requisitionIds = requisitions.Select(r => r.Id).ToList();
+        var postingIds = await context.Rec_JobPostings.Where(p => requisitionIds.Contains(p.RequisitionId)).Select(p => p.Id).ToListAsync();
+        var applications = await context.Rec_Applications.Where(a => postingIds.Contains(a.JobPostingId)).ToListAsync();
+
+        _funnelRows = new()
+        {
+            new("สมัครแล้ว (Applied)", applications.Count(a => a.Stage >= ApplicationStage.Applied)),
+            new("คัดกรอง (Screening)", applications.Count(a => a.Stage >= ApplicationStage.Screening)),
+            new("สัมภาษณ์ (Interview)", applications.Count(a => a.Stage >= ApplicationStage.Interview)),
+            new("เสนองาน (Offer)", applications.Count(a => a.Stage >= ApplicationStage.Offer)),
+            new("จ้างแล้ว (Hired)", applications.Count(a => a.Stage == ApplicationStage.Hired)),
+        };
+
+        var filledRequisitions = requisitions.Where(r => r.Status == RequisitionStatus.Filled).ToList();
+        var rows = new List<TimeToFillRow>();
+        foreach (var req in filledRequisitions)
+        {
+            var reqPostingIds = await context.Rec_JobPostings.Where(p => p.RequisitionId == req.Id).Select(p => p.Id).ToListAsync();
+            var hiredOffers = await context.Rec_Offers
+                .Where(o => o.HiredHremployeeId != null)
+                .Join(context.Rec_Applications, o => o.ApplicationId, a => a.Id, (o, a) => new { o, a })
+                .Where(x => reqPostingIds.Contains(x.a.JobPostingId))
+                .Select(x => x.o)
+                .ToListAsync();
+
+            if (hiredOffers.Count == 0) continue;
+            var latestHireDate = hiredOffers.Max(o => o.RespondedDate ?? o.SentDate ?? o.CreatedDate);
+            rows.Add(new TimeToFillRow(req.Id, req.RequestedDate, latestHireDate, (latestHireDate - req.RequestedDate).Days));
+        }
+        _timeToFillRows = rows;
+    }
+}

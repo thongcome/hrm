@@ -1,0 +1,199 @@
+@page "/succession/key-positions"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using HRM.Services.Succession
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject SuccessionService SuccService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
+
+<PageTitle>ตำแหน่งสำคัญ — Succession Planning</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ตำแหน่งสำคัญ (Key Positions)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">ข้อมูลเป็นความลับ</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            ระบุตำแหน่ง (Job) ที่สำคัญต่อธุรกิจ พร้อมประเมิน Business Impact และ Replacement Difficulty — จำกัดสิทธิ์เฉพาะผู้ดูแลระบบ
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="5">
+                <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" @bind-Value="_selectedExecType"
+                    SearchFunc="SearchExecTypesAsync"
+                    ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudSelect T="BusinessImpactLevel" @bind-Value="_impact" Label="Business Impact">
+                    @foreach (var v in Enum.GetValues<BusinessImpactLevel>())
+                    {
+                        <MudSelectItem Value="@v">@ImpactLabel(v)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudSelect T="ReplacementDifficultyLevel" @bind-Value="_difficulty" Label="Replacement Difficulty">
+                    @foreach (var v in Enum.GetValues<ReplacementDifficultyLevel>())
+                    {
+                        <MudSelectItem Value="@v">@DifficultyLabel(v)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (ถ้ามี)" />
+            </MudItem>
+        </MudGrid>
+        <MudButton Class="mt-2" Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Disabled="@(_selectedExecType is null)">
+            เพิ่มเป็นตำแหน่งสำคัญ
+        </MudButton>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudTable Items="_keyPositions" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ตำแหน่ง</MudTh>
+                <MudTh>Business Impact</MudTh>
+                <MudTh>Replacement Difficulty</MudTh>
+                <MudTh>ผู้สืบทอดที่เสนอชื่อ</MudTh>
+                <MudTh>หมายเหตุ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.PosExecTypeName</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@ImpactColor(context.BusinessImpact)">@ImpactLabel(context.BusinessImpact)</MudChip></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@DifficultyColor(context.ReplacementDifficulty)">@DifficultyLabel(context.ReplacementDifficulty)</MudChip></MudTd>
+                <MudTd>
+                    @if (context.SuccessorCount == 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">ไม่มีเลย</MudChip>
+                    }
+                    else
+                    {
+                        @($"{context.SuccessorCount} คน")
+                    }
+                </MudTd>
+                <MudTd>@(context.Note ?? "-")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{context.Id}"))">จัดการผู้สืบทอด</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">ถอดออก</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตำแหน่งสำคัญ</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/bench-strength"))">ดูรายงาน Bench Strength</MudButton>
+}
+
+@code {
+    private string? _companyId;
+    private List<SuccessionService.KeyPositionRow> _keyPositions = new();
+    private Pos_ExecType? _selectedExecType;
+    private BusinessImpactLevel _impact = BusinessImpactLevel.Medium;
+    private ReplacementDifficultyLevel _difficulty = ReplacementDifficultyLevel.Medium;
+    private string? _note;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _keyPositions = await SuccService.GetKeyPositionsAsync(_companyId);
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddAsync()
+    {
+        if (_selectedExecType is null || string.IsNullOrEmpty(_companyId)) return;
+        _error = null;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        try
+        {
+            await SuccService.AddKeyPositionAsync(_companyId, _selectedExecType.Id, _impact, _difficulty, _note, userId);
+            Snackbar.Add("เพิ่มตำแหน่งสำคัญเรียบร้อย", Severity.Success);
+            _selectedExecType = null;
+            _impact = BusinessImpactLevel.Medium;
+            _difficulty = ReplacementDifficultyLevel.Medium;
+            _note = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RemoveAsync(long id)
+    {
+        await SuccService.RemoveKeyPositionAsync(id);
+        Snackbar.Add("ถอดออกจากตำแหน่งสำคัญแล้ว", Severity.Success);
+        await LoadAsync();
+    }
+
+    private static string ImpactLabel(BusinessImpactLevel v) => v switch
+    {
+        BusinessImpactLevel.Low => "ต่ำ",
+        BusinessImpactLevel.Medium => "ปานกลาง",
+        BusinessImpactLevel.High => "สูง",
+        _ => v.ToString(),
+    };
+
+    private static Color ImpactColor(BusinessImpactLevel v) => v switch
+    {
+        BusinessImpactLevel.High => Color.Error,
+        BusinessImpactLevel.Medium => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private static string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
+    {
+        ReplacementDifficultyLevel.Low => "ต่ำ",
+        ReplacementDifficultyLevel.Medium => "ปานกลาง",
+        ReplacementDifficultyLevel.High => "สูง",
+        _ => v.ToString(),
+    };
+
+    private static Color DifficultyColor(ReplacementDifficultyLevel v) => v switch
+    {
+        ReplacementDifficultyLevel.High => Color.Error,
+        ReplacementDifficultyLevel.Medium => Color.Warning,
+        _ => Color.Default,
+    };
+}

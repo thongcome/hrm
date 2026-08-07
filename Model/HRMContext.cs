@@ -409,6 +409,11 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Talent_PoolEntry> Talent_PoolEntries { get; set; }
     // ----- end Talent_* module -----
 
+    // ----- Succ_* module (Succession Planning) -----
+    public virtual DbSet<Succ_KeyPosition> Succ_KeyPositions { get; set; }
+    public virtual DbSet<Succ_SuccessorNomination> Succ_SuccessorNominations { get; set; }
+    // ----- end Succ_* module -----
+
     // ----- Rec_* module (Recruitment / ATS) -----
     public virtual DbSet<Rec_Requisition> Rec_Requisitions { get; set; }
     public virtual DbSet<Rec_JobPosting> Rec_JobPostings { get; set; }
