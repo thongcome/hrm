@@ -1,0 +1,234 @@
+@page "/hr/reports/turnover"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:HR_ANALYTICS")]
+
+<PageTitle>อัตราการลาออก (Turnover)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">อัตราการลาออก (Turnover)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_periodMonths" Label="ย้อนหลังกี่เดือน" Min="1" Max="36" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_trend.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mt-6">แนวโน้มอัตราลาออกรายเดือน</MudText>
+        <MudChart ChartType="ChartType.Line" ChartSeries="@_series" XAxisLabels="@_labels" Width="100%" Height="300px" Class="mt-2" />
+
+        <MudSimpleTable Dense="true" Class="mt-4">
+            <thead>
+                <tr><th>เดือน</th><th>Headcount เฉลี่ย</th><th>จำนวนลาออก</th><th>อัตราลาออก (%)</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _trend)
+                {
+                    <tr>
+                        <td>@row.Period</td>
+                        <td>@row.AvgHeadcount.ToString("N0")</td>
+                        <td>@row.Resignations</td>
+                        <td>@row.RatePercent.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+
+        <MudGrid Class="mt-6">
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">แยกตามเหตุผลลาออก</MudText>
+                @if (_byReason.Count > 0)
+                {
+                    <MudChart ChartType="ChartType.Donut" InputData="@_reasonData" InputLabels="@_reasonLabels" Width="100%" Height="280px" Class="mt-2" />
+                    <MudSimpleTable Dense="true" Class="mt-2">
+                        <thead><tr><th>เหตุผล</th><th>จำนวน</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _byReason)
+                            {
+                                <tr><td>@r.Label</td><td>@r.Count</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ไม่มีข้อมูลลาออกในช่วงที่เลือก</MudText>
+                }
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">แยกตามหน่วยงาน</MudText>
+                @if (_byDepartment.Count > 0)
+                {
+                    <MudChart ChartType="ChartType.Donut" InputData="@_deptData" InputLabels="@_deptLabels" Width="100%" Height="280px" Class="mt-2" />
+                    <MudSimpleTable Dense="true" Class="mt-2">
+                        <thead><tr><th>หน่วยงาน</th><th>จำนวน</th></tr></thead>
+                        <tbody>
+                            @foreach (var d in _byDepartment)
+                            {
+                                <tr><td>@d.Label</td><td>@d.Count</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ไม่มีข้อมูลลาออกในช่วงที่เลือก</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+    else if (_loaded)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีข้อมูลพนักงานสำหรับบริษัทนี้</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private record TrendRow(string Period, double AvgHeadcount, int Resignations, double RatePercent);
+    private record LabelCount(string Label, int Count);
+
+    private string? _companyId;
+    private int _periodMonths = 12;
+    private bool _loaded;
+
+    private List<TrendRow> _trend = new();
+    private List<ChartSeries> _series = new();
+    private string[] _labels = Array.Empty<string>();
+
+    private List<LabelCount> _byReason = new();
+    private double[] _reasonData = Array.Empty<double>();
+    private string[] _reasonLabels = Array.Empty<string>();
+
+    private List<LabelCount> _byDepartment = new();
+    private double[] _deptData = Array.Empty<double>();
+    private string[] _deptLabels = Array.Empty<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var employees = await context.Hremployee
+            .Where(e => e.companyid == _companyId)
+            .Select(e => new { e.id, e.WorkDate, e.ResignDate, e.OrganizationId })
+            .ToListAsync();
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var rangeStart = new DateOnly(today.Year, today.Month, 1).AddMonths(-(_periodMonths - 1));
+
+        int HeadcountAt(DateOnly asOf)
+        {
+            var cutoff = asOf.ToDateTime(TimeOnly.MaxValue);
+            return employees.Count(e => e.WorkDate.HasValue && e.WorkDate.Value <= cutoff
+                && (!e.ResignDate.HasValue || e.ResignDate.Value > cutoff));
+        }
+
+        var trend = new List<TrendRow>();
+        for (var i = 0; i < _periodMonths; i++)
+        {
+            var monthStart = rangeStart.AddMonths(i);
+            var monthEndCandidate = monthStart.AddMonths(1).AddDays(-1);
+            var monthEnd = monthEndCandidate < today ? monthEndCandidate : today;
+            if (monthStart > today) break;
+
+            var headStart = HeadcountAt(monthStart.AddDays(-1));
+            var headEnd = HeadcountAt(monthEnd);
+            var avgHeadcount = (headStart + headEnd) / 2.0;
+
+            var resigned = employees.Count(e => e.ResignDate.HasValue
+                && DateOnly.FromDateTime(e.ResignDate.Value) >= monthStart
+                && DateOnly.FromDateTime(e.ResignDate.Value) <= monthEnd);
+
+            var rate = avgHeadcount > 0 ? Math.Round(resigned / avgHeadcount * 100, 2) : 0;
+
+            trend.Add(new TrendRow($"{monthStart.Year:D4}-{monthStart.Month:D2}", avgHeadcount, resigned, rate));
+        }
+        _trend = trend;
+        _labels = _trend.Select(r => r.Period).ToArray();
+        _series = new List<ChartSeries>
+        {
+            new ChartSeries { Name = "อัตราลาออก (%)", Data = _trend.Select(r => r.RatePercent).ToArray() },
+        };
+
+        // Resigned employees within the selected range, for the two breakdowns.
+        var resignedEmployees = employees
+            .Where(e => e.ResignDate.HasValue && DateOnly.FromDateTime(e.ResignDate.Value) >= rangeStart && DateOnly.FromDateTime(e.ResignDate.Value) <= today)
+            .ToList();
+        var resignedIds = resignedEmployees.Select(e => e.id).ToList();
+
+        // Latest exit interview per employee (an employee could be rehired
+        // and resign again — order by CreatedDate desc, take first).
+        var exitInterviews = resignedIds.Count == 0
+            ? new List<Hrd_ExitInterview>()
+            : await context.Hrd_ExitInterviews
+                .Where(x => resignedIds.Contains(x.HremployeeId))
+                .OrderByDescending(x => x.CreatedDate)
+                .ToListAsync();
+        var latestReasonByEmployee = exitInterviews
+            .GroupBy(x => x.HremployeeId)
+            .ToDictionary(g => g.Key, g => g.First().ReasonCode);
+
+        _byReason = resignedEmployees
+            .GroupBy(e => latestReasonByEmployee.TryGetValue(e.id, out var reason) ? ReasonLabel(reason) : "ไม่ระบุ (ไม่มีข้อมูลสัมภาษณ์ลาออก)")
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+        _reasonData = _byReason.Select(r => (double)r.Count).ToArray();
+        _reasonLabels = _byReason.Select(r => r.Label).ToArray();
+
+        var orgIds = resignedEmployees.Where(e => e.OrganizationId.HasValue).Select(e => e.OrganizationId!.Value).Distinct().ToList();
+        var orgNames = orgIds.Count == 0
+            ? new Dictionary<long, string>()
+            : await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToDictionaryAsync(o => o.id, o => o.name ?? $"#{o.id}");
+
+        _byDepartment = resignedEmployees
+            .GroupBy(e => e.OrganizationId.HasValue && orgNames.TryGetValue(e.OrganizationId.Value, out var n) ? n : "ไม่ระบุหน่วยงาน")
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+        _deptData = _byDepartment.Select(d => (double)d.Count).ToArray();
+        _deptLabels = _byDepartment.Select(d => d.Label).ToArray();
+
+        _loaded = true;
+    }
+
+    private static string ReasonLabel(ExitReasonCode reason) => reason switch
+    {
+        ExitReasonCode.BetterOpportunity => "โอกาสงานที่ดีกว่า",
+        ExitReasonCode.Compensation => "ค่าตอบแทน",
+        ExitReasonCode.Relocation => "ย้ายที่อยู่",
+        ExitReasonCode.PersonalHealth => "สุขภาพส่วนตัว",
+        ExitReasonCode.FamilyReason => "เหตุผลครอบครัว",
+        ExitReasonCode.Retirement => "เกษียณอายุ",
+        ExitReasonCode.Termination => "ถูกเลิกจ้าง",
+        ExitReasonCode.Other => "อื่นๆ",
+        _ => "ไม่ระบุ",
+    };
+}
