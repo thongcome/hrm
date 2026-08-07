@@ -1,0 +1,350 @@
+@page "/eng/campaigns/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Engagement
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject SurveyService SurveyService
+@inject QuestionTemplateService QuestionService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>จัดการแคมเปญ</PageTitle>
+
+@if (_campaign is null)
+{
+    <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h5">@_campaign.Title</MudText>
+            <MudText Typo="Typo.body2" Style="opacity:.7;">@CampaignTypeLabel(_campaign.CampaignType) — @StatusLabel(_campaign.Status)</MudText>
+        </div>
+        <MudStack Row="true" Spacing="2">
+            @if (_campaign.Status == Eng_CampaignStatus.Draft)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenCampaignAsync">เปิดรับคำตอบ</MudButton>
+            }
+            @if (_campaign.Status == Eng_CampaignStatus.Open)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="CloseCampaignAsync">ปิดรับคำตอบ</MudButton>
+            }
+            @if (_campaign.CampaignType == Eng_CampaignType.Pulse && _campaign.Status != Eng_CampaignStatus.Draft)
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="RelaunchAsync">เปิดรอบใหม่จากแบบนี้</MudButton>
+            }
+            @if (_campaign.Status != Eng_CampaignStatus.Draft)
+            {
+                <MudButton Variant="Variant.Text" Href="@($"/eng/campaigns/{Id}/results")">ดูผลลัพธ์</MudButton>
+            }
+        </MudStack>
+    </MudStack>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_info))
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">@_info</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6">คำถามในแคมเปญ (@_questions.Count)</MudText>
+    <MudTable Items="_questions" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>ข้อความคำถาม</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Text</MudTd>
+            <MudTd>@QuestionTypeLabel(context.QuestionType)</MudTd>
+            <MudTd>
+                @if (_campaign.Status == Eng_CampaignStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveQuestionAsync(context.Id))" />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีคำถาม</MudText></NoRecordsContent>
+    </MudTable>
+
+    @if (_campaign.Status == Eng_CampaignStatus.Draft)
+    {
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-3">
+            <MudAutocomplete T="Eng_QuestionTemplate" Label="เพิ่มจากคลังคำถาม" Value="_selectedTemplate" ValueChanged="v => _selectedTemplate = v"
+                SearchFunc="SearchTemplatesAsync" ToStringFunc="@(t => t == null ? null : t.Text)"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Style="min-width:320px;" />
+            <MudButton Variant="Variant.Outlined" OnClick="AddFromTemplateAsync">เพิ่ม</MudButton>
+        </MudStack>
+
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-3">
+            <MudTextField @bind-Value="_adHocText" Label="หรือพิมพ์คำถามใหม่เอง" Style="min-width:320px;" />
+            <MudSelect T="Eng_QuestionType" @bind-Value="_adHocType" Label="ประเภท" Style="min-width:180px;">
+                <MudSelectItem Value="Eng_QuestionType.Rating">ให้คะแนน (1-5)</MudSelectItem>
+                <MudSelectItem Value="Eng_QuestionType.YesNo">ใช่/ไม่ใช่</MudSelectItem>
+                <MudSelectItem Value="Eng_QuestionType.Text">ข้อความอิสระ</MudSelectItem>
+                <MudSelectItem Value="Eng_QuestionType.MultipleChoice">ตัวเลือกหลายข้อ</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" OnClick="AddAdHocAsync">เพิ่ม</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6">ผู้รับเชิญ</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2" Style="opacity:.7;">ไม่เลือกอะไรเลย = เชิญทุกคนในบริษัทโดยอัตโนมัติ หรือจะเลือก "ทั้งหมด" / หน่วยงาน (รวมหน่วยงานย่อย) / รายบุคคล ผสมกันได้หลายรายการ</MudText>
+
+    @if (_campaign.Status == Eng_CampaignStatus.Draft)
+    {
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudSelect T="Eng_TargetType" @bind-Value="_newTargetType" Label="เพิ่มผู้รับ" Style="min-width:180px;">
+                <MudSelectItem Value="Eng_TargetType.All">ทั้งหมด</MudSelectItem>
+                <MudSelectItem Value="Eng_TargetType.Organization">หน่วยงาน</MudSelectItem>
+                <MudSelectItem Value="Eng_TargetType.Employee">รายบุคคล</MudSelectItem>
+            </MudSelect>
+
+            @if (_newTargetType == Eng_TargetType.Organization)
+            {
+                <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_newTargetOrg" ValueChanged="v => _newTargetOrg = v"
+                    SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Style="min-width:260px;" />
+            }
+            else if (_newTargetType == Eng_TargetType.Employee)
+            {
+                <MudAutocomplete T="Hremployee" Label="พนักงาน (รหัสหรือชื่อ)" Value="_newTargetEmployee" ValueChanged="v => _newTargetEmployee = v"
+                    SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Style="min-width:260px;" />
+            }
+
+            <MudButton Variant="Variant.Outlined" OnClick="AddTarget">เพิ่ม</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveTargetsAsync">บันทึกผู้รับ</MudButton>
+        </MudStack>
+    }
+
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+        @foreach (var t in _targets)
+        {
+            @if (_campaign.Status == Eng_CampaignStatus.Draft)
+            {
+                <MudChip T="string" OnClose="@(() => _targets.Remove(t))">@TargetLabel(t)</MudChip>
+            }
+            else
+            {
+                <MudChip T="string">@TargetLabel(t)</MudChip>
+            }
+        }
+    </MudStack>
+
+    <MudStack Row="true" Class="mt-4">
+        <MudButton Variant="Variant.Text" Href="/eng/campaigns">กลับไปรายการแคมเปญ</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Eng_SurveyCampaign? _campaign;
+    private List<Eng_CampaignQuestion> _questions = new();
+    private List<Eng_CampaignTarget> _targets = new();
+    private string? _error;
+    private string? _info;
+    private string? _companyId;
+
+    private Eng_QuestionTemplate? _selectedTemplate;
+    private string _adHocText = "";
+    private Eng_QuestionType _adHocType = Eng_QuestionType.Rating;
+
+    private Eng_TargetType _newTargetType = Eng_TargetType.All;
+    private com_organization? _newTargetOrg;
+    private Hremployee? _newTargetEmployee;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _campaign = await SurveyService.GetCampaignAsync(Id);
+        if (_campaign is null) { _error = "ไม่พบแคมเปญนี้แล้ว"; return; }
+        _questions = await SurveyService.GetQuestionsAsync(Id);
+        _targets = await SurveyService.GetTargetsAsync(Id);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        await EnrichTargetLabelsAsync(context, _targets);
+    }
+
+    private static async Task EnrichTargetLabelsAsync(HRMContext context, List<Eng_CampaignTarget> targets)
+    {
+        var orgIds = targets.Where(t => t.TargetOrganizationId != null).Select(t => t.TargetOrganizationId!.Value).Distinct().ToList();
+        var empIds = targets.Where(t => t.TargetHremployeeId != null).Select(t => t.TargetHremployeeId!.Value).Distinct().ToList();
+
+        var orgsById = orgIds.Count == 0 ? new() : (await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToListAsync()).ToDictionary(o => o.id);
+        var empsById = empIds.Count == 0 ? new() : (await context.Hremployee.Where(e => empIds.Contains(e.id)).ToListAsync()).ToDictionary(e => e.id);
+
+        foreach (var t in targets)
+        {
+            if (t.TargetOrganizationId is long orgId && orgsById.TryGetValue(orgId, out var org))
+                t.TargetOrgCache = $"{org.code} — {org.name}";
+            else if (t.TargetHremployeeId is long empId && empsById.TryGetValue(empId, out var emp))
+                t.TargetEmpCache = $"{emp.EmpNo} — {emp.EmpName} {emp.EmpSurname}";
+        }
+    }
+
+    private async Task<IEnumerable<Eng_QuestionTemplate>> SearchTemplatesAsync(string search, CancellationToken ct)
+    {
+        var list = await QuestionService.GetAllAsync(_companyId!, search, ct);
+        return list.Where(t => t.IsActive).Take(20);
+    }
+
+    private async Task AddFromTemplateAsync()
+    {
+        if (_selectedTemplate is null) { _error = "กรุณาเลือกคำถามจากคลัง"; return; }
+        _error = null;
+        await SurveyService.AddQuestionFromTemplateAsync(Id, _selectedTemplate.Id);
+        _selectedTemplate = null;
+        await LoadAsync();
+    }
+
+    private async Task AddAdHocAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_adHocText)) { _error = "กรุณากรอกข้อความคำถาม"; return; }
+        _error = null;
+        await SurveyService.AddAdHocQuestionAsync(Id, _adHocText, _adHocType, null);
+        _adHocText = "";
+        await LoadAsync();
+    }
+
+    private async Task RemoveQuestionAsync(long questionId)
+    {
+        await SurveyService.RemoveQuestionAsync(questionId);
+        await LoadAsync();
+    }
+
+    private void AddTarget()
+    {
+        switch (_newTargetType)
+        {
+            case Eng_TargetType.All:
+                if (_targets.Any(t => t.TargetType == Eng_TargetType.All)) return;
+                _targets.Add(new Eng_CampaignTarget { TargetType = Eng_TargetType.All });
+                break;
+            case Eng_TargetType.Organization:
+                if (_newTargetOrg is null) { _error = "กรุณาเลือกหน่วยงาน"; return; }
+                if (_targets.Any(t => t.TargetType == Eng_TargetType.Organization && t.TargetOrganizationId == _newTargetOrg.id)) return;
+                _targets.Add(new Eng_CampaignTarget { TargetType = Eng_TargetType.Organization, TargetOrganizationId = _newTargetOrg.id, TargetOrgCache = $"{_newTargetOrg.code} — {_newTargetOrg.name}" });
+                _newTargetOrg = null;
+                break;
+            case Eng_TargetType.Employee:
+                if (_newTargetEmployee is null) { _error = "กรุณาเลือกพนักงาน"; return; }
+                if (_targets.Any(t => t.TargetType == Eng_TargetType.Employee && t.TargetHremployeeId == _newTargetEmployee.id)) return;
+                _targets.Add(new Eng_CampaignTarget { TargetType = Eng_TargetType.Employee, TargetHremployeeId = _newTargetEmployee.id, TargetEmpCache = $"{_newTargetEmployee.EmpNo} — {_newTargetEmployee.EmpName} {_newTargetEmployee.EmpSurname}" });
+                _newTargetEmployee = null;
+                break;
+        }
+        _error = null;
+    }
+
+    private static string TargetLabel(Eng_CampaignTarget t) => t.TargetType switch
+    {
+        Eng_TargetType.All => "ทั้งหมด",
+        Eng_TargetType.Organization => t.TargetOrgCache ?? $"หน่วยงาน #{t.TargetOrganizationId}",
+        Eng_TargetType.Employee => t.TargetEmpCache ?? $"พนักงาน #{t.TargetHremployeeId}",
+        _ => "-",
+    };
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task SaveTargetsAsync()
+    {
+        await SurveyService.SaveTargetsAsync(Id, _targets);
+        Snackbar.Add("บันทึกผู้รับแล้ว", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task OpenCampaignAsync()
+    {
+        _error = null;
+        try
+        {
+            await SurveyService.OpenCampaignAsync(Id);
+            Snackbar.Add("เปิดรับคำตอบแล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task CloseCampaignAsync()
+    {
+        await SurveyService.CloseCampaignAsync(Id);
+        Snackbar.Add("ปิดรับคำตอบแล้ว", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task RelaunchAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var newCampaign = await SurveyService.RelaunchFromTemplateAsync(Id, actorUserId);
+        Nav.NavigateTo($"/eng/campaigns/{newCampaign.Id}");
+    }
+
+    private static string CampaignTypeLabel(Eng_CampaignType t) => t switch
+    {
+        Eng_CampaignType.Survey => "Survey",
+        Eng_CampaignType.Pulse => "Pulse",
+        Eng_CampaignType.ENPS => "eNPS",
+        _ => "-",
+    };
+
+    private static string StatusLabel(Eng_CampaignStatus s) => s switch
+    {
+        Eng_CampaignStatus.Draft => "ฉบับร่าง",
+        Eng_CampaignStatus.Open => "เปิดรับคำตอบ",
+        Eng_CampaignStatus.Closed => "ปิดแล้ว",
+        _ => "-",
+    };
+
+    private static string QuestionTypeLabel(Eng_QuestionType t) => t switch
+    {
+        Eng_QuestionType.Rating => "ให้คะแนน (1-5)",
+        Eng_QuestionType.YesNo => "ใช่/ไม่ใช่",
+        Eng_QuestionType.Text => "ข้อความอิสระ",
+        Eng_QuestionType.MultipleChoice => "ตัวเลือกหลายข้อ",
+        _ => "-",
+    };
+}

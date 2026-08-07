@@ -1,0 +1,75 @@
+@page "/ess/surveys"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject SurveyService SurveyService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>แบบสำรวจของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แบบสำรวจที่รอคำตอบ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">คำตอบของคุณไม่ระบุตัวตน บริษัทจะเห็นเฉพาะภาพรวม ไม่สามารถทราบได้ว่าใครตอบว่าอะไร</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    }
+    else if (_campaigns.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-4" Style="opacity:.7;">ไม่มีแบบสำรวจที่รอคำตอบในขณะนี้</MudText>
+    }
+    else
+    {
+        <MudStack Spacing="2" Class="mt-4">
+            @foreach (var c in _campaigns)
+            {
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <div>
+                            <MudText Typo="Typo.subtitle1">@c.Title</MudText>
+                            <MudText Typo="Typo.body2" Style="opacity:.7;">@CampaignTypeLabel(c.CampaignType)</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/ess/surveys/{c.Id}")">ตอบแบบสำรวจ</MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<Eng_SurveyCampaign> _campaigns = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            _campaigns = await SurveyService.GetVisibleOpenCampaignsAsync(_employee);
+        }
+        _loaded = true;
+    }
+
+    private static string CampaignTypeLabel(Eng_CampaignType t) => t switch
+    {
+        Eng_CampaignType.Survey => "Survey (แบบสำรวจ)",
+        Eng_CampaignType.Pulse => "Pulse (สำรวจสั้น)",
+        Eng_CampaignType.ENPS => "eNPS (คะแนนแนะนำองค์กร)",
+        _ => "-",
+    };
+}

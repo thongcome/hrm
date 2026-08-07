@@ -1,0 +1,151 @@
+@page "/eng/campaigns"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject SurveyService SurveyService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>แคมเปญ Survey / Pulse / eNPS</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">แคมเปญ Survey / Pulse / eNPS</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreateDialog">สร้างแคมเปญใหม่</MudButton>
+    </MudStack>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_showCreateForm)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudText Typo="Typo.h6">สร้างแคมเปญใหม่</MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="8"><MudTextField @bind-Value="_newTitle" Label="ชื่อแคมเปญ" /></MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="Eng_CampaignType" @bind-Value="_newType" Label="ประเภท">
+                        <MudSelectItem Value="Eng_CampaignType.Survey">Survey (แบบสำรวจ)</MudSelectItem>
+                        <MudSelectItem Value="Eng_CampaignType.Pulse">Pulse (สำรวจสั้นรายรอบ)</MudSelectItem>
+                        <MudSelectItem Value="Eng_CampaignType.ENPS">eNPS (คะแนนแนะนำองค์กร)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_newDescription" Label="รายละเอียด (ไม่บังคับ)" Lines="2" /></MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAsync">สร้าง</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showCreateForm = false)">ยกเลิก</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    <MudTable Items="_campaigns" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>ชื่อแคมเปญ</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>ช่วงเปิดรับ</MudTh>
+            <MudTh>คำตอบ / เชิญ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title</MudTd>
+            <MudTd>@CampaignTypeLabel(context.CampaignType)</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            <MudTd>@(context.OpenDate?.ToString("dd/MM/yyyy") ?? "-") — @(context.CloseDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+            <MudTd>@context.ResponseCount / @context.InvitedCount</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/eng/campaigns/{context.Id}")">จัดการ</MudButton>
+                @if (context.Status != Eng_CampaignStatus.Draft)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/eng/campaigns/{context.Id}/results")">ผลลัพธ์</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแคมเปญ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Eng_SurveyCampaign> _campaigns = new();
+    private bool _showCreateForm;
+    private string _newTitle = "";
+    private string? _newDescription;
+    private Eng_CampaignType _newType = Eng_CampaignType.Survey;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _campaigns = await SurveyService.GetCampaignsForAdminAsync(_companyId!);
+    }
+
+    private void OpenCreateDialog()
+    {
+        _showCreateForm = true;
+        _newTitle = "";
+        _newDescription = null;
+        _newType = Eng_CampaignType.Survey;
+        _error = null;
+    }
+
+    private async Task CreateAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newTitle))
+        {
+            _error = "กรุณากรอกชื่อแคมเปญ";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        var campaign = await SurveyService.CreateDraftAsync(_companyId!, _newTitle, _newDescription, _newType, actorUserId);
+        Nav.NavigateTo($"/eng/campaigns/{campaign.Id}");
+    }
+
+    private static string CampaignTypeLabel(Eng_CampaignType t) => t switch
+    {
+        Eng_CampaignType.Survey => "Survey",
+        Eng_CampaignType.Pulse => "Pulse",
+        Eng_CampaignType.ENPS => "eNPS",
+        _ => "-",
+    };
+
+    private static string StatusLabel(Eng_CampaignStatus s) => s switch
+    {
+        Eng_CampaignStatus.Draft => "ฉบับร่าง",
+        Eng_CampaignStatus.Open => "เปิดรับคำตอบ",
+        Eng_CampaignStatus.Closed => "ปิดแล้ว",
+        _ => "-",
+    };
+
+    private static Color StatusColor(Eng_CampaignStatus s) => s switch
+    {
+        Eng_CampaignStatus.Draft => Color.Default,
+        Eng_CampaignStatus.Open => Color.Success,
+        Eng_CampaignStatus.Closed => Color.Info,
+        _ => Color.Default,
+    };
+}

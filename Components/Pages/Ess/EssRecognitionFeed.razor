@@ -1,0 +1,136 @@
+@page "/ess/recognition"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject RecognitionService RecognitionService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>Kudos / คำชื่นชม</PageTitle>
+
+@if (!_loaded)
+{
+    <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    return;
+}
+
+@if (_employee is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ให้ Kudos เพื่อนร่วมงาน</MudText>
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="5">
+            <MudAutocomplete T="Hremployee" Label="เพื่อนร่วมงานที่ต้องการชื่นชม" Value="_toEmployee" ValueChanged="v => _toEmployee = v"
+                SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_coreValueTag" Label="แท็ก (ไม่บังคับ)" Placeholder="เช่น Teamwork, Innovation" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_message" Label="ข้อความชื่นชม" Lines="3" />
+        </MudItem>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudItem xs="12"><MudAlert Severity="Severity.Error">@_error</MudAlert></MudItem>
+        }
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GiveAsync">ส่ง Kudos</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ฟีด Kudos ของบริษัท</MudText>
+    <MudStack Spacing="2" Class="mt-3">
+        @foreach (var r in _feed)
+        {
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                    <div>
+                        <MudText Typo="Typo.body1"><b>@r.FromName</b> → <b>@r.ToName</b></MudText>
+                        <MudText Typo="Typo.body2" Class="mt-1">@r.Message</MudText>
+                        @if (!string.IsNullOrWhiteSpace(r.CoreValueTag))
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="mt-1">@r.CoreValueTag</MudChip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Style="opacity:.6;white-space:nowrap;">@r.CreatedDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        @if (_feed.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มี kudos ในบริษัทนี้</MudText>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<RecognitionService.RecognitionRow> _feed = new();
+
+    private Hremployee? _toEmployee;
+    private string? _coreValueTag;
+    private string _message = "";
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            _feed = await RecognitionService.GetFeedAsync(_employee.companyid);
+        }
+        _loaded = true;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _employee!.companyid && e.ResignDate == null && e.id != _employee.id);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task GiveAsync()
+    {
+        _error = null;
+        if (_toEmployee is null) { _error = "กรุณาเลือกเพื่อนร่วมงาน"; return; }
+        if (string.IsNullOrWhiteSpace(_message)) { _error = "กรุณากรอกข้อความชื่นชม"; return; }
+
+        try
+        {
+            await RecognitionService.GiveAsync(_employee!.companyid, _employee.id, _toEmployee.id, _message, _coreValueTag);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        Snackbar.Add("ส่ง Kudos แล้ว", Severity.Success);
+        _toEmployee = null;
+        _coreValueTag = null;
+        _message = "";
+        _feed = await RecognitionService.GetFeedAsync(_employee.companyid);
+    }
+}

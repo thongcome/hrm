@@ -1,0 +1,185 @@
+@page "/ess/surveys/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject SurveyService SurveyService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>ตอบแบบสำรวจ</PageTitle>
+
+@if (!_loaded)
+{
+    <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    return;
+}
+
+@if (_campaign is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบแบบสำรวจนี้ หรือปิดรับคำตอบแล้ว</MudAlert>
+    return;
+}
+
+@if (_submitted)
+{
+    <MudPaper Class="pa-4 ma-4">
+        <MudAlert Severity="Severity.Success">ขอบคุณสำหรับคำตอบของคุณ — คำตอบถูกบันทึกแบบไม่ระบุตัวตน</MudAlert>
+        <MudButton Href="/ess/surveys" Variant="Variant.Text" Class="mt-2">กลับไปรายการแบบสำรวจ</MudButton>
+    </MudPaper>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">@_campaign.Title</MudText>
+    @if (!string.IsNullOrWhiteSpace(_campaign.Description))
+    {
+        <MudText Typo="Typo.body2" Class="mt-1">@_campaign.Description</MudText>
+    }
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">คำตอบของคุณไม่ระบุตัวตน — ไม่มีการบันทึกว่าคำตอบนี้เป็นของใคร</MudText>
+
+    @if (_campaign.CampaignType == Eng_CampaignType.ENPS)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1">คุณจะแนะนำให้เพื่อนหรือคนรู้จักมาทำงานที่นี่มากน้อยเพียงใด? (0 = ไม่แนะนำเลย, 10 = แนะนำอย่างยิ่ง)</MudText>
+        <MudSlider T="int" @bind-Value="_npsScore" Min="0" Max="10" Step="1" ValueLabel="true" Class="mt-4" />
+        <MudText Typo="Typo.body2">คะแนนที่เลือก: @_npsScore</MudText>
+    }
+
+    <MudDivider Class="my-4" />
+
+    @foreach (var q in _questions)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">@q.Text</MudText>
+
+            @if (q.QuestionType == Eng_QuestionType.Rating)
+            {
+                <MudRating SelectedValue="@GetRating(q.Id)" SelectedValueChanged="@(v => SetRating(q.Id, v))" MaxValue="5" />
+            }
+            else if (q.QuestionType == Eng_QuestionType.YesNo)
+            {
+                <MudRadioGroup T="bool?" Value="@GetYesNo(q.Id)" ValueChanged="@(v => SetYesNo(q.Id, v))">
+                    <MudRadio T="bool?" Value="true">ใช่</MudRadio>
+                    <MudRadio T="bool?" Value="false">ไม่ใช่</MudRadio>
+                </MudRadioGroup>
+            }
+            else if (q.QuestionType == Eng_QuestionType.MultipleChoice)
+            {
+                <MudRadioGroup T="string" Value="@GetChoice(q.Id)" ValueChanged="@(v => SetChoice(q.Id, v))">
+                    @foreach (var opt in SplitOptions(q.Options))
+                    {
+                        <MudRadio T="string" Value="@opt">@opt</MudRadio>
+                    }
+                </MudRadioGroup>
+            }
+            else if (q.QuestionType == Eng_QuestionType.Text)
+            {
+                <MudTextField T="string" Value="@GetText(q.Id)" ValueChanged="@(v => SetText(q.Id, v))" Lines="3" Placeholder="พิมพ์คำตอบของคุณ..." />
+            }
+        </MudPaper>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Class="mt-3">ส่งคำตอบ</MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _loaded;
+    private bool _submitted;
+    private string? _error;
+    private Eng_SurveyCampaign? _campaign;
+    private List<Eng_CampaignQuestion> _questions = new();
+    private int _npsScore = 5;
+
+    private record AnswerState
+    {
+        public int? Rating;
+        public bool? YesNo;
+        public string? Choice;
+        public string? Text;
+    }
+
+    private readonly Dictionary<long, AnswerState> _answers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        _campaign = await SurveyService.GetCampaignAsync(Id);
+        if (_campaign is not null && _campaign.Status != Eng_CampaignStatus.Open)
+            _campaign = null;
+
+        if (_campaign is not null && employee is not null)
+        {
+            var visible = await SurveyService.GetVisibleOpenCampaignsAsync(employee);
+            if (!visible.Any(c => c.Id == Id)) _campaign = null;
+        }
+
+        if (_campaign is not null)
+            _questions = await SurveyService.GetQuestionsAsync(Id);
+
+        _loaded = true;
+    }
+
+    private static List<string> SplitOptions(string? options) =>
+        (options ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private AnswerState GetOrCreate(long questionId)
+    {
+        if (!_answers.TryGetValue(questionId, out var state))
+        {
+            state = new AnswerState();
+            _answers[questionId] = state;
+        }
+        return state;
+    }
+
+    private int GetRating(long questionId) => _answers.TryGetValue(questionId, out var s) ? s.Rating ?? 0 : 0;
+    private void SetRating(long questionId, int value) => GetOrCreate(questionId).Rating = value;
+
+    private bool? GetYesNo(long questionId) => _answers.TryGetValue(questionId, out var s) ? s.YesNo : null;
+    private void SetYesNo(long questionId, bool? value) => GetOrCreate(questionId).YesNo = value;
+
+    private string? GetChoice(long questionId) => _answers.TryGetValue(questionId, out var s) ? s.Choice : null;
+    private void SetChoice(long questionId, string value) => GetOrCreate(questionId).Choice = value;
+
+    private string? GetText(long questionId) => _answers.TryGetValue(questionId, out var s) ? s.Text : null;
+    private void SetText(long questionId, string value) => GetOrCreate(questionId).Text = value;
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+
+        var hasAnyAnswer = _answers.Values.Any(a => a.Rating is not null || a.YesNo is not null
+            || !string.IsNullOrWhiteSpace(a.Choice) || !string.IsNullOrWhiteSpace(a.Text));
+        if (!hasAnyAnswer && _campaign!.CampaignType != Eng_CampaignType.ENPS)
+        {
+            _error = "กรุณาตอบอย่างน้อย 1 คำถามก่อนส่ง";
+            return;
+        }
+
+        var inputs = _questions.Select(q =>
+        {
+            var a = _answers.TryGetValue(q.Id, out var s) ? s : new AnswerState();
+            return new SurveyService.AnswerInput(q.Id, a.Rating, a.Text, a.Choice, a.YesNo);
+        }).ToList();
+
+        await SurveyService.SubmitResponseAsync(Id, inputs, _campaign!.CampaignType == Eng_CampaignType.ENPS ? _npsScore : null);
+        _submitted = true;
+    }
+}

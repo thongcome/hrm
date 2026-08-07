@@ -244,6 +244,13 @@ builder.Services.AddScoped<HRM.Services.Rec.RecInterviewService>();
 builder.Services.AddScoped<HRM.Services.Rec.RecOfferService>();
 // ----- end Rec_* module -----
 
+// ----- Eng_* module (Employee Engagement) -----
+builder.Services.AddScoped<HRM.Services.Engagement.QuestionTemplateService>();
+builder.Services.AddScoped<HRM.Services.Engagement.SurveyService>();
+builder.Services.AddScoped<HRM.Services.Engagement.ActionPlanService>();
+builder.Services.AddScoped<HRM.Services.Engagement.RecognitionService>();
+// ----- end Eng_* module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 

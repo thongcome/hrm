@@ -1,0 +1,122 @@
+@page "/eng/campaigns/{Id:long}/results"
+@using HRM.Models
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject SurveyService SurveyService
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>ผลลัพธ์แคมเปญ</PageTitle>
+
+@if (_campaign is null || _results is null)
+{
+    <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ผลลัพธ์: @_campaign.Title</MudText>
+    <MudText Typo="Typo.body2" Style="opacity:.7;">คำตอบไม่ระบุตัวตน — แสดงได้เฉพาะภาพรวม ไม่สามารถดูได้ว่าใครตอบหรือยังไม่ตอบเป็นรายบุคคล</MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudText Typo="Typo.caption">จำนวนคำตอบ</MudText>
+                <MudText Typo="Typo.h5">@_results.ResponseCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudText Typo="Typo.caption">จำนวนที่เชิญ</MudText>
+                <MudText Typo="Typo.h5">@_results.InvitedCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudText Typo="Typo.caption">อัตราตอบกลับ</MudText>
+                <MudText Typo="Typo.h5">@ResponseRateLabel()</MudText>
+            </MudPaper>
+        </MudItem>
+        @if (_campaign.CampaignType == Eng_CampaignType.ENPS && _results.NpsScore is not null)
+        {
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudText Typo="Typo.caption">คะแนน eNPS</MudText>
+                    <MudText Typo="Typo.h5">@_results.NpsScore</MudText>
+                    <MudText Typo="Typo.caption" Style="opacity:.7;">Promoter @_results.PromoterCount / Passive @_results.PassiveCount / Detractor @_results.DetractorCount</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+
+    @foreach (var q in _results.Questions)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true">
+            <MudText Typo="Typo.subtitle1">@q.Text</MudText>
+
+            @if (q.QuestionType == Eng_QuestionType.Rating)
+            {
+                <MudText Typo="Typo.body2">คะแนนเฉลี่ย: @(q.AverageRating?.ToString("0.00") ?? "ยังไม่มีคำตอบ") / 5</MudText>
+            }
+            else if (q.QuestionType == Eng_QuestionType.YesNo)
+            {
+                <MudText Typo="Typo.body2">ใช่: @q.YesCount ครั้ง — ไม่ใช่: @q.NoCount ครั้ง</MudText>
+            }
+            else if (q.QuestionType == Eng_QuestionType.MultipleChoice)
+            {
+                @if (q.ChoiceDistribution.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มีคำตอบ</MudText>
+                }
+                else
+                {
+                    @foreach (var kv in q.ChoiceDistribution.OrderByDescending(kv => kv.Value))
+                    {
+                        <MudText Typo="Typo.body2">@kv.Key: @kv.Value</MudText>
+                    }
+                }
+            }
+            else if (q.QuestionType == Eng_QuestionType.Text)
+            {
+                @if (q.TextAnswers.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มีคำตอบ</MudText>
+                }
+                else
+                {
+                    <MudStack Spacing="1" Class="mt-1">
+                        @foreach (var a in q.TextAnswers)
+                        {
+                            <MudText Typo="Typo.body2">"@a.Text"</MudText>
+                        }
+                    </MudStack>
+                }
+            }
+        </MudPaper>
+    }
+
+    <MudButton Variant="Variant.Text" Href="@($"/eng/campaigns/{Id}")">กลับไปหน้าจัดการแคมเปญ</MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Eng_SurveyCampaign? _campaign;
+    private SurveyService.CampaignResults? _results;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _campaign = await SurveyService.GetCampaignAsync(Id);
+        if (_campaign is null) return;
+        _results = await SurveyService.GetResultsAsync(Id);
+    }
+
+    private string ResponseRateLabel()
+    {
+        if (_results is null || _results.InvitedCount == 0) return "-";
+        var pct = _results.ResponseCount * 100.0 / _results.InvitedCount;
+        return $"{pct:0.0}%";
+    }
+}

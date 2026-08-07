@@ -440,6 +440,18 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Rec_CandidateDataRetentionSettings> Rec_CandidateDataRetentionSettingsList { get; set; }
     // ----- end Rec_* module -----
 
+    // ----- Eng_* module (Employee Engagement) -----
+    public virtual DbSet<Eng_QuestionTemplate> Eng_QuestionTemplates { get; set; }
+    public virtual DbSet<Eng_SurveyCampaign> Eng_SurveyCampaigns { get; set; }
+    public virtual DbSet<Eng_CampaignQuestion> Eng_CampaignQuestions { get; set; }
+    public virtual DbSet<Eng_CampaignTarget> Eng_CampaignTargets { get; set; }
+    public virtual DbSet<Eng_SurveyResponse> Eng_SurveyResponses { get; set; }
+    public virtual DbSet<Eng_SurveyAnswer> Eng_SurveyAnswers { get; set; }
+    public virtual DbSet<Eng_ActionPlan> Eng_ActionPlans { get; set; }
+    public virtual DbSet<Eng_ActionPlanMilestone> Eng_ActionPlanMilestones { get; set; }
+    public virtual DbSet<Eng_Recognition> Eng_Recognitions { get; set; }
+    // ----- end Eng_* module -----
+
     public virtual DbSet<Hrd_Family> Hrd_Families { get; set; }
     public virtual DbSet<Hrd_Marriage> Hrd_Marriages { get; set; }
     public virtual DbSet<Hrd_Education> Hrd_Educations { get; set; }
@@ -1392,6 +1404,18 @@ public partial class HRMContext : DbContext
             entity.HasOne(d => d.Pay_PayItemType)
                 .WithMany(p => p.Pay_PayrollLineItems)
                 .HasForeignKey(d => d.PayItemTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Eng_SurveyAnswer>(entity =>
+        {
+            // Two cascade paths from Eng_SurveyCampaign would collide (via
+            // Eng_CampaignQuestion and via Eng_SurveyResponse) — keep the
+            // response-side cascade (deleting a response deletes its
+            // answers) and restrict the question-side FK instead.
+            entity.HasOne(d => d.CampaignQuestion)
+                .WithMany()
+                .HasForeignKey(d => d.CampaignQuestionId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

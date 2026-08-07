@@ -1,0 +1,119 @@
+@page "/eng/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject SurveyService SurveyService
+@inject ActionPlanService ActionPlanService
+@inject RecognitionService RecognitionService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>ภาพรวม Employee Engagement</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ภาพรวม Employee Engagement</MudText>
+        <MudGrid Class="mt-3">
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_campaigns.Count</MudText><MudText Typo="Typo.caption">แคมเปญทั้งหมด</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CampaignCountByStatus(Eng_CampaignStatus.Open)</MudText><MudText Typo="Typo.caption">กำลังเปิดรับคำตอบ</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CampaignCountByStatus(Eng_CampaignStatus.Closed)</MudText><MudText Typo="Typo.caption">ปิดแล้ว</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_actionPlans.Count</MudText><MudText Typo="Typo.caption">แผนปฏิบัติการ</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_actionPlans.Count(p => p.Status == Eng_ActionPlanStatus.Completed)</MudText><MudText Typo="Typo.caption">แผนที่เสร็จแล้ว</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_recognitionFeed.Count</MudText><MudText Typo="Typo.caption">Kudos ล่าสุด</MudText></MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 mb-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">แคมเปญล่าสุด</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/eng/campaigns">ดูทั้งหมด</MudButton>
+                </MudStack>
+                <MudTable Items="_campaigns.Take(8)" Dense="true" Hover="true" Class="mt-2">
+                    <HeaderContent>
+                        <MudTh>ชื่อ</MudTh>
+                        <MudTh>สถานะ</MudTh>
+                        <MudTh>คำตอบ/เชิญ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><MudLink Href="@($"/eng/campaigns/{context.Id}")">@context.Title</MudLink></MudTd>
+                        <MudTd>@StatusLabel(context.Status)</MudTd>
+                        <MudTd>@context.ResponseCount / @context.InvitedCount</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแคมเปญ</MudText></NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 mb-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Kudos ล่าสุด</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/ess/recognition">ดูทั้งหมด</MudButton>
+                </MudStack>
+                <MudStack Spacing="2" Class="mt-2">
+                    @foreach (var r in _recognitionFeed.Take(8))
+                    {
+                        <MudPaper Class="pa-2" Outlined="true">
+                            <MudText Typo="Typo.body2"><b>@r.FromName</b> → <b>@r.ToName</b></MudText>
+                            <MudText Typo="Typo.body2" Style="opacity:.8;">@r.Message</MudText>
+                        </MudPaper>
+                    }
+                    @if (_recognitionFeed.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มี kudos</MudText>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string? _companyId;
+    private List<Eng_SurveyCampaign> _campaigns = new();
+    private List<ActionPlanService.ActionPlanRow> _actionPlans = new();
+    private List<RecognitionService.RecognitionRow> _recognitionFeed = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _campaigns = await SurveyService.GetCampaignsForAdminAsync(_companyId);
+        _actionPlans = await ActionPlanService.GetActionPlansAsync(_companyId);
+        _recognitionFeed = await RecognitionService.GetFeedAsync(_companyId);
+    }
+
+    private int CampaignCountByStatus(Eng_CampaignStatus status) => _campaigns.Count(c => c.Status == status);
+
+    private static string StatusLabel(Eng_CampaignStatus s) => s switch
+    {
+        Eng_CampaignStatus.Draft => "ฉบับร่าง",
+        Eng_CampaignStatus.Open => "เปิดรับคำตอบ",
+        Eng_CampaignStatus.Closed => "ปิดแล้ว",
+        _ => "-",
+    };
+}
