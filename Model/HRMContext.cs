@@ -468,6 +468,10 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Att_ShiftDefinition> Att_ShiftDefinitions { get; set; }
     public virtual DbSet<Att_ShiftAssignment> Att_ShiftAssignments { get; set; }
     public virtual DbSet<Att_DailyAttendance> Att_DailyAttendances { get; set; }
+    public virtual DbSet<Att_GeofenceLocation> Att_GeofenceLocations { get; set; }
+    public virtual DbSet<Att_Project> Att_Projects { get; set; }
+    public virtual DbSet<Att_TimesheetSubmission> Att_TimesheetSubmissions { get; set; }
+    public virtual DbSet<Att_TimesheetEntry> Att_TimesheetEntries { get; set; }
     public virtual DbSet<Org_OrganizationChangeRequest> Org_OrganizationChangeRequests { get; set; }
     public virtual DbSet<Perf_EvaluationPeriod> Perf_EvaluationPeriods { get; set; }
     public virtual DbSet<Perf_EvaluationType> Perf_EvaluationTypes { get; set; }

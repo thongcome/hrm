@@ -57,6 +57,7 @@
         @if (_settings.TrackingMode != AttTrackingMode.None)
         {
             <MudCheckBox T="bool" @bind-Value="_settings.AllowWfh" Label="อนุญาตให้บันทึก Work From Home (WFH)" Class="mt-3" />
+            <MudCheckBox T="bool" @bind-Value="_settings.AllowGpsCheckin" Label="อนุญาตให้พนักงานเช็คอินด้วย GPS ผ่านมือถือ (ต้องตั้งค่าพื้นที่อนุญาตก่อน)" Class="mt-1" />
         }
 
         @if (!string.IsNullOrEmpty(_error))
@@ -116,6 +117,7 @@
 
         existing.TrackingMode = _settings.TrackingMode;
         existing.AllowWfh = _settings.AllowWfh;
+        existing.AllowGpsCheckin = _settings.AllowGpsCheckin;
         existing.DefaultWorkStart = _settings.TrackingMode == AttTrackingMode.SimpleInOut && _workStart.HasValue
             ? TimeOnly.FromTimeSpan(_workStart.Value) : null;
         existing.DefaultWorkEnd = _settings.TrackingMode == AttTrackingMode.SimpleInOut && _workEnd.HasValue

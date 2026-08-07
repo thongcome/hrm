@@ -20,4 +20,9 @@ public class Att_CompanySetting
     public TimeOnly? DefaultWorkEnd { get; set; }
 
     public bool AllowWfh { get; set; }
+
+    // Gates the ESS GPS self check-in page — separate switch from AllowWfh
+    // because GPS check-in is geofence-enforced (must be physically at a
+    // registered Att_GeofenceLocation), the opposite intent of WFH.
+    public bool AllowGpsCheckin { get; set; }
 }

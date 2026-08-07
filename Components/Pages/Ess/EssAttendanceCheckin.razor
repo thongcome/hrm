@@ -1,0 +1,145 @@
+@page "/ess/attendance-checkin"
+@using HRM.Models
+@using HRM.Services.Att
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject GpsCheckinService CheckinService
+@inject IJSRuntime JsRuntime
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>เช็คอิน/เช็คเอาท์ด้วย GPS</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (!_allowed)
+{
+    <MudAlert Severity="Severity.Info" Class="ma-4">บริษัทของคุณยังไม่เปิดใช้งานการเช็คอินด้วย GPS</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="600px">
+        <MudText Typo="Typo.h5">เช็คอิน/เช็คเอาท์ด้วย GPS</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            ต้องอยู่ในพื้นที่ที่บริษัทกำหนดจึงจะเช็คอินสำเร็จ — ระบบจะขออนุญาตเข้าถึงตำแหน่งของคุณ
+        </MudText>
+
+        <MudDivider Class="my-4" />
+
+        @if (_todaysPunches.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-2">รายการวันนี้</MudText>
+            <MudTable Items="_todaysPunches" Dense="true" Class="mb-4">
+                <HeaderContent>
+                    <MudTh>เวลา</MudTh>
+                    <MudTh>ประเภท</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PunchTime.ToString("HH:mm:ss")</MudTd>
+                    <MudTd>@(context.Direction == AttPunchDirection.In ? "เช็คอิน" : "เช็คเอาท์")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <MudAlert Severity="@_messageSeverity" Class="mb-3">@_message</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large" FullWidth="true"
+            OnClick="CheckinAsync" Disabled="_busy">
+            @if (_busy)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <MudText>กำลังระบุตำแหน่ง...</MudText>
+            }
+            else
+            {
+                <MudText>@_nextActionLabel</MudText>
+            }
+        </MudButton>
+    </MudPaper>
+}
+
+@code {
+    private record GeoResult(bool Success, double Latitude, double Longitude, string? Error);
+
+    private Hremployee? _employee;
+    private bool _notFound;
+    private bool _allowed;
+    private bool _busy;
+    private string? _message;
+    private Severity _messageSeverity = Severity.Info;
+    private List<Att_PunchLog> _todaysPunches = new();
+    private string _nextActionLabel = "เช็คอิน";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) { _notFound = true; return; }
+
+        var settings = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _employee.companyid);
+        _allowed = settings?.AllowGpsCheckin == true;
+        if (!_allowed) return;
+
+        await RefreshTodaysPunchesAsync();
+    }
+
+    private async Task RefreshTodaysPunchesAsync()
+    {
+        _todaysPunches = await CheckinService.GetTodaysPunchesAsync(_employee!.id);
+        _nextActionLabel = _todaysPunches.Count == 0 || _todaysPunches[^1].Direction == AttPunchDirection.Out
+            ? "เช็คอิน"
+            : "เช็คเอาท์";
+    }
+
+    private async Task CheckinAsync()
+    {
+        _busy = true;
+        _message = null;
+        StateHasChanged();
+
+        try
+        {
+            var geo = await JsRuntime.InvokeAsync<GeoJsResult>("humanokAtt.getCurrentPosition");
+            if (!geo.success)
+            {
+                _message = geo.error ?? "ไม่สามารถระบุตำแหน่งได้";
+                _messageSeverity = Severity.Error;
+                return;
+            }
+
+            var result = await CheckinService.CheckinAsync(_employee!.id, _employee.companyid!, (decimal)geo.latitude!.Value, (decimal)geo.longitude!.Value);
+            _message = result.Message;
+            _messageSeverity = result.Success ? Severity.Success : Severity.Error;
+
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await RefreshTodaysPunchesAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private class GeoJsResult
+    {
+        public bool success { get; set; }
+        public double? latitude { get; set; }
+        public double? longitude { get; set; }
+        public double? accuracy { get; set; }
+        public string? error { get; set; }
+    }
+}

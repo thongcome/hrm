@@ -200,6 +200,8 @@ builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
+builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
+builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 
 // ----- Perf_* module (Performance / KPI) -----

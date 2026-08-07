@@ -1,0 +1,105 @@
+@page "/att/timesheet/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Att
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject TimesheetService TimesheetSvc
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>Timesheet — @(_employee?.EmpName) @(_employee?.EmpSurname)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบ timesheet นี้</MudAlert>
+}
+else if (_submission is null)
+{
+    <MudText Class="ma-4">กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Timesheet สัปดาห์ @_submission.WeekStartDate.ToString("dd/MM/yyyy") - @_submission.WeekEndDate.ToString("dd/MM/yyyy") — @_employee?.EmpName @_employee?.EmpSurname</MudText>
+            <MudChip T="string" Size="Size.Small" Color="StatusColor(_submission.Status)">@StatusLabel(_submission.Status)</MudChip>
+        </MudStack>
+
+        @if (_submission.Status == Att_TimesheetStatus.PendingApproval)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                รายการนี้อยู่ระหว่างรออนุมัติ — ไปที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ</MudLink> เพื่อดำเนินการ
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.body2" Class="mt-2">รวม @_submission.TotalHours ชั่วโมง</MudText>
+        <MudText Typo="Typo.body2">ส่งอนุมัติเมื่อ: @(_submission.SubmittedDate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+        @if (_submission.ApprovedDate is not null)
+        {
+            <MudText Typo="Typo.body2">อนุมัติเมื่อ: @_submission.ApprovedDate.Value.ToString("dd/MM/yyyy HH:mm")</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">รายการ</MudText>
+        <MudTable Items="_entries" Dense="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>วันที่</MudTh>
+                <MudTh>โครงการ</MudTh>
+                <MudTh>ชั่วโมง</MudTh>
+                <MudTh>หมายเหตุ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.WorkDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.Project.Code — @context.Project.Name</MudTd>
+                <MudTd>@context.Hours</MudTd>
+                <MudTd>@context.Note</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีรายการ</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Att_TimesheetSubmission? _submission;
+    private Hremployee? _employee;
+    private List<Att_TimesheetEntry> _entries = new();
+    private bool _notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Lazy apply-on-read: syncs Status from the workflow job if it has
+        // closed since the last load — no scheduler exists in this codebase.
+        await TimesheetSvc.SyncStatusFromJobAsync(Id);
+
+        var detail = await TimesheetSvc.GetDetailAsync(Id);
+        if (detail is null) { _notFound = true; return; }
+
+        _submission = detail.Value.Submission;
+        _entries = detail.Value.Entries;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _submission.HremployeeId);
+    }
+
+    private static Color StatusColor(Att_TimesheetStatus status) => status switch
+    {
+        Att_TimesheetStatus.Draft => Color.Default,
+        Att_TimesheetStatus.PendingApproval => Color.Warning,
+        Att_TimesheetStatus.Approved => Color.Success,
+        Att_TimesheetStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(Att_TimesheetStatus status) => status switch
+    {
+        Att_TimesheetStatus.Draft => "ฉบับร่าง",
+        Att_TimesheetStatus.PendingApproval => "รออนุมัติ",
+        Att_TimesheetStatus.Approved => "อนุมัติแล้ว",
+        Att_TimesheetStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+}

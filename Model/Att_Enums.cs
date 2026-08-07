@@ -33,7 +33,8 @@ public enum AttPunchSource
 {
     Device = 0,
     WfhSelfCheckin = 1,
-    ManualEntry = 2
+    ManualEntry = 2,
+    GpsCheckin = 3
 }
 
 public enum AttWorkLocation
@@ -41,4 +42,17 @@ public enum AttWorkLocation
     Office = 0,
     Wfh = 1,
     Mixed = 2
+}
+
+// Weekly project-timesheet submission status. No scheduler exists in this
+// codebase — Status only ever transitions on explicit user action (Draft ->
+// PendingApproval) or via lazy apply-on-read from the Workflow Engine job
+// (PendingApproval -> Approved/Rejected), same pattern as Idp_Plan/
+// Perf_EvaluationInstance.
+public enum Att_TimesheetStatus
+{
+    Draft = 1,
+    PendingApproval = 2,
+    Approved = 3,
+    Rejected = 4
 }

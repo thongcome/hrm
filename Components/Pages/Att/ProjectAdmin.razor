@@ -1,0 +1,187 @@
+@page "/att/projects"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
+
+<PageTitle>โครงการ (Timesheet)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">โครงการสำหรับบันทึกชั่วโมงทำงาน (Timesheet Projects)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการนี้ใช้เป็นตัวเลือกในหน้า "Timesheet ของฉัน" ของพนักงาน — ไม่ผูกกับผังบัญชี/cost center ในรอบนี้
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    }
+    else
+    {
+        <MudDivider Class="my-4" />
+
+        <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (รหัส/ชื่อโครงการ)" Immediate="true" DebounceInterval="300"
+            ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+        <MudTable Items="_projects" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่อโครงการ</MudTh>
+                <MudTh>รายละเอียด</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Code</MudTd>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">
+                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีโครงการ</MudText></NoRecordsContent>
+        </MudTable>
+
+        <MudDivider Class="my-5" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มโครงการใหม่" : "แก้ไขโครงการ")</MudText>
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.Code" Label="รหัสโครงการ" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_form.Name" Label="ชื่อโครงการ" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_form.Description" Label="รายละเอียด (ไม่บังคับ)" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? "เพิ่ม" : "บันทึก")</MudButton>
+            @if (_editingId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Att_Project> _projects = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private class FormModel
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+    }
+
+    private FormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task OnSearchChangedAsync(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Att_Projects.Where(p => p.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Att_Project.Code), nameof(Att_Project.Name));
+        _projects = await query.OrderBy(p => p.Name).ToListAsync();
+    }
+
+    private void EditAsync(Att_Project project)
+    {
+        _editingId = project.Id;
+        _form = new FormModel { Code = project.Code, Name = project.Name, Description = project.Description };
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new FormModel();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Code) || string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อโครงการ";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Att_Projects.AnyAsync(p => p.CompanyId == _companyId && p.Code == _form.Code && p.Id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"มีรหัสโครงการ '{_form.Code}' อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is null)
+        {
+            context.Att_Projects.Add(new Att_Project
+            {
+                CompanyId = _companyId!,
+                Code = _form.Code,
+                Name = _form.Name,
+                Description = _form.Description,
+                IsActive = true,
+            });
+        }
+        else
+        {
+            var existing = await context.Att_Projects.FirstOrDefaultAsync(p => p.Id == _editingId && p.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบรายการนี้แล้ว กรุณาโหลดหน้าใหม่"; return; }
+            existing.Code = _form.Code;
+            existing.Name = _form.Name;
+            existing.Description = _form.Description;
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Att_Project project)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Att_Projects.FirstOrDefaultAsync(p => p.Id == project.Id && p.CompanyId == _companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}
