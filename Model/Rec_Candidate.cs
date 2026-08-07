@@ -43,4 +43,11 @@ public class Rec_Candidate
     // Null when the candidate applied directly through the public career
     // site (no authenticated actor); set when HR enters a candidate manually.
     public long? CreatedByUserId { get; set; }
+
+    // Career Management: set only for internal-mobility applicants (Source
+    // = "Internal") created via RecApplicationService.ApplyInternalAsync —
+    // soft link back to the employee record, matching this codebase's
+    // convention of not adding a [ForeignKey]/nav property for cross-module
+    // references. Null for every external candidate.
+    public long? HremployeeId { get; set; }
 }

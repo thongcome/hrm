@@ -1,0 +1,135 @@
+@page "/career/my-path"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Career
+@using HRM.Services.Idp
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject CareerPathService PathService
+@inject IdpAssessmentService IdpService
+@attribute [Authorize(Policy = "Menu:CAREER_ACCESS")]
+
+<PageTitle>เส้นทางความก้าวหน้าของฉัน (Career Path)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_result is null)
+{
+    <MudText Class="ma-4">กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">เส้นทางความก้าวหน้าของฉัน</MudText>
+
+        @if (_result.CurrentPosExecTypeName is null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">คุณยังไม่ได้ผูกกับเลขที่อัตราตำแหน่งใด — ติดต่อ HR</MudAlert>
+        }
+        else if (_result.JobFamilyId is null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">ตำแหน่งปัจจุบันของคุณ (@_result.CurrentPosExecTypeName) ยังไม่ได้กำหนดสายงาน (Job Family)</MudAlert>
+        }
+        else if (_result.Steps.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">สายงาน "@_result.JobFamilyName" ยังไม่ได้กำหนดเส้นทางความก้าวหน้าไว้</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mt-1 mb-3">สายงาน: @_result.JobFamilyName</MudText>
+            <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                @foreach (var step in _result.Steps)
+                {
+                    var isCurrent = _result.CurrentStep?.StepId == step.StepId;
+                    var isNext = _result.NextStep?.StepId == step.StepId;
+                    <MudPaper Class="pa-3" Outlined="true" Style="@(isCurrent ? "border-color:var(--mud-palette-primary);border-width:2px" : isNext ? "border-color:var(--mud-palette-info);border-width:2px" : "")">
+                        <MudText Typo="Typo.body2">@step.PosExecTypeName</MudText>
+                        @if (isCurrent)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">ตำแหน่งปัจจุบัน</MudChip>
+                        }
+                        @if (isNext)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">ขั้นถัดไป</MudChip>
+                        }
+                    </MudPaper>
+                }
+            </MudStack>
+
+            @if (_result.NextStep is not null)
+            {
+                <MudText Typo="Typo.h6" Class="mt-4 mb-2">Gap Analysis — เทียบกับขั้นถัดไป (@_result.NextStep.PosExecTypeName)</MudText>
+                @if (_gapRows.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">ตำแหน่งขั้นถัดไปยังไม่ได้กำหนดสมรรถนะที่ต้องการ หรือคุณยังไม่ได้รับการประเมินสมรรถนะเลย</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="_gapRows" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>สมรรถนะ</MudTh>
+                            <MudTh>ระดับที่ต้องการ</MudTh>
+                            <MudTh>ระดับปัจจุบัน</MudTh>
+                            <MudTh>ช่องว่าง (Gap)</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                @context.CompetencyName
+                                @if (context.IsCritical)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">จำเป็น</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd>@context.RequiredLevel</MudTd>
+                            <MudTd>@(context.EffectiveLevel?.ToString() ?? "ยังไม่ประเมิน")</MudTd>
+                            <MudTd>
+                                @if (context.Gap is int gap)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="@(gap > 0 ? Color.Error : Color.Success)">@gap</MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2">-</MudText>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+            else if (_result.CurrentStep is not null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">คุณอยู่ในขั้นสูงสุดของเส้นทางความก้าวหน้าในสายงานนี้แล้ว</MudAlert>
+            }
+        }
+    </MudPaper>
+}
+
+@code {
+    private bool _notFound;
+    private Hremployee? _employee;
+    private CareerPathService.MyPathResult? _result;
+    private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _result = await PathService.GetMyPathAsync(_employee.id);
+        if (_result.NextStep is not null)
+            _gapRows = await IdpService.GetGapAnalysisForTargetPositionAsync(_employee.id, _result.NextStep.PosExecTypeId);
+    }
+}

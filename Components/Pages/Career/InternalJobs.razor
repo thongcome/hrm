@@ -1,0 +1,102 @@
+@page "/career/internal-jobs"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject RecJobPostingService PostingService
+@inject RecApplicationService ApplicationService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:CAREER_ACCESS")]
+
+<PageTitle>โอกาสเติบโตภายใน (Internal Job Postings)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+        <MudText Typo="Typo.h4" Class="mb-4">โอกาสเติบโตภายใน</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">ตำแหน่งที่เปิดรับเฉพาะพนักงานภายในบริษัท — สมัครได้ทันทีโดยไม่ต้องกรอกข้อมูลใหม่</MudText>
+
+        @if (_postings.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">ขณะนี้ยังไม่มีตำแหน่งเปิดรับภายใน</MudAlert>
+        }
+        else
+        {
+            @foreach (var posting in _postings)
+            {
+                <MudPaper Class="pa-4 mb-3" Outlined="true">
+                    <MudText Typo="Typo.h6">@posting.Title</MudText>
+                    @if (!string.IsNullOrWhiteSpace(posting.Description))
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-1" Style="white-space:pre-wrap">@posting.Description</MudText>
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="@(() => ApplyAsync(posting.Id))" Disabled="@_appliedPostingIds.Contains(posting.Id)">
+                        @(_appliedPostingIds.Contains(posting.Id) ? "สมัครแล้ว" : "สมัครตำแหน่งนี้")
+                    </MudButton>
+                </MudPaper>
+            }
+        }
+    </MudContainer>
+}
+
+@code {
+    private bool _notFound;
+    private Hremployee? _employee;
+    private List<Rec_JobPosting> _postings = new();
+    private HashSet<long> _appliedPostingIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _postings = await PostingService.GetOpenInternalPostingsAsync();
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.HremployeeId == _employee!.id);
+        if (candidate is not null)
+        {
+            var postingIds = _postings.Select(p => p.Id).ToList();
+            var applied = await context.Rec_Applications.Where(a => a.CandidateId == candidate.Id && postingIds.Contains(a.JobPostingId)).Select(a => a.JobPostingId).ToListAsync();
+            _appliedPostingIds = applied.ToHashSet();
+        }
+    }
+
+    private async Task ApplyAsync(long postingId)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        var result = await ApplicationService.ApplyInternalAsync(postingId, _employee!.id, userId);
+        if (result.Success)
+        {
+            Snackbar.Add("ส่งใบสมัครสำเร็จ ขอบคุณที่สนใจร่วมงานในตำแหน่งนี้", Severity.Success);
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Error ?? "ส่งใบสมัครไม่สำเร็จ", Severity.Error);
+        }
+    }
+}

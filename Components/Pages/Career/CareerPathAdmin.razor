@@ -1,0 +1,148 @@
+@page "/career/paths"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Career
+@using HRM.Services.Shared
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject CareerPathService PathService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:CAREER_ADMIN")]
+
+<PageTitle>Career Path — Career Management</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">เส้นทางความก้าวหน้าในสายอาชีพ (Career Path)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            กำหนดลำดับตำแหน่ง (Job) ที่คาดว่าพนักงานจะก้าวหน้าไปตามลำดับ ภายในแต่ละสายงาน (Job Family)
+        </MudText>
+
+        <MudSelect T="Job_Family" Value="_selectedFamily" Label="สายงาน (Job Family)" ValueChanged="OnFamilyChangedAsync">
+            @foreach (var f in _families)
+            {
+                <MudSelectItem Value="f">@f.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </MudPaper>
+
+    @if (_selectedFamily is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudTable Items="_steps" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>ลำดับ</MudTh>
+                    <MudTh>ตำแหน่ง</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.SortOrder</MudTd>
+                    <MudTd>@context.PosExecTypeName</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" OnClick="@(() => MoveAsync(context.StepId, true))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" OnClick="@(() => MoveAsync(context.StepId, false))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveAsync(context.StepId))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีลำดับตำแหน่งในสายงานนี้</MudText></NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">เพิ่มตำแหน่งเข้าลำดับ</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="9">
+                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" @bind-Value="_selectedExecType"
+                        SearchFunc="SearchExecTypesAsync"
+                        ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12" sm="3" Class="d-flex align-center">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddStepAsync" Disabled="@(_selectedExecType is null)">เพิ่มเข้าลำดับ</MudButton>
+                </MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private List<Job_Family> _families = new();
+    private Job_Family? _selectedFamily;
+    private List<CareerPathService.StepRow> _steps = new();
+    private Pos_ExecType? _selectedExecType;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _families = await context.Job_Families.Where(f => f.CompanyId == _companyId && f.IsActive).OrderBy(f => f.Name).ToListAsync();
+    }
+
+    private async Task OnFamilyChangedAsync(Job_Family family)
+    {
+        _selectedFamily = family;
+        await LoadStepsAsync();
+    }
+
+    private async Task LoadStepsAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId) || _selectedFamily is null) return;
+        _steps = await PathService.GetStepsAsync(_companyId, _selectedFamily.Id);
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddStepAsync()
+    {
+        if (_selectedExecType is null || string.IsNullOrEmpty(_companyId) || _selectedFamily is null) return;
+        _error = null;
+        try
+        {
+            await PathService.AddStepAsync(_companyId, _selectedFamily.Id, _selectedExecType.Id);
+            Snackbar.Add("เพิ่มเข้าลำดับความก้าวหน้าแล้ว", Severity.Success);
+            _selectedExecType = null;
+            await LoadStepsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task MoveAsync(long stepId, bool moveUp)
+    {
+        await PathService.MoveStepAsync(stepId, moveUp);
+        await LoadStepsAsync();
+    }
+
+    private async Task RemoveAsync(long stepId)
+    {
+        await PathService.RemoveStepAsync(stepId);
+        Snackbar.Add("ถอดออกจากลำดับแล้ว", Severity.Success);
+        await LoadStepsAsync();
+    }
+}

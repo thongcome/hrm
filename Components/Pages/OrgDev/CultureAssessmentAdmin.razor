@@ -1,0 +1,102 @@
+@page "/orgdev/culture-assessment"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.OrgDev
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject CultureAssessmentService AssessmentService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
+
+<PageTitle>Culture Assessment — Organization Development</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">การประเมินวัฒนธรรมองค์กร (Culture Assessment)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            บันทึกภาพรวมสุขภาพองค์กรตามช่วงเวลา (การประเมินโดย HR ไม่ใช่แบบสำรวจพนักงาน — สำหรับ pulse survey/eNPS แบบเต็มรูปแบบจะอยู่ในโมดูล Employee Engagement)
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่ประเมิน" @bind-Date="_assessmentDate" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_communication" Label="การสื่อสาร (1-5)" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_trust" Label="ความไว้วางใจ (1-5)" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_collaboration" Label="การร่วมมือ (1-5)" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_leadership" Label="ภาวะผู้นำ (1-5)" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ" Lines="3" /></MudItem>
+            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึกการประเมิน</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการประเมิน</MudText>
+        <MudTable Items="_history" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>วันที่</MudTh>
+                <MudTh>การสื่อสาร</MudTh>
+                <MudTh>ความไว้วางใจ</MudTh>
+                <MudTh>การร่วมมือ</MudTh>
+                <MudTh>ภาวะผู้นำ</MudTh>
+                <MudTh>เฉลี่ย</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.AssessmentDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.CommunicationScore</MudTd>
+                <MudTd>@context.TrustScore</MudTd>
+                <MudTd>@context.CollaborationScore</MudTd>
+                <MudTd>@context.LeadershipScore</MudTd>
+                <MudTd>@(((context.CommunicationScore + context.TrustScore + context.CollaborationScore + context.LeadershipScore) / 4.0).ToString("0.0"))</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการประเมิน</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private List<OrgDev_CultureAssessment> _history = new();
+
+    private DateTime? _assessmentDate = DateTime.Today;
+    private int _communication = 3;
+    private int _trust = 3;
+    private int _collaboration = 3;
+    private int _leadership = 3;
+    private string? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _history = await AssessmentService.GetHistoryAsync(_companyId);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId) || _assessmentDate is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        await AssessmentService.RecordAsync(_companyId, null, DateOnly.FromDateTime(_assessmentDate.Value),
+            _communication, _trust, _collaboration, _leadership, _note, userId);
+
+        Snackbar.Add("บันทึกการประเมินแล้ว", Severity.Success);
+        _note = null;
+        await LoadAsync();
+    }
+}

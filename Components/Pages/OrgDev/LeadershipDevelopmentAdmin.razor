@@ -1,0 +1,212 @@
+@page "/orgdev/leadership-development"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.OrgDev
+@using HRM.Services.Talent
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LeadershipDevelopmentService PlanService
+@inject TalentGridService TalentService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
+
+<PageTitle>Leadership Development — Organization Development</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">แผนพัฒนาผู้นำ (Leadership Development)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">สร้างแผนพัฒนาให้พนักงานที่มีศักยภาพสูง (แนะนำจาก Talent Pool) พร้อมติดตามเป็นรายการ</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน (แนะนำจาก Talent Pool)" @bind-Value="_selectedEmployee"
+                    SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่งเป้าหมาย (ถ้ามี)" @bind-Value="_selectedTarget"
+                    SearchFunc="SearchExecTypesAsync"
+                    ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreatePlanAsync" Disabled="@(_selectedEmployee is null)">สร้างแผน</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudTable Items="_plans" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>พนักงาน</MudTh>
+                <MudTh>ตำแหน่งเป้าหมาย</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>ความคืบหน้า</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo — @context.Name</MudTd>
+                <MudTd>@(context.TargetPosExecTypeName ?? "-")</MudTd>
+                <MudTd>
+                    <MudSelect T="LeadershipPlanStatus" Value="context.Status" ValueChanged="@(v => UpdateStatusAsync(context.PlanId, v))" Dense="true">
+                        @foreach (var v in Enum.GetValues<LeadershipPlanStatus>())
+                        {
+                            <MudSelectItem Value="@v">@StatusLabel(v)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudTd>
+                <MudTd>@context.CompletedMilestones / @context.TotalMilestones</MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleMilestonesAsync(context.PlanId))">@(_expandedPlanId == context.PlanId ? "ซ่อน" : "จัดการรายการ")</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแผนพัฒนาผู้นำ</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    @if (_expandedPlanId is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">รายการพัฒนา</MudText>
+            <MudTable Items="_milestones" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>รายการ</MudTh>
+                    <MudTh>กำหนดเสร็จ</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Title</MudTd>
+                    <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == OrgDevMilestoneStatus.Completed ? Color.Success : Color.Default)">@(context.Status == OrgDevMilestoneStatus.Completed ? "เสร็จแล้ว" : "รอดำเนินการ")</MudChip></MudTd>
+                    <MudTd>
+                        @if (context.Status == OrgDevMilestoneStatus.Pending)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CompleteMilestoneAsync(context.Id))">เสร็จ</MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการ</MudText></NoRecordsContent>
+            </MudTable>
+
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="8"><MudTextField T="string" @bind-Value="_newMilestoneTitle" Label="รายการใหม่" /></MudItem>
+                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMilestoneAsync" Disabled="@string.IsNullOrWhiteSpace(_newMilestoneTitle)">เพิ่ม</MudButton></MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private List<LeadershipDevelopmentService.PlanRow> _plans = new();
+    private Hremployee? _selectedEmployee;
+    private Pos_ExecType? _selectedTarget;
+    private long? _expandedPlanId;
+    private List<OrgDev_LeadershipMilestone> _milestones = new();
+    private string? _newMilestoneTitle;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _plans = await PlanService.GetPlansForCompanyAsync(_companyId);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            var poolEntries = await TalentService.GetPoolEntriesAsync(_companyId!, ct);
+            var poolIds = poolEntries.Select(p => p.HremployeeId).Take(20).ToList();
+            return await context.Hremployee.Where(e => poolIds.Contains(e.id)).ToListAsync(ct);
+        }
+
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        query = query.Where(e => e.EmpNo.Contains(search) || (e.EmpName != null && e.EmpName.Contains(search)) || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = HRM.Services.Shared.EntitySearchHelper.ApplyTextSearch(query, search, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
+    }
+
+    private async Task CreatePlanAsync()
+    {
+        if (_selectedEmployee is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        await PlanService.CreatePlanAsync(_selectedEmployee.id, _selectedTarget?.Id, null, null, null, userId);
+        Snackbar.Add("สร้างแผนพัฒนาผู้นำแล้ว", Severity.Success);
+        _selectedEmployee = null;
+        _selectedTarget = null;
+        await LoadAsync();
+    }
+
+    private async Task UpdateStatusAsync(long planId, LeadershipPlanStatus status)
+    {
+        await PlanService.UpdateStatusAsync(planId, status);
+        await LoadAsync();
+    }
+
+    private async Task ToggleMilestonesAsync(long planId)
+    {
+        if (_expandedPlanId == planId)
+        {
+            _expandedPlanId = null;
+            return;
+        }
+        _expandedPlanId = planId;
+        _milestones = await PlanService.GetMilestonesAsync(planId);
+    }
+
+    private async Task AddMilestoneAsync()
+    {
+        if (_expandedPlanId is null || string.IsNullOrWhiteSpace(_newMilestoneTitle)) return;
+        await PlanService.AddMilestoneAsync(_expandedPlanId.Value, _newMilestoneTitle, null);
+        _newMilestoneTitle = null;
+        _milestones = await PlanService.GetMilestonesAsync(_expandedPlanId.Value);
+        await LoadAsync();
+    }
+
+    private async Task CompleteMilestoneAsync(long milestoneId)
+    {
+        await PlanService.CompleteMilestoneAsync(milestoneId);
+        if (_expandedPlanId is not null)
+            _milestones = await PlanService.GetMilestonesAsync(_expandedPlanId.Value);
+        await LoadAsync();
+    }
+
+    private static string StatusLabel(LeadershipPlanStatus s) => s switch
+    {
+        LeadershipPlanStatus.NotStarted => "ยังไม่เริ่ม",
+        LeadershipPlanStatus.InProgress => "กำลังดำเนินการ",
+        LeadershipPlanStatus.Completed => "เสร็จสมบูรณ์",
+        LeadershipPlanStatus.OnHold => "พักไว้",
+        _ => s.ToString(),
+    };
+}

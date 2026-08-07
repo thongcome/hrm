@@ -227,6 +227,11 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- Talent_* module (Talent Management / 9-Box) -----
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
 builder.Services.AddScoped<HRM.Services.Succession.SuccessionService>();
+builder.Services.AddScoped<HRM.Services.Career.CareerPathService>();
+builder.Services.AddScoped<HRM.Services.OrgDev.WorkforcePlanService>();
+builder.Services.AddScoped<HRM.Services.OrgDev.LeadershipDevelopmentService>();
+builder.Services.AddScoped<HRM.Services.OrgDev.ChangeInitiativeService>();
+builder.Services.AddScoped<HRM.Services.OrgDev.CultureAssessmentService>();
 // ----- end Talent_* module -----
 
 // ----- Rec_* module (Recruitment / ATS) -----

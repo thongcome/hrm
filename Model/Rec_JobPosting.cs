@@ -27,4 +27,10 @@ public class Rec_JobPosting
 
     public long CreatedByUserId { get; set; }
     public DateTime CreatedDate { get; set; } = DateTime.Now;
+
+    // Career Management: internal-only postings never appear on the public
+    // /careers site — only on the authenticated /career/internal-jobs ESS
+    // page — and are applied to via RecApplicationService.ApplyInternalAsync
+    // instead of the public apply form.
+    public bool IsInternal { get; set; }
 }

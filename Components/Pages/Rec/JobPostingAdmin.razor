@@ -39,6 +39,7 @@ else
                 <MudTh>ชื่อตำแหน่งที่ประกาศ</MudTh>
                 <MudTh>วันเปิด-ปิดรับ</MudTh>
                 <MudTh>สถานะ</MudTh>
+                <MudTh>ช่องทาง</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -46,6 +47,16 @@ else
                 <MudTd>@context.Title</MudTd>
                 <MudTd>@(context.OpenDate?.ToString("dd/MM/yyyy") ?? "-") - @(context.CloseDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
                 <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd>
+                    @if (context.IsInternal)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">ภายในเท่านั้น</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">สาธารณะ</MudChip>
+                    }
+                </MudTd>
                 <MudTd>
                     <MudStack Row="true" Spacing="1">
                         @if (context.Status == PostingStatus.Draft)
@@ -55,7 +66,14 @@ else
                         @if (context.Status == PostingStatus.Open)
                         {
                             <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => CloseAsync(context.Id))">ปิดรับสมัคร</MudButton>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/careers/{context.Id}")" Target="_blank">ดูหน้าสาธารณะ</MudButton>
+                            @if (context.IsInternal)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Href="/career/internal-jobs" Target="_blank">ดูหน้าภายใน</MudButton>
+                            }
+                            else
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/careers/{context.Id}")" Target="_blank">ดูหน้าสาธารณะ</MudButton>
+                            }
                         }
                         <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/rec/pipeline/{context.Id}")">ผู้สมัคร</MudButton>
                     </MudStack>
@@ -82,6 +100,9 @@ else
             <MudItem xs="12" sm="6"><MudDatePicker Label="วันปิดรับสมัคร" @bind-Date="_closeDate" /></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_description" Label="รายละเอียดงาน" Lines="5" /></MudItem>
             <MudItem xs="12">
+                <MudCheckBox T="bool" @bind-Value="_isInternal" Label="เปิดรับเฉพาะพนักงานภายใน (ไม่แสดงบน career site สาธารณะ)" />
+            </MudItem>
+            <MudItem xs="12">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">บันทึกประกาศ (ร่าง)</MudButton>
             </MudItem>
         </MudGrid>
@@ -101,6 +122,7 @@ else
     private DateTime? _openDate = DateTime.Today;
     private DateTime? _closeDate;
     private string? _description;
+    private bool _isInternal;
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,6 +182,7 @@ else
             Description = _description,
             OpenDate = _openDate is null ? null : DateOnly.FromDateTime(_openDate.Value),
             CloseDate = _closeDate is null ? null : DateOnly.FromDateTime(_closeDate.Value),
+            IsInternal = _isInternal,
         });
 
         _info = "บันทึกประกาศ (ร่าง) สำเร็จ — กด \"เปิดรับสมัคร\" เพื่อให้แสดงบนหน้า career site";
@@ -167,6 +190,7 @@ else
         _title = null;
         _description = null;
         _closeDate = null;
+        _isInternal = false;
         await RefreshAsync();
     }
 

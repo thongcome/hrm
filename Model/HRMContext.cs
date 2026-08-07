@@ -414,6 +414,19 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Succ_SuccessorNomination> Succ_SuccessorNominations { get; set; }
     // ----- end Succ_* module -----
 
+    // ----- Career_* module (Career Management) -----
+    public virtual DbSet<Career_PathStep> Career_PathSteps { get; set; }
+    // ----- end Career_* module -----
+
+    // ----- OrgDev_* module (Organization Development) -----
+    public virtual DbSet<OrgDev_WorkforcePlan> OrgDev_WorkforcePlans { get; set; }
+    public virtual DbSet<OrgDev_LeadershipPlan> OrgDev_LeadershipPlans { get; set; }
+    public virtual DbSet<OrgDev_LeadershipMilestone> OrgDev_LeadershipMilestones { get; set; }
+    public virtual DbSet<OrgDev_ChangeInitiative> OrgDev_ChangeInitiatives { get; set; }
+    public virtual DbSet<OrgDev_ChangeMilestone> OrgDev_ChangeMilestones { get; set; }
+    public virtual DbSet<OrgDev_CultureAssessment> OrgDev_CultureAssessments { get; set; }
+    // ----- end OrgDev_* module -----
+
     // ----- Rec_* module (Recruitment / ATS) -----
     public virtual DbSet<Rec_Requisition> Rec_Requisitions { get; set; }
     public virtual DbSet<Rec_JobPosting> Rec_JobPostings { get; set; }

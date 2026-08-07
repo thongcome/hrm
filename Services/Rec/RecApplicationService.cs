@@ -103,6 +103,61 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         return new(true, null, application.Id);
     }
 
+    // Career Management's internal-mobility apply path — reuses the exact
+    // same Rec_Application/interview/offer pipeline as external hiring, just
+    // skips resume upload/consent (the employee is already authenticated and
+    // known) and tags the Rec_Candidate with HremployeeId + Source="Internal"
+    // so it's traceable back to the employee record.
+    public async Task<ApplyResult> ApplyInternalAsync(long jobPostingId, long hremployeeId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var posting = await context.Rec_JobPostings.FirstOrDefaultAsync(p => p.Id == jobPostingId && p.Status == PostingStatus.Open && p.IsInternal, ct);
+        if (posting is null)
+            return new(false, "ไม่พบประกาศรับสมัครภายในนี้ หรือปิดรับสมัครแล้ว", null);
+
+        var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct);
+        if (emp is null)
+            return new(false, "ไม่พบข้อมูลพนักงาน", null);
+
+        var email = await HRM.Services.Shared.EmployeeEmailResolver.ResolveAsync(context, hremployeeId, ct);
+        if (string.IsNullOrWhiteSpace(email))
+            return new(false, "กรุณาตั้งค่าอีเมลของคุณก่อนสมัคร (ที่หน้าโปรไฟล์)", null);
+
+        var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.HremployeeId == hremployeeId, ct);
+        if (candidate is null)
+        {
+            candidate = new Rec_Candidate
+            {
+                FirstName = emp.EmpName ?? emp.EmpNo,
+                LastName = emp.EmpSurname ?? string.Empty,
+                Email = email,
+                Source = "Internal",
+                HremployeeId = hremployeeId,
+                ConsentGiven = true,
+                ConsentDate = DateTime.Now,
+                CreatedByUserId = actorUserId,
+            };
+            context.Rec_Candidates.Add(candidate);
+            await context.SaveChangesAsync(ct);
+        }
+
+        var alreadyApplied = await context.Rec_Applications.AnyAsync(a => a.CandidateId == candidate.Id && a.JobPostingId == jobPostingId, ct);
+        if (alreadyApplied)
+            return new(false, "คุณได้สมัครตำแหน่งนี้ไปแล้ว", null);
+
+        var application = new Rec_Application
+        {
+            CandidateId = candidate.Id,
+            JobPostingId = jobPostingId,
+            Stage = ApplicationStage.Applied,
+        };
+        context.Rec_Applications.Add(application);
+        await context.SaveChangesAsync(ct);
+
+        return new(true, null, application.Id);
+    }
+
     public async Task<List<Rec_Application>> GetApplicationsForPostingAsync(long jobPostingId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);

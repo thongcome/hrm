@@ -1,0 +1,138 @@
+@page "/orgdev/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.OrgDev
+@using HRM.Services.Succession
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject WorkforcePlanService WorkforcePlanService
+@inject ChangeInitiativeService ChangeInitiativeService
+@inject CultureAssessmentService CultureAssessmentService
+@inject SuccessionService SuccessionService
+@attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
+
+<PageTitle>Org Health — Organization Development</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="ma-4">ภาพรวมสุขภาพองค์กร (Org Health)</MudText>
+    <MudText Typo="Typo.body2" Class="mx-4 mb-4">รวมสัญญาณจากแผนอัตรากำลัง โครงการเปลี่ยนแปลง การประเมินวัฒนธรรม และความพร้อมผู้สืบทอด</MudText>
+
+    <MudGrid Class="pa-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.body2">แผนอัตรากำลัง (ปี @_currentYear)</MudText>
+                <MudText Typo="Typo.h4">@_workforcePlans.Sum(p => p.Gap)</MudText>
+                <MudText Typo="Typo.caption">ส่วนต่างรวมทุกหน่วยงาน (บวก = ขาด, ลบ = เกิน)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.body2">โครงการเปลี่ยนแปลงที่กำลังดำเนินการ</MudText>
+                <MudText Typo="Typo.h4">@_initiatives.Count(i => i.Status == ChangeInitiativeStatus.InProgress)</MudText>
+                <MudText Typo="Typo.caption">จากทั้งหมด @_initiatives.Count โครงการ</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.body2">คะแนนวัฒนธรรมองค์กรล่าสุด</MudText>
+                @if (_latestCulture is null)
+                {
+                    <MudText Typo="Typo.h4">-</MudText>
+                    <MudText Typo="Typo.caption">ยังไม่มีการประเมิน</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h4">@(((_latestCulture.CommunicationScore + _latestCulture.TrustScore + _latestCulture.CollaborationScore + _latestCulture.LeadershipScore) / 4.0).ToString("0.0")) / 5</MudText>
+                    <MudText Typo="Typo.caption">ประเมินเมื่อ @_latestCulture.AssessmentDate.ToString("dd/MM/yyyy")</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.body2">ตำแหน่งสำคัญที่ไม่มีผู้สืบทอด</MudText>
+                <MudText Typo="Typo.h4" Style="@(_benchStrength.Any(b => b.IsSinglePointOfFailure) ? "color:var(--mud-palette-error)" : "")">@_benchStrength.Count(b => b.IsSinglePointOfFailure)</MudText>
+                <MudText Typo="Typo.caption">จากทั้งหมด @_benchStrength.Count ตำแหน่งสำคัญ</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="pa-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-2">แผนอัตรากำลังที่ขาด (Gap สูงสุด)</MudText>
+                <MudTable Items="_workforcePlans.Where(p => p.Gap > 0).OrderByDescending(p => p.Gap).Take(5)" Dense="true">
+                    <HeaderContent>
+                        <MudTh>หน่วยงาน</MudTh>
+                        <MudTh>เป้า</MudTh>
+                        <MudTh>จริง</MudTh>
+                        <MudTh>Gap</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.OrganizationName</MudTd>
+                        <MudTd>@context.TargetHeadcount</MudTd>
+                        <MudTd>@context.ActualHeadcount</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Warning">@context.Gap</MudChip></MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีหน่วยงานที่ขาดอัตรากำลัง</MudText></NoRecordsContent>
+                </MudTable>
+                <MudButton Class="mt-2" Variant="Variant.Text" Href="/orgdev/workforce-plan">ดูทั้งหมด</MudButton>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-2">ตำแหน่งสำคัญที่มีความเสี่ยง</MudText>
+                <MudTable Items="_benchStrength.Where(b => b.IsSinglePointOfFailure || b.ReadyNowCount == 0)" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ตำแหน่ง</MudTh>
+                        <MudTh>ผู้สืบทอด</MudTh>
+                        <MudTh>สถานะ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PosExecTypeName</MudTd>
+                        <MudTd>@context.TotalSuccessorCount</MudTd>
+                        <MudTd>
+                            @if (context.IsSinglePointOfFailure)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error">ไม่มีผู้สืบทอด</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">ยังไม่มีคนพร้อมทันที</MudChip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีตำแหน่งสำคัญที่มีความเสี่ยง</MudText></NoRecordsContent>
+                </MudTable>
+                <MudButton Class="mt-2" Variant="Variant.Text" Href="/succession/bench-strength">ดูทั้งหมด</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string? _companyId;
+    private int _currentYear = DateTime.Today.Year;
+    private List<WorkforcePlanService.PlanRow> _workforcePlans = new();
+    private List<ChangeInitiativeService.InitiativeRow> _initiatives = new();
+    private OrgDev_CultureAssessment? _latestCulture;
+    private List<SuccessionService.BenchStrengthRow> _benchStrength = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _workforcePlans = await WorkforcePlanService.GetPlansAsync(_companyId, _currentYear);
+        _initiatives = await ChangeInitiativeService.GetInitiativesAsync(_companyId);
+        _latestCulture = await CultureAssessmentService.GetLatestAsync(_companyId);
+        _benchStrength = await SuccessionService.GetBenchStrengthAsync(_companyId);
+    }
+}

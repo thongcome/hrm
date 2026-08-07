@@ -45,13 +45,15 @@ public class RecJobPostingService(IDbContextFactory<HRMContext> dbFactory)
 
     // Public career-site query — deliberately joins nothing beyond Open
     // postings, so it can never leak internal requisition/candidate data to
-    // an anonymous visitor.
+    // an anonymous visitor. IsInternal postings are excluded here — they
+    // only ever appear on GetOpenInternalPostingsAsync (authenticated
+    // employees, /career/internal-jobs).
     public async Task<List<Rec_JobPosting>> GetOpenPostingsPublicAsync(CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var today = DateOnly.FromDateTime(DateTime.Today);
         return await context.Rec_JobPostings
-            .Where(p => p.Status == PostingStatus.Open
+            .Where(p => p.Status == PostingStatus.Open && !p.IsInternal
                 && (p.OpenDate == null || p.OpenDate <= today)
                 && (p.CloseDate == null || p.CloseDate >= today))
             .OrderByDescending(p => p.Id)
@@ -63,8 +65,23 @@ public class RecJobPostingService(IDbContextFactory<HRMContext> dbFactory)
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var today = DateOnly.FromDateTime(DateTime.Today);
         return await context.Rec_JobPostings
-            .FirstOrDefaultAsync(p => p.Id == id && p.Status == PostingStatus.Open
+            .FirstOrDefaultAsync(p => p.Id == id && p.Status == PostingStatus.Open && !p.IsInternal
                 && (p.OpenDate == null || p.OpenDate <= today)
                 && (p.CloseDate == null || p.CloseDate >= today), ct);
+    }
+
+    // Career Management — mirrors GetOpenPostingsPublicAsync but the
+    // opposite filter (IsInternal only). Callers must be authenticated
+    // employees (see MudCareer/InternalJobs.razor, Menu:CAREER_ACCESS).
+    public async Task<List<Rec_JobPosting>> GetOpenInternalPostingsAsync(CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return await context.Rec_JobPostings
+            .Where(p => p.Status == PostingStatus.Open && p.IsInternal
+                && (p.OpenDate == null || p.OpenDate <= today)
+                && (p.CloseDate == null || p.CloseDate >= today))
+            .OrderByDescending(p => p.Id)
+            .ToListAsync(ct);
     }
 }
