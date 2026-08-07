@@ -228,6 +228,14 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
 // ----- end Talent_* module -----
 
+// ----- Rec_* module (Recruitment / ATS) -----
+builder.Services.AddScoped<HRM.Services.Rec.RecRequisitionService>();
+builder.Services.AddScoped<HRM.Services.Rec.RecJobPostingService>();
+builder.Services.AddScoped<HRM.Services.Rec.RecApplicationService>();
+builder.Services.AddScoped<HRM.Services.Rec.RecInterviewService>();
+builder.Services.AddScoped<HRM.Services.Rec.RecOfferService>();
+// ----- end Rec_* module -----
+
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 
@@ -244,10 +252,17 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.SegmentsPerWindow = 4;
         limiterOptions.QueueLimit = 0;
     });
+    options.AddSlidingWindowLimiter("career-apply", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromHours(1);
+        limiterOptions.SegmentsPerWindow = 4;
+        limiterOptions.QueueLimit = 0;
+    });
     options.OnRejected = async (context, ct) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        await context.HttpContext.Response.WriteAsync("Too many login attempts — please wait a moment and try again.", ct);
+        await context.HttpContext.Response.WriteAsync("Too many attempts — please wait a moment and try again.", ct);
     };
 });
 
@@ -324,5 +339,7 @@ app.MapExpenseFileEndpoints();
 app.MapWorkflowFileEndpoints();
 app.MapInfoMessageFileEndpoints();
 app.MapHrFileEndpoints();
+app.MapCareerEndpoints();
+app.MapRecFileEndpoints();
 
 app.Run();

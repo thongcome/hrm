@@ -1,0 +1,164 @@
+@page "/rec/pipeline/{PostingId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RecApplicationService ApplicationService
+@inject RecJobPostingService PostingService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>ผู้สมัคร — @(_posting?.Title ?? "")</PageTitle>
+
+@if (_posting is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบประกาศรับสมัครนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ผู้สมัคร — @_posting.Title</MudText>
+        <MudButton Variant="Variant.Text" Href="/rec/postings" Class="mb-2">กลับไปหน้าประกาศ</MudButton>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+        }
+
+        <MudTable Items="_rows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ผู้สมัคร</MudTh>
+                <MudTh>อีเมล</MudTh>
+                <MudTh>วันที่สมัคร</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Candidate.FirstName @context.Candidate.LastName</MudTd>
+                <MudTd>@context.Candidate.Email</MudTd>
+                <MudTd>@context.Application.AppliedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StageColor(context.Application.Stage)">@StageLabel(context.Application.Stage)</MudChip></MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1">
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/rec/candidates/{context.Candidate.Id}")">ประวัติ</MudButton>
+                        @if (context.Application.Stage is ApplicationStage.Applied or ApplicationStage.Screening)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AdvanceAsync(context.Application.Id, context.Application.Stage))">เลื่อนสถานะ</MudButton>
+                        }
+                        @if (context.Application.Stage == ApplicationStage.Interview)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/rec/interviews/{context.Application.Id}")">สัมภาษณ์</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => AdvanceAsync(context.Application.Id, context.Application.Stage))">เลื่อนไป Offer</MudButton>
+                        }
+                        @if (context.Application.Stage == ApplicationStage.Offer)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/rec/offers/new/{context.Application.Id}")">สร้างข้อเสนอ</MudButton>
+                        }
+                        @if (context.Application.Stage is not (ApplicationStage.Hired or ApplicationStage.Rejected or ApplicationStage.Withdrawn))
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RejectAsync(context.Application.Id))">ปฏิเสธ</MudButton>
+                        }
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีผู้สมัคร</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long PostingId { get; set; }
+
+    private record Row(Rec_Application Application, Rec_Candidate Candidate);
+
+    private Rec_JobPosting? _posting;
+    private List<Row> _rows = new();
+    private long _actorUserId;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        _posting = await PostingService.GetByIdAsync(PostingId);
+        if (_posting is null) return;
+
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        var applications = await ApplicationService.GetApplicationsForPostingAsync(PostingId);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var candidateIds = applications.Select(a => a.CandidateId).Distinct().ToList();
+        var candidates = await context.Rec_Candidates.Where(c => candidateIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c);
+
+        _rows = applications.Where(a => candidates.ContainsKey(a.CandidateId))
+            .Select(a => new Row(a, candidates[a.CandidateId]))
+            .ToList();
+    }
+
+    private static string StageLabel(ApplicationStage s) => s switch
+    {
+        ApplicationStage.Applied => "สมัครแล้ว",
+        ApplicationStage.Screening => "คัดกรอง",
+        ApplicationStage.Interview => "สัมภาษณ์",
+        ApplicationStage.Offer => "เสนองาน",
+        ApplicationStage.Hired => "จ้างแล้ว",
+        ApplicationStage.Rejected => "ปฏิเสธ",
+        ApplicationStage.Withdrawn => "ถอนตัว",
+        _ => s.ToString(),
+    };
+
+    private static Color StageColor(ApplicationStage s) => s switch
+    {
+        ApplicationStage.Hired => Color.Success,
+        ApplicationStage.Rejected or ApplicationStage.Withdrawn => Color.Error,
+        ApplicationStage.Offer => Color.Info,
+        _ => Color.Warning,
+    };
+
+    private async Task AdvanceAsync(long applicationId, ApplicationStage current)
+    {
+        _error = null;
+        var next = current switch
+        {
+            ApplicationStage.Applied => ApplicationStage.Screening,
+            ApplicationStage.Screening => ApplicationStage.Interview,
+            ApplicationStage.Interview => ApplicationStage.Offer,
+            _ => current,
+        };
+        if (next == current) return;
+
+        try
+        {
+            await ApplicationService.UpdateStageAsync(applicationId, next, _actorUserId);
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RejectAsync(long applicationId)
+    {
+        _error = null;
+        try
+        {
+            await ApplicationService.RejectAsync(applicationId, "ไม่ผ่านการพิจารณา", _actorUserId);
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

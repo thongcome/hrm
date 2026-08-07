@@ -1,0 +1,78 @@
+@page "/rec/candidates/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject RecApplicationService ApplicationService
+@inject IAuditLogger AuditLogger
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>ประวัติผู้สมัคร</PageTitle>
+
+@if (_candidate is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบผู้สมัครนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@_candidate.FirstName @_candidate.LastName</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudStack Spacing="1" Class="mt-2">
+            <MudText Typo="Typo.body1"><b>อีเมล:</b> @_candidate.Email</MudText>
+            <MudText Typo="Typo.body1"><b>เบอร์โทร:</b> @(_candidate.Phone ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>แหล่งที่มา:</b> @(_candidate.Source ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>ความยินยอม PDPA:</b> @(_candidate.ConsentGiven ? $"ให้ความยินยอมเมื่อ {_candidate.ConsentDate:dd/MM/yyyy}" : "ยังไม่ได้ให้ความยินยอม")</MudText>
+            @if (_candidate.ResumeDocCenterId is not null)
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" Href="@($"/rec/files/resume/{_candidate.ResumeDocCenterId}")" Target="_blank">ดาวน์โหลดเรซูเม่</MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">ประวัติการสมัครทั้งหมด</MudText>
+        <MudTable Items="_applications" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>ตำแหน่งที่สมัคร</MudTh>
+                <MudTh>วันที่สมัคร</MudTh>
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@PostingTitle(context.JobPostingId)</MudTd>
+                <MudTd>@context.AppliedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.Stage</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีประวัติการสมัคร</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Rec_Candidate? _candidate;
+    private List<Rec_Application> _applications = new();
+    private Dictionary<long, string> _postingTitles = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _candidate = await ApplicationService.GetCandidateAsync(Id);
+        if (_candidate is null) return;
+
+        await AuditLogger.LogAccessAsync("Rec_Candidate", Id.ToString(), isSensitive: true, note: "candidate detail view");
+
+        _applications = await ApplicationService.GetApplicationHistoryForCandidateAsync(Id);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var postingIds = _applications.Select(a => a.JobPostingId).Distinct().ToList();
+        _postingTitles = await context.Rec_JobPostings.Where(p => postingIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Title);
+    }
+
+    private string PostingTitle(long id) => _postingTitles.TryGetValue(id, out var t) ? t : $"#{id}";
+}

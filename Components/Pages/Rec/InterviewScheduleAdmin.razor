@@ -1,0 +1,237 @@
+@page "/rec/interviews/{ApplicationId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RecInterviewService InterviewService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>สัมภาษณ์ผู้สมัคร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">สัมภาษณ์ — ใบสมัคร #@ApplicationId</MudText>
+    <MudButton Variant="Variant.Text" Href="@BackHref" Class="mb-2">กลับไปหน้าผู้สมัคร</MudButton>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+    }
+
+    @foreach (var interview in _interviews)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mb-3">
+            <MudText Typo="Typo.subtitle1">@interview.Round — @interview.ScheduledDate.ToString("dd/MM/yyyy HH:mm") @(interview.Location is null ? "" : $"({interview.Location})")</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">ผู้สัมภาษณ์: @string.Join(", ", PanelistNames(interview.Id))</MudText>
+
+            @foreach (var empId in _panelistsByInterview.GetValueOrDefault(interview.Id, new()).Select(p => p.HremployeeId))
+            {
+                <MudExpansionPanels Class="mt-2">
+                    <MudExpansionPanel Text="@($"Scorecard — {EmployeeName(empId)}")">
+                        <MudSelect T="InterviewRecommendation?" Label="ข้อเสนอแนะรวม"
+                            Value="GetRecommendation(interview.Id, empId)" ValueChanged="v => SetRecommendation(interview.Id, empId, v)">
+                            <MudSelectItem T="InterviewRecommendation?" Value="InterviewRecommendation.StrongHire">Strong Hire</MudSelectItem>
+                            <MudSelectItem T="InterviewRecommendation?" Value="InterviewRecommendation.Hire">Hire</MudSelectItem>
+                            <MudSelectItem T="InterviewRecommendation?" Value="InterviewRecommendation.NoHire">No Hire</MudSelectItem>
+                            <MudSelectItem T="InterviewRecommendation?" Value="InterviewRecommendation.StrongNoHire">Strong No Hire</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField T="string" Value="GetStrengths(interview.Id, empId)" ValueChanged="v => SetStrengths(interview.Id, empId, v)" Label="จุดแข็ง" Lines="2" Class="mt-2" />
+                        <MudTextField T="string" Value="GetConcerns(interview.Id, empId)" ValueChanged="v => SetConcerns(interview.Id, empId, v)" Label="ข้อกังวล" Lines="2" Class="mt-2" />
+
+                        @if (_requiredCompetencies.Count > 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="mt-3 mb-1">ให้คะแนนตามสมรรถนะที่ตำแหน่งต้องการ (1-5)</MudText>
+                            @foreach (var req in _requiredCompetencies)
+                            {
+                                <MudGrid>
+                                    <MudItem xs="8"><MudText Typo="Typo.body2">@req.Competency.Name @(req.IsCritical ? "(จำเป็น)" : "")</MudText></MudItem>
+                                    <MudItem xs="4">
+                                        <MudNumericField T="int" Min="1" Max="5" Value="GetRatingValue(interview.Id, empId, req.CompetencyId)"
+                                            ValueChanged="v => SetRatingValue(interview.Id, empId, req.CompetencyId, v)" />
+                                    </MudItem>
+                                </MudGrid>
+                            }
+                        }
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                            OnClick="@(() => SubmitScorecardAsync(interview.Id, empId))">บันทึก Scorecard</MudButton>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-3 mt-3" Outlined="true">
+        <MudText Typo="Typo.h6">นัดสัมภาษณ์รอบใหม่</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_round" Label="รอบ (เช่น Phone Screen, Technical, Final)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่สัมภาษณ์" @bind-Date="_scheduleDate" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTimePicker Label="เวลา" @bind-Time="_scheduleTime" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_location" Label="สถานที่/ลิงก์" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Hremployee" Label="เพิ่มผู้สัมภาษณ์" Value="_panelistPick" ValueChanged="AddPanelist"
+                    SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12">
+                @foreach (var p in _selectedPanelists)
+                {
+                    <MudChip T="string" OnClose="@(() => _selectedPanelists.Remove(p))">@p.EmpName @p.EmpSurname</MudChip>
+                }
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ScheduleAsync">นัดสัมภาษณ์</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudPaper>
+
+@code {
+    [Parameter] public long ApplicationId { get; set; }
+
+    private string BackHref = "/rec/postings";
+    private long _actorUserId;
+
+    private List<Rec_Interview> _interviews = new();
+    private Dictionary<long, List<Rec_InterviewPanelist>> _panelistsByInterview = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private Dictionary<(long InterviewId, long HremployeeId), Rec_InterviewScorecard> _scorecards = new();
+    private Dictionary<long, List<Rec_ScorecardCompetencyRating>> _ratingsByScorecard = new();
+    private List<Job_CompetencyRequirement> _requiredCompetencies = new();
+    private Dictionary<(long InterviewId, long HremployeeId, long CompetencyId), int> _formRatings = new();
+    private Dictionary<(long InterviewId, long HremployeeId), InterviewRecommendation?> _formRecommendations = new();
+    private Dictionary<(long InterviewId, long HremployeeId), string?> _formStrengthsMap = new();
+    private Dictionary<(long InterviewId, long HremployeeId), string?> _formConcernsMap = new();
+
+    private string? _round;
+    private DateTime? _scheduleDate = DateTime.Today;
+    private TimeSpan? _scheduleTime = new TimeSpan(10, 0, 0);
+    private string? _location;
+    private Hremployee? _panelistPick;
+    private List<Hremployee> _selectedPanelists = new();
+
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        _requiredCompetencies = await InterviewService.GetRequiredCompetenciesAsync(ApplicationId);
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _interviews = await InterviewService.GetInterviewsForApplicationAsync(ApplicationId);
+        _panelistsByInterview.Clear();
+        _scorecards.Clear();
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        foreach (var interview in _interviews)
+        {
+            var panelists = await InterviewService.GetPanelistsAsync(interview.Id);
+            _panelistsByInterview[interview.Id] = panelists;
+
+            foreach (var p in panelists)
+            {
+                var sc = await InterviewService.GetScorecardAsync(interview.Id, p.HremployeeId);
+                if (sc is not null)
+                {
+                    _scorecards[(interview.Id, p.HremployeeId)] = sc;
+                    _formRecommendations[(interview.Id, p.HremployeeId)] = sc.OverallRecommendation;
+                    _formStrengthsMap[(interview.Id, p.HremployeeId)] = sc.Strengths;
+                    _formConcernsMap[(interview.Id, p.HremployeeId)] = sc.Concerns;
+                    var ratings = await InterviewService.GetScorecardRatingsAsync(sc.Id);
+                    foreach (var r in ratings)
+                        _formRatings[(interview.Id, p.HremployeeId, r.CompetencyId)] = r.RatedLevel;
+                }
+
+                if (!_employeeNames.ContainsKey(p.HremployeeId))
+                {
+                    var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == p.HremployeeId);
+                    _employeeNames[p.HremployeeId] = emp is null ? $"#{p.HremployeeId}" : $"{emp.EmpName} {emp.EmpSurname}";
+                }
+            }
+        }
+    }
+
+    private List<string> PanelistNames(long interviewId) =>
+        _panelistsByInterview.GetValueOrDefault(interviewId, new()).Select(p => EmployeeName(p.HremployeeId)).ToList();
+
+    private string EmployeeName(long id) => _employeeNames.TryGetValue(id, out var n) ? n : $"#{id}";
+
+    private int GetRatingValue(long interviewId, long empId, long competencyId) =>
+        _formRatings.TryGetValue((interviewId, empId, competencyId), out var v) ? v : 3;
+
+    private void SetRatingValue(long interviewId, long empId, long competencyId, int value) =>
+        _formRatings[(interviewId, empId, competencyId)] = value;
+
+    private InterviewRecommendation? GetRecommendation(long interviewId, long empId) => _formRecommendations.GetValueOrDefault((interviewId, empId));
+    private void SetRecommendation(long interviewId, long empId, InterviewRecommendation? v) => _formRecommendations[(interviewId, empId)] = v;
+    private string? GetStrengths(long interviewId, long empId) => _formStrengthsMap.GetValueOrDefault((interviewId, empId));
+    private void SetStrengths(long interviewId, long empId, string? v) => _formStrengthsMap[(interviewId, empId)] = v;
+    private string? GetConcerns(long interviewId, long empId) => _formConcernsMap.GetValueOrDefault((interviewId, empId));
+    private void SetConcerns(long interviewId, long empId, string? v) => _formConcernsMap[(interviewId, empId)] = v;
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void AddPanelist(Hremployee? emp)
+    {
+        if (emp is not null && !_selectedPanelists.Any(p => p.id == emp.id))
+            _selectedPanelists.Add(emp);
+        _panelistPick = null;
+    }
+
+    private async Task ScheduleAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_round) || _scheduleDate is null || _scheduleTime is null || _selectedPanelists.Count == 0)
+        {
+            _error = "กรุณาระบุรอบ วันเวลา และผู้สัมภาษณ์อย่างน้อย 1 คน";
+            return;
+        }
+
+        var scheduledDate = _scheduleDate.Value.Date + _scheduleTime.Value;
+        await InterviewService.ScheduleAsync(ApplicationId, _round, scheduledDate, _location, _selectedPanelists.Select(p => p.id).ToList(), _actorUserId);
+
+        Snackbar.Add("นัดสัมภาษณ์สำเร็จ", Severity.Success);
+        _round = null;
+        _location = null;
+        _selectedPanelists.Clear();
+        await RefreshAsync();
+    }
+
+    private async Task SubmitScorecardAsync(long interviewId, long empId)
+    {
+        var recommendation = GetRecommendation(interviewId, empId);
+        if (recommendation is null)
+        {
+            _error = "กรุณาเลือกข้อเสนอแนะรวมก่อนบันทึก";
+            return;
+        }
+        _error = null;
+
+        var ratings = _requiredCompetencies.Select(r => (
+            r.CompetencyId,
+            RatedLevel: GetRatingValue(interviewId, empId, r.CompetencyId),
+            Note: (string?)null)).ToList();
+
+        await InterviewService.SubmitScorecardAsync(interviewId, empId, recommendation.Value,
+            GetStrengths(interviewId, empId), GetConcerns(interviewId, empId), ratings);
+        Snackbar.Add("บันทึก Scorecard สำเร็จ", Severity.Success);
+        await RefreshAsync();
+    }
+}

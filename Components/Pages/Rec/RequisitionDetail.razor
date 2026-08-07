@@ -1,0 +1,61 @@
+@page "/rec/requisitions/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject RecRequisitionService RequisitionService
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+<PageTitle>คำขออัตรากำลัง #@Id</PageTitle>
+
+@if (_requisition is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบคำขออัตรากำลังนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">คำขออัตรากำลัง #@_requisition.Id</MudText>
+        <MudStack Spacing="1" Class="mt-3">
+            <MudText Typo="Typo.body1"><b>ประเภท:</b> @(_requisition.RequisitionType == RequisitionType.Replacement ? "ทดแทน" : "อัตราใหม่")</MudText>
+            <MudText Typo="Typo.body1"><b>ตำแหน่ง (Job):</b> @(_execType?.Name ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>หน่วยงาน:</b> @(_org?.name ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>จำนวนอัตรา:</b> @_requisition.OpeningsCount</MudText>
+            <MudText Typo="Typo.body1"><b>เงินเดือนเสนอ:</b> @(_requisition.ProposedMinSalary?.ToString("N2") ?? "-") - @(_requisition.ProposedMaxSalary?.ToString("N2") ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>วันที่คาดว่าจะเริ่มงาน:</b> @(_requisition.TargetStartDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>เหตุผล:</b> @(_requisition.Justification ?? "-")</MudText>
+            <MudText Typo="Typo.body1"><b>สถานะ:</b> <MudChip T="string" Size="Size.Small">@_requisition.Status</MudChip></MudText>
+            @if (_requisition.RequisitionType == RequisitionType.NewHeadcount && _requisition.NewPositionSlotId is not null)
+            {
+                <MudText Typo="Typo.body1"><b>เลขที่อัตราใหม่ที่สร้างแล้ว:</b> #@_requisition.NewPositionSlotId</MudText>
+            }
+            @if (_requisition.JobMasterId is not null)
+            {
+                <MudButton Variant="Variant.Text" Href="/wf/my-inbox" Class="mt-2">ดูในกล่องอนุมัติ</MudButton>
+            }
+        </MudStack>
+        <MudButton Variant="Variant.Text" Href="/rec/requisitions" Class="mt-3">กลับ</MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Rec_Requisition? _requisition;
+    private Pos_ExecType? _execType;
+    private com_organization? _org;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await RequisitionService.SyncStatusFromJobAsync(Id);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _requisition = await context.Rec_Requisitions.FirstOrDefaultAsync(r => r.Id == Id);
+        if (_requisition is null) return;
+
+        _execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == _requisition.PosExecTypeId);
+        _org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == _requisition.OrganizationId);
+    }
+}

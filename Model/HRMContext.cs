@@ -409,6 +409,19 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Talent_PoolEntry> Talent_PoolEntries { get; set; }
     // ----- end Talent_* module -----
 
+    // ----- Rec_* module (Recruitment / ATS) -----
+    public virtual DbSet<Rec_Requisition> Rec_Requisitions { get; set; }
+    public virtual DbSet<Rec_JobPosting> Rec_JobPostings { get; set; }
+    public virtual DbSet<Rec_Candidate> Rec_Candidates { get; set; }
+    public virtual DbSet<Rec_Application> Rec_Applications { get; set; }
+    public virtual DbSet<Rec_Interview> Rec_Interviews { get; set; }
+    public virtual DbSet<Rec_InterviewPanelist> Rec_InterviewPanelists { get; set; }
+    public virtual DbSet<Rec_InterviewScorecard> Rec_InterviewScorecards { get; set; }
+    public virtual DbSet<Rec_ScorecardCompetencyRating> Rec_ScorecardCompetencyRatings { get; set; }
+    public virtual DbSet<Rec_Offer> Rec_Offers { get; set; }
+    public virtual DbSet<Rec_CandidateDataRetentionSettings> Rec_CandidateDataRetentionSettingsList { get; set; }
+    // ----- end Rec_* module -----
+
     public virtual DbSet<Hrd_Family> Hrd_Families { get; set; }
     public virtual DbSet<Hrd_Marriage> Hrd_Marriages { get; set; }
     public virtual DbSet<Hrd_Education> Hrd_Educations { get; set; }
