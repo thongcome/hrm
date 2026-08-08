@@ -501,6 +501,18 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Perf_Score> Perf_Scores { get; set; }
     public virtual DbSet<Perf_Goal> Perf_Goals { get; set; }
     public virtual DbSet<Perf_GoalCheckIn> Perf_GoalCheckIns { get; set; }
+
+    // ----- Lms_* module (Learning Management System, HRD Phase 4) -----
+    public virtual DbSet<Lms_CourseCategory> Lms_CourseCategories { get; set; }
+    public virtual DbSet<Lms_Course> Lms_Courses { get; set; }
+    public virtual DbSet<Lms_CourseSession> Lms_CourseSessions { get; set; }
+    public virtual DbSet<Lms_Enrollment> Lms_Enrollments { get; set; }
+    public virtual DbSet<Lms_QuizQuestion> Lms_QuizQuestions { get; set; }
+    public virtual DbSet<Lms_QuizAttempt> Lms_QuizAttempts { get; set; }
+    public virtual DbSet<Lms_QuizAnswer> Lms_QuizAnswers { get; set; }
+    public virtual DbSet<Lms_TrainingNeed> Lms_TrainingNeeds { get; set; }
+    public virtual DbSet<Lms_TrainingBudget> Lms_TrainingBudgets { get; set; }
+    // ----- end Lms_* module -----
     // ----- end Pay_* module -----
 
     // No hardcoded connection-string fallback here on purpose — this

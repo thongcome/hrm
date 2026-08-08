@@ -1,0 +1,169 @@
+@page "/lms/courses/{CourseId:long}/sessions"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>รอบอบรม</PageTitle>
+
+@if (_course is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">รอบอบรมของหลักสูตร: @_course.Title</MudText>
+        <MudButton Href="/lms/courses" Variant="Variant.Text" Class="mt-1">&larr; กลับไปคลังหลักสูตร</MudButton>
+
+        <MudDivider Class="my-4" />
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newSession.SessionCode" Label="รหัสรอบ" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newStartDate" Label="วันเริ่ม" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newEndDate" Label="วันสิ้นสุด" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_newSession.MaxSeats" Label="ที่นั่งจำกัด (ถ้ามี)" Min="1" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.Location" Label="สถานที่ (Classroom)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.OnlineLink" Label="ลิงก์ออนไลน์ (Online)" /></MudItem>
+            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddSessionAsync">เปิดรอบใหม่</MudButton></MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        <MudTable Items="_sessions" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>รหัสรอบ</MudTh>
+                <MudTh>วันที่</MudTh>
+                <MudTh>สถานที่/ลิงก์</MudTh>
+                <MudTh>ที่นั่ง</MudTh>
+                <MudTh>ค่าใช้จ่ายจริง</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.SessionCode</MudTd>
+                <MudTd>@context.StartDate.ToString("dd/MM/yyyy") - @context.EndDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@(context.Location ?? context.OnlineLink ?? "-")</MudTd>
+                <MudTd>@(context.MaxSeats?.ToString() ?? "ไม่จำกัด")</MudTd>
+                <MudTd>
+                    @if (_editingCostId == context.Id)
+                    {
+                        <MudStack Row="true" Spacing="1">
+                            <MudNumericField T="decimal?" @bind-Value="_editCost" Style="width:120px" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" OnClick="@(() => SaveCostAsync(context))" />
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _editingCostId = context.Id; _editCost = context.ActualCost; })">
+                            @(context.ActualCost is decimal c ? c.ToString("N2") : "กรอกค่าใช้จ่าย")
+                        </MudButton>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudSelect T="CourseSessionStatus" Value="context.Status" ValueChanged="@(v => UpdateStatusAsync(context, v))" Dense="true">
+                        <MudSelectItem T="CourseSessionStatus" Value="CourseSessionStatus.Scheduled">กำหนดการ</MudSelectItem>
+                        <MudSelectItem T="CourseSessionStatus" Value="CourseSessionStatus.Ongoing">กำลังดำเนินการ</MudSelectItem>
+                        <MudSelectItem T="CourseSessionStatus" Value="CourseSessionStatus.Completed">เสร็จสิ้น</MudSelectItem>
+                        <MudSelectItem T="CourseSessionStatus" Value="CourseSessionStatus.Cancelled">ยกเลิก</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/lms/enrollments?sessionId={context.Id}")">ผู้ลงทะเบียน</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรอบอบรม</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long CourseId { get; set; }
+
+    private Lms_Course? _course;
+    private List<Lms_CourseSession> _sessions = new();
+    private string? _error;
+    private Lms_CourseSession _newSession = new();
+    private DateTime? _newStartDate;
+    private DateTime? _newEndDate;
+    private long? _editingCostId;
+    private decimal? _editCost;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _course = await context.Lms_Courses.FirstOrDefaultAsync(c => c.Id == CourseId);
+        if (_course is null) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _sessions = await context.Lms_CourseSessions.Where(s => s.CourseId == CourseId).OrderByDescending(s => s.StartDate).ToListAsync();
+    }
+
+    private async Task AddSessionAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newSession.SessionCode) || _newStartDate is null || _newEndDate is null)
+        {
+            _error = "กรุณากรอกรหัสรอบและช่วงวันที่ให้ครบ";
+            return;
+        }
+        if (_newEndDate < _newStartDate)
+        {
+            _error = "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Lms_CourseSessions.Add(new Lms_CourseSession
+        {
+            CourseId = CourseId,
+            SessionCode = _newSession.SessionCode,
+            StartDate = DateOnly.FromDateTime(_newStartDate.Value),
+            EndDate = DateOnly.FromDateTime(_newEndDate.Value),
+            Location = _newSession.Location,
+            OnlineLink = _newSession.OnlineLink,
+            MaxSeats = _newSession.MaxSeats,
+            Status = CourseSessionStatus.Scheduled,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เปิดรอบอบรมเรียบร้อย", Severity.Success);
+        _newSession = new();
+        _newStartDate = null; _newEndDate = null;
+        await LoadAsync();
+    }
+
+    private async Task UpdateStatusAsync(Lms_CourseSession session, CourseSessionStatus status)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lms_CourseSessions.FirstOrDefaultAsync(s => s.Id == session.Id);
+        if (existing is null) return;
+        existing.Status = status;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task SaveCostAsync(Lms_CourseSession session)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lms_CourseSessions.FirstOrDefaultAsync(s => s.Id == session.Id);
+        if (existing is null) return;
+        existing.ActualCost = _editCost;
+        await context.SaveChangesAsync();
+        _editingCostId = null;
+        await LoadAsync();
+    }
+}

@@ -228,6 +228,12 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 
+// ----- Lms_* module (Learning Management System, HRD Phase 4) -----
+builder.Services.AddScoped<HRM.Services.Lms.LmsEnrollmentService>();
+builder.Services.AddScoped<HRM.Services.Lms.LmsQuizService>();
+builder.Services.AddScoped<HRM.Services.Lms.LmsTrainingBudgetService>();
+// ----- end Lms_* module -----
+
 // ----- Talent_* module (Talent Management / 9-Box) -----
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
 builder.Services.AddScoped<HRM.Services.Succession.SuccessionService>();
@@ -359,5 +365,6 @@ app.MapInfoMessageFileEndpoints();
 app.MapHrFileEndpoints();
 app.MapCareerEndpoints();
 app.MapRecFileEndpoints();
+app.MapLmsFileEndpoints();
 
 app.Run();

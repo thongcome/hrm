@@ -1,0 +1,111 @@
+@page "/lms/training-budget"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsTrainingBudgetService BudgetService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>งบประมาณฝึกอบรม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">งบประมาณฝึกอบรม (Training Budget)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_newYear" Label="ปีงบประมาณ (ค.ศ.)" Min="2020" Max="2100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_newAmount" Label="งบประมาณ (บาท)" Min="0" /></MudItem>
+        <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBudgetAsync" Class="mt-2">บันทึกงบ</MudButton></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudTable Items="_budgets" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ปีงบประมาณ</MudTh>
+            <MudTh>งบที่ตั้งไว้</MudTh>
+            <MudTh>ใช้จริง</MudTh>
+            <MudTh>คงเหลือ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.FiscalYear</MudTd>
+            <MudTd>@context.BudgetAmount.ToString("N2")</MudTd>
+            <MudTd>@(_actuals.GetValueOrDefault(context.FiscalYear, 0m).ToString("N2"))</MudTd>
+            <MudTd>
+                @{
+                    var variance = context.BudgetAmount - _actuals.GetValueOrDefault(context.FiscalYear, 0m);
+                }
+                <MudText Color="@(variance < 0 ? Color.Error : Color.Success)">@variance.ToString("N2")</MudText>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการตั้งงบประมาณ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Lms_TrainingBudget> _budgets = new();
+    private Dictionary<int, decimal> _actuals = new();
+    private int _newYear = DateTime.Now.Year;
+    private decimal _newAmount;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _budgets = await context.Lms_TrainingBudgets
+            .Where(b => b.CompanyId == _companyId && b.OrganizationId == null)
+            .OrderByDescending(b => b.FiscalYear)
+            .ToListAsync();
+
+        _actuals.Clear();
+        foreach (var b in _budgets)
+        {
+            var result = await BudgetService.GetBudgetVsActualAsync(_companyId!, b.FiscalYear);
+            _actuals[b.FiscalYear] = result.ActualTotal;
+        }
+    }
+
+    private async Task SaveBudgetAsync()
+    {
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lms_TrainingBudgets.FirstOrDefaultAsync(b => b.CompanyId == _companyId && b.FiscalYear == _newYear && b.OrganizationId == null);
+        if (existing is null)
+        {
+            context.Lms_TrainingBudgets.Add(new Lms_TrainingBudget { CompanyId = _companyId!, FiscalYear = _newYear, BudgetAmount = _newAmount });
+        }
+        else
+        {
+            existing.BudgetAmount = _newAmount;
+        }
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกงบประมาณเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

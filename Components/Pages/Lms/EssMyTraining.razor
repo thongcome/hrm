@@ -1,0 +1,111 @@
+@page "/ess/lms/my-training"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
+
+<PageTitle>ประวัติการอบรมของฉัน</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">ประวัติการอบรมของฉัน</MudText>
+        <MudButton Href="/ess/lms/catalog" Variant="Variant.Text" Class="mt-1">&larr; ดูรอบอบรมที่เปิดรับสมัคร</MudButton>
+
+        <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>หลักสูตร</MudTh>
+                <MudTh>รอบ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>คะแนนสอบ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Course.Title</MudTd>
+                <MudTd>@context.Session.SessionCode (@context.Session.StartDate.ToString("dd/MM/yyyy"))</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Enrollment.Status)">@StatusLabel(context.Enrollment.Status)</MudChip></MudTd>
+                <MudTd>@(context.Enrollment.QuizScorePercent is decimal s ? $"{s:0.#}%" : "-")</MudTd>
+                <MudTd>
+                    @if ((context.Enrollment.Status == EnrollmentStatus.Approved || context.Enrollment.Status == EnrollmentStatus.Attended) && context.Course.PassingScorePercent is not null)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Href="@($"/ess/lms/quiz/{context.Enrollment.Id}")">ทำแบบทดสอบ</MudButton>
+                    }
+                    @if (context.Enrollment.Status == EnrollmentStatus.Completed)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/lms/files/certificate/{context.Enrollment.Id}")" Target="_blank">ดาวน์โหลดใบรับรอง</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประวัติการลงทะเบียนอบรม</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private record Row(Lms_Enrollment Enrollment, Lms_Course Course, Lms_CourseSession Session);
+
+    private Hremployee? _employee;
+    private bool _notFound;
+    private List<Row> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) { _notFound = true; return; }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var enrollments = await context.Lms_Enrollments.Where(e => e.HremployeeId == _employee!.id).OrderByDescending(e => e.EnrolledDate).ToListAsync();
+
+        var sessionIds = enrollments.Select(e => e.CourseSessionId).Distinct().ToList();
+        var sessions = await context.Lms_CourseSessions.Where(s => sessionIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id);
+        var courseIds = sessions.Values.Select(s => s.CourseId).Distinct().ToList();
+        var courses = await context.Lms_Courses.Where(c => courseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
+
+        _rows = enrollments.Select(e => new Row(e, courses[sessions[e.CourseSessionId].CourseId], sessions[e.CourseSessionId])).ToList();
+    }
+
+    private static Color StatusColor(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.PendingApproval => Color.Warning,
+        EnrollmentStatus.Approved => Color.Info,
+        EnrollmentStatus.Attended => Color.Primary,
+        EnrollmentStatus.Completed => Color.Success,
+        EnrollmentStatus.Rejected => Color.Error,
+        EnrollmentStatus.NoShow => Color.Error,
+        EnrollmentStatus.Cancelled => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.PendingApproval => "รออนุมัติ",
+        EnrollmentStatus.Approved => "อนุมัติแล้ว",
+        EnrollmentStatus.Attended => "เข้าร่วมแล้ว",
+        EnrollmentStatus.Completed => "สำเร็จหลักสูตร",
+        EnrollmentStatus.Rejected => "ไม่อนุมัติ",
+        EnrollmentStatus.NoShow => "ไม่มาตามนัด",
+        EnrollmentStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+}

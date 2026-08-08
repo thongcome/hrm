@@ -1,0 +1,111 @@
+@page "/ess/lms/catalog"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsEnrollmentService EnrollmentService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
+
+<PageTitle>หลักสูตรอบรม</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+}
+else if (_employee is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">รอบอบรมที่เปิดรับสมัคร</MudText>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>หลักสูตร</MudTh>
+                <MudTh>รูปแบบ</MudTh>
+                <MudTh>วันที่</MudTh>
+                <MudTh>สถานที่/ลิงก์</MudTh>
+                <MudTh>ที่นั่ง</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Course.Title</MudTd>
+                <MudTd>@context.Course.DeliveryType</MudTd>
+                <MudTd>@context.Session.StartDate.ToString("dd/MM/yyyy") - @context.Session.EndDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@(context.Session.Location ?? context.Session.OnlineLink ?? "-")</MudTd>
+                <MudTd>@(context.Session.MaxSeats is int m ? $"{context.TakenSeats}/{m}" : "ไม่จำกัด")</MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => EnrollAsync(context.Session.Id))">ลงทะเบียน</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรอบอบรมที่เปิดรับสมัคร</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private record Row(Lms_Course Course, Lms_CourseSession Session, int TakenSeats);
+
+    private Hremployee? _employee;
+    private bool _notFound;
+    private List<Row> _rows = new();
+    private string? _error;
+    private long _actorUserId;
+    private string? _actorEmpId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) { _notFound = true; return; }
+
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirst("empno")?.Value;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var courseIds = await context.Lms_Courses.Where(c => c.CompanyId == _employee!.companyid && c.IsActive).Select(c => c.Id).ToListAsync();
+        var sessions = await context.Lms_CourseSessions
+            .Where(s => courseIds.Contains(s.CourseId) && (s.Status == CourseSessionStatus.Scheduled || s.Status == CourseSessionStatus.Ongoing))
+            .OrderBy(s => s.StartDate)
+            .ToListAsync();
+
+        var courses = await context.Lms_Courses.Where(c => courseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
+
+        _rows = new();
+        foreach (var s in sessions)
+        {
+            var taken = await context.Lms_Enrollments.CountAsync(e => e.CourseSessionId == s.Id && e.Status != EnrollmentStatus.Rejected && e.Status != EnrollmentStatus.Cancelled);
+            _rows.Add(new Row(courses[s.CourseId], s, taken));
+        }
+    }
+
+    private async Task EnrollAsync(long sessionId)
+    {
+        _error = null;
+        try
+        {
+            await EnrollmentService.EnrollAsync(sessionId, _employee!.id, _actorUserId, _actorEmpId, null);
+            Snackbar.Add("ลงทะเบียนเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+}

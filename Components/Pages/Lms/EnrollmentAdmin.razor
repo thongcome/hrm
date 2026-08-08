@@ -1,0 +1,237 @@
+@page "/lms/enrollments"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsEnrollmentService EnrollmentService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>ผู้ลงทะเบียนอบรม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ผู้ลงทะเบียนอบรม (HR)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Lms_CourseSession" Label="กรองตามรอบอบรม" Value="_filterSession" ValueChanged="OnFilterSessionChanged"
+                SearchFunc="SearchSessionsAsync" ToStringFunc="@(s => s == null ? null : $"{_sessionLabels.GetValueOrDefault(s.Id, s.SessionCode)}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="EnrollmentStatus?" @bind-Value="_filterStatus" Label="กรองตามสถานะ" Clearable="true">
+                @foreach (EnrollmentStatus s in Enum.GetValues<EnrollmentStatus>())
+                {
+                    <MudSelectItem T="EnrollmentStatus?" Value="s">@StatusLabel(s)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">ค้นหา</MudButton></MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">ลงทะเบียนแทนพนักงาน (HR-proxy)</MudText>
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_proxyEmployee" SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Lms_CourseSession" Label="รอบอบรม" @bind-Value="_proxySession" SearchFunc="SearchSessionsAsync"
+                ToStringFunc="@(s => s == null ? null : _sessionLabels.GetValueOrDefault(s.Id, s.SessionCode))" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ProxyEnrollAsync" Class="mt-2">ลงทะเบียนแทน</MudButton></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudTable Items="_rows" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>หลักสูตร / รอบ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>คะแนนสอบ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmployeeLabel</MudTd>
+            <MudTd>@context.CourseTitle / @context.SessionCode</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Enrollment.Status)">@StatusLabel(context.Enrollment.Status)</MudChip></MudTd>
+            <MudTd>@(context.Enrollment.QuizScorePercent is decimal s ? $"{s:0.#}%" : "-")</MudTd>
+            <MudTd>
+                @if (context.Enrollment.Status == EnrollmentStatus.Approved)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => MarkAttendedAsync(context.Enrollment.Id))">เข้าร่วมแล้ว</MudButton>
+                }
+                @if (context.Enrollment.Status == EnrollmentStatus.Attended)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => MarkCompletedAsync(context.Enrollment.Id))">สำเร็จหลักสูตร</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ไม่พบรายการ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private record Row(Lms_Enrollment Enrollment, string EmployeeLabel, string CourseTitle, string SessionCode);
+
+    private string? _companyId;
+    private List<Row> _rows = new();
+    private Lms_CourseSession? _filterSession;
+    private EnrollmentStatus? _filterStatus;
+    private Hremployee? _proxyEmployee;
+    private Lms_CourseSession? _proxySession;
+    private string? _error;
+    private readonly Dictionary<long, string> _sessionLabels = new();
+    private long? _actorUserId;
+    private string? _actorEmpId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirst("empno")?.Value;
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var sessions = await context.Lms_CourseSessions.Join(context.Lms_Courses.Where(c => c.CompanyId == _companyId),
+            s => s.CourseId, c => c.Id, (s, c) => new { s.Id, Label = $"{c.Title} — {s.SessionCode}" }).ToListAsync();
+        foreach (var s in sessions) _sessionLabels[s.Id] = s.Label;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var courseIds = await context.Lms_Courses.Where(c => c.CompanyId == _companyId).Select(c => c.Id).ToListAsync();
+        var query = context.Lms_Enrollments
+            .Join(context.Lms_CourseSessions, e => e.CourseSessionId, s => s.Id, (e, s) => new { e, s })
+            .Where(x => courseIds.Contains(x.s.CourseId));
+
+        if (_filterSession is not null)
+            query = query.Where(x => x.s.Id == _filterSession.Id);
+        if (_filterStatus is not null)
+            query = query.Where(x => x.e.Status == _filterStatus);
+
+        var joined = await query.OrderByDescending(x => x.e.EnrolledDate).Take(200).ToListAsync();
+
+        var employeeIds = joined.Select(x => x.e.HremployeeId).Distinct().ToList();
+        var employees = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}");
+        var courseByCourseId = await context.Lms_Courses.ToDictionaryAsync(c => c.Id, c => c.Title);
+
+        _rows = joined.Select(x => new Row(x.e,
+            employees.GetValueOrDefault(x.e.HremployeeId, $"#{x.e.HremployeeId}"),
+            courseByCourseId.GetValueOrDefault(x.s.CourseId, "-"),
+            x.s.SessionCode)).ToList();
+    }
+
+    private void OnFilterSessionChanged(Lms_CourseSession? session)
+    {
+        _filterSession = session;
+    }
+
+    private async Task<IEnumerable<Lms_CourseSession>> SearchSessionsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var courseIds = await context.Lms_Courses.Where(c => c.CompanyId == _companyId).Select(c => c.Id).ToListAsync(ct);
+        var query = context.Lms_CourseSessions.Where(s => courseIds.Contains(s.CourseId));
+        var list = await query.OrderByDescending(s => s.StartDate).Take(50).ToListAsync(ct);
+        if (!string.IsNullOrWhiteSpace(search))
+            list = list.Where(s => _sessionLabels.GetValueOrDefault(s.Id, s.SessionCode).Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+        return list;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(e => e.EmpNo.Contains(search) || (e.EmpName != null && e.EmpName.Contains(search)) || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task ProxyEnrollAsync()
+    {
+        _error = null;
+        if (_proxyEmployee is null || _proxySession is null)
+        {
+            _error = "กรุณาเลือกพนักงานและรอบอบรม";
+            return;
+        }
+
+        try
+        {
+            await EnrollmentService.EnrollAsync(_proxySession.Id, _proxyEmployee.id, _actorUserId ?? 0, _actorEmpId, null);
+            Snackbar.Add("ลงทะเบียนแทนเรียบร้อย", Severity.Success);
+            _proxyEmployee = null; _proxySession = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task MarkAttendedAsync(long enrollmentId)
+    {
+        try
+        {
+            await EnrollmentService.MarkAttendedAsync(enrollmentId, _actorUserId ?? 0);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task MarkCompletedAsync(long enrollmentId)
+    {
+        try
+        {
+            await EnrollmentService.MarkCompletedAsync(enrollmentId, _actorUserId ?? 0);
+            Snackbar.Add("ทำเครื่องหมายสำเร็จหลักสูตรเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private static Color StatusColor(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.PendingApproval => Color.Warning,
+        EnrollmentStatus.Approved => Color.Info,
+        EnrollmentStatus.Attended => Color.Primary,
+        EnrollmentStatus.Completed => Color.Success,
+        EnrollmentStatus.Rejected => Color.Error,
+        EnrollmentStatus.NoShow => Color.Error,
+        EnrollmentStatus.Cancelled => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.PendingApproval => "รออนุมัติ",
+        EnrollmentStatus.Approved => "อนุมัติแล้ว",
+        EnrollmentStatus.Attended => "เข้าร่วมแล้ว",
+        EnrollmentStatus.Completed => "สำเร็จหลักสูตร",
+        EnrollmentStatus.Rejected => "ไม่อนุมัติ",
+        EnrollmentStatus.NoShow => "ไม่มาตามนัด",
+        EnrollmentStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+}

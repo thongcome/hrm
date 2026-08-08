@@ -1,0 +1,174 @@
+@page "/lms/training-needs"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>ความต้องการฝึกอบรม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ความต้องการฝึกอบรม (Training Needs)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Hremployee" Label="พนักงาน (ถ้าเจาะจงรายคน)" @bind-Value="_newEmployee" SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="com_organization" Label="หน่วยงาน (ถ้าเป็นความต้องการทั้งหน่วยงาน)" @bind-Value="_newOrg" SearchFunc="SearchOrganizationsAsync"
+                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newTopic" Label="หัวข้อที่ต้องการอบรม" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
+        <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่มรายการ</MudButton></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudTable Items="_needs" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ผู้ขอ/หน่วยงาน</MudTh>
+            <MudTh>หัวข้อ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>วันที่ขอ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@TargetLabel(context)</MudTd>
+            <MudTd>@context.RequestedTopic</MudTd>
+            <MudTd>
+                <MudSelect T="TrainingNeedStatus" Value="context.Status" ValueChanged="@(v => UpdateStatusAsync(context, v))" Dense="true">
+                    @foreach (TrainingNeedStatus s in Enum.GetValues<TrainingNeedStatus>())
+                    {
+                        <MudSelectItem T="TrainingNeedStatus" Value="s">@StatusLabel(s)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudTd>
+            <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.Note</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีความต้องการฝึกอบรม</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Lms_TrainingNeed> _needs = new();
+    private Dictionary<long, string> _employeeLabels = new();
+    private Dictionary<long, string> _orgLabels = new();
+    private Hremployee? _newEmployee;
+    private com_organization? _newOrg;
+    private string _newTopic = "";
+    private string? _newNote;
+    private string? _error;
+    private long _actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _needs = await context.Lms_TrainingNeeds.Where(n => n.CompanyId == _companyId).OrderByDescending(n => n.RequestedDate).ToListAsync();
+
+        var empIds = _needs.Where(n => n.HremployeeId is not null).Select(n => n.HremployeeId!.Value).Distinct().ToList();
+        _employeeLabels = empIds.Count == 0 ? new() : await context.Hremployee.Where(e => empIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}");
+
+        var orgIds = _needs.Where(n => n.OrganizationId is not null).Select(n => n.OrganizationId!.Value).Distinct().ToList();
+        _orgLabels = orgIds.Count == 0 ? new() : await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToDictionaryAsync(o => o.id, o => $"{o.code} — {o.name}");
+    }
+
+    private string TargetLabel(Lms_TrainingNeed need)
+    {
+        if (need.HremployeeId is long empId) return _employeeLabels.GetValueOrDefault(empId, $"#{empId}");
+        if (need.OrganizationId is long orgId) return _orgLabels.GetValueOrDefault(orgId, $"#{orgId}");
+        return "-";
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(e => e.EmpNo.Contains(search) || (e.EmpName != null && e.EmpName.Contains(search)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(o => (o.code != null && o.code.Contains(search)) || (o.name != null && o.name.Contains(search)));
+        return await query.Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newTopic))
+        {
+            _error = "กรุณาระบุหัวข้อที่ต้องการอบรม";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Lms_TrainingNeeds.Add(new Lms_TrainingNeed
+        {
+            CompanyId = _companyId!,
+            HremployeeId = _newEmployee?.id,
+            OrganizationId = _newOrg?.id,
+            RequestedTopic = _newTopic,
+            Note = _newNote,
+            RequestedByUserId = _actorUserId,
+            Status = TrainingNeedStatus.Requested,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มความต้องการฝึกอบรมเรียบร้อย", Severity.Success);
+        _newEmployee = null; _newOrg = null; _newTopic = ""; _newNote = null;
+        await LoadAsync();
+    }
+
+    private async Task UpdateStatusAsync(Lms_TrainingNeed need, TrainingNeedStatus status)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Lms_TrainingNeeds.FirstOrDefaultAsync(n => n.Id == need.Id && n.CompanyId == _companyId);
+        if (existing is null) return;
+        existing.Status = status;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private static string StatusLabel(TrainingNeedStatus s) => s switch
+    {
+        TrainingNeedStatus.Requested => "ร้องขอแล้ว",
+        TrainingNeedStatus.Planned => "วางแผนแล้ว",
+        TrainingNeedStatus.Fulfilled => "ดำเนินการแล้ว",
+        TrainingNeedStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+}

@@ -1,0 +1,82 @@
+@page "/lms/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsTrainingBudgetService BudgetService
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>ภาพรวมการฝึกอบรม</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">ภาพรวมการฝึกอบรม (LMS Dashboard)</MudText>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var tile in _statusTiles)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.body2">@tile.Label</MudText>
+                    <MudText Typo="Typo.h4">@tile.Count</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.body2">อัตราสำเร็จหลักสูตร</MudText>
+                <MudText Typo="Typo.h4">@(_completionRate.ToString("0.#"))%</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">งบประมาณปี @DateTime.Now.Year</MudText>
+        <MudText Typo="Typo.body1" Class="mt-2">งบที่ตั้งไว้: @_budgetResult.BudgetAmount.ToString("N2") บาท</MudText>
+        <MudText Typo="Typo.body1">ใช้จริง: @_budgetResult.ActualTotal.ToString("N2") บาท</MudText>
+        <MudText Typo="Typo.body1" Color="@(_budgetResult.Variance < 0 ? Color.Error : Color.Success)">คงเหลือ: @_budgetResult.Variance.ToString("N2") บาท</MudText>
+    </MudPaper>
+}
+
+@code {
+    private record StatusTile(string Label, int Count);
+
+    private string? _companyId;
+    private List<StatusTile> _statusTiles = new();
+    private decimal _completionRate;
+    private LmsTrainingBudgetService.BudgetVsActualResult _budgetResult = new(0, 0, 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var courseIds = await context.Lms_Courses.Where(c => c.CompanyId == _companyId).Select(c => c.Id).ToListAsync();
+        var sessionIds = await context.Lms_CourseSessions.Where(s => courseIds.Contains(s.CourseId)).Select(s => s.Id).ToListAsync();
+        var enrollments = await context.Lms_Enrollments.Where(e => sessionIds.Contains(e.CourseSessionId)).ToListAsync();
+
+        _statusTiles = new()
+        {
+            new("รออนุมัติ", enrollments.Count(e => e.Status == EnrollmentStatus.PendingApproval)),
+            new("อนุมัติแล้ว (รอเข้าร่วม)", enrollments.Count(e => e.Status == EnrollmentStatus.Approved)),
+            new("เข้าร่วมแล้ว (รอผลสอบ/สรุป)", enrollments.Count(e => e.Status == EnrollmentStatus.Attended)),
+            new("สำเร็จหลักสูตร", enrollments.Count(e => e.Status == EnrollmentStatus.Completed)),
+        };
+
+        var finishedCount = enrollments.Count(e => e.Status is EnrollmentStatus.Completed or EnrollmentStatus.NoShow or EnrollmentStatus.Rejected);
+        _completionRate = finishedCount == 0 ? 0 : 100m * enrollments.Count(e => e.Status == EnrollmentStatus.Completed) / finishedCount;
+
+        _budgetResult = await BudgetService.GetBudgetVsActualAsync(_companyId, DateTime.Now.Year);
+    }
+}

@@ -1,0 +1,93 @@
+@page "/ess/lms/quiz/{EnrollmentId:long}"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsQuizService QuizService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
+
+<PageTitle>ทำแบบทดสอบ</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบการลงทะเบียนนี้ หรือไม่ใช่ของคุณ</MudAlert>
+}
+else if (_course is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">แบบทดสอบ: @_course.Title</MudText>
+        <MudText Typo="Typo.body2">เกณฑ์ผ่าน: @(_course.PassingScorePercent)%</MudText>
+
+        @if (_lastResult is not null)
+        {
+            <MudAlert Severity="@(_lastResult.IsPassed ? Severity.Success : Severity.Error)" Class="mt-3">
+                ผลคะแนนล่าสุด: @_lastResult.ScorePercent.ToString("0.#")% — @(_lastResult.IsPassed ? "ผ่านเกณฑ์" : "ไม่ผ่านเกณฑ์ ลองทำใหม่ได้")
+            </MudAlert>
+        }
+
+        <MudDivider Class="my-4" />
+
+        @foreach (var q in _questions)
+        {
+            <MudText Typo="Typo.subtitle1" Class="mt-3">@q.QuestionText</MudText>
+            <MudRadioGroup T="string" Value="_answers.GetValueOrDefault(q.Id)" ValueChanged="@(v => _answers[q.Id] = v)">
+                <MudRadio T="string" Value="@("A")">@q.ChoiceA</MudRadio>
+                <MudRadio T="string" Value="@("B")">@q.ChoiceB</MudRadio>
+                <MudRadio T="string" Value="@("C")">@q.ChoiceC</MudRadio>
+                <MudRadio T="string" Value="@("D")">@q.ChoiceD</MudRadio>
+            </MudRadioGroup>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">ส่งคำตอบ</MudButton>
+        <MudButton Href="/ess/lms/my-training" Variant="Variant.Text" Class="mt-4">&larr; กลับไปประวัติการอบรม</MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long EnrollmentId { get; set; }
+
+    private bool _notFound;
+    private Lms_Course? _course;
+    private List<Lms_QuizQuestion> _questions = new();
+    private Dictionary<long, string> _answers = new();
+    private Lms_QuizAttempt? _lastResult;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (employee is null) { _notFound = true; return; }
+
+        var enrollment = await context.Lms_Enrollments.FirstOrDefaultAsync(e => e.Id == EnrollmentId && e.HremployeeId == employee.id);
+        if (enrollment is null) { _notFound = true; return; }
+
+        var session = await context.Lms_CourseSessions.FirstOrDefaultAsync(s => s.Id == enrollment.CourseSessionId);
+        _course = session is null ? null : await context.Lms_Courses.FirstOrDefaultAsync(c => c.Id == session.CourseId);
+        if (_course is null) { _notFound = true; return; }
+
+        _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == _course.Id).OrderBy(q => q.SortOrder).ToListAsync();
+        _lastResult = await context.Lms_QuizAttempts.Where(a => a.EnrollmentId == EnrollmentId).OrderByDescending(a => a.AttemptDate).FirstOrDefaultAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_questions.Count == 0) return;
+        await QuizService.SubmitAttemptAsync(EnrollmentId, _answers);
+        Snackbar.Add("ส่งคำตอบเรียบร้อย", Severity.Success);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _lastResult = await context.Lms_QuizAttempts.Where(a => a.EnrollmentId == EnrollmentId).OrderByDescending(a => a.AttemptDate).FirstOrDefaultAsync();
+        _answers.Clear();
+    }
+}
