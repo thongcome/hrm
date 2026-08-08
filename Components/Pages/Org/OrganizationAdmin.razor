@@ -99,6 +99,15 @@
             </MudRadioGroup>
         </MudItem>
 
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.body2" Class="mb-1">ประเภทหน่วยงาน</MudText>
+            <MudStack Row="true">
+                <MudCheckBox T="bool" @bind-Value="_isCompany" Label="เป็นบริษัท (Company)" Color="Color.Primary" />
+                <MudCheckBox T="bool" @bind-Value="_isBranch" Label="เป็นสาขา (Branch)" Color="Color.Primary" />
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12" sm="6" />
+
         <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
         <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
         <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="3" /></MudItem>
@@ -148,6 +157,7 @@
             <MudTh>ชื่อย่อ</MudTh>
             <MudTh>รหัสการเงิน</MudTh>
             <MudTh>ลักษณะของหน่วยงาน</MudTh>
+            <MudTh>ประเภท</MudTh>
             <MudTh>สถานะ</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -158,6 +168,16 @@
             <MudTd>@context.abbr</MudTd>
             <MudTd>@context.CostCenterCode</MudTd>
             <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
+            <MudTd>
+                @if (context.isCompany)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="mr-1">บริษัท</MudChip>
+                }
+                @if (context.isBranch)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">สาขา</MudChip>
+                }
+            </MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
                     @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
@@ -191,6 +211,8 @@
     private bool _isTop;
     private bool _isActive = true;
     private bool _isManPowerCount = true;
+    private bool _isCompany;
+    private bool _isBranch;
     private long? _sectionTypeId;
     private long? _subSectionTypeId;
     private DateTime? _startDate;
@@ -312,6 +334,8 @@
         _isTop = org.istop;
         _isActive = org.isActive;
         _isManPowerCount = org.isManPowerCount;
+        _isCompany = org.isCompany;
+        _isBranch = org.isBranch;
         _sectionTypeId = _sectionTypes.FirstOrDefault(t => t.Code == org.SectionTypeCode)?.Id;
         _subSectionTypeId = org.SubSectionTypeId;
         _startDate = org.startdate;
@@ -351,6 +375,8 @@
         _isTop = false;
         _isActive = true;
         _isManPowerCount = true;
+        _isCompany = false;
+        _isBranch = false;
         _sectionTypeId = null;
         _subSectionTypeId = null;
         _startDate = null;
@@ -418,6 +444,8 @@
                 existing.abbr_en = _abbrEn;
                 existing.isActive = _isActive;
                 existing.isManPowerCount = _isManPowerCount;
+                existing.isCompany = _isCompany;
+                existing.isBranch = _isBranch;
                 existing.SectionTypeCode = newSectionTypeCode;
                 existing.SubSectionTypeId = _subSectionTypeId;
                 existing.CostCenterCode = newCostCenterCode;
@@ -469,6 +497,8 @@
                     NewIsTop = _isTop,
                     NewIsActive = _isActive,
                     NewIsManPowerCount = _isManPowerCount,
+                    NewIsCompany = _isCompany,
+                    NewIsBranch = _isBranch,
                     NewSectionTypeCode = newSectionTypeCode,
                     NewSubSectionTypeId = _subSectionTypeId,
                     NewParentCode = newParentCode,

@@ -57,6 +57,8 @@ public class Org_OrganizationChangeRequest
     public string? NewAbbrEn { get; set; }
     public bool? NewIsActive { get; set; }
     public bool? NewIsManPowerCount { get; set; }
+    public bool? NewIsCompany { get; set; }
+    public bool? NewIsBranch { get; set; }
     [StringLength(20)]
     public string? NewSectionTypeCode { get; set; }
     public long? NewSubSectionTypeId { get; set; }

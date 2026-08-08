@@ -122,6 +122,8 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                         istop = req.NewIsTop ?? false,
                         isActive = req.NewIsActive ?? true,
                         isManPowerCount = req.NewIsManPowerCount ?? true,
+                        isCompany = req.NewIsCompany ?? false,
+                        isBranch = req.NewIsBranch ?? false,
                         SectionTypeCode = req.NewSectionTypeCode,
                         SubSectionTypeId = req.NewSubSectionTypeId,
                         parent_code = req.NewParentCode,
