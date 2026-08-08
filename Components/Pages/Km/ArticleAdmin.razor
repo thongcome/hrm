@@ -1,0 +1,275 @@
+@page "/km/articles"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Km
+@using HRM.Services.Pay
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject KmArticleService ArticleService
+@inject PrivateFileStorage FileStorage
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:KM_ADMIN")]
+
+<PageTitle>จัดการบทความความรู้</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">จัดการบทความความรู้ (Knowledge Articles)</MudText>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="StartCreate">+ บทความใหม่</MudButton>
+    </MudStack>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_authorEmployeeId is null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด — ต้องผูกก่อนจึงจะสร้างบทความได้ (ระบบใช้ระบุผู้เขียน)</MudAlert>
+        return;
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (ชื่อ/เนื้อหา/แท็ก)" Immediate="true" DebounceInterval="300"
+        ValueChanged="OnSearchChanged" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mt-4" />
+
+    <MudTable Items="_articles" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>ชื่อบทความ</MudTh>
+            <MudTh>หมวดหมู่</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>บทเรียนจากโครงการ</MudTh>
+            <MudTh>เข้าชม</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title</MudTd>
+            <MudTd>@(_categories.FirstOrDefault(c => c.Id == context.CategoryId)?.Name ?? "-")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            <MudTd>@(context.ProjectId is not null ? "ใช่" : "-")</MudTd>
+            <MudTd>@context.ViewCount</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(context))">แก้ไข</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีบทความ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@if (_showForm)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editingId is null ? "สร้างบทความใหม่" : "แก้ไขบทความ")</MudText>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+
+        <MudGrid>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_form!.Title" Label="ชื่อบทความ" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_form!.CategoryId" Label="หมวดหมู่">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ระบุ -</MudSelectItem>
+                    @foreach (var c in _categories)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_form!.Content" Label="เนื้อหา" Lines="10" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form!.Tags" Label="แท็ก (คั่นด้วยจุลภาค)" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_form!.ProjectId" Label="โครงการ (ถ้าเป็นบทเรียนจากโครงการ)">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ใช่บทเรียนจากโครงการ -</MudSelectItem>
+                    @foreach (var p in _projects)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="ArticleStatus" @bind-Value="_form!.Status" Label="สถานะ">
+                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Draft">ร่าง (Draft)</MudSelectItem>
+                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Published">เผยแพร่ (Published)</MudSelectItem>
+                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Archived">เก็บถาวร (Archived)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">ยกเลิก</MudButton>
+        </MudStack>
+
+        @if (_editingId is not null)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1">ไฟล์แนบ</MudText>
+            @foreach (var doc in _attachments)
+            {
+                <MudText Typo="Typo.body2">@doc.files</MudText>
+            }
+            <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(_editingId!.Value, file))" Class="mt-2">
+                <ActivatorContent>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">แนบไฟล์</MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        }
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private long? _authorEmployeeId;
+    private List<Km_Article> _articles = new();
+    private List<Km_ArticleCategory> _categories = new();
+    private List<Att_Project> _projects = new();
+    private List<doc_center> _attachments = new();
+    private string _searchTerm = "";
+    private bool _showForm;
+    private long? _editingId;
+    private Km_Article? _form;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        _authorEmployeeId = employee?.id;
+        if (_authorEmployeeId is null) return;
+
+        _categories = await context.Km_ArticleCategories.Where(c => c.CompanyId == _companyId && c.IsActive).OrderBy(c => c.SortOrder).ToListAsync();
+        _projects = await context.Att_Projects.Where(p => p.CompanyId == _companyId && p.IsActive).OrderBy(p => p.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _articles = await ArticleService.GetAllForAdminAsync(_companyId!, _searchTerm);
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _attachments.Clear();
+        _form = new Km_Article { CompanyId = _companyId!, AuthorHremployeeId = _authorEmployeeId!.Value, Status = ArticleStatus.Draft };
+        _error = null;
+        _showForm = true;
+    }
+
+    private async Task StartEditAsync(Km_Article article)
+    {
+        _editingId = article.Id;
+        _form = new Km_Article
+        {
+            Id = article.Id,
+            CompanyId = article.CompanyId,
+            CategoryId = article.CategoryId,
+            Title = article.Title,
+            Content = article.Content,
+            Tags = article.Tags,
+            Status = article.Status,
+            ProjectId = article.ProjectId,
+            AuthorHremployeeId = article.AuthorHremployeeId,
+            CreatedDate = article.CreatedDate,
+        };
+        _error = null;
+        _showForm = true;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _attachments = await context.doc_centers.Where(d => d.doctypecode == "KM_ARTICLE_ATTACHMENT" && d.refid == article.Id && d.isActive == true).ToListAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_form!.Title) || string.IsNullOrWhiteSpace(_form.Content))
+        {
+            _error = "กรุณากรอกชื่อบทความและเนื้อหา";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingId is null)
+        {
+            context.Km_Articles.Add(_form);
+        }
+        else
+        {
+            var existing = await context.Km_Articles.FirstOrDefaultAsync(a => a.Id == _editingId && a.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบบทความนี้"; return; }
+            existing.Title = _form.Title;
+            existing.Content = _form.Content;
+            existing.CategoryId = _form.CategoryId;
+            existing.Tags = _form.Tags;
+            existing.Status = _form.Status;
+            existing.ProjectId = _form.ProjectId;
+            existing.ModifiedDate = DateTime.Now;
+        }
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกบทความเรียบร้อย", Severity.Success);
+        _editingId ??= _form.Id;
+        await LoadAsync();
+    }
+
+    private async Task UploadAttachmentAsync(long articleId, IBrowserFile file)
+    {
+        const long maxSize = 20 * 1024 * 1024;
+        await using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        var storedFileName = $"{articleId}_{Guid.NewGuid():N}_{file.Name}";
+        var (relativePath, _) = await FileStorage.SaveAsync("km-attachments", storedFileName, bytes);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.doc_centers.Add(new doc_center
+        {
+            refid = articleId,
+            doctypecode = "KM_ARTICLE_ATTACHMENT",
+            files = file.Name,
+            path = relativePath,
+            isActive = true,
+            moddate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+
+        _attachments = await context.doc_centers.Where(d => d.doctypecode == "KM_ARTICLE_ATTACHMENT" && d.refid == articleId && d.isActive == true).ToListAsync();
+        Snackbar.Add("แนบไฟล์เรียบร้อย", Severity.Success);
+    }
+
+    private static Color StatusColor(ArticleStatus s) => s switch
+    {
+        ArticleStatus.Draft => Color.Warning,
+        ArticleStatus.Published => Color.Success,
+        ArticleStatus.Archived => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(ArticleStatus s) => s switch
+    {
+        ArticleStatus.Draft => "ร่าง",
+        ArticleStatus.Published => "เผยแพร่แล้ว",
+        ArticleStatus.Archived => "เก็บถาวร",
+        _ => s.ToString(),
+    };
+}

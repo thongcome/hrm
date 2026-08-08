@@ -1,0 +1,136 @@
+@page "/km/articles/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Km
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject KmArticleService ArticleService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:KM_ACCESS")]
+
+<PageTitle>@(_article?.Title ?? "บทความ")</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">ไม่พบบทความนี้ หรือคุณไม่มีสิทธิ์เข้าถึง</MudAlert>
+}
+else if (_article is null)
+{
+    <MudText>กำลังโหลด...</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudButton Href="/km/articles-list" Variant="Variant.Text" Class="mb-2">&larr; กลับไปคลังความรู้</MudButton>
+        <MudText Typo="Typo.h5">@_article.Title</MudText>
+        <MudText Typo="Typo.caption">
+            โดย @_authorName · @_article.CreatedDate.ToString("dd/MM/yyyy")
+            @if (_article.ProjectId is not null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">บทเรียนจากโครงการ</MudChip>
+            }
+        </MudText>
+        <MudText Typo="Typo.body1" Class="mt-4" Style="white-space:pre-wrap;">@_article.Content</MudText>
+
+        @if (!string.IsNullOrWhiteSpace(_article.Tags))
+        {
+            <MudText Typo="Typo.caption" Class="mt-2">แท็ก: @_article.Tags</MudText>
+        }
+
+        @if (_attachments.Any())
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1">ไฟล์แนบ</MudText>
+            @foreach (var doc in _attachments)
+            {
+                <div><MudLink Href="@($"/km/files/attachment/{doc.id}")" Target="_blank">@doc.files</MudLink></div>
+            }
+        }
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1">ความคิดเห็น (@_comments.Count)</MudText>
+        @foreach (var c in _comments)
+        {
+            <MudPaper Class="pa-2 mt-2" Outlined="true">
+                <MudText Typo="Typo.body2">@GetCommenterName(c.HremployeeId) · @c.CreatedDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+                <MudText Typo="Typo.body2">@c.Comment</MudText>
+            </MudPaper>
+        }
+        <MudTextField @bind-Value="_newComment" Label="แสดงความคิดเห็น" Lines="2" Class="mt-3" />
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddCommentAsync" Class="mt-2">ส่งความคิดเห็น</MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private string? _companyId;
+    private Hremployee? _employee;
+    private Km_Article? _article;
+    private List<doc_center> _attachments = new();
+    private List<Km_ArticleComment> _comments = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private string _authorName = "-";
+    private string _newComment = "";
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        var article = await context.Km_Articles.FirstOrDefaultAsync(a => a.Id == Id && a.CompanyId == _companyId);
+        var isAdmin = state.User.HasClaim("menu", "KM_ADMIN");
+        if (article is null || (article.Status != ArticleStatus.Published && !isAdmin))
+        {
+            _notFound = true;
+            return;
+        }
+        _article = article;
+
+        _attachments = await context.doc_centers.Where(d => d.doctypecode == "KM_ARTICLE_ATTACHMENT" && d.refid == Id && d.isActive == true).ToListAsync();
+        _comments = await context.Km_ArticleComments.Where(c => c.ArticleId == Id && c.IsActive).OrderBy(c => c.CreatedDate).ToListAsync();
+
+        var employeeIds = _comments.Select(c => c.HremployeeId).Append(article.AuthorHremployeeId).Distinct().ToList();
+        var names = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}");
+        _employeeNames = names;
+        _authorName = _employeeNames.GetValueOrDefault(article.AuthorHremployeeId, "-");
+
+        await ArticleService.IncrementViewCountAsync(Id);
+    }
+
+    private string GetCommenterName(long hremployeeId) => _employeeNames.GetValueOrDefault(hremployeeId, "-");
+
+    private async Task AddCommentAsync()
+    {
+        if (_employee is null)
+        {
+            Snackbar.Add("บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด", Severity.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_newComment)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Km_ArticleComments.Add(new Km_ArticleComment
+        {
+            ArticleId = Id,
+            HremployeeId = _employee.id,
+            Comment = _newComment,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        _comments = await context.Km_ArticleComments.Where(c => c.ArticleId == Id && c.IsActive).OrderBy(c => c.CreatedDate).ToListAsync();
+        _employeeNames[_employee.id] = $"{_employee.EmpName} {_employee.EmpSurname}";
+        _newComment = "";
+        Snackbar.Add("ส่งความคิดเห็นเรียบร้อย", Severity.Success);
+    }
+}

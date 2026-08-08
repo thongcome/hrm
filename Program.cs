@@ -234,6 +234,10 @@ builder.Services.AddScoped<HRM.Services.Lms.LmsQuizService>();
 builder.Services.AddScoped<HRM.Services.Lms.LmsTrainingBudgetService>();
 // ----- end Lms_* module -----
 
+// ----- Km_* module (Knowledge Management, HRD Phase 6) -----
+builder.Services.AddScoped<HRM.Services.Km.KmArticleService>();
+// ----- end Km_* module -----
+
 // ----- Talent_* module (Talent Management / 9-Box) -----
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
 builder.Services.AddScoped<HRM.Services.Succession.SuccessionService>();
@@ -366,5 +370,6 @@ app.MapHrFileEndpoints();
 app.MapCareerEndpoints();
 app.MapRecFileEndpoints();
 app.MapLmsFileEndpoints();
+app.MapKmFileEndpoints();
 
 app.Run();

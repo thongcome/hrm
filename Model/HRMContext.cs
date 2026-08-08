@@ -513,6 +513,13 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Lms_TrainingNeed> Lms_TrainingNeeds { get; set; }
     public virtual DbSet<Lms_TrainingBudget> Lms_TrainingBudgets { get; set; }
     // ----- end Lms_* module -----
+
+    // ----- Km_* module (Knowledge Management, HRD Phase 6) -----
+    public virtual DbSet<Km_ArticleCategory> Km_ArticleCategories { get; set; }
+    public virtual DbSet<Km_Article> Km_Articles { get; set; }
+    public virtual DbSet<Km_ArticleComment> Km_ArticleComments { get; set; }
+    public virtual DbSet<Km_ExpertProfile> Km_ExpertProfiles { get; set; }
+    // ----- end Km_* module -----
     // ----- end Pay_* module -----
 
     // No hardcoded connection-string fallback here on purpose — this

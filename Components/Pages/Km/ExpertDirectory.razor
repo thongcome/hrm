@@ -1,0 +1,171 @@
+@page "/km/experts"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:KM_ACCESS")]
+
+<PageTitle>ผู้เชี่ยวชาญภายในองค์กร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ผู้เชี่ยวชาญภายในองค์กร (Internal Expert Directory)</MudText>
+
+    <MudSelect T="long?" Value="_filterCompetencyId" ValueChanged="OnFilterChanged" Label="ค้นหาตามสมรรถนะ" Class="mt-3">
+        <MudSelectItem T="long?" Value="@((long?)null)">- ทุกสมรรถนะ -</MudSelectItem>
+        @foreach (var comp in _competencies)
+        {
+            <MudSelectItem T="long?" Value="@((long?)comp.Id)">@comp.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    <MudTable Items="_experts" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>สมรรถนะ</MudTh>
+            <MudTh>รายละเอียด</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@GetEmployeeName(context.HremployeeId)</MudTd>
+            <MudTd>@GetCompetencyName(context.CompetencyId)</MudTd>
+            <MudTd>@context.ProficiencyNote</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูลผู้เชี่ยวชาญ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">ความเชี่ยวชาญของฉัน</MudText>
+
+    @if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+    }
+    else
+    {
+        @foreach (var mine in _myExpertise)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
+                <MudText Typo="Typo.body2" Class="flex-grow-1">@GetCompetencyName(mine.CompetencyId) — @mine.ProficiencyNote</MudText>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveMineAsync(mine))">ลบ</MudButton>
+            </MudStack>
+        }
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="5">
+                <MudSelect T="long?" @bind-Value="_newCompetencyId" Label="สมรรถนะ">
+                    @foreach (var comp in _competencies)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)comp.Id)">@comp.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_newNote" Label="รายละเอียด/ผลงานที่แสดงความเชี่ยวชาญ" /></MudItem>
+            <MudItem xs="12" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMineAsync" Class="mt-2">เพิ่ม</MudButton></MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private Hremployee? _employee;
+    private List<Comp_Competency> _competencies = new();
+    private List<Km_ExpertProfile> _experts = new();
+    private List<Km_ExpertProfile> _myExpertise = new();
+    private Dictionary<long, string> _employeeNames = new();
+    private long? _filterCompetencyId;
+    private long? _newCompetencyId;
+    private string? _newNote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        _competencies = await context.Comp_Competencies
+            .Include(c => c.Category)
+            .Where(c => c.IsActive && c.Category.CompanyId == _companyId)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        await LoadExpertsAsync();
+        await LoadMineAsync();
+    }
+
+    private async Task LoadExpertsAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Km_ExpertProfiles.Where(e => e.IsActive);
+        if (_filterCompetencyId is long cid)
+            query = query.Where(e => e.CompetencyId == cid);
+        _experts = await query.ToListAsync();
+
+        var employeeIds = _experts.Select(e => e.HremployeeId).Distinct().ToList();
+        var names = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}");
+        foreach (var kv in names) _employeeNames[kv.Key] = kv.Value;
+    }
+
+    private async Task LoadMineAsync()
+    {
+        if (_employee is null) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _myExpertise = await context.Km_ExpertProfiles.Where(e => e.HremployeeId == _employee.id && e.IsActive).ToListAsync();
+    }
+
+    private async Task OnFilterChanged(long? competencyId)
+    {
+        _filterCompetencyId = competencyId;
+        await LoadExpertsAsync();
+    }
+
+    private string GetEmployeeName(long id) => _employeeNames.GetValueOrDefault(id, "-");
+    private string GetCompetencyName(long id) => _competencies.FirstOrDefault(c => c.Id == id)?.Name ?? "-";
+
+    private async Task AddMineAsync()
+    {
+        if (_employee is null || _newCompetencyId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var duplicate = await context.Km_ExpertProfiles.AnyAsync(e => e.HremployeeId == _employee.id && e.CompetencyId == _newCompetencyId && e.IsActive);
+        if (duplicate)
+        {
+            Snackbar.Add("คุณเพิ่มสมรรถนะนี้ไว้แล้ว", Severity.Warning);
+            return;
+        }
+
+        context.Km_ExpertProfiles.Add(new Km_ExpertProfile
+        {
+            HremployeeId = _employee.id,
+            CompetencyId = _newCompetencyId.Value,
+            ProficiencyNote = _newNote,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        _newCompetencyId = null;
+        _newNote = null;
+        await LoadMineAsync();
+        await LoadExpertsAsync();
+        Snackbar.Add("เพิ่มความเชี่ยวชาญเรียบร้อย", Severity.Success);
+    }
+
+    private async Task RemoveMineAsync(Km_ExpertProfile profile)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Km_ExpertProfiles.FirstOrDefaultAsync(e => e.Id == profile.Id);
+        if (existing is null) return;
+        existing.IsActive = false;
+        await context.SaveChangesAsync();
+
+        await LoadMineAsync();
+        await LoadExpertsAsync();
+    }
+}

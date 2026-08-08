@@ -1,0 +1,85 @@
+@page "/km/articles-list"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Km
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject KmArticleService ArticleService
+@attribute [Authorize(Policy = "Menu:KM_ACCESS")]
+
+<PageTitle>บทความความรู้</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">คลังความรู้ (Knowledge Base)</MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="6">
+            <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true" DebounceInterval="300"
+                ValueChanged="OnSearchChanged" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="long?" Value="_categoryId" ValueChanged="OnCategoryChanged" Label="หมวดหมู่">
+                <MudSelectItem T="long?" Value="@((long?)null)">- ทุกหมวดหมู่ -</MudSelectItem>
+                @foreach (var c in _categories)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudCheckBox T="bool" Value="_lessonsLearnedOnly" ValueChanged="OnLessonsLearnedChanged" Label="บทเรียนจากโครงการเท่านั้น" />
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_articles" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>ชื่อบทความ</MudTh>
+            <MudTh>หมวดหมู่</MudTh>
+            <MudTh>แท็ก</MudTh>
+            <MudTh>เข้าชม</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title</MudTd>
+            <MudTd>@(_categories.FirstOrDefault(c => c.Id == context.CategoryId)?.Name ?? "-")</MudTd>
+            <MudTd>@context.Tags</MudTd>
+            <MudTd>@context.ViewCount</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/km/articles/{context.Id}")">อ่าน</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ไม่พบบทความที่ค้นหา</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Km_Article> _articles = new();
+    private List<Km_ArticleCategory> _categories = new();
+    private string _searchTerm = "";
+    private long? _categoryId;
+    private bool _lessonsLearnedOnly;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _categories = await context.Km_ArticleCategories.Where(c => c.CompanyId == _companyId && c.IsActive).OrderBy(c => c.SortOrder).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        _articles = await ArticleService.SearchAsync(_companyId, _searchTerm, _categoryId, _lessonsLearnedOnly);
+    }
+
+    private async Task OnSearchChanged(string term) { _searchTerm = term; await LoadAsync(); }
+    private async Task OnCategoryChanged(long? categoryId) { _categoryId = categoryId; await LoadAsync(); }
+    private async Task OnLessonsLearnedChanged(bool value) { _lessonsLearnedOnly = value; await LoadAsync(); }
+}

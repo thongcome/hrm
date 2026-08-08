@@ -1,0 +1,123 @@
+@page "/km/categories"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:KM_ADMIN")]
+
+<PageTitle>หมวดหมู่ความรู้</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="800px">
+    <MudText Typo="Typo.h5">หมวดหมู่ความรู้ (Article Category)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCode" Label="รหัส" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newName" Label="ชื่อหมวดหมู่" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newNameEn" Label="ชื่อ (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Class="mt-2">เพิ่ม</MudButton></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudTable Items="_categories" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>ชื่อ (อังกฤษ)</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.NameEn</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">@(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีหมวดหมู่ความรู้</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Km_ArticleCategory> _categories = new();
+    private string? _error;
+    private string _newCode = "";
+    private string _newName = "";
+    private string? _newNameEn;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _categories = await context.Km_ArticleCategories
+            .Where(c => c.CompanyId == _companyId)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newCode) || string.IsNullOrWhiteSpace(_newName))
+        {
+            _error = "กรุณากรอกรหัสและชื่อหมวดหมู่";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var duplicate = await context.Km_ArticleCategories.AnyAsync(c => c.CompanyId == _companyId && c.Code == _newCode);
+        if (duplicate)
+        {
+            _error = "มีรหัสนี้อยู่แล้ว";
+            return;
+        }
+
+        var sortOrder = await context.Km_ArticleCategories.CountAsync(c => c.CompanyId == _companyId);
+        context.Km_ArticleCategories.Add(new Km_ArticleCategory
+        {
+            CompanyId = _companyId!,
+            Code = _newCode,
+            Name = _newName,
+            NameEn = _newNameEn,
+            SortOrder = sortOrder,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มหมวดหมู่เรียบร้อย", Severity.Success);
+        _newCode = ""; _newName = ""; _newNameEn = null;
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Km_ArticleCategory category)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Km_ArticleCategories.FirstOrDefaultAsync(c => c.Id == category.Id && c.CompanyId == _companyId);
+        if (existing is null) return;
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}
