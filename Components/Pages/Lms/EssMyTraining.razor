@@ -2,12 +2,14 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Ess
+@using HRM.Services.Lms
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject LmsEnrollmentService EnrollmentService
 @attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
 
 <PageTitle>ประวัติการอบรมของฉัน</PageTitle>
@@ -75,6 +77,16 @@ else
     private async Task LoadAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Lazy apply-on-read: pick up any workflow jobs that closed since
+        // the last load (no scheduler exists anywhere in this codebase).
+        var pendingIds = await context.Lms_Enrollments
+            .Where(e => e.HremployeeId == _employee!.id && e.Status == EnrollmentStatus.PendingApproval)
+            .Select(e => e.Id)
+            .ToListAsync();
+        foreach (var id in pendingIds)
+            await EnrollmentService.SyncStatusFromJobAsync(id);
+
         var enrollments = await context.Lms_Enrollments.Where(e => e.HremployeeId == _employee!.id).OrderByDescending(e => e.EnrolledDate).ToListAsync();
 
         var sessionIds = enrollments.Select(e => e.CourseSessionId).Distinct().ToList();

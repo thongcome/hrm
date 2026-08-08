@@ -125,6 +125,18 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var courseIds = await context.Lms_Courses.Where(c => c.CompanyId == _companyId).Select(c => c.Id).ToListAsync();
+
+        // Lazy apply-on-read: pick up any workflow jobs that closed since the
+        // last load (no scheduler exists anywhere in this codebase — see
+        // LmsEnrollmentService.SyncStatusFromJobAsync).
+        var pendingIds = await context.Lms_Enrollments
+            .Join(context.Lms_CourseSessions, e => e.CourseSessionId, s => s.Id, (e, s) => new { e, s })
+            .Where(x => courseIds.Contains(x.s.CourseId) && x.e.Status == EnrollmentStatus.PendingApproval)
+            .Select(x => x.e.Id)
+            .ToListAsync();
+        foreach (var id in pendingIds)
+            await EnrollmentService.SyncStatusFromJobAsync(id);
+
         var query = context.Lms_Enrollments
             .Join(context.Lms_CourseSessions, e => e.CourseSessionId, s => s.Id, (e, s) => new { e, s })
             .Where(x => courseIds.Contains(x.s.CourseId));
