@@ -9,9 +9,10 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject InfoMessageService InfoService
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>พื้นที่พนักงาน</PageTitle>
+<PageTitle>@L.Translate("EssHomeTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     @if (!_loaded)
@@ -20,14 +21,14 @@
     }
     else if (_employee is null)
     {
-        <MudAlert Severity="Severity.Error">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+        <MudAlert Severity="Severity.Error">@L.Translate("NoEmployeeLinkedError")</MudAlert>
     }
     else
     {
-        <MudText Typo="Typo.h5">สวัสดี @_employee.EmpName @_employee.EmpSurname</MudText>
+        <MudText Typo="Typo.h5">@string.Format(L.Translate("GreetingTemplate"), _employee.EmpName, _employee.EmpSurname)</MudText>
         <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.75;">
-            รหัสพนักงาน @_employee.EmpNo
-            @if (!string.IsNullOrWhiteSpace(_employee.PosCode)) { <text> — ตำแหน่ง @_employee.PosCode</text> }
+            @string.Format(L.Translate("EmployeeCodeLabel"), _employee.EmpNo)
+            @if (!string.IsNullOrWhiteSpace(_employee.PosCode)) { <text>@string.Format(L.Translate("PositionSuffixTemplate"), _employee.PosCode)</text> }
         </MudText>
 
         @if (_pinnedAnnouncements.Count > 0)
@@ -35,9 +36,9 @@
             <MudPaper Class="pa-4 mt-4" Elevation="2">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.h6">
-                        <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-1" Style="vertical-align:middle;" />ประกาศสำคัญ
+                        <MudIcon Icon="@Icons.Material.Filled.Campaign" Class="mr-1" Style="vertical-align:middle;" />@L.Translate("ImportantAnnouncements")
                     </MudText>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/hr/announcements">ดูประกาศทั้งหมด</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/hr/announcements">@L.Translate("ViewAllAnnouncements")</MudButton>
                 </MudStack>
                 <MudStack Spacing="1" Class="mt-2">
                     @foreach (var m in _pinnedAnnouncements)
@@ -56,11 +57,11 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
                         <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Large" Color="Color.Primary" />
                         <div>
-                            <MudText Typo="Typo.h6">ข้อมูลส่วนตัว</MudText>
-                            <MudText Typo="Typo.body2">ดู/แก้ไขข้อมูลติดต่อของคุณ</MudText>
+                            <MudText Typo="Typo.h6">@L.Translate("PersonalInfo")</MudText>
+                            <MudText Typo="Typo.body2">@L.Translate("PersonalInfoDesc")</MudText>
                         </div>
                     </MudStack>
-                    <MudButton Href="/ess/profile" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">ไปที่หน้าข้อมูลส่วนตัว</MudButton>
+                    <MudButton Href="/ess/profile" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">@L.Translate("GoToPersonalInfo")</MudButton>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6">
@@ -68,11 +69,11 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
                         <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Color="Color.Primary" />
                         <div>
-                            <MudText Typo="Typo.h6">สลิปเงินเดือน</MudText>
-                            <MudText Typo="Typo.body2">ดาวน์โหลดสลิปเงินเดือนย้อนหลัง</MudText>
+                            <MudText Typo="Typo.h6">@L.Translate("Payslips")</MudText>
+                            <MudText Typo="Typo.body2">@L.Translate("PayslipsDesc")</MudText>
                         </div>
                     </MudStack>
-                    <MudButton Href="/ess/payslips" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">ไปที่หน้าสลิปเงินเดือน</MudButton>
+                    <MudButton Href="/ess/payslips" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">@L.Translate("GoToPayslips")</MudButton>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6">
@@ -80,11 +81,11 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
                         <MudIcon Icon="@Icons.Material.Filled.Savings" Size="Size.Large" Color="Color.Primary" />
                         <div>
-                            <MudText Typo="Typo.h6">กองทุนสำรองเลี้ยงชีพ</MudText>
-                            <MudText Typo="Typo.body2">ดู/ขอเปลี่ยนอัตราเงินสะสม เลือกนโยบายการลงทุน</MudText>
+                            <MudText Typo="Typo.h6">@L.Translate("ProvidentFund")</MudText>
+                            <MudText Typo="Typo.body2">@L.Translate("ProvidentFundDesc")</MudText>
                         </div>
                     </MudStack>
-                    <MudButton Href="/ess/provident-fund" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">ไปที่หน้ากองทุนสำรองเลี้ยงชีพ</MudButton>
+                    <MudButton Href="/ess/provident-fund" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">@L.Translate("GoToProvidentFund")</MudButton>
                 </MudPaper>
             </MudItem>
         </MudGrid>

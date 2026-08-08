@@ -24,6 +24,20 @@
         return;
     }
 
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string" Value="_countryCode" ValueChanged="OnCountryChangedAsync" Label="ประเทศของบริษัท" Clearable="true">
+                @foreach (var c in HRM.Services.Leave.LeaveCountryHelper.CommonCountries)
+                {
+                    <MudSelectItem T="string" Value="@c.Code">@c.Label</MudSelectItem>
+                }
+            </MudSelect>
+            <MudText Typo="Typo.caption" Class="mt-1">
+                ใช้กำหนดว่าสิทธิการลาเฉพาะกฎหมาย (เช่น ลาบวช) จะเสนอให้ตั้งค่า/เลือกใช้หรือไม่ — ยังไม่ระบุ = ถือเป็นไทยเหมือนเดิม
+            </MudText>
+        </MudItem>
+    </MudGrid>
+
     <MudDivider Class="my-4" />
 
     @if (!string.IsNullOrEmpty(_error))
@@ -89,6 +103,7 @@
     private decimal _editDays;
 
     private List<LeaveType> _missingTypes = new();
+    private string? _countryCode;
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,8 +122,32 @@
             .OrderBy(p => p.LeaveType)
             .ToListAsync();
 
+        _countryCode = (await context.Lve_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId))?.CountryCode;
+
         var existingTypes = _policies.Select(p => p.LeaveType).ToHashSet();
-        _missingTypes = Enum.GetValues<LeaveType>().Where(t => !existingTypes.Contains(t)).ToList();
+        _missingTypes = Enum.GetValues<LeaveType>()
+            .Where(t => !existingTypes.Contains(t) && HRM.Services.Leave.LeaveCountryHelper.IsApplicable(t, _countryCode))
+            .ToList();
+    }
+
+    private async Task OnCountryChangedAsync(string? value)
+    {
+        _countryCode = value;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var setting = await context.Lve_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (setting is null)
+        {
+            context.Lve_CompanySettings.Add(new Lve_CompanySetting { CompanyId = _companyId!, CountryCode = value });
+        }
+        else
+        {
+            setting.CountryCode = value;
+        }
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกประเทศของบริษัทเรียบร้อย", Severity.Success);
+        await LoadAsync();
     }
 
     private static string LeaveTypeLabel(LeaveType type) => type switch

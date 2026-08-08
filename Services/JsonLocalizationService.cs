@@ -2,19 +2,29 @@
 
 using HRM.Services;
 
+using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 
 public class JsonLocalizationService : IJsonLocalizationService
 {
+    public const string CookieName = "hrm_lang";
+
     private readonly IWebHostEnvironment _env;
     private readonly LanguageState _state;
     private Dictionary<string, string> _translations = new();
     public string CurrentLanguage { get; private set; } = "th";
 
-    public JsonLocalizationService(IWebHostEnvironment env, LanguageState state)
+    public JsonLocalizationService(IWebHostEnvironment env, LanguageState state, IHttpContextAccessor httpContextAccessor)
     {
         _env = env;
         _state = state;
+
+        // Cookie set by Endpoints/LanguageEndpoints.cs — this only reads it
+        // once at circuit start, so the toggle in MainLayout.razor does a
+        // real navigation (not a live SignalR state change) to guarantee a
+        // fresh circuit picks up the new value from the start.
+        var cookieValue = httpContextAccessor.HttpContext?.Request.Cookies[CookieName];
+        CurrentLanguage = cookieValue == "en" ? "en" : "th";
         LoadLanguage(CurrentLanguage);
     }
 

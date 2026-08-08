@@ -3,6 +3,8 @@
 @inherits LayoutComponentBase
 @inject AuthenticationStateProvider AuthStateProvider
 @inject MenuStateService MenuService
+@inject JsonLocalizationService L
+@inject NavigationManager NavManager
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 
@@ -26,14 +28,16 @@
             <MudText Typo="Typo.h6" Class="ml-3" Style="color:inherit;">HumanOk</MudText>
         </MudLink>
         <MudSpacer />
+        <MudButton Href="@LanguageToggleHref" Variant="Variant.Text" Color="Color.Inherit" Class="mr-2"
+            StartIcon="@Icons.Material.Filled.Language">@(L.CurrentLanguage == "th" ? "EN" : "TH")</MudButton>
         @if (_isAuthenticated)
         {
             <MudText Typo="Typo.body2" Class="mr-3" Style="opacity:.85;">@_userName</MudText>
-            <MudButton Href="/logout" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Logout">ออกจากระบบ</MudButton>
+            <MudButton Href="/logout" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Logout">@L.Translate("Logout")</MudButton>
         }
         else
         {
-            <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Login">เข้าสู่ระบบ</MudButton>
+            <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Login">@L.Translate("Login")</MudButton>
         }
     </MudAppBar>
 
@@ -71,6 +75,7 @@
                 <MudNavLink Href="/pay/admin/welfare-fund-policy" Icon="@Icons.Material.Filled.Savings">กองทุนสงเคราะห์ลูกจ้าง</MudNavLink>
                 <MudNavLink Href="/pay/admin/provident-fund-policy" Icon="@Icons.Material.Filled.Savings">กองทุนสำรองเลี้ยงชีพ</MudNavLink>
                 <MudNavLink Href="/pay/admin/chart-of-accounts" Icon="@Icons.Material.Filled.AccountBalance">ผังบัญชี</MudNavLink>
+                <MudNavLink Href="/pay/admin/document-expiry" Icon="@Icons.Material.Filled.EventBusy">เอกสารใกล้หมดอายุ</MudNavLink>
                 <MudNavLink Href="/pay/reports/labor-cost-trend" Icon="@Icons.Material.Filled.TrendingUp">แนวโน้มต้นทุนแรงงาน</MudNavLink>
                 <MudNavLink Href="/pay/reports/pay-item-breakdown" Icon="@Icons.Material.Filled.PieChart">สัดส่วนรายรับ-รายหัก</MudNavLink>
                 <MudNavLink Href="/pay/withholding-cert" Icon="@Icons.Material.Filled.Receipt">หนังสือรับรองหักภาษี 50 ทวิ</MudNavLink>
@@ -260,6 +265,16 @@
     private bool _isAuthenticated;
     private bool _hasEssAccess;
     private string _userName = "";
+
+    private string LanguageToggleHref
+    {
+        get
+        {
+            var target = L.CurrentLanguage == "th" ? "en" : "th";
+            var returnUrl = Uri.EscapeDataString(NavManager.ToBaseRelativePath(NavManager.Uri) is { Length: > 0 } path ? $"/{path}" : "/");
+            return $"/set-language?lang={target}&returnUrl={returnUrl}";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {

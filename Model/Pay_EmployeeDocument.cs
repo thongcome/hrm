@@ -29,6 +29,12 @@ public class Pay_EmployeeDocument
     public long UploadedByUserId { get; set; }
     public DateTime UploadedDate { get; set; } = DateTime.Now;
 
+    // Only meaningful for document types that actually expire (work permit,
+    // visa, driving license, professional license) — left null for types
+    // like education certificates that never expire. HR can set it on any
+    // type though; nothing enforces which types require it.
+    public DateOnly? ExpiryDate { get; set; }
+
     [StringLength(500)]
     public string? Remark { get; set; }
 

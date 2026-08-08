@@ -72,6 +72,10 @@ public enum Pay_EmployeeDocumentType
     EducationCertificate = 2,
     ResignationLetter = 3,
     BankBook = 4,
+    WorkPermit = 5,
+    Visa = 6,
+    DrivingLicense = 7,
+    ProfessionalLicense = 8,
     Other = 9
 }
 

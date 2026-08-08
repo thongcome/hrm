@@ -192,6 +192,7 @@ builder.Services.AddScoped<GLExportService>();
 builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();
 builder.Services.AddScoped<HRM.Services.Pay.EmployeeLoanService>();
 builder.Services.AddScoped<HRM.Services.Pay.InsuranceAutoEnrollService>();
+builder.Services.AddScoped<HRM.Services.Pay.DocumentExpiryService>();
 builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
 // ----- end Pay_* module -----
 
@@ -350,6 +351,7 @@ app.MapPayrollFileEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
+app.MapLanguageEndpoints();
 app.MapEssFileEndpoints();
 app.MapExpenseFileEndpoints();
 app.MapWorkflowFileEndpoints();

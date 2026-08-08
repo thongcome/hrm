@@ -102,7 +102,7 @@ else
 
                         <MudGrid Class="mt-3">
                             <MudItem xs="12" sm="4">
-                                <MudDatePicker @bind-Date="_severanceTargetMonth" Label="งวดที่จะจ่าย" Editable="true" />
+                                <MudDatePicker @bind-Date="_severanceTargetMonth" Label="งวดที่จะจ่าย" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
                             </MudItem>
                             <MudItem xs="12" sm="4">
                                 <MudNumericField @bind-Value="_severanceAmount" Label="จำนวนเงินที่จะยื่น" Format="N2" />
@@ -119,12 +119,12 @@ else
                 <MudText Typo="Typo.h6" Class="mb-2">เอกสาร</MudText>
                 <MudSimpleTable Dense="true" Class="mt-2">
                     <thead>
-                        <tr><th>ประเภท</th><th>ชื่อไฟล์</th><th>วันที่อัปโหลด</th><th></th></tr>
+                        <tr><th>ประเภท</th><th>ชื่อไฟล์</th><th>วันที่อัปโหลด</th><th>วันหมดอายุ</th><th></th></tr>
                     </thead>
                     <tbody>
                         @if (_docs.Count == 0)
                         {
-                            <tr><td colspan="4"><MudText Typo="Typo.caption">ยังไม่มีเอกสารแนบ</MudText></td></tr>
+                            <tr><td colspan="5"><MudText Typo="Typo.caption">ยังไม่มีเอกสารแนบ</MudText></td></tr>
                         }
                         @foreach (var doc in _docs)
                         {
@@ -132,6 +132,12 @@ else
                                 <td>@DocTypeLabel(doc.DocumentType)</td>
                                 <td>@doc.FileName</td>
                                 <td>@doc.UploadedDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>
+                                    @if (doc.ExpiryDate is { } exp)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="@ExpiryChipColor(exp)">@exp.ToString("dd/MM/yyyy")</MudChip>
+                                    }
+                                </td>
                                 <td><MudLink Href="@($"/pay/files/employee-doc/{doc.Id}")" Target="_blank">ดาวน์โหลด</MudLink></td>
                             </tr>
                         }
@@ -139,17 +145,24 @@ else
                 </MudSimpleTable>
 
                 <MudGrid Class="mt-3">
-                    <MudItem xs="12" sm="4">
+                    <MudItem xs="12" sm="3">
                         <MudSelect T="Pay_EmployeeDocumentType" @bind-Value="_uploadDocType" Label="ประเภทเอกสาร">
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.IdCard">บัตรประชาชน</MudSelectItem>
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Contract">สัญญาจ้าง</MudSelectItem>
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.EducationCertificate">วุฒิการศึกษา</MudSelectItem>
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ResignationLetter">ใบลาออก</MudSelectItem>
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.BankBook">สมุดบัญชีธนาคาร</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.WorkPermit">ใบอนุญาตทำงาน</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Visa">วีซ่า</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.DrivingLicense">ใบขับขี่</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ProfessionalLicense">ใบประกอบวิชาชีพ</MudSelectItem>
                             <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Other">อื่นๆ</MudSelectItem>
                         </MudSelect>
                     </MudItem>
-                    <MudItem xs="12" sm="4">
+                    <MudItem xs="12" sm="3">
+                        <MudDatePicker @bind-Date="_uploadExpiryDate" Label="วันหมดอายุ (ถ้ามี)" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
                         <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
                             <ActivatorContent>
                                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
@@ -158,7 +171,7 @@ else
                             </ActivatorContent>
                         </MudFileUpload>
                     </MudItem>
-                    <MudItem xs="12" sm="4">
+                    <MudItem xs="12" sm="3">
                         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UploadDocAsync" Disabled="_uploadFile is null">อัปโหลด</MudButton>
                     </MudItem>
                 </MudGrid>
@@ -200,6 +213,7 @@ else
 
     private List<Pay_EmployeeDocument> _docs = new();
     private Pay_EmployeeDocumentType _uploadDocType = Pay_EmployeeDocumentType.Other;
+    private DateTime? _uploadExpiryDate;
     private IBrowserFile? _uploadFile;
     private string? _docError;
 
@@ -462,11 +476,13 @@ else
             Sha256 = sha256,
             UploadedByUserId = userId,
             UploadedDate = DateTime.Now,
+            ExpiryDate = _uploadExpiryDate.HasValue ? DateOnly.FromDateTime(_uploadExpiryDate.Value) : null,
         });
         await context.SaveChangesAsync();
 
         Snackbar.Add("อัปโหลดเอกสารเรียบร้อย", Severity.Success);
         _uploadFile = null;
+        _uploadExpiryDate = null;
         await LoadDocsAsync(context);
     }
 
@@ -477,6 +493,18 @@ else
         Pay_EmployeeDocumentType.EducationCertificate => "วุฒิการศึกษา",
         Pay_EmployeeDocumentType.ResignationLetter => "ใบลาออก",
         Pay_EmployeeDocumentType.BankBook => "สมุดบัญชีธนาคาร",
+        Pay_EmployeeDocumentType.WorkPermit => "ใบอนุญาตทำงาน",
+        Pay_EmployeeDocumentType.Visa => "วีซ่า",
+        Pay_EmployeeDocumentType.DrivingLicense => "ใบขับขี่",
+        Pay_EmployeeDocumentType.ProfessionalLicense => "ใบประกอบวิชาชีพ",
         _ => "อื่นๆ",
     };
+
+    private static Color ExpiryChipColor(DateOnly expiryDate)
+    {
+        var daysLeft = expiryDate.DayNumber - DateOnly.FromDateTime(DateTime.Today).DayNumber;
+        if (daysLeft < 0) return Color.Error;
+        if (daysLeft <= 30) return Color.Warning;
+        return Color.Default;
+    }
 }

@@ -83,7 +83,10 @@
                 <MudSelectItem T="LeaveType" Value="LeaveType.Personal">ลากิจ</MudSelectItem>
                 <MudSelectItem T="LeaveType" Value="LeaveType.Vacation">ลาพักร้อน</MudSelectItem>
                 <MudSelectItem T="LeaveType" Value="LeaveType.Maternity">ลาคลอด</MudSelectItem>
-                <MudSelectItem T="LeaveType" Value="LeaveType.Ordination">ลาบวช</MudSelectItem>
+                @if (LeaveCountryHelper.IsApplicable(LeaveType.Ordination, _selectedEmployeeCountryCode))
+                {
+                    <MudSelectItem T="LeaveType" Value="LeaveType.Ordination">ลาบวช</MudSelectItem>
+                }
                 <MudSelectItem T="LeaveType" Value="LeaveType.Other">อื่นๆ</MudSelectItem>
             </MudSelect>
         </MudItem>
@@ -121,6 +124,7 @@
     private long _actorUserId;
 
     private Hremployee? _selectedEmployee;
+    private string? _selectedEmployeeCountryCode;
     private LeaveType _leaveType = LeaveType.Sick;
     private DateTime? _startDate = DateTime.Today;
     private DateTime? _endDate = DateTime.Today;
@@ -174,6 +178,23 @@
     private async Task OnEmployeeChangedAsync(Hremployee? employee)
     {
         _selectedEmployee = employee;
+
+        if (employee is not null)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _selectedEmployeeCountryCode = (await context.Lve_CompanySettings
+                .FirstOrDefaultAsync(s => s.CompanyId == employee.companyid))?.CountryCode;
+
+            if (_leaveType == LeaveType.Ordination && !LeaveCountryHelper.IsApplicable(LeaveType.Ordination, _selectedEmployeeCountryCode))
+            {
+                _leaveType = LeaveType.Other;
+            }
+        }
+        else
+        {
+            _selectedEmployeeCountryCode = null;
+        }
+
         await RecomputeBalanceAsync();
     }
 

@@ -1,10 +1,12 @@
 @page "/login"
+@using HRM.Services
+@inject JsonLocalizationService L
 
-<h3>Login</h3>
+<h3>@L.Translate("Login")</h3>
 
 @if (Error == "1")
 {
-    <div class="alert alert-danger">รหัสผ่านหรือชื่อผู้ใช้งานไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน</div>
+    <div class="alert alert-danger">@L.Translate("LoginErrorMessage")</div>
 }
 
 @* Plain HTML form posted to /login-handler (a real endpoint, not a Blazor
@@ -12,14 +14,14 @@
 <form method="post" action="/login-handler">
     <input type="hidden" name="returnUrl" value="@ReturnUrl" />
     <div class="mb-3">
-        <label>Username</label>
+        <label>@L.Translate("Username")</label>
         <input class="form-control" name="username" required />
     </div>
     <div class="mb-3">
-        <label>Password</label>
+        <label>@L.Translate("Password")</label>
         <input class="form-control" name="password" type="password" required />
     </div>
-    <button type="submit" class="btn btn-primary">Login</button>
+    <button type="submit" class="btn btn-primary">@L.Translate("Login")</button>
 </form>
 
 @code {

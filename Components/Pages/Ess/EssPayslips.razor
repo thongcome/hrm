@@ -12,12 +12,13 @@
 @inject HRM.Services.Pay.PrivateFileStorage FileStorage
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>สลิปเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("Payslips")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">สลิปเงินเดือนของฉัน</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("MyPayslips")</MudText>
 
     @if (!_loaded)
     {
@@ -25,25 +26,25 @@
     }
     else if (_employee is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("NoEmployeeLinkedError")</MudAlert>
     }
     else
     {
         @if (string.IsNullOrWhiteSpace(_ownEmail))
         {
             <MudAlert Severity="Severity.Warning" Class="mt-3">
-                คุณยังไม่ได้ระบุอีเมลในระบบ — <MudLink Href="/ess/profile">กรอกอีเมลที่หน้าข้อมูลส่วนตัว</MudLink> ก่อน จึงจะส่งสลิปเงินเดือนทางอีเมลได้
+                @L.Translate("NoEmailWarningPrefix")<MudLink Href="/ess/profile">@L.Translate("FillEmailAtProfileLink")</MudLink>@L.Translate("NoEmailWarningSuffix")
             </MudAlert>
         }
 
         @if (_rows.Count == 0)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีสลิปเงินเดือนที่เผยแพร่ให้คุณดู</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-4">@L.Translate("NoPayslipsYet")</MudAlert>
         }
         else
         {
             <MudSimpleTable Dense="true" Class="mt-3">
-                <thead><tr><th>งวด</th><th>วันที่-สิ้นสุดงวด</th><th style="text-align:right">สุทธิ</th><th></th><th></th></tr></thead>
+                <thead><tr><th>@L.Translate("Period")</th><th>@L.Translate("PeriodDateRange")</th><th style="text-align:right">@L.Translate("NetPay")</th><th></th><th></th></tr></thead>
                 <tbody>
                     @foreach (var row in _rows)
                     {
@@ -53,18 +54,18 @@
                             <td style="text-align:right">@row.PayrollEmployee.NetPay.ToString("N2")</td>
                             <td>
                                 <MudLink Href="@($"/ess/files/payslip/{row.Payslip.Id}")" Target="_blank">
-                                    <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" /> ดาวน์โหลด
+                                    <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" /> @L.Translate("Download")
                                 </MudLink>
                             </td>
                             <td>
                                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
                                     Disabled="@(string.IsNullOrWhiteSpace(_ownEmail) || _sendingIds.Contains(row.Payslip.Id))"
                                     OnClick="@(() => SendPayslipAsync(row))">
-                                    <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" /> ส่งอีเมล
+                                    <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" /> @L.Translate("SendEmail")
                                 </MudButton>
                                 @if (_lastSent.TryGetValue(row.Payslip.Id, out var sentAt))
                                 {
-                                    <MudText Typo="Typo.caption" Class="d-block">ส่งล่าสุด @sentAt.ToString("dd/MM/yyyy HH:mm")</MudText>
+                                    <MudText Typo="Typo.caption" Class="d-block">@string.Format(L.Translate("LastSentTemplate"), sentAt.ToString("dd/MM/yyyy HH:mm"))</MudText>
                                 }
                             </td>
                         </tr>
@@ -137,12 +138,12 @@
                 note: $"ส่งอีเมลไปที่ {_ownEmail}");
 
             _lastSent[row.Payslip.Id] = DateTime.Now;
-            Snackbar.Add($"ส่งสลิปเงินเดือนไปที่ {_ownEmail} เรียบร้อย", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("PayslipSentSuccess"), _ownEmail), Severity.Success);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "ESS payslip email send failed for payslip {Id}", row.Payslip.Id);
-            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+            Snackbar.Add(L.Translate("EmailSendFailed"), Severity.Error);
         }
         finally
         {
