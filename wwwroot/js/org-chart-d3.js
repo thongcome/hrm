@@ -62,5 +62,17 @@ window.OrgChartD3 = {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
         }
+    },
+
+    expandAll: function () {
+        if (!this.chart) return;
+        this.chart.expandAll();
+        this.chart.fit();
+    },
+
+    collapseAll: function () {
+        if (!this.chart) return;
+        this.chart.collapseAll();
+        this.chart.fit();
     }
 };

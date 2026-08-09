@@ -141,6 +141,10 @@
     }
     else
     {
+        <MudStack Row="true" Spacing="2" Class="mb-2">
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="ExpandAllAsync">ขยายทั้งหมด</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldLess" OnClick="CollapseAllAsync">ย่อทั้งหมด</MudButton>
+        </MudStack>
         <div id="orgChartCanvas" class="org-chart-canvas-wrap"></div>
     }
 </MudPaper>
@@ -265,4 +269,7 @@
             await JS.InvokeVoidAsync("OrgChartD3.render", "orgChartCanvas", json);
         }
     }
+
+    private async Task ExpandAllAsync() => await JS.InvokeVoidAsync("OrgChartD3.expandAll");
+    private async Task CollapseAllAsync() => await JS.InvokeVoidAsync("OrgChartD3.collapseAll");
 }
