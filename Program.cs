@@ -371,5 +371,6 @@ app.MapCareerEndpoints();
 app.MapRecFileEndpoints();
 app.MapLmsFileEndpoints();
 app.MapKmFileEndpoints();
+app.MapOrgChartFileEndpoints();
 
 app.Run();

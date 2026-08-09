@@ -32,6 +32,35 @@ else
 {
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลทั่วไป</MudText>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
+            @if (!string.IsNullOrEmpty(_employee.PhotoStoragePath))
+            {
+                <MudAvatar Size="Size.Large" Style="width:80px;height:80px;">
+                    <MudImage Src="@($"/org/files/employee-photo/{_employee.id}")" ObjectFit="ObjectFit.Cover" />
+                </MudAvatar>
+            }
+            else
+            {
+                <MudAvatar Size="Size.Large" Style="width:80px;height:80px;" Color="Color.Primary">
+                    @InitialsFor(_employee)
+                </MudAvatar>
+            }
+            <MudStack Spacing="1">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnPhotoSelected" Accept=".jpg,.jpeg,.png">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.PhotoCamera">
+                            @(string.IsNullOrEmpty(_employee.PhotoStoragePath) ? "อัปโหลดรูปพนักงาน" : "เปลี่ยนรูปพนักงาน")
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                @if (_photoError is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">@_photoError</MudText>
+                }
+            </MudStack>
+        </MudStack>
+
                 <EmployeeCoreFieldsForm Employee="_employee" IsCreating="false" CompanyId="@(_companyId!)"
                     Email="@_formEmployeeEmail" EmailChanged="@(v => _formEmployeeEmail = v)"
                     WorkDate="_workDate" WorkDateChanged="@(v => _workDate = v)"
@@ -440,6 +469,46 @@ else
     private void OnFileSelected(IBrowserFile file)
     {
         _uploadFile = file;
+    }
+
+    private string? _photoError;
+
+    private static string InitialsFor(Hremployee emp) =>
+        !string.IsNullOrEmpty(emp.EmpName) ? emp.EmpName.Substring(0, 1).ToUpperInvariant() : "?";
+
+    private async Task OnPhotoSelected(IBrowserFile file)
+    {
+        _photoError = null;
+        if (_employee is null) return;
+
+        const long maxSize = 5 * 1024 * 1024; // 5 MB
+        if (file.Size > maxSize)
+        {
+            _photoError = "ไฟล์ใหญ่เกินไป (จำกัด 5 MB)";
+            return;
+        }
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (ext != ".jpg" && ext != ".jpeg" && ext != ".png")
+        {
+            _photoError = "รองรับเฉพาะไฟล์ .jpg/.jpeg/.png";
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(maxSize);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        var storedFileName = $"{_employee.id}_{Guid.NewGuid():N}{ext}";
+        var (relativePath, _) = await FileStorage.SaveAsync("employee-photos", storedFileName, bytes);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Hremployee.FirstAsync(e => e.id == _employee.id);
+        existing.PhotoStoragePath = relativePath;
+        await context.SaveChangesAsync();
+
+        _employee.PhotoStoragePath = relativePath;
+        Snackbar.Add("อัปโหลดรูปพนักงานเรียบร้อย", Severity.Success);
     }
 
     private async Task UploadDocAsync()

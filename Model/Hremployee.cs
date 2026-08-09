@@ -54,8 +54,19 @@ public partial class Hremployee
 
     [Column("EMP_NICKNAME")]
     [StringLength(50)]
-    
+
     public string? EmpNickname { get; set; }
+
+    // Relative path under PrivateFileStorage's "employee-photos" category
+    // (see Services/Pay/PrivateFileStorage.cs), e.g.
+    // "employee-photos/12_a1b2c3.jpg" — served inline (not forced download)
+    // via GET /org/files/employee-photo/{id}. Null = no photo uploaded yet,
+    // callers fall back to an initials avatar. Checked separately from the
+    // legacy employee.image_path (Employee.cs, table "employee") which is a
+    // different, disconnected table with no upload UI — do not confuse the
+    // two.
+    [StringLength(500)]
+    public string? PhotoStoragePath { get; set; }
 
     [Column("EMPTYPE_CODE")]
     [StringLength(2)]
