@@ -1,0 +1,147 @@
+@page "/perf/calibration"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfCalibrationService CalibrationService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>Calibration การกลั่นกรองคะแนน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">Calibration — การกลั่นกรองคะแนนก่อนส่งอนุมัติ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เปิด session เพื่อดูภาพรวมคะแนนของทุกคนในรอบเดียวกันพร้อมกัน แล้วปรับก่อนแต่ละคนจะถูกส่งเข้าอนุมัติทีละคนตามปกติ —
+        ปรับได้เฉพาะรายการที่ยังไม่ถูกส่งเข้าอนุมัติเท่านั้น
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudExpansionPanels Class="mt-4">
+        <MudExpansionPanel Text="เปิด session ใหม่">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="long?" @bind-Value="_newPeriodId" Label="รอบการประเมิน" Required="true">
+                        @foreach (var p in _periods)
+                        {
+                            <MudSelectItem Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudTextField @bind-Value="_newName" Label="ชื่อ session" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudAutocomplete T="com_organization" Label="จำกัดเฉพาะหน่วยงาน (ไม่ระบุ = ทั้งบริษัท)"
+                        Value="_newOrg" ValueChanged="v => _newOrg = v"
+                        SearchFunc="SearchOrganizationsAsync"
+                        ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenSessionAsync">เปิด session</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+    }
+
+    <MudTable Items="_sessions" Class="mt-4" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ชื่อ session</MudTh>
+            <MudTh>รอบการประเมิน</MudTh>
+            <MudTh>ขอบเขต</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>เปิดเมื่อ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@PeriodName(context.EvaluationPeriodId)</MudTd>
+            <MudTd>@(context.OrganizationId is null ? "ทั้งบริษัท" : $"หน่วยงาน #{context.OrganizationId}")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Status == CalibrationSessionStatus.Open ? Color.Success : Color.Default)">
+                    @(context.Status == CalibrationSessionStatus.Open ? "เปิดอยู่" : "ปิดแล้ว")
+                </MudChip>
+            </MudTd>
+            <MudTd>@context.CreatedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd><MudButton Size="Size.Small" Href="@($"/perf/calibration/{context.Id}")">เปิด grid</MudButton></MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private string? _error;
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private List<Perf_CalibrationSession> _sessions = new();
+
+    private long? _newPeriodId;
+    private string _newName = "";
+    private com_organization? _newOrg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods.Where(p => p.CompanyId == _companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+        _sessions = await CalibrationService.GetSessionsAsync(_companyId!);
+    }
+
+    private string PeriodName(long id) => _periods.FirstOrDefault(p => p.Id == id)?.Name ?? $"#{id}";
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OpenSessionAsync()
+    {
+        _error = null;
+        if (_newPeriodId is null || string.IsNullOrWhiteSpace(_newName))
+        {
+            _error = "กรุณาเลือกรอบการประเมินและตั้งชื่อ session";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        try
+        {
+            var session = await CalibrationService.OpenSessionAsync(_companyId!, _newPeriodId.Value, _newName, _newOrg?.id, userId);
+            Snackbar.Add("เปิด session สำเร็จ", Severity.Success);
+            Nav.NavigateTo($"/perf/calibration/{session.Id}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

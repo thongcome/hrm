@@ -213,6 +213,7 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfApprovalService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfMeritService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfGoalService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
 // ----- end Perf_* module -----
 
 // ----- info_message module (HR announcements) -----

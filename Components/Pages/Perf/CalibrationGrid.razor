@@ -1,0 +1,252 @@
+@page "/perf/calibration/{SessionId:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfCalibrationService CalibrationService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>Calibration Grid</PageTitle>
+
+@if (_session is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบ session นี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h5">@_session.Name</MudText>
+                <MudText Typo="Typo.body2">
+                    สถานะ:
+                    <MudChip T="string" Size="Size.Small" Color="@(_session.Status == CalibrationSessionStatus.Open ? Color.Success : Color.Default)">
+                        @(_session.Status == CalibrationSessionStatus.Open ? "เปิดอยู่" : "ปิดแล้ว")
+                    </MudChip>
+                </MudText>
+            </div>
+            <MudStack Row="true">
+                <MudButton Variant="Variant.Text" Href="/perf/calibration">กลับไปรายการ session</MudButton>
+                @if (_session.Status == CalibrationSessionStatus.Open)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="CloseSessionAsync">ปิด session</MudButton>
+                }
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+
+    @if (_grid is null)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (_grid.Cells.Count == 0 && _grid.NoGrade.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-4">ไม่มีรายการประเมินที่รอกลั่นกรองในรอบ/ขอบเขตนี้ (ต้องเป็นสถานะ "รอส่งอนุมัติ" และยังไม่ถูกส่งเข้า workflow จริง)</MudAlert>
+    }
+    else
+    {
+        @if (_grid.Cells.Count > 0)
+        {
+            <MudPaper Class="pa-4 mb-4" Style="overflow-x:auto">
+                <div style="display:grid; grid-template-columns: 160px repeat(@_grid.Grades.Count, 1fr); gap: 8px; min-width: @(160 + _grid.Grades.Count * 160)px">
+                    <div></div>
+                    @foreach (var grade in _grid.Grades)
+                    {
+                        <MudText Typo="Typo.subtitle2" Align="Align.Center">เกรด @grade</MudText>
+                    }
+
+                    @foreach (var org in _grid.OrganizationNames)
+                    {
+                        <MudText Typo="Typo.body2" Style="align-self:center">@org</MudText>
+                        @foreach (var grade in _grid.Grades)
+                        {
+                            var key = (org, grade);
+                            var hasCell = _grid.Cells.TryGetValue(key, out var cellRows);
+                            var rowsInCell = hasCell ? cellRows! : new List<PerfCalibrationService.GridEmployeeRow>();
+                            var isExpanded = _expandedCell == key;
+                            <MudPaper Class="pa-2" Outlined="true" Style="min-height:70px">
+                                @if (rowsInCell.Count == 0)
+                                {
+                                    <MudText Typo="Typo.caption" Style="opacity:.5">—</MudText>
+                                }
+                                else
+                                {
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudChip T="string" Size="Size.Small">@rowsInCell.Count คน</MudChip>
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleCell(key))">
+                                            @(isExpanded ? "ย่อ" : "ดู")
+                                        </MudButton>
+                                    </MudStack>
+                                    @if (isExpanded)
+                                    {
+                                        @foreach (var row in rowsInCell)
+                                        {
+                                            <MudPaper Class="pa-2 mt-1" Outlined="true">
+                                                <MudText Typo="Typo.body2">@row.Name (@row.EmpNo)</MudText>
+                                                <MudText Typo="Typo.caption">@row.FinalScorePercent?.ToString("N1")% (@row.FinalGrade)</MudText>
+                                                @if (_session.Status == CalibrationSessionStatus.Open)
+                                                {
+                                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                                        OnClick="@(() => OpenAdjustDialog(row))">
+                                                        ปรับคะแนน
+                                                    </MudButton>
+                                                }
+                                            </MudPaper>
+                                        }
+                                    }
+                                }
+                            </MudPaper>
+                        }
+                    }
+                </div>
+            </MudPaper>
+        }
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">ไม่มีเกรด (@_grid.NoGrade.Count คน)</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">คะแนนอยู่นอกช่วงเกรดทั้งหมดที่ตั้งไว้ — ตรวจสอบ Grade Band ของรอบนี้</MudText>
+            @foreach (var row in _grid.NoGrade)
+            {
+                <MudText Typo="Typo.body2">@row.Name (@row.EmpNo) — @row.FinalScorePercent?.ToString("N1")%</MudText>
+            }
+        </MudPaper>
+
+        @if (_adjustments.Count > 0)
+        {
+            <MudPaper Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6">ประวัติการปรับคะแนนใน session นี้</MudText>
+                <MudTable Items="_adjustments" Dense="true">
+                    <HeaderContent>
+                        <MudTh>คะแนนเดิม</MudTh>
+                        <MudTh>คะแนนใหม่</MudTh>
+                        <MudTh>เกรดเดิม → ใหม่</MudTh>
+                        <MudTh>เหตุผล</MudTh>
+                        <MudTh>ปรับเมื่อ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.OriginalScorePercent?.ToString("N1")%</MudTd>
+                        <MudTd>@context.AdjustedScorePercent.ToString("N1")%</MudTd>
+                        <MudTd>@(context.OriginalGrade ?? "-") → @(context.AdjustedGrade ?? "-")</MudTd>
+                        <MudTd>@context.Justification</MudTd>
+                        <MudTd>@context.AdjustedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+    }
+}
+
+@if (_adjustingRow is not null)
+{
+    <MudDialog Visible="true" Options="new DialogOptions { CloseOnEscapeKey = true }">
+        <DialogContent>
+            <MudText Typo="Typo.h6">ปรับคะแนน — @_adjustingRow.Name (@_adjustingRow.EmpNo)</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">คะแนนปัจจุบัน: @_adjustingRow.FinalScorePercent?.ToString("N1")% (@_adjustingRow.FinalGrade)</MudText>
+            <MudNumericField T="decimal" Value="_adjustScorePercent" Label="คะแนนใหม่ (%)" Min="0m" Max="100m"
+                ValueChanged="OnScoreChangedAsync" />
+            @if (_previewGrade is not null)
+            {
+                <MudText Typo="Typo.body2" Class="mt-2">เกรดที่จะได้: <b>@(_previewGrade.AdjustedGrade ?? "ไม่มีเกรดตรงช่วงนี้")</b></MudText>
+            }
+            <MudTextField @bind-Value="_adjustJustification" Label="เหตุผลการปรับ (บังคับกรอก)" Lines="3" Class="mt-3" Required="true" />
+            @if (!string.IsNullOrEmpty(_adjustError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_adjustError</MudAlert>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseAdjustDialog">ยกเลิก</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmAdjustAsync">ยืนยัน</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    [Parameter] public long SessionId { get; set; }
+
+    private Perf_CalibrationSession? _session;
+    private PerfCalibrationService.CalibrationGridResult? _grid;
+    private List<Perf_CalibrationAdjustment> _adjustments = new();
+    private (string Organization, string Grade)? _expandedCell;
+
+    private PerfCalibrationService.GridEmployeeRow? _adjustingRow;
+    private decimal _adjustScorePercent;
+    private string _adjustJustification = "";
+    private string? _adjustError;
+    private PerfCalibrationService.AdjustmentPreview? _previewGrade;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _session = await context.Perf_CalibrationSessions.FirstOrDefaultAsync(s => s.Id == SessionId);
+        if (_session is null) return;
+
+        _grid = await CalibrationService.GetGridAsync(SessionId);
+        _adjustments = await CalibrationService.GetAdjustmentsAsync(SessionId);
+    }
+
+    private void ToggleCell((string, string) key) => _expandedCell = _expandedCell == key ? null : key;
+
+    private void OpenAdjustDialog(PerfCalibrationService.GridEmployeeRow row)
+    {
+        _adjustingRow = row;
+        _adjustScorePercent = row.FinalScorePercent ?? 0m;
+        _adjustJustification = "";
+        _adjustError = null;
+        _previewGrade = null;
+    }
+
+    private void CloseAdjustDialog() => _adjustingRow = null;
+
+    private async Task OnScoreChangedAsync(decimal value)
+    {
+        _adjustScorePercent = value;
+        if (_adjustingRow is null) return;
+        _previewGrade = await CalibrationService.PreviewAdjustmentAsync(_adjustingRow.InstanceId, value);
+    }
+
+    private async Task ConfirmAdjustAsync()
+    {
+        if (_adjustingRow is null) return;
+        _adjustError = null;
+
+        if (string.IsNullOrWhiteSpace(_adjustJustification))
+        {
+            _adjustError = "ต้องระบุเหตุผลการปรับคะแนนทุกครั้ง";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        try
+        {
+            var grade = _previewGrade?.AdjustedGrade;
+            await CalibrationService.ApplyAdjustmentAsync(SessionId, _adjustingRow.InstanceId, _adjustScorePercent, grade, _adjustJustification, userId);
+            Snackbar.Add("ปรับคะแนนสำเร็จ", Severity.Success);
+            _adjustingRow = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _adjustError = ex.Message;
+        }
+    }
+
+    private async Task CloseSessionAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        await CalibrationService.CloseSessionAsync(SessionId, userId);
+        Snackbar.Add("ปิด session แล้ว", Severity.Success);
+        await LoadAsync();
+    }
+}
