@@ -26,5 +26,21 @@ public static class HrFileEndpoints
             var bytes = await storage.ReadAsync(doc.path);
             return Results.File(bytes, "application/octet-stream", doc.files ?? "evidence");
         });
+
+        // Reward-case attachment download — sibling of the disciplinary route
+        // above, same shape, gated by the reward module's own menu policy.
+        var rewardGroup = app.MapGroup("/hr/files").RequireAuthorization("Menu:HR_REWARD_ADMIN");
+        rewardGroup.MapGet("/reward/{docCenterId:long}", async (
+            long docCenterId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage, IAuditLogger auditLogger) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docCenterId && d.doctypecode == "HR_REWARD");
+            if (doc?.path is null) return Results.NotFound();
+
+            await auditLogger.LogAccessAsync("Hr_RewardCase", (doc.refid ?? 0).ToString(), isSensitive: true, note: "evidence view");
+
+            var bytes = await storage.ReadAsync(doc.path);
+            return Results.File(bytes, "application/octet-stream", doc.files ?? "evidence");
+        });
     }
 }

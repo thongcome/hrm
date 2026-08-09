@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260809100257_AddWorkflowBounceBackOrCondition")]
+    partial class AddWorkflowBounceBackOrCondition
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2712,55 +2715,6 @@ namespace HRM.Migrations
                     b.HasIndex("ReporterHremployeeId");
 
                     b.ToTable("Hr_Grievances");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_RewardCase", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<decimal?>("Amount")
-                        .HasColumnType("decimal(15,2)");
-
-                    b.Property<DateOnly>("AwardDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("CompanyId")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmpNo")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<long>("HremployeeId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("RewardType")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HremployeeId");
-
-                    b.ToTable("Hr_RewardCases");
                 });
 
             modelBuilder.Entity("HRM.Models.Hrbasepayrollfixed", b =>
@@ -20010,17 +19964,6 @@ namespace HRM.Migrations
                     b.HasOne("HRM.Models.Hremployee", "Hremployee")
                         .WithMany()
                         .HasForeignKey("ReporterHremployeeId");
-
-                    b.Navigation("Hremployee");
-                });
-
-            modelBuilder.Entity("HRM.Models.Hr_RewardCase", b =>
-                {
-                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
-                        .WithMany()
-                        .HasForeignKey("HremployeeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("Hremployee");
                 });

@@ -1,0 +1,247 @@
+@page "/hr/reward/new"
+@page "/hr/reward/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Hr
+@using HRM.Services.Pay
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RewardCaseService CaseService
+@inject WorkflowEngineService Engine
+@inject PrivateFileStorage FileStorage
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:HR_REWARD_ADMIN")]
+
+<PageTitle>@(Id is null ? "เปิดกรณีรางวัลใหม่" : $"กรณีรางวัล #{Id}")</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">@(Id is null ? "เปิดกรณีรางวัลใหม่" : $"กรณีรางวัล #{Id}")</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Warning">PDPA</MudChip>
+        @if (Id is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="@StatusColor(_jobStatus)">@StatusLabel(_jobStatus)</MudChip>
+        }
+    </MudStack>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    @if (Id is null)
+    {
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_selectedEmployee"
+                    SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    Required="true" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="RewardType" @bind-Value="_rewardType" Label="ประเภทรางวัล">
+                    <MudSelectItem T="RewardType" Value="RewardType.Commendation">ยกย่อง/ชมเชย</MudSelectItem>
+                    <MudSelectItem T="RewardType" Value="RewardType.PerformanceAward">รางวัลผลงานดีเด่น</MudSelectItem>
+                    <MudSelectItem T="RewardType" Value="RewardType.LengthOfServiceAward">รางวัลอายุงาน</MudSelectItem>
+                    <MudSelectItem T="RewardType" Value="RewardType.CashBonus">เงินรางวัลพิเศษ</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_awardDate" DateChanged="@(d => _awardDate = d)" Label="วันที่มอบรางวัล" Editable="true" DateFormat="dd/MM/yyyy" Required="true" />
+            </MudItem>
+            @if (_rewardType == RewardType.CashBonus)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_amount" Label="จำนวนเงินรางวัล (บาท)" Min="0" Format="N2" />
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="รายละเอียดผลงาน/เหตุผล" Lines="5" Required="true" />
+            </MudItem>
+        </MudGrid>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="CreateAsync">บันทึกร่าง</MudButton>
+    }
+    else if (_case is null)
+    {
+        <MudText>กำลังโหลด...</MudText>
+    }
+    else
+    {
+        var isDraft = _case.JobMasterId is null;
+
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="6"><MudText><b>พนักงาน:</b> @_employeeName</MudText></MudItem>
+            <MudItem xs="12" sm="6"><MudText><b>ประเภท:</b> @RewardCaseService.RewardTypeLabel(_case.RewardType)</MudText></MudItem>
+            <MudItem xs="12" sm="6"><MudText><b>วันที่มอบรางวัล:</b> @_case.AwardDate.ToString("dd/MM/yyyy")</MudText></MudItem>
+            @if (_case.Amount is not null)
+            {
+                <MudItem xs="12" sm="6"><MudText><b>จำนวนเงินรางวัล:</b> @_case.Amount.Value.ToString("N2") บาท</MudText></MudItem>
+            }
+            <MudItem xs="12"><MudText><b>รายละเอียด:</b></MudText><MudText Style="white-space:pre-wrap">@_case.Description</MudText></MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4">เอกสารประกอบ</MudText>
+        <MudList T="string" Dense="true">
+            @foreach (var doc in _evidence)
+            {
+                <MudListItem T="string">
+                    <MudLink Href="@($"/hr/files/reward/{doc.id}")" Target="_blank">@doc.files</MudLink>
+                </MudListItem>
+            }
+        </MudList>
+        @if (isDraft)
+        {
+            <InputFile OnChange="UploadEvidenceAsync" />
+        }
+
+        @if (isDraft)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">ส่งอนุมัติ</MudButton>
+        }
+    }
+
+    <MudButton Variant="Variant.Text" Class="mt-4" OnClick="@(() => Nav.NavigateTo("/hr/reward"))">กลับ</MudButton>
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private Hremployee? _selectedEmployee;
+    private RewardType _rewardType = RewardType.Commendation;
+    private DateTime? _awardDate = DateTime.Today;
+    private decimal _amount = 0;
+    private string _description = "";
+    private string? _error;
+
+    private Hr_RewardCase? _case;
+    private string _employeeName = "-";
+    private string _jobStatus = "-";
+    private List<doc_center> _evidence = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not null) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _case = await context.Hr_RewardCases.FirstOrDefaultAsync(c => c.Id == Id);
+        if (_case is null) return;
+
+        var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _case.HremployeeId);
+        _employeeName = emp is null ? "-" : $"{emp.EmpName} {emp.EmpSurname} ({emp.EmpNo})";
+
+        _evidence = await context.doc_centers
+            .Where(d => d.doctypecode == "HR_REWARD" && d.refid == Id && d.isActive == true)
+            .ToListAsync();
+
+        if (_case.JobMasterId is not null)
+        {
+            var statuses = await CaseService.GetJobStatusesAsync(new[] { Id.Value });
+            _jobStatus = statuses.GetValueOrDefault(Id.Value, "-");
+        }
+
+        await AuditLogger.LogAccessAsync("Hr_RewardCase", Id.Value.ToString(), isSensitive: true, note: "view");
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = state.User.FindFirstValue("payroll_company");
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue("sc_userid");
+        return long.TryParse(idClaim, out var id) ? id : 0;
+    }
+
+    private async Task CreateAsync()
+    {
+        _error = null;
+        if (_selectedEmployee is null || _awardDate is null)
+        {
+            _error = "กรุณาเลือกพนักงานและระบุวันที่มอบรางวัล";
+            return;
+        }
+
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            var newId = await CaseService.CreateDraftAsync(_selectedEmployee.id, _rewardType,
+                DateOnly.FromDateTime(_awardDate.Value), _description,
+                _rewardType == RewardType.CashBonus ? _amount : null, actorUserId);
+            Nav.NavigateTo($"/hr/reward/{newId}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task UploadEvidenceAsync(InputFileChangeEventArgs e)
+    {
+        const long maxSize = 10 * 1024 * 1024;
+        var file = e.File;
+        await using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var storedFileName = $"{Id}_{Guid.NewGuid():N}_{file.Name}";
+        var (relativePath, _) = await FileStorage.SaveAsync("reward-evidence", storedFileName, ms.ToArray());
+        await CaseService.AttachEvidenceAsync(Id!.Value, file.Name, relativePath);
+        await LoadAsync();
+        Snackbar.Add("แนบเอกสารแล้ว", Severity.Success);
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            var jobId = await CaseService.SubmitAsync(Id!.Value, actorUserId, Engine);
+            Snackbar.Add($"ส่งอนุมัติสำเร็จ (Job #{jobId})", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ส่งอนุมัติไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "-" => "ร่าง",
+        "COMPLETED" => "อนุมัติแล้ว",
+        "REJECTED" or "RETURNED" => "ไม่อนุมัติ",
+        _ => "รออนุมัติ",
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "-" => Color.Default,
+        "COMPLETED" => Color.Success,
+        "REJECTED" or "RETURNED" => Color.Error,
+        _ => Color.Warning,
+    };
+}

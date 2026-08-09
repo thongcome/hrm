@@ -83,7 +83,9 @@
             <MudItem xs="12" sm="4"><MudTextField Value="@e.backwardstatus" Label="สถานะเมื่อตีกลับ/ปฏิเสธ" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isandcondition" ReadOnly="true" Label="AND-condition (อนุมัติแบบ %)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.andpercent?.ToString("0.##") ?? "-")" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isorcondition" ReadOnly="true" Label="OR-condition (คนแรกที่อนุมัติพอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.isNeedsupervisorapprove?.ToString() ?? "0")" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.backwardlevel?.ToString() ?? "-")" Label="ตีกลับไประดับ (เมื่อถูกปฏิเสธ)" ReadOnly="true" /></MudItem>
             <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
         </MudGrid>
     </text>;
@@ -127,12 +129,20 @@
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isandcondition" Label="AND-condition (อนุมัติแบบ % แทนต้องครบทุกคน)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="e.isandcondition" ValueChanged="@((bool v) => { e.isandcondition = v; if (v) e.isorcondition = false; })" Label="AND-condition (อนุมัติแบบ % แทนต้องครบทุกคน)" />
+            </MudItem>
             <MudItem xs="12" sm="4">
                 <MudNumericField T="decimal?" @bind-Value="e.andpercent" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน (ค่าเริ่มต้น 100)" Min="1" Max="100" Disabled="!e.isandcondition" />
             </MudItem>
             <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="e.isorcondition" ValueChanged="@((bool v) => { e.isorcondition = v; if (v) e.isandcondition = false; })" Label="OR-condition (คนแรกที่อนุมัติพอ ไม่ต้องรอทุกคน)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
                 <MudNumericField T="int?" @bind-Value="e.isNeedsupervisorapprove" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval, 0 = ไม่ใช้)" Min="0" Max="10" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="e.backwardlevel" Label="ตีกลับไประดับ (ต้องน้อยกว่าระดับตัวเอง, เว้นว่าง = ปฏิเสธจบทันทีเหมือนเดิม)" Min="1" Max="@(e.wlevel - 1)" />
             </MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
         </MudGrid>
@@ -168,7 +178,9 @@
             existing.backwardstatus = entity.backwardstatus;
             existing.isandcondition = entity.isandcondition;
             existing.andpercent = entity.andpercent;
+            existing.isorcondition = entity.isorcondition;
             existing.isNeedsupervisorapprove = entity.isNeedsupervisorapprove;
+            existing.backwardlevel = entity.backwardlevel;
             existing.remark = entity.remark;
             entity = existing;
         }

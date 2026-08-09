@@ -62,6 +62,12 @@ public partial class job_subworkflow_master
     // (Block 6, Mix Approval) — same freeze rationale as isLOA above.
     public int? isNeedsupervisorapprove { get; set; }
 
+    // Snapshotted from wf_sub_workflow_master.backwardlevel at job-start time
+    // (see StartJobAsync) — same freeze rationale as isLOA/isNeedsupervisorapprove
+    // above. Null = no bounce-back configured for this level; reject fails the
+    // job outright exactly as before this feature existed.
+    public int? backwardlevel { get; set; }
+
     [Column(TypeName = "text")]
     public string? remark { get; set; }
 

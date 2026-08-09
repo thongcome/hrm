@@ -25,3 +25,11 @@ public enum GrievanceStatus
     Resolved = 3,
     Dismissed = 4,
 }
+
+public enum RewardType
+{
+    Commendation = 1,       // ยกย่อง/ชมเชย (ไม่มีเงิน)
+    PerformanceAward = 2,   // รางวัลผลงานดีเด่น
+    LengthOfServiceAward = 3, // รางวัลอายุงาน
+    CashBonus = 4,           // เงินรางวัลพิเศษ
+}

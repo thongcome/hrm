@@ -1,0 +1,93 @@
+@page "/hr/reward"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Hr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject RewardCaseService CaseService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:HR_REWARD_ADMIN")]
+
+<PageTitle>รางวัลพนักงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">รางวัลพนักงาน (Employee Rewards)</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Warning">PDPA</MudChip>
+    </MudStack>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" OnClick="@(() => Nav.NavigateTo("/hr/reward/new"))">
+        เปิดกรณีใหม่
+    </MudButton>
+
+    <MudTable Items="_cases" Dense="true" Hover="true" Class="mt-4">
+        <HeaderContent>
+            <MudTh>เลขที่</MudTh>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>วันที่</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>จำนวนเงิน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>#@context.Id</MudTd>
+            <MudTd>@(_employeeNames.GetValueOrDefault(context.HremployeeId, context.EmpNo ?? "-"))</MudTd>
+            <MudTd>@context.AwardDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@RewardCaseService.RewardTypeLabel(context.RewardType)</MudTd>
+            <MudTd>@(context.Amount is null ? "-" : context.Amount.Value.ToString("N2"))</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(_statuses.GetValueOrDefault(context.Id, "-"))">
+                    @StatusLabel(_statuses.GetValueOrDefault(context.Id, "-"))
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/hr/reward/{context.Id}"))">ดูรายละเอียด</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>ยังไม่มีกรณีรางวัล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Hr_RewardCase> _cases = new();
+    private Dictionary<long, string> _statuses = new();
+    private Dictionary<long, string> _employeeNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(companyId)) return;
+
+        _cases = await CaseService.GetCasesAsync(companyId);
+        _statuses = await CaseService.GetJobStatusesAsync(_cases.Select(c => c.Id));
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var empIds = _cases.Select(c => c.HremployeeId).Distinct().ToList();
+        _employeeNames = await context.Hremployee.Where(e => empIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "-" => "ร่าง",
+        "COMPLETED" => "อนุมัติแล้ว",
+        "REJECTED" or "RETURNED" => "ไม่อนุมัติ",
+        _ => "รออนุมัติ",
+    };
+
+    private static Color StatusColor(string status) => status switch
+    {
+        "-" => Color.Default,
+        "COMPLETED" => Color.Success,
+        "REJECTED" or "RETURNED" => Color.Error,
+        _ => Color.Warning,
+    };
+}

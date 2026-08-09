@@ -374,6 +374,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Exp_ClaimLineItem> Exp_ClaimLineItems { get; set; }
     public virtual DbSet<Hr_DisciplinaryCase> Hr_DisciplinaryCases { get; set; }
     public virtual DbSet<Hr_Grievance> Hr_Grievances { get; set; }
+    public virtual DbSet<Hr_RewardCase> Hr_RewardCases { get; set; }
 
     public virtual DbSet<Lve_LeavePolicy> Lve_LeavePolicies { get; set; }
 
@@ -501,6 +502,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Perf_Score> Perf_Scores { get; set; }
     public virtual DbSet<Perf_Goal> Perf_Goals { get; set; }
     public virtual DbSet<Perf_GoalCheckIn> Perf_GoalCheckIns { get; set; }
+    public virtual DbSet<Perf_CalibrationSession> Perf_CalibrationSessions { get; set; }
+    public virtual DbSet<Perf_CalibrationAdjustment> Perf_CalibrationAdjustments { get; set; }
 
     // ----- Lms_* module (Learning Management System, HRD Phase 4) -----
     public virtual DbSet<Lms_CourseCategory> Lms_CourseCategories { get; set; }

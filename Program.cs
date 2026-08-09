@@ -221,6 +221,7 @@ builder.Services.AddScoped<HRM.Services.Hrd.LifecycleTaskService>();
 builder.Services.AddScoped<HRM.Services.Exp.ExpenseClaimService>();
 builder.Services.AddScoped<HRM.Services.Hr.DisciplinaryActionService>();
 builder.Services.AddScoped<HRM.Services.Hr.GrievanceService>();
+builder.Services.AddScoped<HRM.Services.Hr.RewardCaseService>();
 // ----- end info_message module -----
 
 // ----- Idp_* module (Individual Development Plan) -----

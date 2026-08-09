@@ -1,17 +1,18 @@
 namespace HRM.Services.Workflow;
 
 using HRM.Models;
+using HRM.Services;
+using HRM.Services.Shared;
 using Microsoft.EntityFrameworkCore;
 
 // Blocks 2-6 + 9 of the Workflow Approval Engine: sequential level
 // advancement, approve/reject, full approver resolution (Horizontal +
 // Vertical + vacancy handling), LOA amount-based branching, AND-condition %
-// partial approval, Mix Approval (vertical pre-check hops before a level's
-// own approver), and admin-configured Moving Status text. Still
-// deliberately excludes:
-//   - Backward-level bounce on reject — reject terminates the job outright
-//     (or fails an AND-condition level once threshold is unreachable), it
-//     never routes the job back to an earlier level for revision
+// partial approval, OR-condition (any-one-approval), Mix Approval (vertical
+// pre-check hops before a level's own approver), reject bounce-back to an
+// earlier level (backwardlevel, round-scoped via jobseq), admin-configured
+// Moving Status text, and a best-effort email notification to the requester
+// when a job closes. Still deliberately excludes:
 //   - Cross-workflow LOA jumps (wf_loa.nextWorkflowId != nowWorkflowid) —
 //     see the comment on ResolveNextLevelViaLoaAsync
 //
@@ -40,9 +41,20 @@ public class WorkflowEngineService
 
     private enum LevelOutcome { StillPending, Complete, Failed }
 
-    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory)
+    // Propagated up through the recursive TryAdvanceLevelAsync <->
+    // AssignLevelApproversAsync chain (which can be several auto-skip hops
+    // deep) so the three outermost entry points (StartJobAsync/ApproveAsync/
+    // RejectAsync) know exactly when a job truly closed and fire the
+    // requester notification exactly once, regardless of how many
+    // vacant+auto-approve levels chained through in between.
+    private enum WorkflowOutcome { StillOpen, Approved, Rejected, BouncedBack }
+
+    private readonly EmailSender _emailSender;
+
+    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender)
     {
         _dbFactory = dbFactory;
+        _emailSender = emailSender;
     }
 
     // Starts a new approval instance for any document type — reftable/refid
@@ -131,13 +143,21 @@ public class WorkflowEngineService
                 isshow = level.isshow,
                 isLOA = level.isLOA,
                 isNeedsupervisorapprove = level.isNeedsupervisorapprove,
+                backwardlevel = level.backwardlevel,
                 moddate = DateTime.Now,
             });
         }
         await context.SaveChangesAsync(ct);
 
-        await AssignLevelApproversAsync(context, job, levels[0], ct);
+        var startOutcome = await AssignLevelApproversAsync(context, job, levels[0], ct);
         await context.SaveChangesAsync(ct);
+
+        // Covers the vacancy-auto-skip-chain case: a workflow whose level 1
+        // is itself vacant+auto-approve (and chains straight through to
+        // istop) can close before this method even returns, with no human
+        // ever having clicked anything — the requester still needs to know.
+        if (startOutcome != WorkflowOutcome.StillOpen)
+            await NotifyRequesterAsync(context, job, startOutcome, ct);
 
         return job.jobmasterid;
     }
@@ -162,7 +182,14 @@ public class WorkflowEngineService
         // via threshold while other rows were still Pending, or a level
         // whose earlier round already advanced — Block 5/6 both make this
         // reachable in ways Block 2-4 never could).
-        if (approverRow.wlevel != job.lastLevel)
+        // Block: reject bounce-back can revisit the same wlevel in a later
+        // round (jobseq), so wlevel alone no longer uniquely identifies "is
+        // this row still the open round" — must also match the current
+        // jobseq. Null-coalesced to 0 on both sides so jobs that never
+        // bounce (jobseq always null on both job and every row) are
+        // unaffected: null==null coalesces to 0==0, always true, same as
+        // before this guard existed.
+        if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
 
         approverRow.jobstatus = StatusApproved;
@@ -170,8 +197,11 @@ public class WorkflowEngineService
         approverRow.comment = comment;
         await context.SaveChangesAsync(ct);
 
-        await TryAdvanceLevelAsync(context, job, approverRow.wlevel ?? 0, actorUserId, ct);
+        var outcome = await TryAdvanceLevelAsync(context, job, approverRow.wlevel ?? 0, actorUserId, ct);
         await context.SaveChangesAsync(ct);
+
+        if (outcome != WorkflowOutcome.StillOpen)
+            await NotifyRequesterAsync(context, job, outcome, ct);
     }
 
     public async Task RejectAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
@@ -189,7 +219,14 @@ public class WorkflowEngineService
             ?? throw new InvalidOperationException("ไม่พบ job_master ของรายการนี้");
         if (job.isJobClosed == true)
             throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถดำเนินการต่อได้");
-        if (approverRow.wlevel != job.lastLevel)
+        // Block: reject bounce-back can revisit the same wlevel in a later
+        // round (jobseq), so wlevel alone no longer uniquely identifies "is
+        // this row still the open round" — must also match the current
+        // jobseq. Null-coalesced to 0 on both sides so jobs that never
+        // bounce (jobseq always null on both job and every row) are
+        // unaffected: null==null coalesces to 0==0, always true, same as
+        // before this guard existed.
+        if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
 
         approverRow.jobstatus = StatusRejected;
@@ -203,8 +240,11 @@ public class WorkflowEngineService
         // possible approval weight can no longer reach the AND% threshold.
         // Non-AND levels still fail immediately (any rejected row => Failed
         // in EvaluateLevel below), matching Block 2/3 behavior exactly.
-        await TryAdvanceLevelAsync(context, job, approverRow.wlevel ?? 0, actorUserId, ct);
+        var outcome = await TryAdvanceLevelAsync(context, job, approverRow.wlevel ?? 0, actorUserId, ct);
         await context.SaveChangesAsync(ct);
+
+        if (outcome != WorkflowOutcome.StillOpen)
+            await NotifyRequesterAsync(context, job, outcome, ct);
     }
 
     // Admin-only: fills a vacant approver slot (userid == null, created by
@@ -292,6 +332,23 @@ public class WorkflowEngineService
             return LevelOutcome.StillPending;
         }
 
+        // OR-condition: any single approval completes the level immediately
+        // (remaining rows become moot, same "moot leftover" pattern as an
+        // AND-threshold completing early above). Checked AFTER isandcondition
+        // deliberately — if a level is somehow misconfigured with both flags
+        // true, AND wins, a defined precedence rather than accidental
+        // fallthrough. Every workflow seeded before this feature has
+        // isorcondition=false, so this branch is provably unreachable for
+        // any config that existed before it.
+        if (snapshot.isorcondition)
+        {
+            if (rows.Any(IsApprovedLike))
+                return LevelOutcome.Complete;
+            if (rows.All(IsRejected))
+                return LevelOutcome.Failed; // nobody left who could still approve
+            return LevelOutcome.StillPending;
+        }
+
         if (rows.Any(IsRejected))
             return LevelOutcome.Failed;
         if (rows.Any(IsPending))
@@ -306,14 +363,21 @@ public class WorkflowEngineService
     // own real round) is now fully resolved, and if so either advances the
     // hop/level machinery accordingly. actorUserId is null for
     // system-driven auto-skip advances (no human actually clicked anything).
-    private async Task TryAdvanceLevelAsync(HRMContext context, job_master job, int completedLevel, long? actorUserId, CancellationToken ct)
+    private async Task<WorkflowOutcome> TryAdvanceLevelAsync(HRMContext context, job_master job, int completedLevel, long? actorUserId, CancellationToken ct)
     {
         var completedSnapshot = await context.job_subworkflow_masters
             .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == completedLevel, ct)
             ?? throw new InvalidOperationException($"ไม่พบ config ระดับ {completedLevel} ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
 
+        // Round-scoped: after a bounce-back (Block: reject bounce-back),
+        // this level may have leftover rows from an earlier, superseded
+        // round. Coalescing both sides to 0 means jobs that never bounce
+        // (job.jobseq and every row's jobseq always null) see an identical
+        // row set to before this scoping existed — provably zero behavior
+        // change for any job that doesn't use backwardlevel.
+        var currentJobseq = job.jobseq ?? 0;
         var allRows = await context.job_user_lists
-            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == completedLevel)
+            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == completedLevel && (a.jobseq ?? 0) == currentJobseq)
             .ToListAsync(ct);
 
         var precheckRows = allRows.Where(r => r.reason is not null && r.reason.StartsWith(VerticalPrecheckMarker, StringComparison.Ordinal)).ToList();
@@ -328,12 +392,15 @@ public class WorkflowEngineService
             // resolve before deciding the next step, unlike the AND%
             // evaluation below which must react immediately.
             if (precheckRows.Any(a => string.Equals(a.jobstatus, StatusPending, StringComparison.OrdinalIgnoreCase)))
-                return;
+                return WorkflowOutcome.StillOpen;
 
             if (precheckRows.Any(a => string.Equals(a.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase)))
             {
-                FailJob(job, completedSnapshot, precheckRows.LastOrDefault(a => string.Equals(a.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase))?.comment);
-                return;
+                var precheckRejectComment = precheckRows.LastOrDefault(a => string.Equals(a.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase))?.comment;
+                if (await TryBounceBackAsync(context, job, completedSnapshot, ct))
+                    return WorkflowOutcome.BouncedBack;
+                FailJob(job, completedSnapshot, precheckRejectComment);
+                return WorkflowOutcome.Rejected;
             }
 
             // All hops resolved (or no hops configured at all) — let
@@ -343,8 +410,7 @@ public class WorkflowEngineService
             var liveLevelForHop = await context.wf_sub_workflow_masters
                 .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == completedLevel, ct)
                 ?? throw new InvalidOperationException($"ไม่พบ config ต้นฉบับของระดับ {completedLevel} ใน wf_sub_workflow_master แล้ว (อาจถูกลบหลังงานเริ่ม)");
-            await AssignLevelApproversAsync(context, job, liveLevelForHop, ct);
-            return;
+            return await AssignLevelApproversAsync(context, job, liveLevelForHop, ct);
         }
 
         // The real round has been issued — evaluate it every time a row
@@ -357,12 +423,15 @@ public class WorkflowEngineService
         // resolved before returning Complete/Failed.
         var outcome = EvaluateLevel(completedSnapshot, realRoundRows);
         if (outcome == LevelOutcome.StillPending)
-            return;
+            return WorkflowOutcome.StillOpen;
 
         if (outcome == LevelOutcome.Failed)
         {
-            FailJob(job, completedSnapshot, realRoundRows.LastOrDefault(r => string.Equals(r.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase))?.comment);
-            return;
+            var rejectComment = realRoundRows.LastOrDefault(r => string.Equals(r.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase))?.comment;
+            if (await TryBounceBackAsync(context, job, completedSnapshot, ct))
+                return WorkflowOutcome.BouncedBack;
+            FailJob(job, completedSnapshot, rejectComment);
+            return WorkflowOutcome.Rejected;
         }
 
         // outcome == Complete. Decided by istop (the level explicitly
@@ -378,7 +447,7 @@ public class WorkflowEngineService
             job.isJobClosed = true;
             job.approvedDate = DateTime.Now;
             job.approvedUserID = actorUserId;
-            return;
+            return WorkflowOutcome.Approved;
         }
 
         var nextLevelNo = completedSnapshot.isLOA
@@ -401,7 +470,7 @@ public class WorkflowEngineService
             ?? throw new InvalidOperationException(
                 $"ไม่พบ config ต้นฉบับของระดับ {nextSnapshotLevel.wlevel} ใน wf_sub_workflow_master แล้ว (อาจถูกลบหลังงานเริ่ม) — ไม่สามารถหาผู้อนุมัติระดับถัดไปได้");
 
-        await AssignLevelApproversAsync(context, job, nextLiveLevel, ct);
+        return await AssignLevelApproversAsync(context, job, nextLiveLevel, ct);
     }
 
     // Terminates the job as failed/returned — used both for ordinary
@@ -413,6 +482,54 @@ public class WorkflowEngineService
         job.status = completedSnapshot.backwardstatus ?? StatusRejected;
         job.isJobClosed = true;
         job.reasonClosed = comment;
+    }
+
+    // Reject bounce-back: when a level fails (single reject on a non-AND/OR
+    // level, or an AND-threshold that became unreachable) and its config has
+    // backwardlevel set to a real EARLIER level in this same job, route the
+    // job back there for a fresh round instead of terminating it outright.
+    // Returns false (do nothing) whenever bounce-back doesn't apply, so the
+    // caller falls through to the existing FailJob behavior — this is the
+    // single most important regression-safety property here: every workflow
+    // that doesn't set backwardlevel (>99% of what exists today) must behave
+    // byte-for-byte as before this feature existed.
+    private async Task<bool> TryBounceBackAsync(HRMContext context, job_master job, job_subworkflow_master completedSnapshot, CancellationToken ct)
+    {
+        var backwardLevel = completedSnapshot.backwardlevel;
+        if (backwardLevel is null)
+            return false; // not configured -> zero extra queries, fall through to FailJob
+
+        // Don't trust config blindly: must be a real earlier level, never
+        // forward/self (which would be a no-op-forever or same-level loop).
+        if (backwardLevel < 1 || backwardLevel >= completedSnapshot.wlevel)
+            return false;
+
+        // Defensive cap: if two levels are misconfigured to bounce back and
+        // forth at each other, a human still has to keep rejecting/approving
+        // every round for it to continue (nothing here loops automatically),
+        // but cap it anyway so a bad config can't be ridden forever.
+        if ((job.jobseq ?? 0) >= 20)
+            return false;
+
+        var targetSnapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == backwardLevel.Value, ct);
+        if (targetSnapshot is null)
+            return false; // defensive: every level is snapshotted at StartJobAsync, should always exist
+
+        var targetLiveLevel = await context.wf_sub_workflow_masters
+            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == backwardLevel.Value, ct);
+        if (targetLiveLevel is null)
+            return false; // defensive: live level config deleted since job started
+
+        job.jobseq = (job.jobseq ?? 0) + 1; // new round starts
+        job.lastLevel = backwardLevel.Value;
+        // Block 9 Moving Status field, reused for its intended purpose here.
+        job.status = targetSnapshot.backwardstatus ?? StatusRejected;
+        job.remark = (string.IsNullOrEmpty(job.remark) ? "" : job.remark + "\n")
+            + $"{DateTime.Now:yyyy-MM-dd HH:mm}: ตีกลับจากระดับ {completedSnapshot.wlevel} ไปยังระดับ {backwardLevel.Value} (รอบที่ {job.jobseq})";
+
+        await AssignLevelApproversAsync(context, job, targetLiveLevel, ct); // fresh round of job_user_list rows
+        return true;
     }
 
     // LOA (Level of Authority) amount-based branching, Block 4. When the
@@ -563,7 +680,7 @@ public class WorkflowEngineService
     //      levels/hops skips through in one call.
     //   3. Nobody resolved and isAutoApproveAllow=false -> one Pending row
     //      with userid=null ("ค้างไว้จน admin หาคนอนุมัติได้" per the plan).
-    private async Task AssignLevelApproversAsync(HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
+    private async Task<WorkflowOutcome> AssignLevelApproversAsync(HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
     {
         // Block 9: display status reflects whichever level (or hop) is now
         // the open round — kept simple (no separate hop-specific status
@@ -623,9 +740,10 @@ public class WorkflowEngineService
                     sendDate = DateTime.Now,
                     reason = precheckReasonPrefix,
                     andPercent = andWeight,
+                    jobseq = job.jobseq,
                 });
             }
-            return;
+            return WorkflowOutcome.StillOpen;
         }
 
         if (level.isAutoApproveAllow)
@@ -643,10 +761,10 @@ public class WorkflowEngineService
                 reason = precheckReasonPrefix is null
                     ? "ตำแหน่งผู้อนุมัติว่าง — ข้ามอัตโนมัติ (isAutoApproveAllow)"
                     : $"{precheckReasonPrefix} | ตำแหน่งว่าง — ข้ามอัตโนมัติ (isAutoApproveAllow)",
+                jobseq = job.jobseq,
             });
             await context.SaveChangesAsync(ct);
-            await TryAdvanceLevelAsync(context, job, level.wlevel, null, ct);
-            return;
+            return await TryAdvanceLevelAsync(context, job, level.wlevel, null, ct);
         }
 
         // No one resolved and this level doesn't allow auto-skip — including
@@ -664,7 +782,9 @@ public class WorkflowEngineService
             reason = precheckReasonPrefix is null
                 ? "ตำแหน่งผู้อนุมัติว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)"
                 : $"{precheckReasonPrefix} | ตำแหน่งว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)",
+            jobseq = job.jobseq,
         });
+        return WorkflowOutcome.StillOpen;
     }
 
     // Horizontal (custom user / custom role) + Vertical (org-chart) approver
@@ -743,5 +863,47 @@ public class WorkflowEngineService
 
         throw new InvalidOperationException(
             $"ระดับ {level.wlevel} ของ workflow นี้ยังไม่ได้กำหนดประเภทผู้อนุมัติเลย (ไม่ได้ติ๊ก custom user / custom role / vertical ใดๆ เลย — ตั้งค่า config ไม่ครบ)");
+    }
+
+    // Best-effort email notification to the original requester when a job
+    // closes (approved / rejected / bounced back) — including when closure
+    // happens via an auto-skip chain with no human ever clicking anything
+    // (see the 3 call sites in StartJobAsync/ApproveAsync/RejectAsync).
+    // Must NEVER throw out of the caller's already-committed
+    // approve/reject/start transaction — mirrors PayrollEmployeeAdmin.razor's
+    // TrySendCredentialEmailAsync pattern exactly (catch, log, swallow).
+    private async Task NotifyRequesterAsync(HRMContext context, job_master job, WorkflowOutcome outcome, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(job.empid))
+                return;
+
+            // job.empid stores Hremployee.EmpNo (a business code string),
+            // not the numeric Hremployee.Id — confirmed by every existing
+            // read-back site (PayrollCompanyResolver.cs, RecApplicationService.cs).
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == job.empid, ct);
+            if (emp is null)
+                return;
+
+            var email = await EmployeeEmailResolver.ResolveAsync(context, emp.id, ct);
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            var outcomeLabel = outcome switch
+            {
+                WorkflowOutcome.Approved => "ได้รับการอนุมัติเรียบร้อยแล้ว",
+                WorkflowOutcome.Rejected => "ถูกปฏิเสธ",
+                WorkflowOutcome.BouncedBack => "ถูกตีกลับเพื่อแก้ไข กรุณาตรวจสอบและดำเนินการใหม่",
+                _ => "มีการเปลี่ยนแปลงสถานะ",
+            };
+            var subject = $"ผลการอนุมัติ: {job.subject ?? job.wname}";
+            var body = $"<p>คำขอของคุณเรื่อง \"{job.subject}\" {outcomeLabel}</p><p>สถานะปัจจุบัน: {job.status}</p>";
+            await _emailSender.SendEmailAsync(email, subject, body);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to send workflow closure notification for job {JobMasterId}", job.jobmasterid);
+        }
     }
 }
