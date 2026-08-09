@@ -1,7 +1,7 @@
 @page "/org/chart"
 @using System.Security.Claims
+@using System.Text.Json
 @using HRM.Models
-@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -14,36 +14,21 @@
 
 <PageTitle>ผังองค์กร (Org Chart)</PageTitle>
 
-@* Plain <style> — NOT a *.razor.css companion file. See note in git history:
-   Blazor's CSS-isolation scope attribute is only injected by the Razor
-   *compiler* into markup written directly in a .razor file's markup
-   section; this page's cards are positioned via computed inline
-   left/top from OrgChartLayoutEngine, but the class-based styling below
-   still needs to be unscoped so it isn't silently dropped. *@
+@* Plain <style> — NOT a *.razor.css companion file. This page's card HTML
+   is generated inside wwwroot/js/org-chart-d3.js (the d3-org-chart
+   library owns node placement/pan/zoom), so these classes need to be
+   visible to elements the library injects — Blazor's CSS-isolation scope
+   attribute is only ever added to markup written directly in a .razor
+   file, so an isolated .razor.css file here would silently never match. *@
 <style>
     .org-chart-canvas-wrap {
-        overflow: auto;
-        max-height: 78vh;
+        height: 78vh;
         border: 1px solid var(--mud-palette-lines-default, #ddd);
         border-radius: 8px;
-        background: repeating-linear-gradient(0deg, transparent, transparent 23px, rgba(128,128,128,0.06) 24px),
-                    repeating-linear-gradient(90deg, transparent, transparent 23px, rgba(128,128,128,0.06) 24px);
-    }
-
-    .org-chart-canvas {
-        position: relative;
-    }
-
-    .org-chart-svg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        pointer-events: none;
+        overflow: hidden;
     }
 
     .org-chart-card {
-        position: absolute;
-        width: 150px;
         background: var(--mud-palette-surface, #fff);
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -61,11 +46,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-
-    .org-chart-level-0 .org-chart-card-header { background: #1e2a44; }
-    .org-chart-level-1 .org-chart-card-header { background: #2f89b0; }
-    .org-chart-level-2 .org-chart-card-header { background: #7c8f3c; }
-    .org-chart-level-3 .org-chart-card-header { background: #5b5b7c; }
 
     .org-chart-card-body {
         display: flex;
@@ -143,7 +123,8 @@
         <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
     </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1 mb-2">
-        1 การ์ด = 1 ตำแหน่ง/เลขที่อัตรา (รวมตำแหน่งว่าง) — ลากการ์ดเพื่อจัดผังให้อ่านง่ายขึ้นได้ (ไม่บันทึกตำแหน่งที่ลาก รีเฟรชหน้าจะกลับมาจัดใหม่อัตโนมัติ) สีของแถบหัวการ์ดแสดงระดับชั้นหน่วยงาน
+        1 การ์ด = 1 ตำแหน่ง/เลขที่อัตรา (รวมตำแหน่งว่าง) — ลากพื้นหลังเพื่อเลื่อนดู, scroll เพื่อซูม, คลิกที่การ์ดเพื่อย่อ/ขยายสายงานใต้หน่วยงานนั้น
+        สีของแถบหัวการ์ดแสดงระดับชั้นหน่วยงาน — ผังนี้ขับเคลื่อนด้วยไลบรารี <a href="https://github.com/bumbeishvili/org-chart" target="_blank">d3-org-chart</a> (MIT license)
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
@@ -154,84 +135,24 @@
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (_layout is null || _layout.Cards.Count == 0)
+    else if (_nodes.Count == 0)
     {
         <MudAlert Severity="Severity.Info">ไม่พบข้อมูลผังองค์กร</MudAlert>
     }
     else
     {
-        <div class="org-chart-canvas-wrap">
-            <div id="orgChartCanvas" class="org-chart-canvas" style="width:@(_layout.TotalWidth)px; height:@(_layout.TotalHeight)px;">
-                <svg class="org-chart-svg" width="@(_layout.TotalWidth)" height="@(_layout.TotalHeight)">
-                    @foreach (var line in _layout.Lines)
-                    {
-                        <line x1="@line.X1" y1="@line.Y1" x2="@line.X2" y2="@line.Y2"
-                              data-from="@_primaryCardDomIdByOrg.GetValueOrDefault(line.FromOrgCode)"
-                              data-to="@_primaryCardDomIdByOrg.GetValueOrDefault(line.ToOrgCode)"
-                              stroke="var(--mud-palette-lines-default, #bbb)" stroke-width="2" />
-                    }
-                </svg>
-
-                @foreach (var card in _layout.Cards)
-                {
-                    var org = _orgsByCode.GetValueOrDefault(card.OrgCode);
-                    var slot = _slotsByCardKey.GetValueOrDefault((card.OrgCode, card.IndexInCluster));
-                    var levelClass = $"org-chart-level-{(_depthByOrgCode.GetValueOrDefault(card.OrgCode, 0) % 4)}";
-                    var isVacant = slot is null || slot.HremployeeId is null;
-
-                    <div id="@_cardDomIdByKey[(card.OrgCode, card.IndexInCluster)]"
-                         class="org-chart-card @levelClass @(isVacant ? "org-chart-vacant" : "")"
-                         style="left:@(card.X)px; top:@(card.Y)px;">
-                        <div class="org-chart-card-header">@(org?.name ?? card.OrgCode)</div>
-                        <div class="org-chart-card-body">
-                            @if (!isVacant && slot!.HremployeeId is long empId && _employeesById.TryGetValue(empId, out var emp))
-                            {
-                                @if (!string.IsNullOrEmpty(emp.PhotoStoragePath))
-                                {
-                                    <img class="org-chart-card-avatar" src="@($"/org/files/employee-photo/{emp.id}")"
-                                         alt="@($"{emp.EmpName} {emp.EmpSurname}".Trim())" title="@($"{emp.EmpName} {emp.EmpSurname}".Trim())" />
-                                }
-                                else
-                                {
-                                    <div class="org-chart-card-avatar org-chart-avatar-initials"
-                                         title="@($"{emp.EmpName} {emp.EmpSurname}".Trim())">@InitialsFor(emp)</div>
-                                }
-                                <div class="org-chart-card-info">
-                                    <div class="org-chart-card-name">@($"{emp.EmpName} {emp.EmpSurname}".Trim())</div>
-                                    <div class="org-chart-card-title">@(slot.Name ?? "")</div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="org-chart-card-avatar org-chart-avatar-vacant">?</div>
-                                <div class="org-chart-card-info">
-                                    <div class="org-chart-card-vacant-label">ตำแหน่งว่าง</div>
-                                    <div class="org-chart-card-title">@(slot?.Name ?? "ยังไม่มีการมอบหมายตำแหน่ง")</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-        </div>
+        <div id="orgChartCanvas" class="org-chart-canvas-wrap"></div>
     }
 </MudPaper>
 
 @code {
     private bool _loading = true;
     private string? _companyId;
-    private Dictionary<string, com_organization> _orgsByCode = new();
-    private Dictionary<string, int> _depthByOrgCode = new();
-    private Dictionary<(string OrgCode, int Index), Pos_PositionSlot> _slotsByCardKey = new();
-    private Dictionary<long, Hremployee> _employeesById = new();
-    private OrgChartLayoutEngine.LayoutResult? _layout;
+    private List<ChartNode> _nodes = new();
     private bool _jsInitialized;
 
-    // DOM id per card + which card (always index 0 of its org) each
-    // connector line's data-from/data-to should reference — read by
-    // wwwroot/js/org-chart-drag.js so a dragged card's lines follow it live.
-    private Dictionary<(string OrgCode, int Index), string> _cardDomIdByKey = new();
-    private Dictionary<string, string> _primaryCardDomIdByOrg = new();
+    private record ChartNode(string Id, string? ParentId, string OrgName, string? PersonName,
+        string? Title, string? PhotoUrl, string? Initials, bool IsVacant);
 
     protected override async Task OnInitializedAsync()
     {
@@ -242,7 +163,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var allOrgs = await context.com_organizations.ToListAsync();
-        _orgsByCode = allOrgs.Where(o => !string.IsNullOrEmpty(o.code))
+        var orgsByCode = allOrgs.Where(o => !string.IsNullOrEmpty(o.code))
             .GroupBy(o => o.code!).ToDictionary(g => g.Key, g => g.First());
         var roots = allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
 
@@ -255,55 +176,81 @@
             .ToLookup(s => orgIdToCode[s.OrganizationId!.Value]!);
 
         var empIds = slots.Where(s => s.HremployeeId is not null).Select(s => s.HremployeeId!.Value).Distinct().ToList();
-        _employeesById = await context.Hremployee
+        var employeesById = await context.Hremployee
             .Where(e => empIds.Contains(e.id))
             .ToDictionaryAsync(e => e.id, e => e);
 
-        // Build the cluster tree (one node per org unit) that
-        // OrgChartLayoutEngine turns into pixel positions, and remember
-        // each card's backing Pos_PositionSlot (or null = a placeholder
-        // for an org with zero slots) so the render loop can look it up.
-        var clusterNodes = new Dictionary<string, OrgChartLayoutEngine.ClusterNode>();
-        var depth = new Dictionary<string, int>();
-
-        OrgChartLayoutEngine.ClusterNode BuildNode(com_organization org, int d)
+        // Every org unit contributes one node per position slot (a vacant
+        // placeholder node if it has none). Only the org's first slot
+        // (index 0 — the "representative" card) is wired into the
+        // org-hierarchy chain via ParentId; any additional slots in the
+        // same org hang directly off that representative card, matching
+        // the same visual grouping the previous hand-rolled layout used.
+        void AddOrgNodes(com_organization org, string? parentId)
         {
             var orgSlots = slotsByOrgCode[org.code!].OrderBy(s => s.PosCode).ToList();
-            var cardCount = Math.Max(1, orgSlots.Count);
-            for (var i = 0; i < orgSlots.Count; i++)
-            {
-                _slotsByCardKey[(org.code!, i)] = orgSlots[i];
-            }
+            string? representativeId = null;
 
-            var node = new OrgChartLayoutEngine.ClusterNode { OrgCode = org.code!, CardCount = cardCount };
-            clusterNodes[org.code!] = node;
-            depth[org.code!] = d;
+            if (orgSlots.Count == 0)
+            {
+                var id = $"{org.code}_0";
+                representativeId = id;
+                _nodes.Add(new ChartNode(id, parentId, org.name ?? org.code!, null, null, null, null, IsVacant: true));
+            }
+            else
+            {
+                for (var i = 0; i < orgSlots.Count; i++)
+                {
+                    var slot = orgSlots[i];
+                    var id = $"{org.code}_{i}";
+                    if (i == 0) representativeId = id;
+
+                    if (slot.HremployeeId is long empId && employeesById.TryGetValue(empId, out var emp))
+                    {
+                        var name = $"{emp.EmpName} {emp.EmpSurname}".Trim();
+                        var photoUrl = !string.IsNullOrEmpty(emp.PhotoStoragePath) ? $"/org/files/employee-photo/{emp.id}" : null;
+                        var initials = !string.IsNullOrEmpty(emp.EmpName) ? emp.EmpName!.Substring(0, 1).ToUpperInvariant() : "?";
+                        _nodes.Add(new ChartNode(id, i == 0 ? parentId : representativeId, org.name ?? org.code!,
+                            name, slot.Name, photoUrl, initials, IsVacant: false));
+                    }
+                    else
+                    {
+                        _nodes.Add(new ChartNode(id, i == 0 ? parentId : representativeId, org.name ?? org.code!,
+                            null, slot.Name, null, null, IsVacant: true));
+                    }
+                }
+            }
 
             var children = allOrgs.Where(o => o.parent_code == org.code).OrderBy(o => o.orgcodefull).ToList();
             foreach (var child in children)
             {
-                node.Children.Add(BuildNode(child, d + 1));
+                AddOrgNodes(child, representativeId);
             }
-            return node;
         }
 
-        var rootNodes = roots.Where(o => !string.IsNullOrEmpty(o.code)).Select(o => BuildNode(o, 0)).ToList();
-        _depthByOrgCode = depth;
-        _layout = OrgChartLayoutEngine.Layout(rootNodes);
+        var validRoots = roots.Where(o => !string.IsNullOrEmpty(o.code)).ToList();
 
-        for (var i = 0; i < _layout.Cards.Count; i++)
+        // d3-org-chart (via d3.stratify internally) requires exactly one node
+        // with a null parentId. This org structure can have more than one
+        // top-level unit (istop=true) at once, so synthesize a single
+        // invisible wrapper root when that happens.
+        string? syntheticRootId = null;
+        if (validRoots.Count > 1)
         {
-            var c = _layout.Cards[i];
-            var domId = $"card-{i}";
-            _cardDomIdByKey[(c.OrgCode, c.IndexInCluster)] = domId;
-            if (c.IndexInCluster == 0) _primaryCardDomIdByOrg[c.OrgCode] = domId;
+            syntheticRootId = "__root__";
+            _nodes.Add(new ChartNode(syntheticRootId, null, "บริษัท", null, null, null, null, IsVacant: true));
         }
 
-        var totalCards = _layout.Cards.Count;
-        if (_employeesById.Count > 0)
+        foreach (var root in validRoots)
+        {
+            AddOrgNodes(root, syntheticRootId);
+        }
+
+        var employeeCount = _nodes.Count(n => !n.IsVacant);
+        if (employeeCount > 0)
         {
             await AuditLogger.LogAccessAsync("Hremployee", null, isSensitive: true,
-                note: $"org chart view — {_employeesById.Count} employee photo(s)/name(s) shown across {totalCards} position card(s)");
+                note: $"org chart view — {employeeCount} employee photo(s)/name(s) shown across {_nodes.Count} position card(s)");
         }
 
         _loading = false;
@@ -311,13 +258,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_jsInitialized && !_loading && _layout is { Cards.Count: > 0 })
+        if (!_jsInitialized && !_loading && _nodes.Count > 0)
         {
             _jsInitialized = true;
-            await JS.InvokeVoidAsync("OrgChartDrag.init", "orgChartCanvas");
+            var json = JsonSerializer.Serialize(_nodes, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            await JS.InvokeVoidAsync("OrgChartD3.render", "orgChartCanvas", json);
         }
     }
-
-    private static string InitialsFor(Hremployee emp) =>
-        !string.IsNullOrEmpty(emp.EmpName) ? emp.EmpName.Substring(0, 1).ToUpperInvariant() : "?";
 }
