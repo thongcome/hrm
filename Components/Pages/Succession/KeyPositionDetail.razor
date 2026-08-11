@@ -11,6 +11,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject SuccessionService SuccService
 @inject IdpAssessmentService IdpService
+@inject IdpPlanService IdpPlanSvc
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
@@ -38,6 +39,22 @@ else
             Business Impact: @ImpactLabel(_keyPosition.BusinessImpact) &nbsp;|&nbsp; Replacement Difficulty: @DifficultyLabel(_keyPosition.ReplacementDifficulty)
         </MudText>
     </MudPaper>
+
+    @if (VisibleSuggestions.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">แนะนำจาก Talent Pool / 9-Box ศักยภาพสูง</MudText>
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                @foreach (var s in VisibleSuggestions)
+                {
+                    <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Star"
+                        OnClick="@(() => SelectSuggestedAsync(s.HremployeeId))">
+                        @s.EmpNo — @s.Name (@s.SourceLabel)
+                    </MudChip>
+                }
+            </MudStack>
+        </MudPaper>
+    }
 
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6" Class="mb-2">เสนอชื่อผู้สืบทอด</MudText>
@@ -112,6 +129,7 @@ else
                         <MudTh>ระดับที่ต้องการ</MudTh>
                         <MudTh>ระดับปัจจุบัน (Effective)</MudTh>
                         <MudTh>ช่องว่าง (Gap)</MudTh>
+                        <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>
@@ -131,6 +149,14 @@ else
                             else
                             {
                                 <MudText Typo="Typo.body2">-</MudText>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            @if (context.Gap is int g && g > 0)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => CreateIdpActionAsync(context))">
+                                    สร้างแผนพัฒนา (IDP)
+                                </MudButton>
                             }
                         </MudTd>
                     </RowTemplate>
@@ -155,6 +181,10 @@ else
 
     private long? _gapNominationId;
     private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
+    private List<SuccessionService.SuggestedCandidateRow> _suggestedCandidates = new();
+
+    private List<SuccessionService.SuggestedCandidateRow> VisibleSuggestions =>
+        _suggestedCandidates.Where(s => !_nominations.Any(n => n.HremployeeId == s.HremployeeId)).ToList();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -172,7 +202,16 @@ else
         var execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == _keyPosition.PosExecTypeId);
         _posExecTypeName = execType?.Name ?? $"#{_keyPosition.PosExecTypeId}";
 
+        if (!string.IsNullOrEmpty(_companyId))
+            _suggestedCandidates = await SuccService.GetSuggestedCandidatesAsync(_companyId);
+
         await LoadNominationsAsync();
+    }
+
+    private async Task SelectSuggestedAsync(long hremployeeId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _selectedEmployee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId);
     }
 
     private async Task LoadNominationsAsync()
@@ -235,6 +274,55 @@ else
 
         _gapNominationId = nomination.Id;
         _gapRows = await IdpService.GetGapAnalysisForTargetPositionAsync(nomination.HremployeeId, _keyPosition!.PosExecTypeId);
+    }
+
+    // Closes the loop from "we found a gap" to "there's an actual development
+    // plan for it" — reuses the same Idp_Plan/Idp_DevelopmentAction the IDP
+    // module itself writes to (IdpPlanService), so the resulting action shows
+    // up at /idp/my-plans and /idp/team exactly like one added by hand.
+    private async Task CreateIdpActionAsync(IdpAssessmentService.CompetencyGapRow gapRow)
+    {
+        if (_gapNominationId is not long nominationId) return;
+        var nomination = _nominations.FirstOrDefault(n => n.Id == nominationId);
+        if (nomination is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var year = DateTime.Now.Year;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existingPlan = await context.Idp_Plans
+            .Where(p => p.HremployeeId == nomination.HremployeeId && p.Year == year && p.Status != IdpPlanStatus.Rejected)
+            .OrderByDescending(p => p.CreatedDate)
+            .FirstOrDefaultAsync();
+
+        long planId;
+        if (existingPlan is null)
+        {
+            planId = await IdpPlanSvc.CreateDraftAsync(nomination.HremployeeId, year, userId);
+        }
+        else if (existingPlan.Status == IdpPlanStatus.Draft)
+        {
+            planId = existingPlan.Id;
+        }
+        else
+        {
+            Snackbar.Add($"{nomination.Name} มีแผนพัฒนาปี {year} อยู่แล้ว (สถานะ: {existingPlan.Status}) ไม่สามารถเพิ่มรายการอัตโนมัติได้ — กรุณาไปที่โมดูล IDP โดยตรง", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            await IdpPlanSvc.AddActionAsync(planId, gapRow.CompetencyId,
+                $"พัฒนา {gapRow.CompetencyName} เพื่อเตรียมความพร้อมสำหรับตำแหน่ง {_posExecTypeName}",
+                $"ระบุจาก Succession Planning — ต้องการระดับ {gapRow.RequiredLevel}, ปัจจุบัน {(gapRow.EffectiveLevel?.ToString() ?? "ยังไม่ประเมิน")} (ช่องว่าง {gapRow.Gap})",
+                targetDate: null, userId);
+            Snackbar.Add("เพิ่มรายการเข้าแผนพัฒนา (IDP) เรียบร้อย", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Warning);
+        }
     }
 
     private static string ImpactLabel(BusinessImpactLevel v) => v switch

@@ -35,7 +35,65 @@ else
                 มี @_rows.Count(r => r.IsSinglePointOfFailure) ตำแหน่งที่ไม่มีผู้สืบทอดเลย (Single Point of Failure)
             </MudAlert>
         }
+    </MudPaper>
 
+    @if (_rows.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">Risk Heat-Map — Business Impact × Replacement Difficulty</MudText>
+            <MudGrid>
+                <MudItem xs="1" Class="d-flex align-center justify-center">
+                    <MudText Typo="Typo.subtitle2" Style="writing-mode: vertical-rl; transform: rotate(180deg);">Business Impact</MudText>
+                </MudItem>
+                <MudItem xs="11">
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        @foreach (var impactTier in new[] { 3, 2, 1 })
+                        {
+                            @foreach (var difficultyTier in new[] { 1, 2, 3 })
+                            {
+                                var cellKey = (impactTier, difficultyTier);
+                                var cellRows = _heatmapCells.TryGetValue(cellKey, out var list) ? list : new();
+                                var isExpanded = _expandedCell == cellKey;
+                                <MudPaper Class="pa-3" Style="@GetHeatCellStyle(impactTier, difficultyTier)" Outlined="true">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudText Typo="Typo.subtitle2">@GetHeatCellLabel(impactTier, difficultyTier)</MudText>
+                                        <MudChip T="string" Size="Size.Small">@cellRows.Count ตำแหน่ง</MudChip>
+                                    </MudStack>
+                                    @if (cellRows.Any(r => r.IsSinglePointOfFailure))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="mt-1">
+                                            @cellRows.Count(r => r.IsSinglePointOfFailure) ไม่มีผู้สืบทอด
+                                        </MudChip>
+                                    }
+                                    @if (cellRows.Count > 0)
+                                    {
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleHeatCell(cellKey))" Class="mt-1">
+                                            @(isExpanded ? "ย่อ" : "ดูรายชื่อตำแหน่ง")
+                                        </MudButton>
+                                    }
+                                    @if (isExpanded)
+                                    {
+                                        @foreach (var row in cellRows)
+                                        {
+                                            <MudPaper Class="pa-2 mt-1" Outlined="true">
+                                                <MudLink OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{row.KeyPositionId}"))">@row.PosExecTypeName</MudLink>
+                                                <MudText Typo="Typo.caption">
+                                                    พร้อมทันที @row.ReadyNowCount คน จากผู้สืบทอดทั้งหมด @row.TotalSuccessorCount คน
+                                                </MudText>
+                                            </MudPaper>
+                                        }
+                                    }
+                                </MudPaper>
+                            }
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center" Style="display:block">Replacement Difficulty — ต่ำ → สูง</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_rows" Dense="true" Hover="true">
             <HeaderContent>
                 <MudTh>ตำแหน่ง</MudTh>
@@ -76,6 +134,8 @@ else
 @code {
     private string? _companyId;
     private List<SuccessionService.BenchStrengthRow> _rows = new();
+    private Dictionary<(int, int), List<SuccessionService.BenchStrengthRow>> _heatmapCells = new();
+    private (int, int)? _expandedCell;
 
     protected override async Task OnInitializedAsync()
     {
@@ -84,7 +144,12 @@ else
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         _rows = await SuccService.GetBenchStrengthAsync(_companyId);
+        _heatmapCells = _rows
+            .GroupBy(r => ((int)r.BusinessImpact, (int)r.ReplacementDifficulty))
+            .ToDictionary(g => g.Key, g => g.ToList());
     }
+
+    private void ToggleHeatCell((int, int) cellKey) => _expandedCell = _expandedCell == cellKey ? null : cellKey;
 
     private static string ImpactLabel(BusinessImpactLevel v) => v switch
     {
@@ -101,4 +166,25 @@ else
         ReplacementDifficultyLevel.High => "สูง",
         _ => v.ToString(),
     };
+
+    private static string GetHeatCellLabel(int impactTier, int difficultyTier) => (impactTier, difficultyTier) switch
+    {
+        (3, 3) => "วิกฤต (Impact สูง × หายาก)",
+        (1, 1) => "เสี่ยงต่ำสุด",
+        _ => $"Impact {ImpactLabel((BusinessImpactLevel)impactTier)} × Difficulty {DifficultyLabel((ReplacementDifficultyLevel)difficultyTier)}",
+    };
+
+    private static string GetHeatCellStyle(int impactTier, int difficultyTier)
+    {
+        var risk = impactTier + difficultyTier; // 2..6 — both axes high = highest succession risk
+        var color = risk switch
+        {
+            6 => "background-color:rgba(244,67,54,0.25)",   // top-right: highest impact + hardest to replace
+            2 => "background-color:rgba(76,175,80,0.15)",   // bottom-left: lowest risk
+            5 => "background-color:rgba(255,152,0,0.18)",
+            3 => "background-color:rgba(139,195,74,0.15)",
+            _ => "background-color:rgba(255,235,59,0.12)",
+        };
+        return $"{color}; min-height:140px";
+    }
 }

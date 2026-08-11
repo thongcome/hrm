@@ -27,6 +27,52 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
         BusinessImpactLevel BusinessImpact, ReplacementDifficultyLevel ReplacementDifficulty,
         int ReadyNowCount, int TotalSuccessorCount, bool IsSinglePointOfFailure);
 
+    public record SuggestedCandidateRow(long HremployeeId, string EmpNo, string Name, string SourceLabel);
+
+    // Nomination candidates should be informed by existing performance/potential
+    // signal, not typed in blind — international succession practice pulls the
+    // slate from the talent pool / high-potential quadrant rather than an open
+    // search. Union of Talent_PoolEntry (explicit HR flag) and the most recent
+    // Talent_PotentialRating=High per employee (any period — this module
+    // deliberately doesn't ask HR to pick an evaluation period, unlike
+    // /talent/nine-box, to keep the succession screen simple). Suggestion only:
+    // HR can still nominate anyone via the free-text search below.
+    public async Task<List<SuggestedCandidateRow>> GetSuggestedCandidatesAsync(string companyId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var poolEmployeeIds = await context.Talent_PoolEntries
+            .Where(p => p.IsActive)
+            .Select(p => p.HremployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var highPotentialIds = await context.Talent_PotentialRatings
+            .Where(r => r.Level == PotentialLevel.High)
+            .Select(r => r.HremployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var candidateIds = poolEmployeeIds.Union(highPotentialIds).ToList();
+        if (candidateIds.Count == 0)
+            return new();
+
+        var employees = await context.Hremployee
+            .Where(e => candidateIds.Contains(e.id) && e.companyid == companyId && e.ResignDate == null)
+            .ToListAsync(ct);
+
+        var poolSet = poolEmployeeIds.ToHashSet();
+        var potentialSet = highPotentialIds.ToHashSet();
+
+        return employees.Select(e =>
+        {
+            var sources = new List<string>();
+            if (poolSet.Contains(e.id)) sources.Add("Talent Pool");
+            if (potentialSet.Contains(e.id)) sources.Add("9-box: ศักยภาพสูง");
+            return new SuggestedCandidateRow(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}", string.Join(" · ", sources));
+        }).OrderBy(r => r.Name).ToList();
+    }
+
     public async Task<List<KeyPositionRow>> GetKeyPositionsAsync(string companyId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
