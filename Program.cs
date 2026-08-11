@@ -14,10 +14,13 @@ using HRM.Model;
 using HRM.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using HRM.Interface;
+using System.Text;
 using HRM.Services.Payroll;
 using HRM.Services.Pay;
 using HRM.Services.Pay.Calculators;
@@ -42,12 +45,68 @@ builder.Services.AddScoped<ActivityService>();
 builder.Services.AddScoped<GoalTaskService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<JsonLocalizationService>();
-builder.Services.AddAuthentication(options =>
+// Single AuthenticationBuilder reference, reused below — a second,
+// separate AddAuthentication(...) call is exactly what caused the
+// scheme-conflict bug fixed earlier in this project (the last
+// Configure<AuthenticationOptions> delegate silently wins DefaultScheme).
+// .AddIdentityCookies() returns a narrower IdentityCookiesBuilder that
+// can't chain .AddJwtBearer(...) directly, so both calls go through this
+// same authenticationBuilder variable instead of one fluent chain.
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = IdentityConstants.ApplicationScheme;
     options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
-})
-    .AddIdentityCookies();
+});
+authenticationBuilder.AddIdentityCookies();
+// "ExternalApi" resource-server scheme for the ecosystem-wide central AI
+// chatbot (and any future HumanOk module) — deliberately NOT the default
+// scheme, so it cannot interfere with the cookie-based HR staff login
+// above at all; it only registers an additional named scheme and never
+// touches DefaultScheme.
+authenticationBuilder.AddJwtBearer("ExternalApi", jwtOptions =>
+    {
+        var externalApiAuth = builder.Configuration.GetSection("ExternalApiAuth");
+        var authority = externalApiAuth["Authority"];
+        jwtOptions.RequireHttpsMetadata = externalApiAuth.GetValue("RequireHttpsMetadata", true);
+        var audience = externalApiAuth["Audience"] ?? "humanok-hrm";
+
+        if (!string.IsNullOrWhiteSpace(authority))
+        {
+            // Real path: once the central OAuth2/OIDC auth server exists,
+            // set ExternalApiAuth:Authority to its issuer URL — signing
+            // keys are then discovered automatically via
+            // {authority}/.well-known/openid-configuration. No code
+            // change needed here when that day comes.
+            jwtOptions.Authority = authority;
+            jwtOptions.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = true,
+                ValidAudience = audience,
+            };
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            // Dev-only fallback so this resource-server wiring is
+            // testable before the central auth server exists. Gated on
+            // IsDevelopment() so it can never activate outside local dev
+            // even if ExternalApiAuth:DevSigningKey is set by mistake
+            // elsewhere — Authority must be configured for this scheme to
+            // accept anything outside Development.
+            var devKey = builder.Configuration["ExternalApiAuth:DevSigningKey"];
+            if (!string.IsNullOrWhiteSpace(devKey))
+            {
+                jwtOptions.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = "humanok-dev-issuer",
+                    ValidateAudience = true,
+                    ValidAudience = audience,
+                    ValidateLifetime = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(devKey)),
+                };
+            }
+        }
+    });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
@@ -142,6 +201,24 @@ builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, HRM.Services.Login.MenuPolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.MenuAuthorizationHandler>();
 builder.Services.AddAuthorizationCore();
+
+// "ExternalApiCaller" policy for the ecosystem/chatbot resource-server
+// surface (Endpoints/ExternalApiEndpoints.cs). This is a plain named
+// policy, not a "Menu:"-prefixed one, so MenuPolicyProvider.GetPolicyAsync
+// falls through to its wrapped DefaultAuthorizationPolicyProvider and
+// finds it here — registering it via a second AddAuthorizationCore(...)
+// call is safe because AuthorizationOptions.AddPolicy mutates a shared
+// dictionary (additive), unlike AddAuthentication's scalar DefaultScheme
+// (see the scheme-conflict comment above).
+builder.Services.AddAuthorizationCore(options =>
+{
+    options.AddPolicy("ExternalApiCaller", policy =>
+    {
+        policy.AuthenticationSchemes.Add("ExternalApi");
+        policy.Requirements.Add(new HRM.Services.Login.ExternalApiCallerRequirement());
+    });
+});
+builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.ExternalApiCallerHandler>();
 
 builder.Services.AddScoped<MenuStateService>();// �红�����ʶҹ�����
 
@@ -374,5 +451,15 @@ app.MapRecFileEndpoints();
 app.MapLmsFileEndpoints();
 app.MapKmFileEndpoints();
 app.MapOrgChartFileEndpoints();
+
+// Resource-server surface for the ecosystem-wide central AI chatbot — see
+// Endpoints/ExternalApiEndpoints.cs. The dev token-minting route is only
+// ever mapped in Development, matching the app.UseMigrationsEndPoint()
+// pattern above.
+app.MapExternalApiEndpoints();
+if (app.Environment.IsDevelopment())
+{
+    app.MapExternalApiDevEndpoints();
+}
 
 app.Run();
