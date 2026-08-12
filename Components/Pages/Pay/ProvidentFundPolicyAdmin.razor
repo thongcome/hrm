@@ -187,7 +187,7 @@
         <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testEmployeeRate" Label="อัตราสะสมพนักงาน (%)" Format="0.00" Min="0" Max="100" /></MudItem>
         <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testCompanyRate" Label="อัตราสมทบบริษัท (%)" Format="0.00" Min="0" Max="100" /></MudItem>
     </MudGrid>
-    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreview">คำนวณตัวอย่าง</MudButton>
+    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreviewAsync">คำนวณตัวอย่าง</MudButton>
 
     @if (_previewResult is not null)
     {
@@ -200,6 +200,11 @@
             @if (_previewResult.Value.Vesting.MatchedTierNote is not null)
             {
                 <text> (tier @_previewResult.Value.Vesting.MatchedTierNote)</text>
+            }
+            @if (!string.IsNullOrEmpty(_previewPolicyNote))
+            {
+                <br />
+                <MudText Typo="Typo.caption">@_previewPolicyNote</MudText>
             }
         </MudAlert>
     }
@@ -239,6 +244,7 @@
     private decimal _testEmployeeRate = 3m;
     private decimal _testCompanyRate = 3m;
     private (ProvidentFundCalculator.ProvidentFundResult Pf, ProvidentFundVestingCalculator.VestingResult Vesting)? _previewResult;
+    private string? _previewPolicyNote;
 
     protected override async Task OnInitializedAsync()
     {
@@ -446,7 +452,7 @@
         await LoadInvestmentPoliciesAsync();
     }
 
-    private void RunPreview()
+    private async Task RunPreviewAsync()
     {
         if (_testHireDate is null || _testAsOfDate is null) return;
 
@@ -454,8 +460,30 @@
         var asOfDate = DateOnly.FromDateTime(_testAsOfDate.Value);
         if (asOfDate < hireDate) return;
 
+        // Resolve tiers fresh from whichever policy actually applies as of the
+        // reference date, instead of reusing _vestingTiers — that field is only
+        // populated when HR clicks "Vesting Tier" on a specific policy row, so
+        // running this preview without doing that first used to silently treat
+        // real, already-configured tiers as absent (misreporting 100% vesting).
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var applicablePolicy = await context.Pay_ProvidentFundPolicies
+            .Where(p => p.CompanyId == _companyId && p.IsEnabled
+                        && p.EffectiveFrom <= asOfDate && (p.EffectiveTo == null || p.EffectiveTo >= asOfDate))
+            .FirstOrDefaultAsync();
+
+        var tiers = applicablePolicy is null
+            ? new List<Pay_ProvidentFundVestingTier>()
+            : await context.Pay_ProvidentFundVestingTiers
+                .Where(t => t.PolicyId == applicablePolicy.Id)
+                .OrderBy(t => t.SortOrder)
+                .ToListAsync();
+
+        _previewPolicyNote = applicablePolicy is null
+            ? "ไม่พบนโยบายที่เปิดใช้งานและมีผลในวันที่อ้างอิงนี้ — ถือว่าไม่มี tier ตั้งไว้ (vest เต็ม 100%)"
+            : $"ใช้ tier จากนโยบายช่วง {applicablePolicy.EffectiveFrom:dd/MM/yyyy} - {(applicablePolicy.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")}";
+
         var pf = ProvidentFundCalculator.Calculate(_testWage, _testEmployeeRate, _testCompanyRate);
-        var vesting = ProvidentFundVestingCalculator.ResolveVesting(hireDate, asOfDate, _vestingTiers);
+        var vesting = ProvidentFundVestingCalculator.ResolveVesting(hireDate, asOfDate, tiers);
         _previewResult = (pf, vesting);
     }
 }
