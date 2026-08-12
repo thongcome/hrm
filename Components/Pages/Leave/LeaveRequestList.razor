@@ -8,6 +8,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
+@inject LeaveBalanceService LeaveBalanceSvc
 @inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
@@ -206,28 +207,8 @@
             return;
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-
-        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p =>
-            p.CompanyId == _selectedEmployee.companyid && p.LeaveType == _leaveType && p.IsActive);
-        if (policy is null)
-        {
-            _remainingBalance = null;
-            return;
-        }
-
-        var currentYear = DateTime.Today.Year;
-        var completedRequests = await (
-            from r in context.Lve_LeaveRequests
-            join j in context.job_masters on r.JobMasterId equals j.jobmasterid
-            where r.HremployeeId == _selectedEmployee.id
-                  && r.LeaveType == _leaveType
-                  && r.StartDate.Year == currentYear
-                  && j.status == "COMPLETED"
-            select r.TotalDays
-        ).ToListAsync();
-
-        _remainingBalance = policy.EntitlementDaysPerYear - completedRequests.Sum();
+        var balances = await LeaveBalanceSvc.GetBalancesAsync(_selectedEmployee.id, _selectedEmployee.companyid, _leaveType);
+        _remainingBalance = balances.Count > 0 ? balances[0].RemainingDays : (decimal?)null;
     }
 
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)

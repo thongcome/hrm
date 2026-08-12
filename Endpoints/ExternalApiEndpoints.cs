@@ -59,6 +59,56 @@ public static class ExternalApiEndpoints
                 companyId = employee.companyid,
             });
         });
+
+        // Second real data endpoint after whoami — deliberately the exact
+        // example used while discussing this architecture with the user
+        // ("ยอดวันลาคงเหลือ"). Reuses LeaveBalanceService, the same
+        // calculation LeaveRequestList.razor's HR-facing balance display
+        // uses, rather than re-deriving policy-vs-used-days logic here.
+        group.MapGet("/leave-balance", async (
+            HttpContext httpContext,
+            IDbContextFactory<HRMContext> dbFactory,
+            HRM.Services.Leave.LeaveBalanceService leaveBalanceService,
+            IAuditLogger auditLogger,
+            string? leaveType,
+            int? year,
+            CancellationToken ct) =>
+        {
+            var clientId = httpContext.User.FindFirst("client_id")!.Value;
+            var empNo = httpContext.User.FindFirst("empno")!.Value;
+
+            await using var context = await dbFactory.CreateDbContextAsync(ct);
+            var employee = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == empNo, ct);
+            if (employee is null)
+                return Results.NotFound(new { error = $"No employee found for empno claim '{empNo}'" });
+
+            LeaveType? parsedLeaveType = null;
+            if (!string.IsNullOrWhiteSpace(leaveType))
+            {
+                if (!Enum.TryParse<LeaveType>(leaveType, ignoreCase: true, out var lt))
+                    return Results.BadRequest(new { error = $"Unknown leaveType '{leaveType}'. Valid values: {string.Join(", ", Enum.GetNames<LeaveType>())}" });
+                parsedLeaveType = lt;
+            }
+
+            var balances = await leaveBalanceService.GetBalancesAsync(employee.id, employee.companyid, parsedLeaveType, year, ct);
+
+            await auditLogger.LogAccessAsync("Lve_LeaveRequest", employee.id.ToString(), isSensitive: true,
+                note: $"External API leave-balance — client_id={clientId}, empno={empNo}", ct);
+
+            return Results.Ok(new
+            {
+                empNo,
+                employeeId = employee.id,
+                year = year ?? DateTime.Today.Year,
+                balances = balances.Select(b => new
+                {
+                    leaveType = b.LeaveType.ToString(),
+                    entitlementDays = b.EntitlementDays,
+                    usedDays = b.UsedDays,
+                    remainingDays = b.RemainingDays,
+                }),
+            });
+        });
     }
 
     // Development-only: mints a short-lived test JWT signed with the local
