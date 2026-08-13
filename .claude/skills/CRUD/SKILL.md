@@ -64,3 +64,25 @@ This codebase was scaffolded from a legacy JSP-era HR system, and a large number
 
 - If the table is company-specific, scope it with a **string** `CompanyId`/`companyid` field matching `Hremployee.companyid` — not a numeric FK to some other company table. This matches the convention used across `Pay_*`/`Lve_*`/`Att_*` tables and the `payroll_company` claim already used for filtering everywhere else.
 - Prefer soft delete: an `IsActive`/`isactive` boolean flipped off, not a hard `DELETE`. Keeps history intact and matches what every other admin page in this codebase does.
+
+## 7. Two page shapes — pick one deliberately
+
+Every CRUD page in this codebase is one of two shapes. Pick the one that matches the table before writing anything; don't default to whichever is easier to type.
+
+**Shape A — Full Edit Form.** One page, one form, every editable field on it at once, grouped under `Typo.h6` section headings when the table is wide. This is the default shape — use it unless the table clearly benefits from Shape B.
+
+- Reference for section grouping: `Components/Pages/Pay/PayslipSettingsAdmin.razor` — five distinct `<MudText Typo="Typo.h6" Class="mb-2">` headings ("ข้อมูลบริษัท...", "ปีบัญชี (Fiscal Year)", "ทดลองงาน (Probation)", etc.) each followed by the fields that belong to that group. Copy this structure directly for any table wide enough to need it (roughly 8+ fields). For a narrow table (under ~8 fields), skip the headings and just list the fields — don't invent groups that don't earn their keep.
+- `Components/Pages/Wf/WfWorkflowAdmin.razor` covers all 33 `wf_workflow` fields on one page but does **not** use section headings (just bare `MudGrid` blocks) — it's a working example of "everything on one form" but not of the grouped-section layout. Don't cite it as a grouped-section reference.
+
+**Shape B — Master-Detail.** Two panes (or a list + a drill-in detail page): the master list on one side, and clicking a row opens its full detail/edit view — either inline (`Components/Pages/Pay/PayrollEmployeeDetail.razor`-style, a dedicated `/xxx/{id}` route) or as a side panel. Reach for this when a record has enough weight or enough related child data that cramming it into one flat form would bury the primary fields (e.g. an employee with core fields + several child collections). As of this writing there is no page in this codebase built exactly as a two-pane master-detail CRUD shell — `PayrollEmployeeDetail.razor` is the closest real precedent (list → dedicated detail route) but is itself a hand-built page tied to payroll, not a generic pattern. The first page built this way becomes the reference for the next one; don't invent a second, different master-detail layout once one exists.
+
+Decision rule: start with Shape A. Move to Shape B only when the table has real child collections/tabs to manage, or the field count makes a single form unreadable even with section headings.
+
+## 8. Foreign keys are pickers, never raw ID fields
+
+Never put a raw numeric ID in a text box or unlabeled `MudNumericField` for a foreign key. Resolve it to a picker that shows the human-readable label:
+
+- **Small/fixed reference set** (a handful to a few dozen rows, e.g. status, category, type lookup tables) → `MudSelect<T>` bound to the full in-memory list loaded once in `OnInitializedAsync`.
+- **Large/growing reference set** (e.g. picking an employee out of the whole company) → `MudAutocomplete<T>` with a `SearchFunc` that queries the database live rather than loading everything. Reference: `Components/Pages/Pay/WithholdingCertificateGenerate.razor` — `MudAutocomplete T="Hremployee"` bound via `SearchFunc="SearchEmployeesAsync"`, where `SearchEmployeesAsync` runs an `EntitySearchHelper`-backed query scoped to the current company. The same pattern is used in `SalaryCertificateGenerate.razor` and `Por1Generate.razor`. Copy this shape rather than writing a new autocomplete query per page.
+
+Never display a bare `EmployeeId`/`XxxId` column in a list view either — join/project to the display name in the query, or resolve it via a dictionary built once per page load.
