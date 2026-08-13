@@ -1,0 +1,166 @@
+@page "/wf/custom-roles"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ผู้อนุมัติตาม Role (Custom Role)</PageTitle>
+
+<CrudScaffold TEntity="wf_custom_role"
+    Title="ผู้อนุมัติตาม Role ต่อระดับ (wf_custom_role) — ใช้เมื่อ Custom Role เปิดอยู่ที่ระดับนั้น"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewRow"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>Workflow / ระดับ</MudTh>
+        <MudTh>Role</MudTh>
+        <MudTh>Active</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private List<wf_sub_workflow_master> _levels = new();
+    private List<wf_workflow> _workflows = new();
+    private List<sc_role> _roles = new();
+    private List<wf_loa> _loas = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        _levels = await context.wf_sub_workflow_masters.OrderBy(l => l.workflowid).ThenBy(l => l.wlevel).ToListAsync();
+        _roles = await context.sc_roles.OrderBy(r => r.name).ToListAsync();
+        _loas = await context.wf_loas.OrderBy(l => l.wfid).ThenBy(l => l.nowLevel).ToListAsync();
+    }
+
+    private string LevelLabel(long subworkflowid)
+    {
+        var level = _levels.FirstOrDefault(l => l.subworkflowid == subworkflowid);
+        if (level is null) return $"#{subworkflowid}";
+        var wf = _workflows.FirstOrDefault(w => w.workflowid == level.workflowid);
+        return $"{wf?.workflowcode ?? level.workflowid.ToString()} / ระดับ {level.wlevel}" + (string.IsNullOrEmpty(level.subject) ? "" : $" ({level.subject})");
+    }
+
+    private string RoleLabel(long roleid) => _roles.FirstOrDefault(r => r.roleid == roleid)?.name ?? $"#{roleid}";
+
+    private wf_custom_role CreateNewRow() => new wf_custom_role { isactive = true };
+
+    private RenderFragment RenderRowColumns(wf_custom_role row) => @<text>
+        <MudTd>@LevelLabel(row.subworkflowid ?? 0)</MudTd>
+        <MudTd>@RoleLabel(row.roleid)</MudTd>
+        <MudTd>@((row.isactive ?? false) ? "ใช้งาน" : "ปิด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_custom_role e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@LevelLabel(e.subworkflowid ?? 0)" Label="Workflow / ระดับ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@RoleLabel(e.roleid)" Label="Role" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox Value="@(e.isactive ?? false)" ReadOnly="true" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox Value="@(e.isHeader ?? false)" ReadOnly="true" Label="เป็นหัวหน้าชุดอนุมัติ" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.startdate?.ToString() ?? "-")" Label="เริ่มมีผล" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.enddate?.ToString() ?? "-")" Label="สิ้นสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.poscode" Label="รหัสตำแหน่ง (poscode)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcode" Label="รหัสหน่วยงาน (orgcode)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.emplevel?.ToString() ?? "-")" Label="Employee Level" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_custom_role e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="@(e.subworkflowid ?? 0)" ValueChanged="v => e.subworkflowid = v" Label="Workflow / ระดับ" Required="true">
+                    @foreach (var level in _levels)
+                    {
+                        <MudSelectItem T="long" Value="@level.subworkflowid">@LevelLabel(level.subworkflowid)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.roleid" ValueChanged="v => e.roleid = v" Label="Role" Required="true">
+                    @foreach (var role in _roles)
+                    {
+                        <MudSelectItem T="long" Value="@role.roleid">@RoleLabel(role.roleid)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" Value="@(e.isactive ?? false)" ValueChanged="v => e.isactive = v" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" Value="@(e.isHeader ?? false)" ValueChanged="v => e.isHeader = v" Label="เป็นหัวหน้าชุดอนุมัติ" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Date="@(e.startdate.HasValue ? e.startdate.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null)" DateChanged="v => e.startdate = v.HasValue ? DateOnly.FromDateTime(v.Value) : null" Label="เริ่มมีผล" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Date="@(e.enddate.HasValue ? e.enddate.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null)" DateChanged="v => e.enddate = v.HasValue ? DateOnly.FromDateTime(v.Value) : null" Label="สิ้นสุด" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.poscode" Label="รหัสตำแหน่ง (poscode, ไม่บังคับ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcode" Label="รหัสหน่วยงาน (orgcode, ไม่บังคับ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.emplevel" Label="Employee Level" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" Value="e.loaid" ValueChanged="v => e.loaid = v" Label="ผูกกับ LOA band (ถ้ามี)" Clearable="true">
+                    @foreach (var loa in _loas)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)loa.id)">@loa.subject (@loa.min - @loa.max)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_custom_role>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_custom_roles.AsQueryable(), term,
+            nameof(wf_custom_role.rolecode), nameof(wf_custom_role.orgcode), nameof(wf_custom_role.poscode));
+        return await query.OrderBy(e => e.workflowid).ThenBy(e => e.wlevel).ToListAsync();
+    }
+
+    private async Task<wf_custom_role> SaveAsync(wf_custom_role entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == entity.subworkflowid)
+            ?? throw new InvalidOperationException("ไม่พบระดับที่เลือก");
+        var role = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == entity.roleid)
+            ?? throw new InvalidOperationException("ไม่พบ Role ที่เลือก");
+
+        if (entity.id == 0)
+        {
+            entity.workflowid = level.workflowid;
+            entity.wlevel = level.wlevel;
+            entity.rolecode = role.rolecode;
+            entity.modate = DateTime.Now;
+            context.wf_custom_roles.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_custom_roles.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.subworkflowid = entity.subworkflowid;
+            existing.workflowid = level.workflowid;
+            existing.wlevel = level.wlevel;
+            existing.roleid = entity.roleid;
+            existing.rolecode = role.rolecode;
+            existing.isactive = entity.isactive;
+            existing.isHeader = entity.isHeader;
+            existing.startdate = entity.startdate;
+            existing.enddate = entity.enddate;
+            existing.poscode = entity.poscode;
+            existing.orgcode = entity.orgcode;
+            existing.emplevel = entity.emplevel;
+            existing.loaid = entity.loaid;
+            existing.modate = DateTime.Now;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

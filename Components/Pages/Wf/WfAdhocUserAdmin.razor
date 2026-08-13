@@ -1,0 +1,156 @@
+@page "/wf/adhoc-users"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ผู้อนุมัติเฉพาะกิจ (Adhoc User)</PageTitle>
+
+<CrudScaffold TEntity="wf_adhoc_user"
+    Title="ผู้อนุมัติเฉพาะกิจ (wf_adhoc_user) — ใช้เมื่อ Adhoc User เปิดอยู่ที่ระดับนั้น มอบหมายเป็นรายงานได้"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewRow"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>Workflow / ระดับ</MudTh>
+        <MudTh>ผู้อนุมัติ</MudTh>
+        <MudTh>ผูกกับ Job เจาะจง</MudTh>
+        <MudTh>Active</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private List<wf_sub_workflow_master> _levels = new();
+    private List<wf_workflow> _workflows = new();
+    private List<sc_user> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        _levels = await context.wf_sub_workflow_masters.OrderBy(l => l.workflowid).ThenBy(l => l.wlevel).ToListAsync();
+        _users = await context.sc_users.OrderBy(u => u.firstname).ToListAsync();
+    }
+
+    private string LevelLabel(long subworkflowid)
+    {
+        var level = _levels.FirstOrDefault(l => l.subworkflowid == subworkflowid);
+        if (level is null) return $"#{subworkflowid}";
+        var wf = _workflows.FirstOrDefault(w => w.workflowid == level.workflowid);
+        return $"{wf?.workflowcode ?? level.workflowid.ToString()} / ระดับ {level.wlevel}" + (string.IsNullOrEmpty(level.subject) ? "" : $" ({level.subject})");
+    }
+
+    private string UserLabel(long userid)
+    {
+        var user = _users.FirstOrDefault(u => u.userid == userid);
+        return user is null ? $"#{userid}" : $"{user.firstname} {user.lastname} ({user.loginname})";
+    }
+
+    private wf_adhoc_user CreateNewRow() => new wf_adhoc_user { isactive = true };
+
+    private RenderFragment RenderRowColumns(wf_adhoc_user row) => @<text>
+        <MudTd>@LevelLabel(row.subworkflowid)</MudTd>
+        <MudTd>@UserLabel(row.userid)</MudTd>
+        <MudTd>@(row.jobmasterid?.ToString() ?? "ทุก job ของระดับนี้ (template)")</MudTd>
+        <MudTd>@(row.isactive ? "ใช้งาน" : "ปิด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_adhoc_user e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@LevelLabel(e.subworkflowid)" Label="Workflow / ระดับ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@UserLabel(e.userid)" Label="ผู้อนุมัติ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.jobmasterid?.ToString() ?? "-")" Label="Job Master ID เจาะจง (ว่าง = template ทั้งระดับ)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isactive" ReadOnly="true" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.emplevel?.ToString() ?? "-")" Label="Employee Level" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.orderTh?.ToString() ?? "-")" Label="ลำดับ" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_adhoc_user e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.subworkflowid" ValueChanged="v => e.subworkflowid = v" Label="Workflow / ระดับ" Required="true">
+                    @foreach (var level in _levels)
+                    {
+                        <MudSelectItem T="long" Value="@level.subworkflowid">@LevelLabel(level.subworkflowid)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.userid" ValueChanged="v => e.userid = v" Label="ผู้อนุมัติ" Required="true">
+                    @foreach (var user in _users)
+                    {
+                        <MudSelectItem T="long" Value="@user.userid">@UserLabel(user.userid)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="long?" @bind-Value="e.jobmasterid" Label="Job Master ID เจาะจง (เว้นว่าง = ใช้เป็น template ทั้งระดับ)" />
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isactive" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.emplevel" Label="Employee Level" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.orderTh" Label="ลำดับ (orderTh)" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_adhoc_user>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_adhoc_users.AsQueryable(), term,
+            nameof(wf_adhoc_user.empid), nameof(wf_adhoc_user.mode));
+        return await query.OrderBy(e => e.workflowid).ThenBy(e => e.wlevel).ToListAsync();
+    }
+
+    private async Task<wf_adhoc_user> SaveAsync(wf_adhoc_user entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == entity.subworkflowid)
+            ?? throw new InvalidOperationException("ไม่พบระดับที่เลือก");
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == entity.userid)
+            ?? throw new InvalidOperationException("ไม่พบผู้ใช้ที่เลือก");
+        if (entity.jobmasterid is not null && !await context.job_masters.AnyAsync(j => j.jobmasterid == entity.jobmasterid))
+            throw new InvalidOperationException($"ไม่พบ Job Master ID {entity.jobmasterid} ในระบบ");
+
+        if (entity.id == 0)
+        {
+            entity.workflowid = level.workflowid;
+            entity.wlevel = level.wlevel;
+            entity.empid = user.empid;
+            entity.modate = DateTime.Now;
+            context.wf_adhoc_users.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_adhoc_users.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.subworkflowid = entity.subworkflowid;
+            existing.workflowid = level.workflowid;
+            existing.wlevel = level.wlevel;
+            existing.userid = entity.userid;
+            existing.empid = user.empid;
+            existing.jobmasterid = entity.jobmasterid;
+            existing.isactive = entity.isactive;
+            existing.emplevel = entity.emplevel;
+            existing.orderTh = entity.orderTh;
+            existing.modate = DateTime.Now;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

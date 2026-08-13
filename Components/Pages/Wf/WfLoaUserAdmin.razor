@@ -1,0 +1,164 @@
+@page "/wf/loa-users"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ผู้อนุมัติตามวงเงิน (LOA User)</PageTitle>
+
+<CrudScaffold TEntity="wf_loa_user"
+    Title="ผู้อนุมัติตามช่วงวงเงิน (wf_loa_user) — ระบุว่าใครอนุมัติเมื่ออยู่ในช่วงวงเงินไหน"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewRow"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>ช่วงวงเงิน (wf_loa)</MudTh>
+        <MudTh>ผู้อนุมัติ</MudTh>
+        <MudTh>Active</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private List<wf_loa> _loas = new();
+    private List<wf_workflow> _workflows = new();
+    private List<sc_user> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        _loas = await context.wf_loas.OrderBy(l => l.wfid).ThenBy(l => l.nowLevel).ToListAsync();
+        _users = await context.sc_users.OrderBy(u => u.firstname).ToListAsync();
+    }
+
+    private string LoaLabel(long loaid)
+    {
+        // NOTE: this "loaid" param is wf_loa.id (the band row's PK), NOT the
+        // wf_loa.loaid grouping column — confirmed in WorkflowEngineService.cs.
+        var loa = _loas.FirstOrDefault(l => l.id == loaid);
+        if (loa is null) return $"#{loaid}";
+        var wf = _workflows.FirstOrDefault(w => w.workflowid == loa.wfid);
+        return $"{wf?.workflowcode ?? loa.wfid.ToString()} / ระดับ {loa.nowLevel} / {loa.min?.ToString("N0") ?? "-"}-{loa.max?.ToString("N0") ?? "-"}";
+    }
+
+    private string UserLabel(long userid)
+    {
+        var user = _users.FirstOrDefault(u => u.userid == userid);
+        return user is null ? $"#{userid}" : $"{user.firstname} {user.lastname} ({user.loginname})";
+    }
+
+    private wf_loa_user CreateNewRow() => new wf_loa_user { isactive = true };
+
+    private RenderFragment RenderRowColumns(wf_loa_user row) => @<text>
+        <MudTd>@LoaLabel(row.loaid ?? 0)</MudTd>
+        <MudTd>@UserLabel(row.userid)</MudTd>
+        <MudTd>@(row.isactive ? "ใช้งาน" : "ปิด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_loa_user e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField Value="@LoaLabel(e.loaid ?? 0)" Label="ช่วงวงเงิน (wf_loa)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@UserLabel(e.userid)" Label="ผู้อนุมัติ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.startdate?.ToString() ?? "-")" Label="เริ่มมีผล" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.enddate?.ToString() ?? "-")" Label="สิ้นสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox Value="e.isactive" ReadOnly="true" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@e.emplevel" Label="Employee Level" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.poscode" Label="รหัสตำแหน่ง (poscode)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcode" Label="รหัสหน่วยงาน (orgcode)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.costcenter" Label="Cost Center" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.orgrole" Label="บทบาทในหน่วยงาน (orgrole)" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_loa_user e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="@(e.loaid ?? 0)" ValueChanged="v => e.loaid = v" Label="ช่วงวงเงิน (wf_loa)" Required="true">
+                    @foreach (var loa in _loas)
+                    {
+                        <MudSelectItem T="long" Value="@loa.id">@LoaLabel(loa.id)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.userid" ValueChanged="v => e.userid = v" Label="ผู้อนุมัติ" Required="true">
+                    @foreach (var user in _users)
+                    {
+                        <MudSelectItem T="long" Value="@user.userid">@UserLabel(user.userid)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Date="@(e.startdate.HasValue ? e.startdate.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null)" DateChanged="v => e.startdate = v.HasValue ? DateOnly.FromDateTime(v.Value) : null" Label="เริ่มมีผล" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Date="@(e.enddate.HasValue ? e.enddate.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null)" DateChanged="v => e.enddate = v.HasValue ? DateOnly.FromDateTime(v.Value) : null" Label="สิ้นสุด" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox @bind-Value="e.isactive" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="e.emplevel" Label="Employee Level" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.poscode" Label="รหัสตำแหน่ง (poscode, ไม่บังคับ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcode" Label="รหัสหน่วยงาน (orgcode, ไม่บังคับ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.costcenter" Label="Cost Center (ไม่บังคับ)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.orgrole" Label="บทบาทในหน่วยงาน (orgrole, ไม่บังคับ)" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_loa_user>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_loa_users.AsQueryable(), term,
+            nameof(wf_loa_user.empid), nameof(wf_loa_user.orgcode), nameof(wf_loa_user.costcenter));
+        return await query.OrderBy(e => e.workflowid).ThenBy(e => e.wlevel).ToListAsync();
+    }
+
+    private async Task<wf_loa_user> SaveAsync(wf_loa_user entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var loa = await context.wf_loas.FirstOrDefaultAsync(l => l.id == entity.loaid)
+            ?? throw new InvalidOperationException("ไม่พบช่วงวงเงินที่เลือก");
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == entity.userid)
+            ?? throw new InvalidOperationException("ไม่พบผู้ใช้ที่เลือก");
+
+        if (entity.id == 0)
+        {
+            entity.workflowid = loa.wfid;
+            entity.wlevel = loa.nowLevel;
+            entity.empid = user.empid;
+            entity.moddate = DateTime.Now;
+            context.wf_loa_users.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_loa_users.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.loaid = entity.loaid;
+            existing.workflowid = loa.wfid;
+            existing.wlevel = loa.nowLevel;
+            existing.userid = entity.userid;
+            existing.empid = user.empid;
+            existing.startdate = entity.startdate;
+            existing.enddate = entity.enddate;
+            existing.isactive = entity.isactive;
+            existing.poscode = entity.poscode;
+            existing.orgcode = entity.orgcode;
+            existing.costcenter = entity.costcenter;
+            existing.emplevel = entity.emplevel;
+            existing.orgrole = entity.orgrole;
+            existing.moddate = DateTime.Now;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

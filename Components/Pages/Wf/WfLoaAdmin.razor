@@ -1,0 +1,152 @@
+@page "/wf/loa"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>ช่วงวงเงินอนุมัติ (LOA)</PageTitle>
+
+<CrudScaffold TEntity="wf_loa"
+    Title="ช่วงวงเงินอนุมัติ (wf_loa) — ใช้เมื่อระดับนั้นตั้ง LOA ไว้ที่ /wf/sub-workflow-levels"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewRow"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>Workflow</MudTh>
+        <MudTh>ระดับปัจจุบัน → ถัดไป</MudTh>
+        <MudTh>ช่วงวงเงิน</MudTh>
+        <MudTh>Active</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private List<wf_workflow> _workflows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+    }
+
+    private string WorkflowName(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.wname ?? $"#{workflowId}";
+
+    private wf_loa CreateNewRow() => new wf_loa { isactive = true };
+
+    private RenderFragment RenderRowColumns(wf_loa row) => @<text>
+        <MudTd>@WorkflowName(row.wfid)</MudTd>
+        <MudTd>@row.nowLevel → @row.nextLevel</MudTd>
+        <MudTd>@(row.min?.ToString("N0") ?? "-") - @(row.max?.ToString("N0") ?? "-")</MudTd>
+        <MudTd>@((row.isactive ?? false) ? "ใช้งาน" : "ปิด")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(wf_loa e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@WorkflowName(e.wfid)" Label="Workflow" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.subject" Label="หัวข้อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.loaid.ToString()" Label="รหัสกลุ่ม LOA (loaid)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@e.nowLevel.ToString()" Label="ระดับปัจจุบัน" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@e.nextLevel.ToString()" Label="ระดับถัดไป" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.min?.ToString("N2") ?? "-")" Label="วงเงินต่ำสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField Value="@(e.max?.ToString("N2") ?? "-")" Label="วงเงินสูงสุด" ReadOnly="true" /></MudItem>
+            @if (e.nextWorkflowId != e.nowWorkflowid)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        ระดับถัดไปข้าม workflow (nextWorkflowId=@e.nextWorkflowId ≠ nowWorkflowid=@e.nowWorkflowid) — engine ปัจจุบันยังไม่รองรับ (จะ throw NotSupportedException ถ้าทำงานถึงจุดนี้จริง)
+                    </MudAlert>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.orgcode" Label="รหัสหน่วยงาน (orgcode, ว่าง = ทุกหน่วยงาน)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.startdate?.ToString("yyyy-MM-dd") ?? "-")" Label="เริ่มมีผล" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.enddate?.ToString("yyyy-MM-dd") ?? "-")" Label="สิ้นสุด" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox Value="@(e.isactive ?? false)" ReadOnly="true" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.descript" Label="คำอธิบาย" ReadOnly="true" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(wf_loa e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" Value="e.wfid" ValueChanged="v => { e.wfid = v; e.nowWorkflowid = v; e.nextWorkflowId = v; }" Label="Workflow" Required="true">
+                    @foreach (var wf in _workflows)
+                    {
+                        <MudSelectItem T="long" Value="@wf.workflowid">@wf.workflowcode - @wf.wname</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.subject" Label="หัวข้อ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="long" @bind-Value="e.loaid" Label="รหัสกลุ่ม LOA (loaid — จัดกลุ่มหลายช่วงของ workflow เดียวกัน)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="e.nowLevel" Label="ระดับปัจจุบัน (nowLevel)" Required="true" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="e.nextLevel" Label="ระดับถัดไป (nextLevel)" Required="true" Min="0" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal?" @bind-Value="e.min" Label="วงเงินต่ำสุด" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal?" @bind-Value="e.max" Label="วงเงินสูงสุด" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    ระดับถัดไปจะอยู่ workflow เดียวกันเสมอ (nowWorkflowid/nextWorkflowId ถูกตั้งอัตโนมัติจาก Workflow ด้านบน) — engine ยังไม่รองรับข้าม workflow กลางทาง
+                </MudAlert>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.orgcode" Label="รหัสหน่วยงาน (orgcode, ว่าง = ทุกหน่วยงาน)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Date="e.startdate" DateChanged="v => e.startdate = v" Label="เริ่มมีผล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Date="e.enddate" DateChanged="v => e.enddate = v" Label="สิ้นสุด" /></MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox T="bool" Value="@(e.isactive ?? false)" ValueChanged="v => e.isactive = v" Label="ใช้งานอยู่" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.descript" Label="คำอธิบาย" Lines="2" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<wf_loa>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = EntitySearchHelper.ApplyTextSearch(context.wf_loas.AsQueryable(), term,
+            nameof(wf_loa.subject), nameof(wf_loa.descript), nameof(wf_loa.orgcode));
+        return await query.OrderBy(e => e.wfid).ThenBy(e => e.nowLevel).ToListAsync();
+    }
+
+    private async Task<wf_loa> SaveAsync(wf_loa entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.id == 0)
+        {
+            entity.moddate = DateTime.Now;
+            context.wf_loas.Add(entity);
+        }
+        else
+        {
+            var existing = await context.wf_loas.FirstOrDefaultAsync(e => e.id == entity.id)
+                ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            existing.loaid = entity.loaid;
+            existing.wfid = entity.wfid;
+            existing.subject = entity.subject;
+            existing.levelcode = entity.levelcode;
+            existing.orgcode = entity.orgcode;
+            existing.startdate = entity.startdate;
+            existing.enddate = entity.enddate;
+            existing.isactive = entity.isactive;
+            existing.min = entity.min;
+            existing.max = entity.max;
+            existing.nowWorkflowid = entity.nowWorkflowid;
+            existing.nextWorkflowId = entity.nextWorkflowId;
+            existing.nowLevel = entity.nowLevel;
+            existing.nextLevel = entity.nextLevel;
+            existing.descript = entity.descript;
+            existing.moddate = DateTime.Now;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

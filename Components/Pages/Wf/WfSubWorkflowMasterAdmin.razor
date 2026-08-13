@@ -67,8 +67,26 @@
         <MudTd>@WorkflowName(row.workflowid)</MudTd>
         <MudTd>@row.wlevel</MudTd>
         <MudTd>@row.subject</MudTd>
-        <MudTd>@(row.iscustomUser ? "Custom User" : row.iscustomRole ? "Custom Role" : row.isupperrole || row.isupperuser ? "Vertical (ยังไม่รองรับ)" : "ยังไม่กำหนด")</MudTd>
+        <MudTd>@ActiveStrategyLabels(row)</MudTd>
     </text>;
+
+    // Phase 1 (CRUD-completeness): lists every resolver-related flag that's
+    // turned on for this level. Multiple can be true at once — the engine
+    // doesn't combine them yet (still mutually-exclusive, first-match-wins;
+    // see WorkflowEngineService.ResolveCandidatesAsync), so this label is
+    // purely informational until Phase 2 wires composable resolution up.
+    private static string ActiveStrategyLabels(wf_sub_workflow_master e)
+    {
+        var active = new List<string>();
+        if (e.iscustomUser) active.Add("Custom User");
+        if (e.iscustomRole) active.Add("Custom Role");
+        if (e.isupperrole || e.isupperuser) active.Add("Vertical");
+        if (e.isLOA) active.Add("LOA (วงเงิน)");
+        if (e.isReturnSender) active.Add("Return to Sender");
+        if (e.isApproverSameCostCenter) active.Add("Same Cost Center");
+        if (e.isAdhocUser) active.Add("Adhoc User");
+        return active.Count == 0 ? "ยังไม่กำหนด" : string.Join(", ", active);
+    }
 
     private RenderFragment RenderViewFields(wf_sub_workflow_master e) => @<text>
         <MudGrid Class="mt-1">
@@ -86,6 +104,13 @@
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isorcondition" ReadOnly="true" Label="OR-condition (คนแรกที่อนุมัติพอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.isNeedsupervisorapprove?.ToString() ?? "0")" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.backwardlevel?.ToString() ?? "-")" Label="ตีกลับไประดับ (เมื่อถูกปฏิเสธ)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isupperrole" ReadOnly="true" Label="Vertical: Upper Role" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isupperuser" ReadOnly="true" Label="Vertical: Upper User" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isAutoApproveAllow" ReadOnly="true" Label="ข้ามอัตโนมัติถ้าไม่มีผู้อนุมัติ (isAutoApproveAllow)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isLOA" ReadOnly="true" Label="LOA (ผู้อนุมัติตามวงเงิน)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isReturnSender" ReadOnly="true" Label="Return to Sender (ส่งกลับไปหาผู้ขอ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isApproverSameCostCenter" ReadOnly="true" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isAdhocUser" ReadOnly="true" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (wf_adhoc_user)" /></MudItem>
             <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
         </MudGrid>
     </text>;
@@ -144,6 +169,18 @@
             <MudItem xs="12" sm="4">
                 <MudNumericField T="int?" @bind-Value="e.backwardlevel" Label="ตีกลับไประดับ (ต้องน้อยกว่าระดับตัวเอง, เว้นว่าง = ปฏิเสธจบทันทีเหมือนเดิม)" Min="1" Max="@(e.wlevel - 1)" />
             </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                    Phase 1 (CRUD-completeness): ตั้งค่าได้แล้ว แต่ engine ยังไม่อ่านทุก flag ด้านล่างนี้ — ปัจจุบัน engine ยังเลือกได้แค่ 1 กลไกต่อระดับ (ตามลำดับ: Custom User → Custom Role → Vertical → LOA) ยังไม่ union กัน จนกว่าจะทำ Phase 2 (แก้ logic)
+                </MudAlert>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isupperrole" Label="Vertical: Upper Role" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isupperuser" Label="Vertical: Upper User" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAutoApproveAllow" Label="ข้ามอัตโนมัติถ้าไม่มีผู้อนุมัติ (isAutoApproveAllow)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isLOA" Label="LOA (ผู้อนุมัติตามวงเงิน — ตั้งค่าช่วงที่ /wf/loa)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isReturnSender" Label="Return to Sender (ส่งกลับไปหาผู้ขอ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameCostCenter" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAdhocUser" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (ตั้งค่าที่ /wf/adhoc-users)" /></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
         </MudGrid>
     </text>;
@@ -181,6 +218,13 @@
             existing.isorcondition = entity.isorcondition;
             existing.isNeedsupervisorapprove = entity.isNeedsupervisorapprove;
             existing.backwardlevel = entity.backwardlevel;
+            existing.isupperrole = entity.isupperrole;
+            existing.isupperuser = entity.isupperuser;
+            existing.isAutoApproveAllow = entity.isAutoApproveAllow;
+            existing.isLOA = entity.isLOA;
+            existing.isReturnSender = entity.isReturnSender;
+            existing.isApproverSameCostCenter = entity.isApproverSameCostCenter;
+            existing.isAdhocUser = entity.isAdhocUser;
             existing.remark = entity.remark;
             entity = existing;
         }
