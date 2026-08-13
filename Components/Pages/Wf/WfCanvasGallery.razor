@@ -1,0 +1,150 @@
+@page "/wf/canvas"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>Workflow Canvas</PageTitle>
+
+<style>
+    .wf-canvas-card {
+        border-radius: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+        cursor: pointer;
+        transition: box-shadow .15s ease, transform .15s ease;
+        overflow: hidden;
+        height: 100%;
+    }
+
+    .wf-canvas-card:hover {
+        box-shadow: 0 6px 20px rgba(0,0,0,0.16);
+        transform: translateY(-2px);
+    }
+
+    .wf-canvas-card-header {
+        background: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+        padding: 12px 16px;
+    }
+
+    .wf-canvas-card-body {
+        padding: 14px 16px;
+    }
+</style>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5">Workflow Canvas</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            ภาพรวม workflow ทุกตัว ตามระดับอนุมัติ+ผู้อนุมัติจริง — คลิกการ์ดเพื่อดูรายละเอียด
+            (การตั้งค่าละเอียดทุก field ยังอยู่ที่หน้า CRUD เดิมใต้เมนู "Workflow (Engine)")
+        </MudText>
+    </div>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_cards.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">ยังไม่มี Workflow ในระบบ — สร้างที่หน้า "จัดการ Workflow" ก่อน</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var card in _cards)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="wf-canvas-card" Elevation="0" role="button" tabindex="0"
+                    @onclick="@(() => Nav.NavigateTo($"/wf/canvas/{card.Workflow.workflowid}"))"
+                    @onkeyup="@((KeyboardEventArgs e) => { if (e.Key is "Enter" or " ") Nav.NavigateTo($"/wf/canvas/{card.Workflow.workflowid}"); })">
+                    <div class="wf-canvas-card-header">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@card.Workflow.workflowcode</MudText>
+                        <MudText Typo="Typo.caption">@card.Workflow.wname</MudText>
+                    </div>
+                    <div class="wf-canvas-card-body">
+                        <MudStack Row="true" Spacing="1" Class="mb-2" Wrap="Wrap.Wrap">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">@card.LevelCount ระดับ</MudChip>
+                            @if (card.LoaBandCount > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">@card.LoaBandCount ช่วงวงเงิน</MudChip>
+                            }
+                        </MudStack>
+                        @if (card.CheckableCount == 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Tertiary">ยังไม่ตั้งค่าผู้อนุมัติ</MudText>
+                        }
+                        else if (card.MissingCount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.WarningAmber">
+                                ยังไม่ผูกผู้อนุมัติ @card.MissingCount จุด
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">ผูกผู้อนุมัติครบ</MudChip>
+                        }
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private List<WorkflowCard> _cards = new();
+
+    private record WorkflowCard(wf_workflow Workflow, int LevelCount, int LoaBandCount, int CheckableCount, int MissingCount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        var levels = await context.wf_sub_workflow_masters.ToListAsync();
+        var customUsers = await context.wf_custom_users.Where(u => u.isactive).ToListAsync();
+        var customRoles = await context.wf_custom_roles.Where(r => r.isactive == true).ToListAsync();
+        var loaBands = await context.wf_loas.Where(l => l.isactive == true).ToListAsync();
+        var loaUsers = await context.wf_loa_users.Where(u => u.isactive).ToListAsync();
+
+        foreach (var wf in workflows)
+        {
+            var wfLevels = levels.Where(l => l.workflowid == wf.workflowid).ToList();
+            var wfBands = loaBands.Where(b => b.wfid == wf.workflowid).ToList();
+
+            var checkable = 0;
+            var missing = 0;
+
+            foreach (var level in wfLevels)
+            {
+                if (level.iscustomUser)
+                {
+                    checkable++;
+                    if (!customUsers.Any(u => u.subworkflowid == level.subworkflowid)) missing++;
+                }
+                if (level.iscustomRole)
+                {
+                    checkable++;
+                    if (!customRoles.Any(r => r.subworkflowid == level.subworkflowid)) missing++;
+                }
+            }
+
+            foreach (var band in wfBands)
+            {
+                checkable++;
+                if (!loaUsers.Any(u => u.loaid == band.id)) missing++;
+            }
+
+            _cards.Add(new WorkflowCard(wf, wfLevels.Count, wfBands.Count, checkable, missing));
+        }
+
+        _loading = false;
+    }
+}

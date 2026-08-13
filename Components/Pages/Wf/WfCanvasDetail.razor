@@ -1,0 +1,573 @@
+@page "/wf/canvas/{WorkflowId:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>Workflow Canvas — @(_workflow?.workflowcode)</PageTitle>
+
+<style>
+    .wf-canvas-flow { display: flex; flex-direction: column; align-items: stretch; max-width: 640px; }
+
+    .wf-canvas-connector {
+        width: 2px;
+        height: 22px;
+        background: var(--mud-palette-lines-default, #ccc);
+        margin: 0 auto;
+    }
+
+    .wf-flow-card {
+        border-radius: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+        cursor: pointer;
+        transition: box-shadow .15s ease, transform .15s ease;
+        overflow: hidden;
+    }
+
+    .wf-flow-card:hover {
+        box-shadow: 0 6px 20px rgba(0,0,0,0.16);
+        transform: translateY(-2px);
+    }
+
+    .wf-flow-card-header {
+        background: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .wf-flow-card-body { padding: 12px 16px; }
+</style>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_workflow is null)
+{
+    <MudAlert Severity="Severity.Error">ไม่พบ Workflow นี้</MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/wf/canvas"))" Size="Size.Small" />
+        <MudText Typo="Typo.h5">@_workflow.workflowcode — @_workflow.wname</MudText>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mb-4">
+        คลิกการ์ดเพื่อจัดการผู้อนุมัติของระดับ/ช่วงวงเงินนั้น — แก้ไข field อื่นๆ ของระดับ (เงื่อนไข AND/OR, สถานะ ฯลฯ) ยังทำที่หน้า
+        <MudLink Href="/wf/sub-workflow-levels">จัดการระดับการอนุมัติ</MudLink> เดิม
+    </MudText>
+
+    <MudTabs Elevation="0" Rounded="true">
+        <MudTabPanel Text="ระดับอนุมัติ">
+            @if (_levels.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3">Workflow นี้ยังไม่มีระดับการอนุมัติ</MudAlert>
+            }
+            else
+            {
+                <div class="wf-canvas-flow mt-3">
+                    @for (var i = 0; i < _levels.Count; i++)
+                    {
+                        var level = _levels[i];
+                        @if (i > 0)
+                        {
+                            <div class="wf-canvas-connector"></div>
+                        }
+                        <MudPaper Class="wf-flow-card" Elevation="0" role="button" tabindex="0"
+                            @onclick="@(() => OpenLevelDrawer(level))"
+                            @onkeyup="@((KeyboardEventArgs e) => { if (e.Key is "Enter" or " ") OpenLevelDrawer(level); })">
+                            <div class="wf-flow-card-header">
+                                <MudText Typo="Typo.subtitle1" Style="font-weight:700;">ระดับ @level.wlevel</MudText>
+                                @if (level.istop)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">ระดับสุดท้าย</MudChip>
+                                }
+                            </div>
+                            <div class="wf-flow-card-body">
+                                @if (!string.IsNullOrWhiteSpace(level.subject))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mb-2">@level.subject</MudText>
+                                }
+                                <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                                    @foreach (var label in ActiveStrategyLabels(level))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">@label</MudChip>
+                                    }
+                                </MudStack>
+                                @if (LevelHasWarning(level))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.WarningAmber" Class="mt-2">
+                                        ยังไม่ผูกผู้อนุมัติ
+                                    </MudChip>
+                                }
+                            </div>
+                        </MudPaper>
+                    }
+                </div>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="ช่วงวงเงิน (LOA)">
+            @if (_loaBands.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3">Workflow นี้ยังไม่มีช่วงวงเงินอนุมัติ (LOA)</MudAlert>
+            }
+            else
+            {
+                <div class="wf-canvas-flow mt-3">
+                    @for (var i = 0; i < _loaBands.Count; i++)
+                    {
+                        var band = _loaBands[i];
+                        @if (i > 0)
+                        {
+                            <div class="wf-canvas-connector"></div>
+                        }
+                        <MudPaper Class="wf-flow-card" Elevation="0" role="button" tabindex="0"
+                            @onclick="@(() => OpenLoaDrawer(band))"
+                            @onkeyup="@((KeyboardEventArgs e) => { if (e.Key is "Enter" or " ") OpenLoaDrawer(band); })">
+                            <div class="wf-flow-card-header">
+                                <MudText Typo="Typo.subtitle1" Style="font-weight:700;">ระดับ @band.nowLevel → @band.nextLevel</MudText>
+                                <MudText Typo="Typo.caption">@(band.min?.ToString("N0") ?? "-") - @(band.max?.ToString("N0") ?? "-")</MudText>
+                            </div>
+                            <div class="wf-flow-card-body">
+                                @if (!string.IsNullOrWhiteSpace(band.subject))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mb-2">@band.subject</MudText>
+                                }
+                                @if (LoaHasWarning(band))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.WarningAmber">
+                                        ยังไม่ผูกผู้อนุมัติ
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                                        @LoaUserCount(band) คน
+                                    </MudChip>
+                                }
+                            </div>
+                        </MudPaper>
+                    }
+                </div>
+            }
+        </MudTabPanel>
+    </MudTabs>
+}
+
+<MudDrawer @bind-Open="_drawerOpen" Anchor="Anchor.End" Elevation="2" Variant="DrawerVariant.Temporary" Width="440px">
+    @if (_drawerKind == DrawerKind.Level && _selectedLevel is not null)
+    {
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6">ระดับ @_selectedLevel.wlevel — ผู้อนุมัติ</MudText>
+        </MudDrawerHeader>
+        <MudDrawerContent Class="pa-4">
+            @if (_selectedLevel.iscustomUser)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติเจาะจง (Custom User)</MudText>
+                @foreach (var row in _customUsers.Where(u => u.subworkflowid == _selectedLevel.subworkflowid))
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                        <MudText Typo="Typo.body2">@UserLabel(row.userid)</MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudChip T="string" Size="Size.Small" Color="@(row.isactive ? Color.Success : Color.Default)">@(row.isactive ? "ใช้งาน" : "ปิด")</MudChip>
+                            @if (_canEdit)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" OnClick="@(() => ToggleCustomUserActive(row))" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                }
+                @if (_canEdit)
+                {
+                    <MudStack Row="true" Spacing="1" Class="mt-2 mb-4">
+                        <MudSelect T="long?" @bind-Value="_quickAddCustomUserId" Label="เพิ่มผู้อนุมัติ" Dense="true">
+                            @foreach (var user in _users)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)user.userid)">@UserLabel(user.userid)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddCustomUserAsync">เพิ่ม</MudButton>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudDivider Class="mt-2 mb-4" />
+                }
+            }
+            @if (_selectedLevel.iscustomRole)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติตาม Role (Custom Role)</MudText>
+                @foreach (var row in _customRoles.Where(r => r.subworkflowid == _selectedLevel.subworkflowid))
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                        <MudText Typo="Typo.body2">@RoleLabel(row.roleid)</MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudChip T="string" Size="Size.Small" Color="@((row.isactive ?? false) ? Color.Success : Color.Default)">@((row.isactive ?? false) ? "ใช้งาน" : "ปิด")</MudChip>
+                            @if (_canEdit)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" OnClick="@(() => ToggleCustomRoleActive(row))" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                }
+                @if (_canEdit)
+                {
+                    <MudStack Row="true" Spacing="1" Class="mt-2 mb-4">
+                        <MudSelect T="long?" @bind-Value="_quickAddCustomRoleId" Label="เพิ่ม Role" Dense="true">
+                            @foreach (var role in _roles)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)role.roleid)">@RoleLabel(role.roleid)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddCustomRoleAsync">เพิ่ม</MudButton>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudDivider Class="mt-2 mb-4" />
+                }
+            }
+            @if (_selectedLevel.isAdhocUser)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติเฉพาะกิจ (Adhoc — template ทั้งระดับ)</MudText>
+                @foreach (var row in _adhocUsers.Where(a => a.subworkflowid == _selectedLevel.subworkflowid))
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                        <MudText Typo="Typo.body2">@UserLabel(row.userid)</MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudChip T="string" Size="Size.Small" Color="@(row.isactive ? Color.Success : Color.Default)">@(row.isactive ? "ใช้งาน" : "ปิด")</MudChip>
+                            @if (_canEdit)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" OnClick="@(() => ToggleAdhocUserActive(row))" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                }
+                @if (_canEdit)
+                {
+                    <MudStack Row="true" Spacing="1" Class="mt-2 mb-4">
+                        <MudSelect T="long?" @bind-Value="_quickAddAdhocUserId" Label="เพิ่มผู้อนุมัติเฉพาะกิจ" Dense="true">
+                            @foreach (var user in _users)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)user.userid)">@UserLabel(user.userid)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAdhocUserAsync">เพิ่ม</MudButton>
+                    </MudStack>
+                }
+            }
+            @if (!_selectedLevel.iscustomUser && !_selectedLevel.iscustomRole && !_selectedLevel.isAdhocUser)
+            {
+                <MudAlert Severity="Severity.Info">
+                    ระดับนี้ไม่ได้ใช้ Custom User/Custom Role/Adhoc User — ถ้าใช้ Vertical/LOA/กลไกอื่น จัดการที่หน้า
+                    <MudLink Href="/wf/sub-workflow-levels">จัดการระดับการอนุมัติ</MudLink>
+                </MudAlert>
+            }
+            <MudButton Variant="Variant.Outlined" FullWidth="true" Class="mt-2" Href="@($"/wf/sub-workflow-levels")">จัดการแบบละเอียด</MudButton>
+        </MudDrawerContent>
+    }
+    else if (_drawerKind == DrawerKind.Loa && _selectedBand is not null)
+    {
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6">ช่วงวงเงิน @(_selectedBand.min?.ToString("N0") ?? "-") - @(_selectedBand.max?.ToString("N0") ?? "-")</MudText>
+        </MudDrawerHeader>
+        <MudDrawerContent Class="pa-4">
+            <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติตามวงเงิน</MudText>
+            @foreach (var row in _loaUsers.Where(u => u.loaid == _selectedBand.id))
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                    <MudText Typo="Typo.body2">@UserLabel(row.userid)</MudText>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudChip T="string" Size="Size.Small" Color="@(row.isactive ? Color.Success : Color.Default)">@(row.isactive ? "ใช้งาน" : "ปิด")</MudChip>
+                        @if (_canEdit)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" OnClick="@(() => ToggleLoaUserActive(row))" />
+                        }
+                    </MudStack>
+                </MudStack>
+            }
+            @if (_canEdit)
+            {
+                <MudStack Row="true" Spacing="1" Class="mt-2 mb-4">
+                    <MudSelect T="long?" @bind-Value="_quickAddLoaUserId" Label="เพิ่มผู้อนุมัติ" Dense="true">
+                        @foreach (var user in _users)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)user.userid)">@UserLabel(user.userid)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddLoaUserAsync">เพิ่ม</MudButton>
+                </MudStack>
+            }
+            <MudButton Variant="Variant.Outlined" FullWidth="true" Class="mt-2" Href="@($"/wf/loa-users")">จัดการแบบละเอียด</MudButton>
+        </MudDrawerContent>
+    }
+</MudDrawer>
+
+@code {
+    [Parameter] public long WorkflowId { get; set; }
+
+    private enum DrawerKind { None, Level, Loa }
+
+    private bool _loading = true;
+    private bool _canEdit;
+    private bool _drawerOpen;
+    private DrawerKind _drawerKind = DrawerKind.None;
+
+    private wf_workflow? _workflow;
+    private List<wf_sub_workflow_master> _levels = new();
+    private List<wf_custom_user> _customUsers = new();
+    private List<wf_custom_role> _customRoles = new();
+    private List<wf_adhoc_user> _adhocUsers = new();
+    private List<wf_loa> _loaBands = new();
+    private List<wf_loa_user> _loaUsers = new();
+    private List<sc_user> _users = new();
+    private List<sc_role> _roles = new();
+
+    private wf_sub_workflow_master? _selectedLevel;
+    private wf_loa? _selectedBand;
+
+    private long? _quickAddCustomUserId;
+    private long? _quickAddCustomRoleId;
+    private long? _quickAddAdhocUserId;
+    private long? _quickAddLoaUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+        await LoadAllAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAllAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == WorkflowId);
+        _levels = await context.wf_sub_workflow_masters.Where(l => l.workflowid == WorkflowId).OrderBy(l => l.wlevel).ToListAsync();
+        _customUsers = await context.wf_custom_users.Where(u => u.workflowid == WorkflowId).ToListAsync();
+        _customRoles = await context.wf_custom_roles.Where(r => r.workflowid == WorkflowId).ToListAsync();
+        _adhocUsers = await context.wf_adhoc_users.Where(a => a.workflowid == WorkflowId).ToListAsync();
+        _loaBands = await context.wf_loas.Where(l => l.wfid == WorkflowId).OrderBy(l => l.nowLevel).ToListAsync();
+        var bandIds = _loaBands.Select(b => b.id).ToList();
+        _loaUsers = await context.wf_loa_users.Where(u => bandIds.Contains(u.loaid ?? 0)).ToListAsync();
+        _users = await context.sc_users.OrderBy(u => u.firstname).ToListAsync();
+        _roles = await context.sc_roles.OrderBy(r => r.name).ToListAsync();
+    }
+
+    private async Task ReloadWorkflowDataAsync()
+    {
+        var selectedLevelId = _selectedLevel?.subworkflowid;
+        var selectedBandId = _selectedBand?.id;
+        await LoadAllAsync();
+        if (selectedLevelId is not null) _selectedLevel = _levels.FirstOrDefault(l => l.subworkflowid == selectedLevelId);
+        if (selectedBandId is not null) _selectedBand = _loaBands.FirstOrDefault(b => b.id == selectedBandId);
+    }
+
+    private void OpenLevelDrawer(wf_sub_workflow_master level)
+    {
+        _selectedLevel = level;
+        _drawerKind = DrawerKind.Level;
+        _quickAddCustomUserId = null;
+        _quickAddCustomRoleId = null;
+        _quickAddAdhocUserId = null;
+        _drawerOpen = true;
+    }
+
+    private void OpenLoaDrawer(wf_loa band)
+    {
+        _selectedBand = band;
+        _drawerKind = DrawerKind.Loa;
+        _quickAddLoaUserId = null;
+        _drawerOpen = true;
+    }
+
+    private string UserLabel(long userid)
+    {
+        var user = _users.FirstOrDefault(u => u.userid == userid);
+        return user is null ? $"#{userid}" : $"{user.firstname} {user.lastname} ({user.loginname})";
+    }
+
+    private string RoleLabel(long roleid) => _roles.FirstOrDefault(r => r.roleid == roleid)?.name ?? $"#{roleid}";
+
+    private static List<string> ActiveStrategyLabels(wf_sub_workflow_master e)
+    {
+        var active = new List<string>();
+        if (e.iscustomUser) active.Add("Custom User");
+        if (e.iscustomRole) active.Add("Custom Role");
+        if (e.isupperrole || e.isupperuser) active.Add("Vertical");
+        if (e.isLOA) active.Add("LOA (วงเงิน)");
+        if (e.isReturnSender) active.Add("Return to Sender");
+        if (e.isApproverSameCostCenter) active.Add("Same Cost Center");
+        if (e.isAdhocUser) active.Add("Adhoc User");
+        return active.Count == 0 ? new List<string> { "ยังไม่กำหนด" } : active;
+    }
+
+    private bool LevelHasWarning(wf_sub_workflow_master level)
+    {
+        if (level.iscustomUser && !_customUsers.Any(u => u.subworkflowid == level.subworkflowid && u.isactive)) return true;
+        if (level.iscustomRole && !_customRoles.Any(r => r.subworkflowid == level.subworkflowid && r.isactive == true)) return true;
+        return false;
+    }
+
+    private bool LoaHasWarning(wf_loa band) => !_loaUsers.Any(u => u.loaid == band.id && u.isactive);
+    private int LoaUserCount(wf_loa band) => _loaUsers.Count(u => u.loaid == band.id && u.isactive);
+
+    private async Task AddCustomUserAsync()
+    {
+        if (_selectedLevel is null || _quickAddCustomUserId is not long userId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+        if (level is null || user is null) return;
+
+        var already = await context.wf_custom_users.AnyAsync(u => u.subworkflowid == level.subworkflowid && u.userid == userId && u.isactive);
+        if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
+
+        context.wf_custom_users.Add(new wf_custom_user
+        {
+            subworkflowid = level.subworkflowid,
+            workflowid = level.workflowid,
+            wlevel = level.wlevel,
+            userid = user.userid,
+            empid = user.empid,
+            isactive = true,
+            modate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+        _quickAddCustomUserId = null;
+        await ReloadWorkflowDataAsync();
+        Snackbar.Add("เพิ่มผู้อนุมัติแล้ว", Severity.Success);
+    }
+
+    private async Task AddCustomRoleAsync()
+    {
+        if (_selectedLevel is null || _quickAddCustomRoleId is not long roleId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+        var role = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == roleId);
+        if (level is null || role is null) return;
+
+        var already = await context.wf_custom_roles.AnyAsync(r => r.subworkflowid == level.subworkflowid && r.roleid == roleId && r.isactive == true);
+        if (already) { Snackbar.Add("Role นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
+
+        context.wf_custom_roles.Add(new wf_custom_role
+        {
+            subworkflowid = level.subworkflowid,
+            workflowid = level.workflowid,
+            wlevel = level.wlevel,
+            roleid = role.roleid,
+            rolecode = role.rolecode,
+            isactive = true,
+            modate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+        _quickAddCustomRoleId = null;
+        await ReloadWorkflowDataAsync();
+        Snackbar.Add("เพิ่ม Role ผู้อนุมัติแล้ว", Severity.Success);
+    }
+
+    private async Task AddAdhocUserAsync()
+    {
+        if (_selectedLevel is null || _quickAddAdhocUserId is not long userId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+        if (level is null || user is null) return;
+
+        context.wf_adhoc_users.Add(new wf_adhoc_user
+        {
+            subworkflowid = level.subworkflowid,
+            workflowid = level.workflowid,
+            wlevel = level.wlevel,
+            userid = user.userid,
+            empid = user.empid,
+            isactive = true,
+            modate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+        _quickAddAdhocUserId = null;
+        await ReloadWorkflowDataAsync();
+        Snackbar.Add("เพิ่มผู้อนุมัติเฉพาะกิจแล้ว", Severity.Success);
+    }
+
+    private async Task AddLoaUserAsync()
+    {
+        if (_selectedBand is null || _quickAddLoaUserId is not long userId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var loa = await context.wf_loas.FirstOrDefaultAsync(l => l.id == _selectedBand.id);
+        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+        if (loa is null || user is null) return;
+
+        var already = await context.wf_loa_users.AnyAsync(u => u.loaid == loa.id && u.userid == userId && u.isactive);
+        if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับช่วงวงเงินนี้อยู่แล้ว", Severity.Warning); return; }
+
+        context.wf_loa_users.Add(new wf_loa_user
+        {
+            loaid = loa.id,
+            workflowid = loa.wfid,
+            wlevel = loa.nowLevel,
+            userid = user.userid,
+            empid = user.empid,
+            isactive = true,
+            moddate = DateTime.Now,
+        });
+        await context.SaveChangesAsync();
+        _quickAddLoaUserId = null;
+        await ReloadWorkflowDataAsync();
+        Snackbar.Add("เพิ่มผู้อนุมัติวงเงินแล้ว", Severity.Success);
+    }
+
+    private async Task ToggleCustomUserActive(wf_custom_user row)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.wf_custom_users.FirstOrDefaultAsync(e => e.id == row.id);
+        if (existing is null) return;
+        existing.isactive = !existing.isactive;
+        existing.modate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await ReloadWorkflowDataAsync();
+    }
+
+    private async Task ToggleCustomRoleActive(wf_custom_role row)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.wf_custom_roles.FirstOrDefaultAsync(e => e.id == row.id);
+        if (existing is null) return;
+        existing.isactive = !(existing.isactive ?? false);
+        existing.modate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await ReloadWorkflowDataAsync();
+    }
+
+    private async Task ToggleAdhocUserActive(wf_adhoc_user row)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.wf_adhoc_users.FirstOrDefaultAsync(e => e.id == row.id);
+        if (existing is null) return;
+        existing.isactive = !existing.isactive;
+        existing.modate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await ReloadWorkflowDataAsync();
+    }
+
+    private async Task ToggleLoaUserActive(wf_loa_user row)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.wf_loa_users.FirstOrDefaultAsync(e => e.id == row.id);
+        if (existing is null) return;
+        existing.isactive = !existing.isactive;
+        existing.moddate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await ReloadWorkflowDataAsync();
+    }
+}
