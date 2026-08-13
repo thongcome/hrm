@@ -1,4 +1,5 @@
 @page "/admin/workflow-design"
+@using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using System.Text.Json
 @using System.Text.RegularExpressions
@@ -96,6 +97,34 @@
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => _fields.RemoveAt(idx))" />
                         </MudItem>
                     </MudGrid>
+                    @if (f.Type == DesignFieldType.Reference)
+                    {
+                        <MudGrid Class="mt-1">
+                            <MudItem xs="12" sm="4">
+                                <MudSelect T="string" Value="f.RefEntityType" ValueChanged="@(v => OnRefEntityChanged(f, v))" Label="อ้างอิงตาราง (Reference table)" Dense="true">
+                                    @foreach (var t in _referenceTargets)
+                                    {
+                                        <MudSelectItem T="string" Value="t.EntityTypeName">@t.EntityTypeName</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudSelect T="string" @bind-Value="f.RefDisplayProperty" Label="ฟิลด์แสดงผล (Display column)" Dense="true"
+                                    Disabled="@(f.RefEntityType is null)">
+                                    @foreach (var p in RefStringPropertiesFor(f.RefEntityType))
+                                    {
+                                        <MudSelectItem T="string" Value="p">@p</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudSelect T="ReferencePickerMode" @bind-Value="f.RefPickerMode" Label="รูปแบบตัวเลือก (Picker)" Dense="true">
+                                    <MudSelectItem T="ReferencePickerMode" Value="ReferencePickerMode.Dropdown">Dropdown (รายการน้อย)</MudSelectItem>
+                                    <MudSelectItem T="ReferencePickerMode" Value="ReferencePickerMode.Autocomplete">Autocomplete (ค้นหา, รายการเยอะ)</MudSelectItem>
+                                </MudSelect>
+                            </MudItem>
+                        </MudGrid>
+                    }
                 </MudPaper>
             }
         </MudPaper>
@@ -171,6 +200,7 @@
         new(DesignFieldType.Date, "วันที่ (Date)", Icons.Material.Filled.CalendarToday),
         new(DesignFieldType.DateTime, "วันที่-เวลา (DateTime)", Icons.Material.Filled.Schedule),
         new(DesignFieldType.Checkbox, "ใช่/ไม่ใช่ (Checkbox)", Icons.Material.Filled.CheckBox),
+        new(DesignFieldType.Reference, "อ้างอิง (Reference / FK)", Icons.Material.Filled.Link),
     };
 
     private List<DesignField> _fields = new();
@@ -182,8 +212,70 @@
     private string? _generatedSql;
     private List<WorkflowDesignTable> _history = new();
     private readonly Dictionary<long, string> _rowMessages = new();
+    private List<ReferenceTarget> _referenceTargets = new();
 
-    protected override async Task OnInitializedAsync() => await LoadHistoryAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        LoadReferenceTargets();
+        await LoadHistoryAsync();
+    }
+
+    // Reflects over HRMContext's DbSet<T> properties instead of the raw DB
+    // schema — this way the picker always names a real DbSet property + a
+    // real CLR type + a real string property, which the generated CRUD
+    // pages can reference directly without guessing at naming conventions
+    // (DbSet property names in this codebase don't consistently follow
+    // "TypeName + s", e.g. context.Hremployee vs context.wf_workflows).
+    // Only entities with a [Key]-or-"Id" numeric key AND at least one
+    // string property are offered — anything else can't be resolved to a
+    // Dictionary<long,string> label lookup or a long/long? soft-link
+    // column safely (see WorkflowDesignCodeGenerator's ReferenceTarget doc).
+    private void LoadReferenceTargets()
+    {
+        var numericKeyTypes = new HashSet<Type> { typeof(long), typeof(int), typeof(short), typeof(uint), typeof(ulong) };
+        var targets = new List<ReferenceTarget>();
+
+        foreach (var prop in typeof(HRMContext).GetProperties())
+        {
+            if (!prop.PropertyType.IsGenericType || prop.PropertyType.GetGenericTypeDefinition() != typeof(DbSet<>))
+                continue;
+            var entityType = prop.PropertyType.GetGenericArguments()[0];
+            if (entityType.Namespace != "HRM.Models") continue;
+
+            var keyProp = entityType.GetProperties()
+                .FirstOrDefault(p => p.GetCustomAttributes(typeof(KeyAttribute), true).Length > 0)
+                ?? entityType.GetProperty("Id") ?? entityType.GetProperty("id");
+            if (keyProp is null) continue;
+            var underlyingKeyType = Nullable.GetUnderlyingType(keyProp.PropertyType) ?? keyProp.PropertyType;
+            if (!numericKeyTypes.Contains(underlyingKeyType)) continue;
+
+            var stringProps = entityType.GetProperties()
+                .Where(p => p.PropertyType == typeof(string) && p.CanRead && p.GetIndexParameters().Length == 0)
+                .Select(p => p.Name)
+                .OrderBy(n => n)
+                .ToList();
+            if (stringProps.Count == 0) continue;
+
+            targets.Add(new ReferenceTarget(prop.Name, entityType.Name, keyProp.Name, stringProps));
+        }
+
+        _referenceTargets = targets.OrderBy(t => t.EntityTypeName).ToList();
+    }
+
+    private List<string> RefStringPropertiesFor(string? entityTypeName) =>
+        entityTypeName is null ? new() : _referenceTargets.FirstOrDefault(t => t.EntityTypeName == entityTypeName)?.StringProperties ?? new();
+
+    private void OnRefEntityChanged(DesignField f, string entityTypeName)
+    {
+        var target = _referenceTargets.FirstOrDefault(t => t.EntityTypeName == entityTypeName);
+        if (target is null) return;
+        f.RefEntityType = target.EntityTypeName;
+        f.RefDbSetProperty = target.DbSetProperty;
+        f.RefKeyProperty = target.KeyProperty;
+        f.RefDisplayProperty = target.StringProperties.Contains(f.RefDisplayProperty ?? "")
+            ? f.RefDisplayProperty
+            : target.StringProperties.FirstOrDefault();
+    }
 
     private async Task LoadHistoryAsync()
     {
@@ -229,6 +321,7 @@
         DesignFieldType.Date => "date",
         DesignFieldType.DateTime => "datetime2",
         DesignFieldType.Checkbox => "bit",
+        DesignFieldType.Reference => "bigint",
         _ => "nvarchar(200)",
     };
 
@@ -284,6 +377,13 @@
         if (reservedCols.Count > 0)
         {
             _error = $"ชื่อคอลัมน์ {string.Join(", ", reservedCols)} ชนกับคอลัมน์ระบบ (Id/CreatedDate) ที่สร้างให้อัตโนมัติ — กรุณาตั้งชื่ออื่น";
+            return;
+        }
+        var incompleteRefs = _fields.Where(f => f.Type == DesignFieldType.Reference
+            && (string.IsNullOrEmpty(f.RefEntityType) || string.IsNullOrEmpty(f.RefDisplayProperty))).Select(f => f.ColumnName).ToList();
+        if (incompleteRefs.Count > 0)
+        {
+            _error = $"ฟิลด์อ้างอิง {string.Join(", ", incompleteRefs)} ยังไม่ได้เลือกตาราง/ฟิลด์แสดงผล — กรุณาเลือกให้ครบ";
             return;
         }
 
