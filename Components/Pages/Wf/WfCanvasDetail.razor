@@ -164,13 +164,11 @@ else
     </MudTabs>
 }
 
-<MudDrawer @bind-Open="_drawerOpen" Anchor="Anchor.End" Elevation="2" Variant="DrawerVariant.Temporary" Width="440px">
-    @if (_drawerKind == DrawerKind.Level && _selectedLevel is not null)
-    {
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">ระดับ @_selectedLevel.wlevel — ผู้อนุมัติ</MudText>
-        </MudDrawerHeader>
-        <MudDrawerContent Class="pa-4">
+@if (_drawerOpen && _drawerKind == DrawerKind.Level && _selectedLevel is not null)
+{
+    <MudDialog Visible="true" Options="new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+        <DialogContent>
+            <MudText Typo="Typo.h6" Class="mb-2">ระดับ @_selectedLevel.wlevel — ผู้อนุมัติ</MudText>
             @if (_selectedLevel.iscustomUser)
             {
                 <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติเจาะจง (Custom User)</MudText>
@@ -273,15 +271,18 @@ else
                     <MudLink Href="/wf/sub-workflow-levels">จัดการระดับการอนุมัติ</MudLink>
                 </MudAlert>
             }
-            <MudButton Variant="Variant.Outlined" FullWidth="true" Class="mt-2" Href="@($"/wf/sub-workflow-levels")">จัดการแบบละเอียด</MudButton>
-        </MudDrawerContent>
-    }
-    else if (_drawerKind == DrawerKind.Loa && _selectedBand is not null)
-    {
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">ช่วงวงเงิน @(_selectedBand.min?.ToString("N0") ?? "-") - @(_selectedBand.max?.ToString("N0") ?? "-")</MudText>
-        </MudDrawerHeader>
-        <MudDrawerContent Class="pa-4">
+            <MudLink Href="/wf/sub-workflow-levels">จัดการแบบละเอียด</MudLink>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _drawerOpen = false)">ปิด</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+@if (_drawerOpen && _drawerKind == DrawerKind.Loa && _selectedBand is not null)
+{
+    <MudDialog Visible="true" Options="new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+        <DialogContent>
+            <MudText Typo="Typo.h6" Class="mb-2">ช่วงวงเงิน @(_selectedBand.min?.ToString("N0") ?? "-") - @(_selectedBand.max?.ToString("N0") ?? "-")</MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-1">ผู้อนุมัติตามวงเงิน</MudText>
             @foreach (var row in _loaUsers.Where(u => u.loaid == _selectedBand.id))
             {
@@ -308,10 +309,13 @@ else
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddLoaUserAsync">เพิ่ม</MudButton>
                 </MudStack>
             }
-            <MudButton Variant="Variant.Outlined" FullWidth="true" Class="mt-2" Href="@($"/wf/loa-users")">จัดการแบบละเอียด</MudButton>
-        </MudDrawerContent>
-    }
-</MudDrawer>
+            <MudLink Href="/wf/loa-users">จัดการแบบละเอียด</MudLink>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _drawerOpen = false)">ปิด</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
 
 @code {
     [Parameter] public long WorkflowId { get; set; }
