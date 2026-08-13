@@ -1,0 +1,202 @@
+@page "/ess/my-okr"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Okr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OkrGoalService GoalService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:OKR_ACCESS")]
+
+<PageTitle>OKR ของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">OKR เป้าหมายของฉัน</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-3" />
+        return;
+    }
+
+    @if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้</MudAlert>
+        return;
+    }
+
+    <MudSelect T="long?" Value="_cycleId" ValueChanged="OnCycleChangedAsync" Label="วงจร OKR" Class="mt-3">
+        @foreach (var c in _cycles)
+        {
+            <MudSelectItem Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    @if (_cycleId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีวงจร OKR</MudAlert>
+        return;
+    }
+
+    @if (_myObjectives.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">คุณยังไม่มี Objective ในวงจรนี้ — ติดต่อ HR/หัวหน้างานเพื่อสร้างให้</MudAlert>
+    }
+    else
+    {
+        @foreach (var obj in _myObjectives)
+        {
+            var progress = OkrGoalService.CalculateObjectiveProgress(obj);
+            <MudPaper Class="pa-3 mt-3" Outlined="true">
+                @if (_breadcrumbs.TryGetValue(obj.Id, out var chain) && chain.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Class="mb-1">@string.Join(" › ", chain.Select(c => c.Title)) › <b>@obj.Title</b></MudText>
+                }
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.h6">@obj.Title</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="StatusColor(obj.Status)">@StatusLabel(obj.Status)</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.caption">ความคืบหน้า: @(progress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{progress.Value:0.#}%")</MudText>
+
+                @if (obj.KeyResults.Count > 0)
+                {
+                    <MudTable Items="obj.KeyResults" Dense="true" Class="mt-2">
+                        <HeaderContent>
+                            <MudTh>Key Result</MudTh>
+                            <MudTh>ความคืบหน้า</MudTh>
+                            <MudTh>ค่าปัจจุบัน</MudTh>
+                            <MudTh>Check-in</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            @{ var krProgress = OkrGoalService.CalculateKeyResultProgress(context); }
+                            <MudTd>@context.Title</MudTd>
+                            <MudTd>
+                                <MudProgressLinear Value="@((double)krProgress)" Color="Color.Primary" Style="max-width:120px;display:inline-block;" Class="mr-2" />
+                                @krProgress.ToString("0.#")%
+                            </MudTd>
+                            <MudTd>@context.CurrentValue.ToString("N2") @context.Unit</MudTd>
+                            <MudTd>
+                                <MudStack Row="true" Spacing="1">
+                                    <MudNumericField T="decimal" @bind-Value="_checkInValues[context.Id]" Style="max-width:100px;" />
+                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => CheckInAsync(context.Id))">บันทึก</MudButton>
+                                </MudStack>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1">ยังไม่มี Key Result</MudText>
+                }
+            </MudPaper>
+        }
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private Hremployee? _employee;
+    private List<Okr_Cycle> _cycles = new();
+    private long? _cycleId;
+    private List<Okr_Objective> _myObjectives = new();
+    private Dictionary<long, List<Okr_Objective>> _breadcrumbs = new();
+    private Dictionary<long, decimal> _checkInValues = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is null) { _loading = false; return; }
+
+        _cycles = await context.Okr_Cycles.Where(c => c.CompanyId == _employee.companyid).OrderByDescending(c => c.StartDate).ToListAsync();
+        _cycleId = _cycles.FirstOrDefault(c => c.IsActive)?.Id ?? _cycles.FirstOrDefault()?.Id;
+
+        await LoadObjectivesAsync(context);
+        _loading = false;
+    }
+
+    private async Task OnCycleChangedAsync(long? cycleId)
+    {
+        _cycleId = cycleId;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        await LoadObjectivesAsync(context);
+    }
+
+    private async Task LoadObjectivesAsync(HRMContext context)
+    {
+        if (_cycleId is null || _employee is null) { _myObjectives = new(); return; }
+
+        _myObjectives = await context.Okr_Objectives
+            .Include(o => o.KeyResults)
+            .Where(o => o.CycleId == _cycleId && o.OwnerType == OkrOwnerType.Employee && o.OwnerHremployeeId == _employee.id)
+            .OrderBy(o => o.Title)
+            .ToListAsync();
+
+        _checkInValues = _myObjectives.SelectMany(o => o.KeyResults).ToDictionary(k => k.Id, k => k.CurrentValue);
+
+        _breadcrumbs.Clear();
+        foreach (var obj in _myObjectives)
+        {
+            var chain = new List<Okr_Objective>();
+            var current = obj;
+            while (current.ParentObjectiveId is long parentId)
+            {
+                var parent = await context.Okr_Objectives.FirstOrDefaultAsync(o => o.Id == parentId);
+                if (parent is null) break;
+                chain.Insert(0, parent);
+                current = parent;
+            }
+            _breadcrumbs[obj.Id] = chain;
+        }
+    }
+
+    private async Task CheckInAsync(long keyResultId)
+    {
+        _error = null;
+        if (_employee is null) return;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+            await GoalService.RecordKeyResultCheckInAsync(keyResultId, _checkInValues.GetValueOrDefault(keyResultId), null, null, actorUserId, enforceOwnerHremployeeId: _employee.id);
+            Snackbar.Add("บันทึก check-in แล้ว", Severity.Success);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadObjectivesAsync(context);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string StatusLabel(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.NotStarted => "ยังไม่เริ่ม",
+        OkrObjectiveStatus.OnTrack => "ตามแผน",
+        OkrObjectiveStatus.AtRisk => "เสี่ยง",
+        OkrObjectiveStatus.Completed => "สำเร็จ",
+        OkrObjectiveStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+
+    private static Color StatusColor(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.OnTrack => Color.Success,
+        OkrObjectiveStatus.AtRisk => Color.Warning,
+        OkrObjectiveStatus.Completed => Color.Info,
+        OkrObjectiveStatus.Cancelled => Color.Dark,
+        _ => Color.Default,
+    };
+}

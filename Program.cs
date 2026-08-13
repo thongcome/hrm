@@ -294,6 +294,11 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
 // ----- end Perf_* module -----
 
+// ----- Okr_* module (OKR v2) -----
+builder.Services.AddScoped<HRM.Services.Okr.OkrGoalService>();
+builder.Services.AddScoped<HRM.Services.Okr.OkrDashboardService>();
+// ----- end Okr_* module -----
+
 // ----- info_message module (HR announcements) -----
 builder.Services.AddScoped<HRM.Services.Hr.InfoMessageService>();
 builder.Services.AddScoped<HRM.Services.Hrd.LifecycleTaskService>();

@@ -505,6 +505,14 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Perf_CalibrationSession> Perf_CalibrationSessions { get; set; }
     public virtual DbSet<Perf_CalibrationAdjustment> Perf_CalibrationAdjustments { get; set; }
 
+    // ----- Okr_* module (OKR v2 — Objective/Key Result cascade, ขนานกับ Perf_Goal เดิม) -----
+    public virtual DbSet<Okr_Cycle> Okr_Cycles { get; set; }
+    public virtual DbSet<Okr_GoalCategory> Okr_GoalCategories { get; set; }
+    public virtual DbSet<Okr_Objective> Okr_Objectives { get; set; }
+    public virtual DbSet<Okr_KeyResult> Okr_KeyResults { get; set; }
+    public virtual DbSet<Okr_KeyResultCheckIn> Okr_KeyResultCheckIns { get; set; }
+    public virtual DbSet<Okr_ObjectiveUpdate> Okr_ObjectiveUpdates { get; set; }
+
     // ----- Lms_* module (Learning Management System, HRD Phase 4) -----
     public virtual DbSet<Lms_CourseCategory> Lms_CourseCategories { get; set; }
     public virtual DbSet<Lms_Course> Lms_Courses { get; set; }

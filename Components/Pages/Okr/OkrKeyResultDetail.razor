@@ -1,0 +1,157 @@
+@page "/okr/key-results/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Okr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OkrGoalService GoalService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>รายละเอียด Key Result</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+        return;
+    }
+
+    @if (_keyResult is null)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบ Key Result นี้</MudAlert>
+        return;
+    }
+
+    <MudLink Href="@($"/okr/objectives/{_keyResult.ObjectiveId}")">&larr; กลับไป Objective</MudLink>
+
+    <MudText Typo="Typo.h5" Class="mt-2">@_keyResult.Title</MudText>
+    <MudText Typo="Typo.body2">ประเภทตัวชี้วัด: @MetricLabel(_keyResult.MetricType) — น้ำหนัก @_keyResult.Weight.ToString("0.#")%</MudText>
+
+    @{
+        var progress = OkrGoalService.CalculateKeyResultProgress(_keyResult);
+    }
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="3"><MudText Typo="Typo.caption">ค่าเริ่มต้น</MudText><MudText>@(_keyResult.StartValue?.ToString("N2") ?? "-") @_keyResult.Unit</MudText></MudItem>
+        <MudItem xs="12" sm="3"><MudText Typo="Typo.caption">ค่าปัจจุบัน</MudText><MudText>@_keyResult.CurrentValue.ToString("N2") @_keyResult.Unit</MudText></MudItem>
+        <MudItem xs="12" sm="3"><MudText Typo="Typo.caption">ค่าเป้าหมาย</MudText><MudText>@_keyResult.TargetValue.ToString("N2") @_keyResult.Unit</MudText></MudItem>
+        <MudItem xs="12" sm="3"><MudText Typo="Typo.caption">ความคืบหน้า</MudText><MudText>@progress.ToString("0.#")%</MudText></MudItem>
+    </MudGrid>
+    <MudProgressLinear Value="@((double)progress)" Color="Color.Primary" Class="mt-2" />
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6">Check-in ใหม่</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_checkInValue" Label="ค่าปัจจุบัน" /></MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="OkrConfidenceLevel?" @bind-Value="_checkInConfidence" Label="ความมั่นใจ">
+                <MudSelectItem T="OkrConfidenceLevel?" Value="null">— ไม่ระบุ —</MudSelectItem>
+                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OnTrack)">ตามแผน</MudSelectItem>
+                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.AtRisk)">เสี่ยง</MudSelectItem>
+                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OffTrack)">หลุดเป้า</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_checkInNote" Label="หมายเหตุ" /></MudItem>
+        <MudItem xs="12" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CheckInAsync">บันทึก</MudButton></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6">ประวัติ Check-in</MudText>
+    @if (_checkIns.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-1">ยังไม่มีการ check-in</MudText>
+    }
+    else
+    {
+        <MudTable Items="_checkIns" Dense="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>วันที่</MudTh>
+                <MudTh>ค่า</MudTh>
+                <MudTh>ความมั่นใจ</MudTh>
+                <MudTh>หมายเหตุ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.CheckInDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.ValueAtCheckIn.ToString("N2")</MudTd>
+                <MudTd>@(context.Confidence is null ? "-" : ConfidenceLabel(context.Confidence.Value))</MudTd>
+                <MudTd>@context.Note</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private Okr_KeyResult? _keyResult;
+    private List<Okr_KeyResultCheckIn> _checkIns = new();
+
+    private decimal _checkInValue;
+    private OkrConfidenceLevel? _checkInConfidence;
+    private string? _checkInNote;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _keyResult = await context.Okr_KeyResults.FirstOrDefaultAsync(k => k.Id == Id);
+        if (_keyResult is not null)
+        {
+            _checkInValue = _keyResult.CurrentValue;
+            _checkIns = await context.Okr_KeyResultCheckIns.Where(c => c.KeyResultId == Id).OrderByDescending(c => c.CheckInDate).ToListAsync();
+        }
+        _loading = false;
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+    }
+
+    private async Task CheckInAsync()
+    {
+        if (_keyResult is null) return;
+        _error = null;
+        try
+        {
+            await GoalService.RecordKeyResultCheckInAsync(_keyResult.Id, _checkInValue, _checkInConfidence, string.IsNullOrWhiteSpace(_checkInNote) ? null : _checkInNote, await GetCurrentUserIdAsync());
+            _checkInNote = null;
+            Snackbar.Add("บันทึก check-in แล้ว", Severity.Success);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _keyResult = await context.Okr_KeyResults.FirstOrDefaultAsync(k => k.Id == Id);
+            _checkIns = await context.Okr_KeyResultCheckIns.Where(c => c.KeyResultId == Id).OrderByDescending(c => c.CheckInDate).ToListAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string MetricLabel(OkrKeyResultMetricType t) => t switch
+    {
+        OkrKeyResultMetricType.Numeric => "ตัวเลข",
+        OkrKeyResultMetricType.Percentage => "เปอร์เซ็นต์",
+        OkrKeyResultMetricType.Currency => "เงิน",
+        OkrKeyResultMetricType.Milestone => "Milestone",
+        _ => t.ToString(),
+    };
+
+    private static string ConfidenceLabel(OkrConfidenceLevel c) => c switch
+    {
+        OkrConfidenceLevel.OnTrack => "ตามแผน",
+        OkrConfidenceLevel.AtRisk => "เสี่ยง",
+        OkrConfidenceLevel.OffTrack => "หลุดเป้า",
+        _ => c.ToString(),
+    };
+}

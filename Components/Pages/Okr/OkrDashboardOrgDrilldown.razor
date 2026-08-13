@@ -1,0 +1,92 @@
+@page "/okr/dashboard/org/{OrgId:long}"
+@using HRM.Models
+@using HRM.Services.Okr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>OKR ตามหน่วยงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudLink Href="@($"/okr/dashboard?cycleId={CycleId}")">&larr; กลับไปแดชบอร์ด</MudLink>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-3" />
+        return;
+    }
+
+    <MudText Typo="Typo.h5" Class="mt-2">Objective ของหน่วยงาน: @_orgName</MudText>
+
+    @if (_objectives.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">ไม่พบ Objective ของหน่วยงานนี้ (หรือหน่วยงานลูก) ในวงจรที่เลือก</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Hover="true" Class="mt-3">
+            <thead><tr><th>Objective</th><th>สถานะ</th><th>ความคืบหน้า</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var o in _objectives)
+                {
+                    var progress = OkrGoalService.CalculateObjectiveProgress(o);
+                    <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/okr/objectives/{o.Id}"))">
+                        <td>@o.Title</td>
+                        <td>@StatusLabel(o.Status)</td>
+                        <td>@(progress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{progress.Value:0.#}%")</td>
+                        <td><MudLink Href="@($"/okr/objectives/{o.Id}")">ดูรายละเอียด</MudLink></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long OrgId { get; set; }
+    [SupplyParameterFromQuery(Name = "cycleId")] public long? CycleId { get; set; }
+
+    private bool _loading = true;
+    private string _orgName = "-";
+    private List<Okr_Objective> _objectives = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (CycleId is null) { _loading = false; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == OrgId);
+        _orgName = org?.name ?? org?.code ?? "-";
+
+        // รวมหน่วยงานลูก (subtree) ผ่าน orgcodefull เดียวกับ pattern ทั้งระบบ
+        var descendantIds = new HashSet<long> { OrgId };
+        if (!string.IsNullOrWhiteSpace(org?.orgcodefull))
+        {
+            var descendants = await context.com_organizations
+                .Where(o => o.orgcodefull != null && o.orgcodefull.StartsWith(org.orgcodefull))
+                .Select(o => o.id).ToListAsync();
+            foreach (var id in descendants) descendantIds.Add(id);
+        }
+
+        _objectives = await context.Okr_Objectives
+            .Include(o => o.KeyResults)
+            .Where(o => o.CycleId == CycleId && o.OwnerType == OkrOwnerType.Organization && o.OwnerOrganizationId != null && descendantIds.Contains(o.OwnerOrganizationId.Value))
+            .OrderBy(o => o.Title)
+            .ToListAsync();
+
+        _loading = false;
+    }
+
+    private static string StatusLabel(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.NotStarted => "ยังไม่เริ่ม",
+        OkrObjectiveStatus.OnTrack => "ตามแผน",
+        OkrObjectiveStatus.AtRisk => "เสี่ยง",
+        OkrObjectiveStatus.Completed => "สำเร็จ",
+        OkrObjectiveStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+}

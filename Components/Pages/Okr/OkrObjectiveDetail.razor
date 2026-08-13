@@ -1,0 +1,490 @@
+@page "/okr/objectives/new"
+@page "/okr/objectives/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Okr
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OkrGoalService GoalService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>@(Id is null ? "สร้าง Objective ใหม่" : "รายละเอียด Objective")</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+        return;
+    }
+
+    @if (Id is null)
+    {
+        <MudText Typo="Typo.h5">สร้าง Objective ใหม่</MudText>
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_newCycleId" Label="วงจร OKR" Required="true">
+                    @foreach (var c in _cycles)
+                    {
+                        <MudSelectItem Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_newCategoryId" Label="หมวดกลยุทธ์ (ถ้ามี)">
+                    <MudSelectItem T="long?" Value="null">— ไม่ระบุ —</MudSelectItem>
+                    @foreach (var cat in _categories)
+                    {
+                        <MudSelectItem Value="@((long?)cat.Id)">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="OkrOwnerType" @bind-Value="_newOwnerType" Label="ระดับเจ้าของ">
+                    <MudSelectItem Value="OkrOwnerType.Company">บริษัท</MudSelectItem>
+                    <MudSelectItem Value="OkrOwnerType.Organization">หน่วยงาน</MudSelectItem>
+                    <MudSelectItem Value="OkrOwnerType.Employee">บุคคล</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (_newOwnerType == OkrOwnerType.Organization)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_newOwnerOrg" ValueChanged="v => _newOwnerOrg = v"
+                        SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+            }
+            else if (_newOwnerType == OkrOwnerType.Employee)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_newOwnerEmployee" ValueChanged="v => _newOwnerEmployee = v"
+                        SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_newParentObjectiveId" Label="Objective แม่ (ถ้ามี)">
+                    <MudSelectItem T="long?" Value="null">— ไม่มี (ราก) —</MudSelectItem>
+                    @foreach (var o in _existingInCycle)
+                    {
+                        <MudSelectItem Value="@((long?)o.Id)">@o.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_newTitle" Label="ชื่อ Objective" Required="true" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_newDescription" Label="รายละเอียด" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="CreateAsync">สร้าง Objective</MudButton>
+    }
+    else if (_objective is not null)
+    {
+        @if (_breadcrumbChain.Count > 1)
+        {
+            <MudBreadcrumbs Items="_breadcrumbItems" />
+        }
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@_objective.Title</MudText>
+            <MudChip T="string" Color="@StatusColor(_objective.Status)" Size="Size.Small">@StatusLabel(_objective.Status)</MudChip>
+        </MudStack>
+        @if (!string.IsNullOrWhiteSpace(_objective.Description))
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">@_objective.Description</MudText>
+        }
+
+        var progress = OkrGoalService.CalculateObjectiveProgress(_objective);
+        <MudText Typo="Typo.caption" Class="mt-2">
+            ความคืบหน้า: @(progress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{progress.Value:0.#}%")
+        </MudText>
+
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.h6">แก้ไข Objective</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_editTitle" Label="ชื่อ Objective" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="OkrObjectiveStatus" @bind-Value="_editStatus" Label="สถานะ">
+                    @foreach (OkrObjectiveStatus s in Enum.GetValues<OkrObjectiveStatus>())
+                    {
+                        <MudSelectItem Value="s">@StatusLabel(s)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_editDescription" Label="รายละเอียด" Lines="2" /></MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-2" OnClick="SaveEditAsync">บันทึก</MudButton>
+
+        <MudDivider Class="my-4" />
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.h6">Key Result</MudText>
+            @if (_weightWarning is not null && _weightWarning != 100m)
+            {
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small">น้ำหนักรวม @_weightWarning.Value.ToString("0.#")% (ควรเท่ากับ 100%)</MudChip>
+            }
+        </MudStack>
+
+        @if (_keyResults.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">ยังไม่มี Key Result</MudText>
+        }
+        else
+        {
+            <MudTable Items="_keyResults" Dense="true" Hover="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>ชื่อ</MudTh>
+                    <MudTh>น้ำหนัก</MudTh>
+                    <MudTh>ความคืบหน้า</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><MudLink Href="@($"/okr/key-results/{context.Id}")">@context.Title</MudLink></MudTd>
+                    <MudTd>@context.Weight.ToString("0.#")%</MudTd>
+                    <MudTd>
+                        @{ var krProgress = OkrGoalService.CalculateKeyResultProgress(context); }
+                        <MudProgressLinear Value="@((double)krProgress)" Color="Color.Primary" Class="mr-2" Style="max-width:150px;display:inline-block;" />
+                        @krProgress.ToString("0.#")%
+                    </MudTd>
+                    <MudTd><MudLink Href="@($"/okr/key-results/{context.Id}")">รายละเอียด</MudLink></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <MudExpansionPanels Class="mt-3">
+            <MudExpansionPanel Text="เพิ่ม Key Result">
+                <MudGrid>
+                    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newKrTitle" Label="ชื่อ Key Result" /></MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudSelect T="OkrKeyResultMetricType" @bind-Value="_newKrMetricType" Label="ประเภทตัวชี้วัด">
+                            <MudSelectItem Value="OkrKeyResultMetricType.Numeric">ตัวเลข</MudSelectItem>
+                            <MudSelectItem Value="OkrKeyResultMetricType.Percentage">เปอร์เซ็นต์</MudSelectItem>
+                            <MudSelectItem Value="OkrKeyResultMetricType.Currency">เงิน</MudSelectItem>
+                            <MudSelectItem Value="OkrKeyResultMetricType.Milestone">Milestone (สำเร็จ/ไม่สำเร็จ)</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newKrUnit" Label="หน่วย (เช่น %, บาท, ครั้ง)" /></MudItem>
+                    <MudItem xs="6" sm="3"><MudNumericField T="decimal?" @bind-Value="_newKrStartValue" Label="ค่าเริ่มต้น" /></MudItem>
+                    <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_newKrTargetValue" Label="ค่าเป้าหมาย" /></MudItem>
+                    <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_newKrWeight" Label="น้ำหนัก (%)" /></MudItem>
+                    <MudItem xs="6" sm="3"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddKeyResultAsync">เพิ่ม Key Result</MudButton></MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6">Objective ลูก</MudText>
+        @if (_childObjectives.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">ยังไม่มี Objective ลูก</MudText>
+        }
+        else
+        {
+            <MudList T="string" Class="mt-1">
+                @foreach (var child in _childObjectives)
+                {
+                    <MudListItem T="string">
+                        <MudLink Href="@($"/okr/objectives/{child.Id}")">@child.Title</MudLink>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6">บันทึกอัปเดตความคืบหน้า</MudText>
+        @if (_updates.Count > 0)
+        {
+            <MudTable Items="_updates" Dense="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>วันที่</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh>หมายเหตุ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.UpdateDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>@StatusLabel(context.StatusAtUpdate)</MudTd>
+                    <MudTd>@context.Note</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="OkrObjectiveStatus" @bind-Value="_newUpdateStatus" Label="สถานะ ณ ตอนนี้">
+                    @foreach (OkrObjectiveStatus s in Enum.GetValues<OkrObjectiveStatus>())
+                    {
+                        <MudSelectItem Value="s">@StatusLabel(s)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="7"><MudTextField @bind-Value="_newUpdateNote" Label="หมายเหตุ" /></MudItem>
+            <MudItem xs="12" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddUpdateAsync">บันทึก</MudButton></MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "cycleId")] public long? CycleIdQuery { get; set; }
+
+    private bool _loading = true;
+    private string? _companyId;
+    private string? _error;
+
+    private List<Okr_Cycle> _cycles = new();
+    private List<Okr_GoalCategory> _categories = new();
+    private List<Okr_Objective> _existingInCycle = new();
+
+    // Create-mode fields
+    private long? _newCycleId;
+    private long? _newCategoryId;
+    private OkrOwnerType _newOwnerType = OkrOwnerType.Company;
+    private com_organization? _newOwnerOrg;
+    private Hremployee? _newOwnerEmployee;
+    private long? _newParentObjectiveId;
+    private string _newTitle = "";
+    private string _newDescription = "";
+
+    // Detail-mode state
+    private Okr_Objective? _objective;
+    private List<Okr_Objective> _breadcrumbChain = new();
+    private List<BreadcrumbItem> _breadcrumbItems = new();
+    private List<Okr_KeyResult> _keyResults = new();
+    private List<Okr_Objective> _childObjectives = new();
+    private List<Okr_ObjectiveUpdate> _updates = new();
+    private decimal? _weightWarning;
+
+    private string _editTitle = "";
+    private string? _editDescription;
+    private OkrObjectiveStatus _editStatus;
+
+    private string _newKrTitle = "";
+    private OkrKeyResultMetricType _newKrMetricType = OkrKeyResultMetricType.Numeric;
+    private string? _newKrUnit;
+    private decimal? _newKrStartValue;
+    private decimal _newKrTargetValue;
+    private decimal _newKrWeight;
+
+    private OkrObjectiveStatus _newUpdateStatus;
+    private string _newUpdateNote = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _cycles = await context.Okr_Cycles.Where(c => c.CompanyId == _companyId).OrderByDescending(c => c.StartDate).ToListAsync();
+        _categories = await context.Okr_GoalCategories.Where(c => c.CompanyId == _companyId && c.IsActive).OrderBy(c => c.SortOrder).ToListAsync();
+
+        if (Id is null)
+        {
+            _newCycleId = CycleIdQuery ?? _cycles.FirstOrDefault(c => c.IsActive)?.Id;
+            if (_newCycleId is long cid)
+                _existingInCycle = await context.Okr_Objectives.Where(o => o.CycleId == cid).OrderBy(o => o.Title).ToListAsync();
+        }
+        else
+        {
+            await LoadDetailAsync(context);
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadDetailAsync(HRMContext context)
+    {
+        _objective = await context.Okr_Objectives
+            .Include(o => o.KeyResults)
+            .FirstOrDefaultAsync(o => o.Id == Id);
+        if (_objective is null) return;
+
+        _editTitle = _objective.Title;
+        _editDescription = _objective.Description;
+        _editStatus = _objective.Status;
+        _newUpdateStatus = _objective.Status;
+
+        _keyResults = _objective.KeyResults.OrderBy(k => k.Title).ToList();
+        _weightWarning = _keyResults.Count == 0 ? null : _keyResults.Sum(k => k.Weight);
+
+        _childObjectives = await context.Okr_Objectives.Where(o => o.ParentObjectiveId == _objective.Id).OrderBy(o => o.Title).ToListAsync();
+        _updates = await context.Okr_ObjectiveUpdates.Where(u => u.ObjectiveId == _objective.Id).OrderByDescending(u => u.UpdateDate).ToListAsync();
+
+        _breadcrumbChain = new() { _objective };
+        var current = _objective;
+        while (current.ParentObjectiveId is long parentId)
+        {
+            var parent = await context.Okr_Objectives.FirstOrDefaultAsync(o => o.Id == parentId);
+            if (parent is null) break;
+            _breadcrumbChain.Insert(0, parent);
+            current = parent;
+        }
+        _breadcrumbItems = _breadcrumbChain.Select((o, i) => new BreadcrumbItem(o.Title, $"/okr/objectives/{o.Id}", disabled: i == _breadcrumbChain.Count - 1)).ToList();
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(e => e.EmpNo.Contains(search) || (e.EmpName != null && e.EmpName.Contains(search)) || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<long> GetCurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+    }
+
+    private async Task CreateAsync()
+    {
+        _error = null;
+        if (_newCycleId is null) { _error = "กรุณาเลือกวงจร OKR"; return; }
+        if (string.IsNullOrWhiteSpace(_newTitle)) { _error = "กรุณาระบุชื่อ Objective"; return; }
+
+        var objective = new Okr_Objective
+        {
+            CycleId = _newCycleId.Value,
+            CategoryId = _newCategoryId,
+            OwnerType = _newOwnerType,
+            OwnerOrganizationId = _newOwnerType == OkrOwnerType.Organization ? _newOwnerOrg?.id : null,
+            OwnerHremployeeId = _newOwnerType == OkrOwnerType.Employee ? _newOwnerEmployee?.id : null,
+            ParentObjectiveId = _newParentObjectiveId,
+            Title = _newTitle,
+            Description = string.IsNullOrWhiteSpace(_newDescription) ? null : _newDescription,
+            CreatedByUserId = await GetCurrentUserIdAsync(),
+        };
+
+        try
+        {
+            var created = await GoalService.CreateObjectiveAsync(objective, _companyId!);
+            Snackbar.Add("สร้าง Objective แล้ว", Severity.Success);
+            Nav.NavigateTo($"/okr/objectives/{created.Id}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_objective is null) return;
+        _error = null;
+        try
+        {
+            await GoalService.UpdateObjectiveAsync(new Okr_Objective
+            {
+                Id = _objective.Id,
+                Title = _editTitle,
+                Description = _editDescription,
+                Status = _editStatus,
+                CategoryId = _objective.CategoryId,
+            });
+            Snackbar.Add("บันทึกแล้ว", Severity.Success);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadDetailAsync(context);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task AddKeyResultAsync()
+    {
+        if (_objective is null) return;
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newKrTitle)) { _error = "กรุณาระบุชื่อ Key Result"; return; }
+
+        try
+        {
+            await GoalService.AddKeyResultAsync(new Okr_KeyResult
+            {
+                ObjectiveId = _objective.Id,
+                Title = _newKrTitle,
+                MetricType = _newKrMetricType,
+                Unit = string.IsNullOrWhiteSpace(_newKrUnit) ? null : _newKrUnit,
+                StartValue = _newKrStartValue,
+                TargetValue = _newKrTargetValue,
+                Weight = _newKrWeight,
+                CreatedByUserId = await GetCurrentUserIdAsync(),
+            });
+            _newKrTitle = ""; _newKrUnit = null; _newKrStartValue = null; _newKrTargetValue = 0; _newKrWeight = 0;
+            Snackbar.Add("เพิ่ม Key Result แล้ว", Severity.Success);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadDetailAsync(context);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task AddUpdateAsync()
+    {
+        if (_objective is null) return;
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newUpdateNote)) { _error = "กรุณากรอกหมายเหตุ"; return; }
+
+        try
+        {
+            await GoalService.AddObjectiveUpdateAsync(_objective.Id, _newUpdateNote, _newUpdateStatus, await GetCurrentUserIdAsync());
+            _newUpdateNote = "";
+            Snackbar.Add("บันทึกอัปเดตแล้ว", Severity.Success);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadDetailAsync(context);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string StatusLabel(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.NotStarted => "ยังไม่เริ่ม",
+        OkrObjectiveStatus.OnTrack => "ตามแผน",
+        OkrObjectiveStatus.AtRisk => "เสี่ยง",
+        OkrObjectiveStatus.Completed => "สำเร็จ",
+        OkrObjectiveStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+
+    private static Color StatusColor(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.OnTrack => Color.Success,
+        OkrObjectiveStatus.AtRisk => Color.Warning,
+        OkrObjectiveStatus.Completed => Color.Info,
+        OkrObjectiveStatus.Cancelled => Color.Dark,
+        _ => Color.Default,
+    };
+}

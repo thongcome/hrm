@@ -1,0 +1,198 @@
+@page "/okr/tree"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Okr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OkrGoalService GoalService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>ต้นไม้ OKR ทั้งบริษัท</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ต้นไม้ OKR เป้าหมายเชิงกลยุทธ์ (v2)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="long?" Label="วงจร OKR (Cycle)" Value="_selectedCycleId" ValueChanged="OnCycleChanged">
+                @foreach (var c in _cycles)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)c.Id)">@c.Name (@c.StartDate.ToString("dd/MM/yy")-@c.EndDate.ToString("dd/MM/yy"))</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" Class="d-flex align-center">
+            <MudButton Href="@($"/okr/objectives/new?cycleId={_selectedCycleId}")" Variant="Variant.Filled" Color="Color.Primary" Disabled="_selectedCycleId is null">สร้าง Objective ใหม่</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-3" />
+    }
+    else if (_selectedCycleId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีวงจร OKR — สร้างที่หน้า "วงจร OKR" ก่อน</MudAlert>
+    }
+    else if (_roots.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">วงจรนี้ยังไม่มี Objective</MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-2">
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(false))">ย่อทั้งหมด</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(true))">ขยายทั้งหมด</MudButton>
+        </MudStack>
+        @foreach (var root in _roots)
+        {
+            @RenderNode(root, 0)
+        }
+    }
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+    private string? _companyId;
+    private List<Okr_Cycle> _cycles = new();
+    private long? _selectedCycleId;
+    private List<Okr_Objective> _allObjectives = new();
+    private List<Okr_Objective> _roots = new();
+    private HashSet<long> _expanded = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _cycles = await context.Okr_Cycles.Where(c => c.CompanyId == _companyId)
+            .OrderByDescending(c => c.StartDate).ToListAsync();
+
+        _selectedCycleId = _cycles.FirstOrDefault(c => c.IsActive)?.Id ?? _cycles.FirstOrDefault()?.Id;
+        await LoadTreeAsync();
+        _loading = false;
+    }
+
+    private async Task OnCycleChanged(long? cycleId)
+    {
+        _selectedCycleId = cycleId;
+        await LoadTreeAsync();
+    }
+
+    private async Task LoadTreeAsync()
+    {
+        if (_selectedCycleId is null) { _allObjectives = new(); _roots = new(); return; }
+        _allObjectives = await GoalService.GetGoalTreeAsync(_selectedCycleId.Value);
+        _roots = _allObjectives.Where(o => o.ParentObjectiveId is null).OrderBy(o => o.OwnerType).ThenBy(o => o.Title).ToList();
+        foreach (var root in _roots) _expanded.Add(root.Id);
+    }
+
+    private void SetAllExpanded(bool expand)
+    {
+        _expanded = expand ? _allObjectives.Select(o => o.Id).ToHashSet() : _roots.Select(o => o.Id).ToHashSet();
+    }
+
+    private void ToggleExpand(long id)
+    {
+        if (!_expanded.Add(id)) _expanded.Remove(id);
+    }
+
+    private static string StatusLabel(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.NotStarted => "ยังไม่เริ่ม",
+        OkrObjectiveStatus.OnTrack => "ตามแผน",
+        OkrObjectiveStatus.AtRisk => "เสี่ยง",
+        OkrObjectiveStatus.Completed => "สำเร็จ",
+        OkrObjectiveStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+
+    private static Color StatusColor(OkrObjectiveStatus status) => status switch
+    {
+        OkrObjectiveStatus.OnTrack => Color.Success,
+        OkrObjectiveStatus.AtRisk => Color.Warning,
+        OkrObjectiveStatus.Completed => Color.Info,
+        OkrObjectiveStatus.Cancelled => Color.Dark,
+        _ => Color.Default,
+    };
+
+    private RenderFragment RenderNode(Okr_Objective node, int depth) => builder =>
+    {
+        var children = _allObjectives.Where(o => o.ParentObjectiveId == node.Id).OrderBy(o => o.OwnerType).ThenBy(o => o.Title).ToList();
+        var isExpanded = _expanded.Contains(node.Id);
+        var progress = OkrGoalService.CalculateObjectiveProgress(node);
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:6px 0;");
+
+        if (children.Count > 0)
+        {
+            builder.OpenElement(2, "a");
+            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
+            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => ToggleExpand(node.Id)));
+            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(6, "a");
+        builder.AddAttribute(7, "href", $"/okr/objectives/{node.Id}");
+        builder.AddContent(8, node.Title);
+        builder.CloseElement();
+
+        builder.OpenComponent<MudChip<string>>(9);
+        builder.AddAttribute(10, "Color", StatusColor(node.Status));
+        builder.AddAttribute(11, "Size", Size.Small);
+        builder.AddAttribute(12, "Class", "ml-2");
+        builder.AddAttribute(13, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, StatusLabel(node.Status))));
+        builder.CloseComponent();
+
+        builder.OpenElement(14, "span");
+        builder.AddAttribute(15, "class", "mud-typography-caption ml-2");
+        builder.AddContent(16, $"({node.KeyResults?.Count ?? 0} Key Result)");
+        builder.CloseElement();
+
+        builder.OpenElement(17, "div");
+        builder.AddAttribute(18, "style", "max-width:300px; margin-top:4px;");
+        if (progress is null)
+        {
+            builder.OpenElement(19, "span");
+            builder.AddAttribute(20, "class", "mud-typography-caption");
+            builder.AddAttribute(21, "style", "color:var(--mud-palette-warning);");
+            builder.AddContent(22, "ยังไม่ได้ตั้งตัวชี้วัด");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenComponent<MudProgressLinear>(23);
+            builder.AddAttribute(24, "Value", (double)progress.Value);
+            builder.AddAttribute(25, "Color", Color.Primary);
+            builder.CloseComponent();
+            builder.OpenElement(26, "span");
+            builder.AddAttribute(27, "class", "mud-typography-caption ml-1");
+            builder.AddContent(28, $"{progress.Value:0.#}%");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+
+        builder.CloseElement();
+
+        if (isExpanded)
+        {
+            foreach (var child in children)
+                builder.AddContent(29, RenderNode(child, depth + 1));
+        }
+    };
+}

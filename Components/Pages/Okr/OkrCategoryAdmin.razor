@@ -1,0 +1,157 @@
+@page "/okr/categories"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>หมวดกลยุทธ์ OKR</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">หมวดกลยุทธ์ (Goal Category)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">แท็กเชิงกลยุทธ์ให้ Objective ใช้กรอง/จัดกลุ่มในหน้า Dashboard</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มหมวดใหม่" : "แก้ไข")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อหมวด (ไทย)" Required="true" /></MudItem>
+        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_nameEn" Label="ชื่อหมวด (อังกฤษ)" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อหมวด</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name @(string.IsNullOrWhiteSpace(context.NameEn) ? "" : $"({context.NameEn})")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Okr_GoalCategory> _items = new();
+    private string? _error;
+    private long? _editingId;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _nameEn;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Okr_GoalCategories.Where(c => c.CompanyId == _companyId)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToListAsync();
+    }
+
+    private void StartEdit(Okr_GoalCategory item)
+    {
+        _editingId = item.Id;
+        _code = item.Code;
+        _name = item.Name;
+        _nameEn = item.NameEn;
+        _isActive = item.IsActive;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _nameEn = null;
+        _isActive = true;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุรหัสและชื่อหมวด"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Okr_GoalCategories.FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.Code = _code;
+            existing.Name = _name;
+            existing.NameEn = _nameEn;
+            existing.IsActive = _isActive;
+        }
+        else
+        {
+            var maxSort = _items.Count == 0 ? 0 : _items.Max(c => c.SortOrder);
+            context.Okr_GoalCategories.Add(new Okr_GoalCategory
+            {
+                CompanyId = _companyId!,
+                Code = _code,
+                Name = _name,
+                NameEn = _nameEn,
+                SortOrder = maxSort + 1,
+                IsActive = _isActive,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

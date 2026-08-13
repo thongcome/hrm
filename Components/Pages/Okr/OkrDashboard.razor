@@ -1,0 +1,158 @@
+@page "/okr/dashboard"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Okr
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OkrDashboardService DashboardService
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:OKR_ADMIN")]
+
+<PageTitle>แดชบอร์ด OKR</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แดชบอร์ด OKR เป้าหมายเชิงกลยุทธ์</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudSelect T="long?" Value="_cycleId" ValueChanged="OnCycleChangedAsync" Label="วงจร OKR" Class="mt-3">
+        @foreach (var c in _cycles)
+        {
+            <MudSelectItem Value="@((long?)c.Id)">@c.Name</MudSelectItem>
+        }
+    </MudSelect>
+
+    @if (_cycleId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีวงจร OKR</MudAlert>
+        return;
+    }
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-3" />
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption">Objective ทั้งหมด</MudText>
+                <MudText Typo="Typo.h5">@_summary?.TotalObjectives</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption">ความคืบหน้าเฉลี่ย</MudText>
+                <MudText Typo="Typo.h5">@(_summary?.AverageProgress is null ? "-" : $"{_summary.AverageProgress.Value:0.#}%")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption">ยังไม่ได้ตั้งตัวชี้วัด</MudText>
+                <MudText Typo="Typo.h5">@_summary?.NotConfiguredCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption">สำเร็จแล้ว</MudText>
+                <MudText Typo="Typo.h5">@(_summary?.StatusBreakdown.GetValueOrDefault(OkrObjectiveStatus.Completed, 0))</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mt-5 mb-2">ความคืบหน้าตามหน่วยงาน</MudText>
+    @if (_orgRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ยังไม่มี Objective ระดับหน่วยงานในวงจรนี้</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Hover="true">
+            <thead><tr><th>หน่วยงาน</th><th>จำนวน Objective</th><th>ความคืบหน้าเฉลี่ย</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var row in _orgRows)
+                {
+                    <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/okr/dashboard/org/{row.OrganizationId}?cycleId={_cycleId}"))">
+                        <td>@row.OrganizationName</td>
+                        <td>@row.ObjectiveCount</td>
+                        <td>@(row.AverageProgress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{row.AverageProgress.Value:0.#}%")</td>
+                        <td><MudLink Href="@($"/okr/dashboard/org/{row.OrganizationId}?cycleId={_cycleId}")">ดูรายละเอียด</MudLink></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+
+    <MudText Typo="Typo.h6" Class="mt-5 mb-2">ความคืบหน้าตามหมวดกลยุทธ์</MudText>
+    @if (_categoryRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">ยังไม่มีข้อมูล</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>หมวด</th><th>จำนวน Objective</th><th>ความคืบหน้าเฉลี่ย</th></tr></thead>
+            <tbody>
+                @foreach (var row in _categoryRows)
+                {
+                    <tr>
+                        <td>@row.CategoryName</td>
+                        <td>@row.ObjectiveCount</td>
+                        <td>@(row.AverageProgress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{row.AverageProgress.Value:0.#}%")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    [SupplyParameterFromQuery(Name = "cycleId")]
+    public long? CycleIdQuery { get; set; }
+
+    private bool _loading = true;
+    private string? _companyId;
+    private List<Okr_Cycle> _cycles = new();
+    private long? _cycleId;
+    private OkrCompanySummary? _summary;
+    private List<OkrOrgProgressRow> _orgRows = new();
+    private List<OkrCategoryProgressRow> _categoryRows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _cycles = await context.Okr_Cycles.Where(c => c.CompanyId == _companyId).OrderByDescending(c => c.StartDate).ToListAsync();
+        _cycleId = CycleIdQuery ?? _cycles.FirstOrDefault(c => c.IsActive)?.Id ?? _cycles.FirstOrDefault()?.Id;
+
+        await LoadDataAsync();
+        _loading = false;
+    }
+
+    private async Task OnCycleChangedAsync(long? cycleId)
+    {
+        _cycleId = cycleId;
+        Nav.NavigateTo($"/okr/dashboard?cycleId={cycleId}");
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (_cycleId is null) return;
+        _summary = await DashboardService.GetCompanySummaryAsync(_cycleId.Value);
+        _orgRows = await DashboardService.GetProgressByOrganizationAsync(_cycleId.Value);
+        _categoryRows = await DashboardService.GetProgressByCategoryAsync(_cycleId.Value);
+    }
+}
