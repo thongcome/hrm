@@ -560,7 +560,7 @@ else
         </MudList>
         <MudStack Row="true" Spacing="2" Class="mt-3">
             <MudButton Variant="Variant.Text" Href="/{{route}}">กลับ</MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Href="/{{route}}/edit/@item.Id">แก้ไข</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Href="@($"/{{route}}/edit/{item.Id}")">แก้ไข</MudButton>
         </MudStack>
     </MudPaper>
 }
