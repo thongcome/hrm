@@ -1,0 +1,197 @@
+@page "/admin/system/document-types"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>ประเภทเอกสาร (Document Types)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+    <MudText Typo="Typo.h5">ประเภทเอกสาร (Document Types)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แคตตาล็อกกลางสำหรับจัดประเภทไฟล์แนบทั้งระบบ (เช่น เอกสารแนบใน workflow, เอกสารพนักงาน) — ใช้แทนการเขียนรหัสประเภทเอกสารตายตัวในโค้ด
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทเอกสาร" : "แก้ไข")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส (Code)" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อ (ไทย)" Required="true" MaxLength="2000" /></MudItem>
+        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_nameEn" Label="ชื่อ (อังกฤษ)" MaxLength="250" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_groupRef" Label="กลุ่มอ้างอิง (Group Ref)" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_subMode1" Label="โหมดย่อย (SubMode1)" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_orderTh" Label="ลำดับการแสดงผล" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="หมายเหตุสั้น (Notes)" MaxLength="250" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="คำอธิบายเพิ่มเติม (Remark)" Lines="2" MaxLength="1000" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>กลุ่มอ้างอิง</MudTh>
+            <MudTh>ลำดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name @(string.IsNullOrWhiteSpace(context.name_en) ? "" : $"({context.name_en})")</MudTd>
+            <MudTd>@context.group_ref</MudTd>
+            <MudTd>@context.orderTh</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                    @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<mas_doc_type> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+
+    private string? _code;
+    private string _name = "";
+    private string? _nameEn;
+    private string? _groupRef;
+    private string? _subMode1;
+    private int? _orderTh;
+    private string? _notes;
+    private string? _remark;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.mas_doc_types.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+            nameof(mas_doc_type.code), nameof(mas_doc_type.name), nameof(mas_doc_type.name_en), nameof(mas_doc_type.group_ref));
+        _items = await query.OrderBy(d => d.orderTh).ThenBy(d => d.name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(mas_doc_type item)
+    {
+        _editingId = item.id;
+        _code = item.code;
+        _name = item.name ?? "";
+        _nameEn = item.name_en;
+        _groupRef = item.group_ref;
+        _subMode1 = item.subMode1;
+        _orderTh = item.orderTh;
+        _notes = item.notes;
+        _remark = item.remark;
+        _isActive = item.isActive;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _groupRef = null;
+        _subMode1 = null;
+        _orderTh = null;
+        _notes = null;
+        _remark = null;
+        _isActive = true;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อประเภทเอกสาร"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.mas_doc_types.FirstOrDefaultAsync(d => d.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.code = _code;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.group_ref = _groupRef;
+            existing.subMode1 = _subMode1;
+            existing.orderTh = _orderTh;
+            existing.notes = _notes;
+            existing.remark = _remark;
+            existing.isActive = _isActive;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.mas_doc_types.Add(new mas_doc_type
+            {
+                code = _code,
+                name = _name,
+                name_en = _nameEn,
+                group_ref = _groupRef,
+                subMode1 = _subMode1,
+                orderTh = _orderTh,
+                notes = _notes,
+                remark = _remark,
+                isActive = _isActive,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
