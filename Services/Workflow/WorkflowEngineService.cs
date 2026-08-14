@@ -50,11 +50,13 @@ public class WorkflowEngineService
     private enum WorkflowOutcome { StillOpen, Approved, Rejected, BouncedBack }
 
     private readonly EmailSender _emailSender;
+    private readonly HRM.Services.Audit.IAuditLogger _auditLogger;
 
-    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender)
+    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender, HRM.Services.Audit.IAuditLogger auditLogger)
     {
         _dbFactory = dbFactory;
         _emailSender = emailSender;
+        _auditLogger = auditLogger;
     }
 
     // Starts a new approval instance for any document type — reftable/refid
@@ -119,6 +121,16 @@ public class WorkflowEngineService
         };
         context.job_masters.Add(job);
         await context.SaveChangesAsync(ct); // need job.jobmasterid before snapshotting levels
+
+        // Block 1: actor-attributed audit trail — HRMContext.Audit.cs's
+        // auto-hook deliberately doesn't know who's calling (see its own
+        // comment), so every mutation this engine makes gets an explicit
+        // LogChangeAsync call instead. Additive only — never changes what
+        // the engine decides.
+        await _auditLogger.LogChangeAsync(AuditActionType.Create, "job_master", job.jobmasterid.ToString(),
+            null, new { job.workflowcode, job.subject, job.reqOrg, job.reqamont, job.status }, isSensitive: false, ct);
+        Serilog.Log.Information("Workflow job {JobMasterId} started: workflow {WorkflowCode}, requester {RequesterEmpId}, first level {Level}",
+            job.jobmasterid, workflow.workflowcode, requesterEmpId, levels[0].wlevel);
 
         foreach (var level in levels)
         {
@@ -197,6 +209,11 @@ public class WorkflowEngineService
         approverRow.comment = comment;
         await context.SaveChangesAsync(ct);
 
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { jobstatus = StatusPending }, new { jobstatus = StatusApproved, comment }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} level {Level}: approver {ActorUserId} approved (jobapproverid {JobApproverId})",
+            job.jobmasterid, approverRow.wlevel, actorUserId, jobApproverId);
+
         var outcome = await TryAdvanceLevelAsync(context, job, approverRow.wlevel ?? 0, actorUserId, ct);
         await context.SaveChangesAsync(ct);
 
@@ -234,6 +251,11 @@ public class WorkflowEngineService
         approverRow.comment = comment;
         await context.SaveChangesAsync(ct);
 
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { jobstatus = StatusPending }, new { jobstatus = StatusRejected, comment }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} level {Level}: approver {ActorUserId} rejected (jobapproverid {JobApproverId})",
+            job.jobmasterid, approverRow.wlevel, actorUserId, jobApproverId);
+
         // Block 5 change from Block 2: a single reject no longer
         // unconditionally kills the job on the spot — TryAdvanceLevelAsync's
         // evaluator only fails the level (and the job) once the remaining
@@ -270,6 +292,11 @@ public class WorkflowEngineService
         row.empid = assignee.empid;
         row.reason = string.IsNullOrWhiteSpace(note) ? row.reason : $"{row.reason} | มอบหมายโดย admin: {note}";
         await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { userid = (long?)null }, new { userid = assigneeUserId, note }, isSensitive: false, ct);
+        Serilog.Log.Information("Vacant approver slot {JobApproverId} on job {JobMasterId} assigned to user {AssigneeUserId} by admin",
+            jobApproverId, row.jobmasterid, assigneeUserId);
     }
 
     public async Task<List<job_user_list>> GetMyInboxAsync(long userId, CancellationToken ct = default)
@@ -447,6 +474,7 @@ public class WorkflowEngineService
             job.isJobClosed = true;
             job.approvedDate = DateTime.Now;
             job.approvedUserID = actorUserId;
+            Serilog.Log.Information("Job {JobMasterId} closed: Approved at level {Level}", job.jobmasterid, completedLevel);
             return WorkflowOutcome.Approved;
         }
 
@@ -482,6 +510,7 @@ public class WorkflowEngineService
         job.status = completedSnapshot.backwardstatus ?? StatusRejected;
         job.isJobClosed = true;
         job.reasonClosed = comment;
+        Serilog.Log.Information("Job {JobMasterId} closed: Rejected/Returned at level {Level}", job.jobmasterid, completedSnapshot.wlevel);
     }
 
     // Reject bounce-back: when a level fails (single reject on a non-AND/OR
@@ -528,6 +557,9 @@ public class WorkflowEngineService
         job.remark = (string.IsNullOrEmpty(job.remark) ? "" : job.remark + "\n")
             + $"{DateTime.Now:yyyy-MM-dd HH:mm}: ตีกลับจากระดับ {completedSnapshot.wlevel} ไปยังระดับ {backwardLevel.Value} (รอบที่ {job.jobseq})";
 
+        Serilog.Log.Information("Job {JobMasterId} bounced back from level {FromLevel} to level {ToLevel} (round {Jobseq})",
+            job.jobmasterid, completedSnapshot.wlevel, backwardLevel.Value, job.jobseq);
+
         await AssignLevelApproversAsync(context, job, targetLiveLevel, ct); // fresh round of job_user_list rows
         return true;
     }
@@ -571,6 +603,9 @@ public class WorkflowEngineService
             isActive = true,
             moddate = DateTime.Now,
         });
+
+        Serilog.Log.Information("Job {JobMasterId} level {Level}: LOA band matched (wf_loa.id={LoaBandId}, amount={Amount:N2}) -> next level {NextLevel}",
+            job.jobmasterid, completedLevel, matched.id, job.reqamont, matched.nextLevel);
 
         return matched.nextLevel;
     }
@@ -726,6 +761,8 @@ public class WorkflowEngineService
 
         if (candidates.Count > 0)
         {
+            Serilog.Log.Information("Job {JobMasterId} level {Level}{HopInfo}: resolved {Count} candidate(s)",
+                job.jobmasterid, level.wlevel, precheckReasonPrefix is null ? "" : " (vertical pre-check hop)", candidates.Count);
             foreach (var (userId, empId) in candidates)
             {
                 context.job_user_lists.Add(new job_user_list
@@ -748,6 +785,8 @@ public class WorkflowEngineService
 
         if (level.isAutoApproveAllow)
         {
+            Serilog.Log.Information("Job {JobMasterId} level {Level}: no candidates resolved, auto-skipping (isAutoApproveAllow)",
+                job.jobmasterid, level.wlevel);
             context.job_user_lists.Add(new job_user_list
             {
                 jobmasterid = job.jobmasterid,
@@ -771,6 +810,8 @@ public class WorkflowEngineService
         // the plan's explicit "last level vacant -> stay pending" case,
         // which falls out of this same branch naturally since there's no
         // special-casing of the last level here.
+        Serilog.Log.Warning("Job {JobMasterId} level {Level}: no candidates resolved, left vacant for admin assignment (/wf/vacant-approvals)",
+            job.jobmasterid, level.wlevel);
         context.job_user_lists.Add(new job_user_list
         {
             jobmasterid = job.jobmasterid,
