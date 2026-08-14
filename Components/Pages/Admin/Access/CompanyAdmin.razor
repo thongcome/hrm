@@ -1,0 +1,362 @@
+@page "/admin/system/companies"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject PrivateFileStorage FileStorage
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>ข้อมูลบริษัท (Company)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudText Typo="Typo.h5">ข้อมูลบริษัท (Company)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แคตตาล็อกกลางของนิติบุคคล/บริษัทในระบบ — ชื่อ โลโก้ ข้อมูลจดทะเบียน และข้อมูลติดต่อ
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบริษัท" : "แก้ไข")</MudText>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mt-3 mb-2">
+        @if (_editingId is long logoId && !string.IsNullOrEmpty(_logoPath))
+        {
+            <MudAvatar Size="Size.Large" Style="width:88px;height:88px;" Square="true">
+                <MudImage Src="@($"/company/files/logo/{logoId}?v={_logoCacheBust}")" ObjectFit="ObjectFit.Contain" />
+            </MudAvatar>
+        }
+        else
+        {
+            <MudAvatar Size="Size.Large" Style="width:88px;height:88px;" Color="Color.Primary" Square="true">
+                <MudIcon Icon="@Icons.Material.Filled.Apartment" />
+            </MudAvatar>
+        }
+        <MudStack Spacing="1">
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnLogoSelected" Accept=".jpg,.jpeg,.png" Disabled="_editingId is null">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Image" Disabled="_editingId is null">
+                        @(string.IsNullOrEmpty(_logoPath) ? "อัปโหลดโลโก้" : "เปลี่ยนโลโก้")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            @if (_editingId is null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Default">บันทึกข้อมูลบริษัทก่อน จึงจะอัปโหลดโลโก้ได้</MudText>
+            }
+            @if (_logoError is not null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error">@_logoError</MudText>
+            }
+        </MudStack>
+    </MudStack>
+
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลทั่วไป</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัสบริษัท (Code)" Required="true" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="ชื่อบริษัท (ไทย)" Required="true" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_nameEn" Label="ชื่อบริษัท (อังกฤษ)" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_slogan" Label="สโลแกน" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_website" Label="เว็บไซต์" MaxLength="500" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_mission" Label="พันธกิจ (Mission)" Lines="2" MaxLength="2000" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลจดทะเบียน</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_taxId" Label="เลขประจำตัวผู้เสียภาษี" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_capitalRegister" Label="ทุนจดทะเบียน (บาท)" Format="N2" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_amountEmp" Label="จำนวนพนักงานโดยประมาณ" /></MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลติดต่อ</MudText>
+    <MudGrid>
+        <MudItem xs="12"><MudTextField @bind-Value="_addressHq" Label="ที่อยู่สำนักงานใหญ่" Lines="2" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_tel" Label="โทรศัพท์" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ระยะเวลา / หมายเหตุ</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_startDate" Label="วันที่เริ่มดำเนินการ" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_endDate" Label="วันที่สิ้นสุด (ถ้ามี)" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" MaxLength="2000" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudGrid>
+        @foreach (var item in _items)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Outlined="true" Class="pa-2" Style="height:100%;">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            @if (!string.IsNullOrEmpty(item.logp_path))
+                            {
+                                <MudAvatar Size="Size.Medium" Square="true">
+                                    <MudImage Src="@($"/company/files/logo/{item.id}")" ObjectFit="ObjectFit.Contain" />
+                                </MudAvatar>
+                            }
+                            else
+                            {
+                                <MudAvatar Size="Size.Medium" Color="Color.Primary" Square="true">
+                                    <MudIcon Icon="@Icons.Material.Filled.Apartment" Size="Size.Small" />
+                                </MudAvatar>
+                            }
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.subtitle1">@item.name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Default">@item.code @(string.IsNullOrWhiteSpace(item.name_en) ? "" : $"· {item.name_en}")</MudText>
+                            </MudStack>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
+                            <MudChip T="string" Size="Size.Small" Color="@(item.isActive == true ? Color.Success : Color.Default)">
+                                @(item.isActive == true ? "ใช้งาน" : "ไม่ใช้งาน")
+                            </MudChip>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(item))">แก้ไข</MudButton>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+        @if (_items.Count == 0)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+
+@code {
+    private List<com_company> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+    private string? _logoPath;
+    private string _logoCacheBust = "0";
+    private string? _logoError;
+
+    private string _code = "";
+    private string? _abbr;
+    private string _name = "";
+    private string? _nameEn;
+    private string? _slogan;
+    private string? _website;
+    private string? _mission;
+    private bool _isActive = true;
+    private string? _taxId;
+    private decimal? _capitalRegister;
+    private int? _amountEmp;
+    private string? _addressHq;
+    private string? _tel;
+    private string? _email;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.com_companies.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+            nameof(com_company.code), nameof(com_company.name), nameof(com_company.name_en), nameof(com_company.abbr));
+        _items = await query.OrderBy(c => c.name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(com_company item)
+    {
+        _editingId = item.id;
+        _logoPath = item.logp_path;
+        _logoCacheBust = DateTime.Now.Ticks.ToString();
+        _code = item.code;
+        _abbr = item.abbr;
+        _name = item.name;
+        _nameEn = item.name_en;
+        _slogan = item.slogan;
+        _website = item.website;
+        _mission = item.mission;
+        _isActive = item.isActive ?? true;
+        _taxId = item.tax_id;
+        _capitalRegister = item.capital_register;
+        _amountEmp = item.amount_emp;
+        _addressHq = item.address_HQ;
+        _tel = item.tel;
+        _email = item.email;
+        _startDate = item.startdate;
+        _endDate = item.enddate;
+        _remark = item.remark;
+        _error = null;
+        _logoError = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _logoPath = null;
+        _code = "";
+        _abbr = null;
+        _name = "";
+        _nameEn = null;
+        _slogan = null;
+        _website = null;
+        _mission = null;
+        _isActive = true;
+        _taxId = null;
+        _capitalRegister = null;
+        _amountEmp = null;
+        _addressHq = null;
+        _tel = null;
+        _email = null;
+        _startDate = null;
+        _endDate = null;
+        _remark = null;
+        _error = null;
+        _logoError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code)) { _error = "กรุณาระบุรหัสบริษัท"; return; }
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อบริษัท"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Code must be unique — enforced here since the legacy schema has no
+        // DB-level unique constraint on it.
+        var codeTaken = await context.com_companies.AnyAsync(c =>
+            c.code == _code && (_editingId == null || c.id != _editingId));
+        if (codeTaken) { _error = "รหัสบริษัทนี้ถูกใช้แล้ว"; return; }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.com_companies.FirstOrDefaultAsync(c => c.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.code = _code;
+            existing.abbr = _abbr;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.slogan = _slogan;
+            existing.website = _website;
+            existing.mission = _mission;
+            existing.isActive = _isActive;
+            existing.tax_id = _taxId;
+            existing.capital_register = _capitalRegister;
+            existing.amount_emp = _amountEmp;
+            existing.address_HQ = _addressHq;
+            existing.tel = _tel;
+            existing.email = _email;
+            existing.startdate = _startDate;
+            existing.enddate = _endDate;
+            existing.remark = _remark;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.com_companies.Add(new com_company
+            {
+                code = _code,
+                abbr = _abbr,
+                name = _name,
+                name_en = _nameEn,
+                slogan = _slogan,
+                website = _website,
+                mission = _mission,
+                isActive = _isActive,
+                tax_id = _taxId,
+                capital_register = _capitalRegister,
+                amount_emp = _amountEmp,
+                address_HQ = _addressHq,
+                tel = _tel,
+                email = _email,
+                startdate = _startDate,
+                enddate = _endDate,
+                remark = _remark,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task OnLogoSelected(IBrowserFile file)
+    {
+        _logoError = null;
+        if (_editingId is not long id) return;
+
+        const long maxSize = 5 * 1024 * 1024; // 5 MB
+        if (file.Size > maxSize)
+        {
+            _logoError = "ไฟล์ใหญ่เกินไป (จำกัด 5 MB)";
+            return;
+        }
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (ext != ".jpg" && ext != ".jpeg" && ext != ".png")
+        {
+            _logoError = "รองรับเฉพาะไฟล์ .jpg/.jpeg/.png";
+            return;
+        }
+
+        using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        var storedFileName = $"{id}_{DateTime.Now.Ticks}{ext}";
+        var (relativePath, _) = await FileStorage.SaveAsync("company-logos", storedFileName, bytes);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.com_companies.FirstAsync(c => c.id == id);
+        existing.logo_file = file.Name;
+        existing.logp_path = relativePath;
+        existing.moddate = DateTime.Now;
+        await context.SaveChangesAsync();
+
+        _logoPath = relativePath;
+        _logoCacheBust = DateTime.Now.Ticks.ToString();
+        await LoadAsync();
+        Snackbar.Add("อัปโหลดโลโก้เรียบร้อย", Severity.Success);
+    }
+}

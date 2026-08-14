@@ -457,6 +457,7 @@ app.MapRecFileEndpoints();
 app.MapLmsFileEndpoints();
 app.MapKmFileEndpoints();
 app.MapOrgChartFileEndpoints();
+app.MapCompanyFileEndpoints();
 
 // Resource-server surface for the ecosystem-wide central AI chatbot — see
 // Endpoints/ExternalApiEndpoints.cs. The dev token-minting route is only
