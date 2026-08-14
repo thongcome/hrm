@@ -1,0 +1,287 @@
+@page "/wf/canvas/{WorkflowId:long}/design"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>จัดเรียงระดับอนุมัติ — @(_workflow?.workflowcode)</PageTitle>
+
+<style>
+    .wf-design-flow { display: flex; flex-direction: column; align-items: stretch; max-width: 640px; }
+
+    .wf-design-connector {
+        width: 2px;
+        height: 22px;
+        background: var(--mud-palette-lines-default, #ccc);
+        margin: 0 auto;
+    }
+
+    .wf-design-card {
+        border-radius: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+        overflow: hidden;
+        transition: box-shadow .15s ease;
+    }
+
+    .wf-design-card.draggable { cursor: grab; }
+    .wf-design-card.drag-over { box-shadow: 0 0 0 2px var(--mud-palette-primary); }
+
+    .wf-design-card-header {
+        background: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .wf-design-card-body { padding: 12px 16px; }
+</style>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_workflow is null)
+{
+    <MudAlert Severity="Severity.Error">ไม่พบ Workflow นี้</MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo($"/wf/canvas/{WorkflowId}"))" Size="Size.Small" />
+        <MudText Typo="Typo.h5">@_workflow.workflowcode — @_workflow.wname</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Info">โหมดจัดเรียง (ลาก-วาง)</MudChip>
+    </MudStack>
+
+    @if (!_canEdit)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">คุณมีสิทธิ์ดูอย่างเดียว — ไม่สามารถจัดเรียงหรือบันทึกได้</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="mb-2">
+            ลากการ์ด (หรือใช้ปุ่มลูกศร) เพื่อจัดลำดับระดับอนุมัติใหม่ แล้วกด "บันทึกลำดับ" เพื่อยืนยัน —
+            งานที่กำลังอนุมัติอยู่จะไม่ได้รับผลกระทบ เพราะระบบใช้ค่าที่บันทึกไว้ตอนเริ่มงานเสมอ
+        </MudText>
+        @if (_loaBands.Count > 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
+                Workflow นี้มีช่วงวงเงิน (LOA) ที่อ้างอิงเลขระดับอยู่ @_loaBands.Count รายการ —
+                เมื่อบันทึก ระบบจะปรับช่วงวงเงินให้ยังคงชี้ไปที่ระดับเดิมโดยอัตโนมัติ
+            </MudAlert>
+        }
+    }
+
+    @if (_levels.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">Workflow นี้ยังไม่มีระดับการอนุมัติ</MudAlert>
+    }
+    else if (_levels.Count == 1)
+    {
+        <MudAlert Severity="Severity.Info">Workflow นี้มีระดับเดียว ไม่มีลำดับให้จัดเรียง</MudAlert>
+    }
+    else
+    {
+        @if (_canEdit && IsDirty)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                มีการเปลี่ยนแปลงลำดับที่ยังไม่บันทึก
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ResetOrder" Class="ml-2">ยกเลิกการเปลี่ยนแปลง</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveOrderAsync" Class="ml-2">บันทึกลำดับ</MudButton>
+            </MudAlert>
+        }
+
+        <div class="wf-design-flow">
+            @for (var i = 0; i < _levels.Count; i++)
+            {
+                var idx = i;
+                var level = _levels[idx];
+                @if (idx > 0)
+                {
+                    <div class="wf-design-connector"></div>
+                }
+                <MudPaper Class="@($"wf-design-card{(_canEdit ? " draggable" : "")}{(_dragOverIndex == idx ? " drag-over" : "")}")" Elevation="0"
+                    draggable="@_canEdit"
+                    @ondragstart="@(() => _draggedIndex = idx)"
+                    @ondragover:preventDefault="true"
+                    @ondragenter="@(() => _dragOverIndex = idx)"
+                    @ondragleave="@(() => _dragOverIndex = null)"
+                    @ondrop="@(() => DropReorder(idx))">
+                    <div class="wf-design-card-header">
+                        @if (_canEdit)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" />
+                        }
+                        <MudText Typo="Typo.subtitle1" Style="font-weight:700; flex-grow:1;">ระดับ @(idx + 1)</MudText>
+                        @if (level.istop)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">ระดับสุดท้าย</MudChip>
+                        }
+                        @if (_canEdit)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" Color="Color.Inherit"
+                                Disabled="idx == 0" OnClick="@(() => MoveLevel(idx, idx - 1))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" Color="Color.Inherit"
+                                Disabled="idx == _levels.Count - 1" OnClick="@(() => MoveLevel(idx, idx + 1))" />
+                        }
+                    </div>
+                    <div class="wf-design-card-body">
+                        @if (!string.IsNullOrWhiteSpace(level.subject))
+                        {
+                            <MudText Typo="Typo.body2" Class="mb-2">@level.subject</MudText>
+                        }
+                        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                            @foreach (var label in ActiveStrategyLabels(level))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">@label</MudChip>
+                            }
+                        </MudStack>
+                    </div>
+                </MudPaper>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public long WorkflowId { get; set; }
+
+    private bool _loading = true;
+    private bool _canEdit;
+
+    private wf_workflow? _workflow;
+    private List<wf_sub_workflow_master> _levels = new();
+    private List<wf_loa> _loaBands = new();
+    private List<long> _originalOrder = new(); // subworkflowid in the order loaded from DB
+
+    private int? _draggedIndex;
+    private int? _dragOverIndex;
+
+    private bool IsDirty => !_levels.Select(l => l.subworkflowid).SequenceEqual(_originalOrder);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == WorkflowId);
+        _levels = await context.wf_sub_workflow_masters
+            .Where(l => l.workflowid == WorkflowId)
+            .OrderBy(l => l.wlevel)
+            .ToListAsync();
+        _loaBands = await context.wf_loas.Where(l => l.wfid == WorkflowId).ToListAsync();
+        _originalOrder = _levels.Select(l => l.subworkflowid).ToList();
+    }
+
+    private void ResetOrder()
+    {
+        _levels = _originalOrder
+            .Select(id => _levels.First(l => l.subworkflowid == id))
+            .OrderBy(id => _originalOrder.IndexOf(id.subworkflowid))
+            .ToList();
+    }
+
+    private void MoveLevel(int fromIndex, int toIndex)
+    {
+        if (toIndex < 0 || toIndex >= _levels.Count) return;
+        var item = _levels[fromIndex];
+        _levels.RemoveAt(fromIndex);
+        _levels.Insert(toIndex, item);
+    }
+
+    private void DropReorder(int targetIndex)
+    {
+        _dragOverIndex = null;
+        if (_draggedIndex is null || _draggedIndex == targetIndex) { _draggedIndex = null; return; }
+
+        var item = _levels[_draggedIndex.Value];
+        _levels.RemoveAt(_draggedIndex.Value);
+        var insertAt = targetIndex > _draggedIndex.Value ? targetIndex - 1 : targetIndex;
+        _levels.Insert(insertAt, item);
+        _draggedIndex = null;
+    }
+
+    // Duplicated (not extracted to a shared helper) on purpose: WfCanvasDetail.razor
+    // is a working, already-verified read-only view and is deliberately left
+    // untouched while this drag-and-drop editor ships as a separate page —
+    // see the two commits that built/fixed the read-only Canvas.
+    private static List<string> ActiveStrategyLabels(wf_sub_workflow_master e)
+    {
+        var active = new List<string>();
+        if (e.iscustomUser) active.Add("Custom User");
+        if (e.iscustomRole) active.Add("Custom Role");
+        if (e.isupperrole || e.isupperuser) active.Add("Vertical");
+        if (e.isLOA) active.Add("LOA (วงเงิน)");
+        if (e.isReturnSender) active.Add("Return to Sender");
+        if (e.isApproverSameCostCenter) active.Add("Same Cost Center");
+        if (e.isAdhocUser) active.Add("Adhoc User");
+        return active.Count == 0 ? new List<string> { "ยังไม่กำหนด" } : active;
+    }
+
+    private async Task SaveOrderAsync()
+    {
+        if (!_canEdit || !IsDirty) return;
+
+        // Old wlevel -> new wlevel, captured before any mutation. Needed to
+        // re-point wf_loa.nowLevel/nextLevel (which key off the numeric level,
+        // not subworkflowid) at whatever level they meant before the reorder.
+        var oldToNew = new Dictionary<int, int>();
+        for (var i = 0; i < _levels.Count; i++)
+            oldToNew[_levels[i].wlevel] = i + 1;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        for (var i = 0; i < _levels.Count; i++)
+        {
+            var newWlevel = i + 1;
+            var subworkflowId = _levels[i].subworkflowid;
+
+            var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == subworkflowId);
+            if (level is null) continue;
+            level.wlevel = newWlevel;
+            // istop is deliberately left untouched — it marks a level as a
+            // terminal branch (see WorkflowEngineService's own comment on
+            // this), and LOA-branching workflows can legitimately have more
+            // than one istop=true level at once (e.g. two different LOA
+            // amount bands each ending the job at a different level).
+            // Position in this reordered list has nothing to do with that.
+
+            // Keep the denormalized wlevel copy on each approver-assignment
+            // table in sync — WorkflowEngineService resolves approvers by
+            // subworkflowid, never by this column, so staleness here can't
+            // break live approval routing, but it would show a wrong level
+            // number on the wf_custom_user/role/adhoc-user admin pages.
+            await context.wf_custom_users.Where(u => u.subworkflowid == subworkflowId)
+                .ForEachAsync(u => u.wlevel = newWlevel);
+            await context.wf_custom_roles.Where(r => r.subworkflowid == subworkflowId)
+                .ForEachAsync(r => r.wlevel = newWlevel);
+            await context.wf_adhoc_users.Where(a => a.subworkflowid == subworkflowId)
+                .ForEachAsync(a => a.wlevel = newWlevel);
+        }
+
+        var bands = await context.wf_loas.Where(l => l.wfid == WorkflowId).ToListAsync();
+        foreach (var band in bands)
+        {
+            if (oldToNew.TryGetValue(band.nowLevel, out var newNow)) band.nowLevel = newNow;
+            if (oldToNew.TryGetValue(band.nextLevel, out var newNext)) band.nextLevel = newNext;
+        }
+
+        await context.SaveChangesAsync();
+        await LoadAsync();
+        Snackbar.Add("บันทึกลำดับระดับอนุมัติแล้ว", Severity.Success);
+    }
+}
