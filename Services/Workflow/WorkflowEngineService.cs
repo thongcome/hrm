@@ -12,7 +12,19 @@ using Microsoft.EntityFrameworkCore;
 // pre-check hops before a level's own approver), reject bounce-back to an
 // earlier level (backwardlevel, round-scoped via jobseq), admin-configured
 // Moving Status text, and a best-effort email notification to the requester
-// when a job closes. Still deliberately excludes:
+// when a job closes. Phase 2 Block 2: Vertical resolution and the Mix
+// Approval hop-walker now share one org-chain-walking helper
+// (ResolveOrgChainApproverAsync) and both anchor on Hremployee.orgcode
+// (real, synced data) instead of the wf_employee pilot table. Phase 2 Block
+// 3: ResolveCandidatesAsync unions every non-LOA strategy ticked on a level
+// (previously only the first matching flag in an if/else-if chain ever
+// ran) — verified zero-behavior-change via a live-DB query showing no
+// existing level combines more than one strategy flag. Phase 2 Block 4:
+// three epms-inspired strategies added to that same union —
+// isReturnSender (routes back to job.createuserid directly, not epms's
+// wlevel-2 offset), isApproverSameCostCenter, isAdhocUser (per-job override
+// via wf_adhoc_user, CRUD already built in Phase 1). Still deliberately
+// excludes:
 //   - Cross-workflow LOA jumps (wf_loa.nextWorkflowId != nowWorkflowid) —
 //     see the comment on ResolveNextLevelViaLoaAsync
 //
@@ -79,21 +91,27 @@ public class WorkflowEngineService
         if (levels.Count == 0)
             throw new InvalidOperationException($"workflow '{workflow.wname}' ยังไม่ได้กำหนดระดับการอนุมัติเลย (wf_sub_workflow_master ว่างเปล่า)");
 
-        // Anchor org for Vertical resolution — resolved from wf_employee
-        // (our clean pilot employee table), not Hremployee. Hremployee's
-        // org linkage into com_organization is a KNOWN broken data-quality
-        // gap from earlier work this session (Hremployee.DEPTGRP_CODE
-        // doesn't match com_organization.code for real employees) — using
-        // it here would make Vertical resolution silently fail for almost
-        // everyone. Once that linkage is fixed, this should read from the
-        // real HR source of truth instead.
+        // Anchor org for Vertical resolution — Block 2: resolved from
+        // Hremployee.orgcode (the real, synced anchor — see
+        // Services/Shared/EmployeePositionSync.cs and Hremployee.cs's own
+        // doc comment), not the wf_employee pilot table used before this
+        // block. Hremployee.DEPTGRP_CODE (the OLD field that never matched
+        // com_organization.code) is a separate, still-dead legacy column —
+        // orgcode is the fixed replacement, kept in sync automatically.
+        // costcenter is likewise snapshotted here for the first time (was
+        // never set at all before this block) so Block 4's future
+        // isApproverSameCostCenter strategy has something real to compare
+        // against.
         string? requesterOrgCode = null;
+        string? requesterCostCenter = null;
         if (!string.IsNullOrWhiteSpace(requesterEmpId))
         {
-            requesterOrgCode = await context.wf_employees
-                .Where(e => e.empid == requesterEmpId)
-                .Select(e => e.orgcode)
+            var requesterEmp = await context.Hremployee
+                .Where(e => e.EmpNo == requesterEmpId)
+                .Select(e => new { e.orgcode, e.CostCenterCode })
                 .FirstOrDefaultAsync(ct);
+            requesterOrgCode = requesterEmp?.orgcode;
+            requesterCostCenter = requesterEmp?.CostCenterCode;
         }
 
         var job = new job_master
@@ -116,6 +134,7 @@ public class WorkflowEngineService
             createdate = DateTime.Now,
             reqdate = DateTime.Now,
             reqamont = amount,
+            costcenter = requesterCostCenter,
             isactive = true,
             isJobClosed = false,
         };
@@ -662,40 +681,69 @@ public class WorkflowEngineService
         return loaUsers.Select(u => (u.userid, u.empid)).ToList();
     }
 
-    // Block 6 (Mix Approval): walks up the org chart `hopNumber` steps
-    // starting from the requester's own org (hop 1 = requester's org
-    // itself, hop 2 = its parent, ...) via com_organization.parent_code,
-    // then resolves that org's approver using the same "always use
-    // approver_empid" rule as the ordinary Vertical resolution in
-    // ResolveCandidatesAsync below (approver_empid is the workflow's real
-    // approver, which may differ from boss_emp_id — see plan file).
-    private static async Task<List<(long UserId, string? EmpId)>> ResolveVerticalHopApproverAsync(
-        HRMContext context, string? anchorOrgCode, int hopNumber, CancellationToken ct)
+    // Safety cap on how many org-chart levels ResolveOrgChainApproverAsync
+    // will climb when skip-searching (allowSkipVacant=true) — same pattern
+    // as TryBounceBackAsync's jobseq>=20 cap: a misconfigured or cyclical
+    // parent_code chain can't be ridden forever.
+    private const int MaxVerticalHops = 20;
+
+    // Block 2: shared org-chart walker used by BOTH the ordinary Vertical
+    // strategy (isupperrole/isupperuser in ResolveCandidatesAsync) and the
+    // Mix Approval pre-check hop-walker (AssignLevelApproversAsync) — a
+    // single mechanism with two distinct calling conventions selected by
+    // allowSkipVacant, so neither caller's existing, already-verified
+    // behavior changes:
+    //
+    //   allowSkipVacant=false (Mix Approval's fixed-hop landing): walks
+    //   BLIND up to hop `maxHops` (no approver check on the way — hop 1 =
+    //   anchor itself, hop 2 = its parent, ...), then checks ONLY that
+    //   landed org's approver. This reproduces the old
+    //   ResolveVerticalHopApproverAsync byte-for-byte: each pre-check hop
+    //   must resolve a DIFFERENT, higher org's approver, never falling back
+    //   to an earlier hop's org if that landed org happens to be vacant.
+    //
+    //   allowSkipVacant=true (ordinary Vertical's new richer behavior):
+    //   checks EVERY hop starting from the anchor, walking up through
+    //   vacant orgs (no approver_userid/approver_empid set) until it finds
+    //   a real one, hits org root (empty parent_code), or hits maxHops.
+    //   Tied to the level's own isAutoApproveAllow flag at the call site —
+    //   reusing that existing flag instead of adding a new column, per the
+    //   plan (mirrors epms/JSP's separate isBlankBossContinue idea using
+    //   what HRM already has). When isAutoApproveAllow is false, the caller
+    //   passes maxHops=1 instead, which — combined with allowSkipVacant
+    //   short-circuiting resolution the moment hop==maxHops — collapses
+    //   this loop back to "check only the requester's own org", identical
+    //   to Vertical resolution's behavior before this block existed.
+    //
+    // approver_empid (not boss_emp_id) is always the real workflow approver
+    // at every org checked here, per the plan's explicit clarification — it
+    // may be an acting substitute rather than the literal boss.
+    private static async Task<List<(long UserId, string? EmpId)>> ResolveOrgChainApproverAsync(
+        HRMContext context, string? anchorOrgCode, bool allowSkipVacant, int maxHops, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(anchorOrgCode))
             return new();
 
         var org = await context.com_organizations.FirstOrDefaultAsync(o => o.code == anchorOrgCode || o.orgCode == anchorOrgCode, ct);
-        for (var i = 1; i < hopNumber && org is not null; i++)
+        for (var hop = 1; org is not null && hop <= maxHops; hop++)
         {
-            if (string.IsNullOrWhiteSpace(org.parent_code))
+            if (allowSkipVacant || hop == maxHops)
             {
-                org = null;
-                break;
+                if (org.approver_userid is not null)
+                    return new() { (org.approver_userid.Value, null) };
+
+                if (!string.IsNullOrWhiteSpace(org.approver_empid))
+                {
+                    var approverUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == org.approver_empid, ct);
+                    if (approverUser is not null)
+                        return new() { (approverUser.userid, approverUser.empid) };
+                }
             }
+
+            if (string.IsNullOrWhiteSpace(org.parent_code))
+                break; // hit org root
+
             org = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code, ct);
-        }
-        if (org is null)
-            return new();
-
-        if (org.approver_userid is not null)
-            return new() { (org.approver_userid.Value, null) };
-
-        if (!string.IsNullOrWhiteSpace(org.approver_empid))
-        {
-            var approverUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == org.approver_empid, ct);
-            if (approverUser is not null)
-                return new() { (approverUser.userid, approverUser.empid) };
         }
 
         return new();
@@ -736,7 +784,7 @@ public class WorkflowEngineService
             if (hopsSatisfied < neededHops)
             {
                 var hopNumber = hopsSatisfied + 1;
-                candidates = await ResolveVerticalHopApproverAsync(context, job.reqOrg, hopNumber, ct);
+                candidates = await ResolveOrgChainApproverAsync(context, job.reqOrg, allowSkipVacant: false, maxHops: hopNumber, ct);
                 precheckReasonPrefix = $"{VerticalPrecheckMarker} {hopNumber}/{neededHops}: รอหัวหน้าอนุมัติก่อนเข้าสู่ระดับนี้ (Mix Approval)";
             }
             else
@@ -834,30 +882,49 @@ public class WorkflowEngineService
     // currently resolves (a runtime vacancy, handled by the caller); still
     // throws for a genuine setup mistake (level has none of
     // isLOA/iscustomUser/iscustomRole/isupperrole/isupperuser ticked at all).
+    //
+    // Block 3: composable union resolution. isLOA remains fully exclusive
+    // (per the user's explicit financial-control decision — see the block
+    // below) but every OTHER strategy ticked on the level now runs
+    // independently and its candidates are merged (deduped by userid),
+    // replacing the old if/else-if chain that only ever ran the FIRST
+    // matching strategy. Verified via a live-DB query immediately before
+    // writing this change (`SELECT subworkflowid FROM wf_sub_workflow_master
+    // WHERE (CAST(isupperrole AS INT)+CAST(isupperuser AS INT)+CAST(iscustomRole
+    // AS INT)+CAST(iscustomUser AS INT)) > 1`) that returned zero rows — so
+    // this union is provably zero-behavior-change for every level config
+    // that existed before Block 3; it only changes behavior for a NEW level
+    // deliberately configured with more than one strategy flag.
     private static async Task<List<(long UserId, string? EmpId)>> ResolveCandidatesAsync(
         HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
     {
         var requesterOrgCode = job.reqOrg;
 
         // Block 4 (approver side, per user confirmation): isLOA takes over
-        // approver resolution entirely for this level — who approves is
-        // whoever wf_loa_user lists for the amount band that matches this
-        // level, not the custom-user/custom-role/vertical flags below. See
-        // ResolveLoaApproversAsync's own comment for the exact FK chain.
+        // approver resolution entirely for this level, exclusive of every
+        // other strategy — who approves is whoever wf_loa_user lists for the
+        // amount band that matches this level, not the custom-user/custom-
+        // role/vertical flags below. See ResolveLoaApproversAsync's own
+        // comment for the exact FK chain.
         if (level.isLOA)
             return await ResolveLoaApproversAsync(context, job, level, ct);
 
+        var candidates = new List<(long UserId, string? EmpId)>();
+        var anyStrategyConfigured = false;
+
         if (level.iscustomUser)
         {
+            anyStrategyConfigured = true;
             var users = await context.wf_custom_users
                 .Where(u => u.subworkflowid == level.subworkflowid && u.isactive)
                 .Select(u => new { u.userid, u.empid })
                 .ToListAsync(ct);
-            return users.Select(u => (u.userid, u.empid)).ToList();
+            candidates.AddRange(users.Select(u => (u.userid, u.empid)));
         }
 
         if (level.iscustomRole)
         {
+            anyStrategyConfigured = true;
             var roleIds = await context.wf_custom_roles
                 .Where(r => r.subworkflowid == level.subworkflowid && r.isactive == true)
                 .Select(r => r.roleid)
@@ -871,39 +938,94 @@ public class WorkflowEngineService
                 .Where(u => userIds.Contains(u.userid))
                 .Select(u => new { u.userid, u.empid })
                 .ToListAsync(ct);
-            return withEmp.Select(u => (u.userid, u.empid)).ToList();
+            candidates.AddRange(withEmp.Select(u => (u.userid, u.empid)));
         }
 
         if (level.isupperrole || level.isupperuser)
         {
-            // Vertical: resolve via com_organization.approver_userid /
-            // approver_empid for the REQUESTER's own org unit — per the
-            // plan's explicit clarification, approver_empid (not
-            // boss_emp_id) is always the real workflow approver, since it
-            // may be an acting substitute rather than the literal boss.
-            if (string.IsNullOrWhiteSpace(requesterOrgCode))
-                return new(); // no anchor org known for the requester -> vacancy path
-
-            var org = await context.com_organizations
-                .FirstOrDefaultAsync(o => o.code == requesterOrgCode || o.orgCode == requesterOrgCode, ct);
-            if (org is null)
-                return new(); // requester's org code doesn't match any com_organization row -> vacancy path
-
-            if (org.approver_userid is not null)
-                return new() { (org.approver_userid.Value, null) };
-
-            if (!string.IsNullOrWhiteSpace(org.approver_empid))
-            {
-                var approverUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == org.approver_empid, ct);
-                if (approverUser is not null)
-                    return new() { (approverUser.userid, approverUser.empid) };
-            }
-
-            return new(); // org found but approver_userid/approver_empid both empty -> vacancy path
+            anyStrategyConfigured = true;
+            // Block 2: Vertical resolution shares ResolveOrgChainApproverAsync
+            // with the Mix Approval hop-walker (see that method's own comment
+            // for the full allowSkipVacant/maxHops contract). isAutoApproveAllow
+            // doubles here as "may this level's Vertical resolution climb past
+            // a vacant org to find a real approver higher up the chart" —
+            // reusing the existing flag instead of adding a new column, per
+            // the plan. When false, only the requester's own org is checked
+            // (maxHops=1), identical to Vertical resolution's behavior before
+            // this block existed.
+            var maxHops = level.isAutoApproveAllow ? MaxVerticalHops : 1;
+            var vertical = await ResolveOrgChainApproverAsync(context, requesterOrgCode, level.isAutoApproveAllow, maxHops, ct);
+            candidates.AddRange(vertical);
         }
 
-        throw new InvalidOperationException(
-            $"ระดับ {level.wlevel} ของ workflow นี้ยังไม่ได้กำหนดประเภทผู้อนุมัติเลย (ไม่ได้ติ๊ก custom user / custom role / vertical ใดๆ เลย — ตั้งค่า config ไม่ครบ)");
+        // Block 4 (epms-inspired strategies, adapted per the user's explicit
+        // correction): isReturnSender routes back to whoever CREATED the job,
+        // read directly off job_master — deliberately NOT epms's wlevel-2
+        // hardcoded offset (breaks after any bounce/multi-round job; reading
+        // the actual creator works at any level, any number of rounds).
+        if (level.isReturnSender)
+        {
+            anyStrategyConfigured = true;
+            if (job.createuserid is long senderUserId)
+                candidates.Add((senderUserId, job.empid));
+        }
+
+        // isApproverSameCostCenter: any other active employee in the same
+        // company sharing job.costcenter (snapshotted at StartJobAsync from
+        // Hremployee.CostCenterCode — Block 2), excluding the requester
+        // themselves. Resolves through sc_user the same way custom-role does.
+        if (level.isApproverSameCostCenter)
+        {
+            anyStrategyConfigured = true;
+            if (!string.IsNullOrWhiteSpace(job.costcenter) && !string.IsNullOrWhiteSpace(job.empid))
+            {
+                var requesterCompanyId = await context.Hremployee
+                    .Where(e => e.EmpNo == job.empid)
+                    .Select(e => e.companyid)
+                    .FirstOrDefaultAsync(ct);
+                var peerEmpNos = await context.Hremployee
+                    .Where(e => e.CostCenterCode == job.costcenter && e.companyid == requesterCompanyId && e.EmpNo != job.empid)
+                    .Select(e => e.EmpNo)
+                    .ToListAsync(ct);
+                var peerUsers = await context.sc_users
+                    .Where(u => u.empid != null && peerEmpNos.Contains(u.empid))
+                    .Select(u => new { u.userid, u.empid })
+                    .ToListAsync(ct);
+                candidates.AddRange(peerUsers.Select(u => (u.userid, u.empid)));
+            }
+        }
+
+        // isAdhocUser: per-job override via wf_adhoc_user (Phase 1's CRUD at
+        // /wf/adhoc-users already lets admins set jobmasterid — null there
+        // means a level-wide template row, a real value targets one specific
+        // job). Job-specific rows win outright when any exist; template rows
+        // are the fallback so a level can also have a standing default.
+        if (level.isAdhocUser)
+        {
+            anyStrategyConfigured = true;
+            var jobSpecific = await context.wf_adhoc_users
+                .Where(a => a.workflowid == level.workflowid && a.wlevel == level.wlevel && a.isactive && a.jobmasterid == job.jobmasterid)
+                .Select(a => new { a.userid, a.empid })
+                .ToListAsync(ct);
+            var adhoc = jobSpecific.Count > 0
+                ? jobSpecific
+                : await context.wf_adhoc_users
+                    .Where(a => a.workflowid == level.workflowid && a.wlevel == level.wlevel && a.isactive && a.jobmasterid == null)
+                    .Select(a => new { a.userid, a.empid })
+                    .ToListAsync(ct);
+            candidates.AddRange(adhoc.Select(a => (a.userid, a.empid)));
+        }
+
+        if (!anyStrategyConfigured)
+            throw new InvalidOperationException(
+                $"ระดับ {level.wlevel} ของ workflow นี้ยังไม่ได้กำหนดประเภทผู้อนุมัติเลย (ไม่ได้ติ๊ก custom user / custom role / vertical ใดๆ เลย — ตั้งค่า config ไม่ครบ)");
+
+        // Dedup by userid: a no-op for every level that only has one
+        // strategy ticked (the common case, and the only case that existed
+        // before Block 3) — only actually collapses anything when a level
+        // deliberately unions multiple strategies AND the same person shows
+        // up via more than one of them.
+        return candidates.GroupBy(c => c.UserId).Select(g => g.First()).ToList();
     }
 
     // Best-effort email notification to the original requester when a job

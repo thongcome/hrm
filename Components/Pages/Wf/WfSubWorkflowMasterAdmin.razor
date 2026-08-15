@@ -70,11 +70,10 @@
         <MudTd>@ActiveStrategyLabels(row)</MudTd>
     </text>;
 
-    // Phase 1 (CRUD-completeness): lists every resolver-related flag that's
-    // turned on for this level. Multiple can be true at once — the engine
-    // doesn't combine them yet (still mutually-exclusive, first-match-wins;
-    // see WorkflowEngineService.ResolveCandidatesAsync), so this label is
-    // purely informational until Phase 2 wires composable resolution up.
+    // Lists every resolver-related flag that's turned on for this level.
+    // Multiple can genuinely be true at once as of Phase 2 Block 3/4 —
+    // ResolveCandidatesAsync unions the pool from every strategy ticked here
+    // (isLOA stays exclusive, per the explicit financial-control decision).
     private static string ActiveStrategyLabels(wf_sub_workflow_master e)
     {
         var active = new List<string>();
@@ -171,7 +170,7 @@
             </MudItem>
             <MudItem xs="12">
                 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
-                    Phase 1 (CRUD-completeness): ตั้งค่าได้แล้ว แต่ engine ยังไม่อ่านทุก flag ด้านล่างนี้ — ปัจจุบัน engine ยังเลือกได้แค่ 1 กลไกต่อระดับ (ตามลำดับ: Custom User → Custom Role → Vertical → LOA) ยังไม่ union กัน จนกว่าจะทำ Phase 2 (แก้ logic)
+                    ติ๊กได้พร้อมกันหลายอัน — engine จะรวมผู้อนุมัติจากทุก strategy ที่เปิดไว้เข้าด้วยกัน (union) ยกเว้น "LOA" ที่ยังคงทำงานแบบแยกเดี่ยวเสมอเพื่อความปลอดภัยด้านการควบคุมทางการเงิน (ถ้าติ๊ก LOA ไว้ด้วย strategy อื่นด้านล่างจะถูกข้ามทั้งหมด)
                 </MudAlert>
             </MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isupperrole" Label="Vertical: Upper Role" /></MudItem>
