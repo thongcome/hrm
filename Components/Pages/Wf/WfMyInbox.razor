@@ -12,7 +12,7 @@
 @inject WorkflowEngineService Engine
 @inject AuthenticationStateProvider AuthProvider
 @inject PrivateFileStorage FileStorage
-@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@attribute [Authorize]
 
 <PageTitle>งานรออนุมัติของฉัน</PageTitle>
 
@@ -73,24 +73,27 @@
     </MudTable>
 </MudPaper>
 
-<MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h6">เริ่มงานทดสอบใหม่ (Start Job)</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="long?" @bind-Value="_startWorkflowId" Label="Workflow">
-                @foreach (var wf in _workflows)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_startSubject" Label="เรื่อง" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_startAmount" Label="จำนวนเงิน (ถ้ามี)" /></MudItem>
-        <MudItem xs="12">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartJobAsync">เริ่มงาน</MudButton>
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+@if (_isWorkflowAdmin)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">เริ่มงานทดสอบใหม่ (Start Job)</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_startWorkflowId" Label="Workflow">
+                    @foreach (var wf in _workflows)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_startSubject" Label="เรื่อง" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_startAmount" Label="จำนวนเงิน (ถ้ามี)" /></MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartJobAsync">เริ่มงาน</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
 
 @if (_viewingJob is not null)
 {
@@ -157,12 +160,14 @@
 
     private long _actorUserId;
     private string? _actorEmpId;
+    private bool _isWorkflowAdmin;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
         _actorEmpId = state.User.FindFirst("empno")?.Value;
+        _isWorkflowAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
