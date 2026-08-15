@@ -4,6 +4,7 @@ using System.Text.Json;
 using HRM.Models;
 using HRM.Services.Pay.Calculators;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 public record PayrollRunCalculationSummary(int EmployeeCount, int NegativeNetPayCount, decimal TotalNetPay);
 
@@ -23,17 +24,23 @@ public class PayrollCalculationService
     private readonly ISocialSecurityRateProvider _socialSecurityRateProvider;
     private readonly OvertimeEarningsCalculator _overtimeCalculator;
     private readonly LoanDeductionCalculator _loanCalculator;
+    private readonly PayrollAnomalyDetectionService _anomalyDetectionService;
+    private readonly ILogger<PayrollCalculationService> _logger;
 
     public PayrollCalculationService(
         IDbContextFactory<HRMContext> dbFactory,
         ISocialSecurityRateProvider socialSecurityRateProvider,
         OvertimeEarningsCalculator overtimeCalculator,
-        LoanDeductionCalculator loanCalculator)
+        LoanDeductionCalculator loanCalculator,
+        PayrollAnomalyDetectionService anomalyDetectionService,
+        ILogger<PayrollCalculationService> logger)
     {
         _dbFactory = dbFactory;
         _socialSecurityRateProvider = socialSecurityRateProvider;
         _overtimeCalculator = overtimeCalculator;
         _loanCalculator = loanCalculator;
+        _anomalyDetectionService = anomalyDetectionService;
+        _logger = logger;
     }
 
     public async Task<PayrollRunCalculationSummary> CalculateAsync(long payrollRunId, long actorUserId, CancellationToken ct = default)
@@ -62,6 +69,12 @@ public class PayrollCalculationService
             // employee rows can be deleted, or this throws a DbUpdateException.
             context.Pay_PayrollAuditLogs.RemoveRange(
                 context.Pay_PayrollAuditLogs.Where(a => a.PayrollEmployeeId != null && existingEmployeeIds.Contains(a.PayrollEmployeeId.Value)));
+            // Pay_PayrollAnomaly.PayrollEmployeeId is also a Restrict FK for the same
+            // reason as the audit log above — clear it before the employee rows can be
+            // deleted. DetectAnomaliesAsync() re-detects and re-inserts fresh anomaly
+            // rows against the new Pay_PayrollEmployee rows later in this method.
+            context.Pay_PayrollAnomalies.RemoveRange(
+                context.Pay_PayrollAnomalies.Where(a => a.PayrollEmployeeId != null && existingEmployeeIds.Contains(a.PayrollEmployeeId.Value)));
             context.Pay_PayrollEmployees.RemoveRange(
                 context.Pay_PayrollEmployees.Where(e => e.PayrollRunId == payrollRunId));
             await context.SaveChangesAsync(ct);
@@ -313,6 +326,18 @@ public class PayrollCalculationService
         });
 
         await context.SaveChangesAsync(ct);
+
+        // Best-effort — anomaly detection is purely advisory and must never
+        // stop a payroll run from being calculated. If ML.NET or a query in
+        // here throws, log it and let the calculation stand.
+        try
+        {
+            await _anomalyDetectionService.DetectAnomaliesAsync(payrollRunId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Anomaly detection failed for payroll run {PayrollRunId}", payrollRunId);
+        }
 
         return new PayrollRunCalculationSummary(eligibleEmployees.Count, negativeCount, totalNet);
     }

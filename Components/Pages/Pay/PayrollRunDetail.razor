@@ -132,6 +132,32 @@ else
                 </MudStack>
             </MudAlert>
         }
+
+        @{ var pendingAnomalies = _anomalies.Where(a => !a.IsAcknowledged).ToList(); }
+        @if (pendingAnomalies.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">AI ตรวจพบความผิดปกติ @pendingAnomalies.Count รายการ</MudText>
+                @foreach (var anomaly in pendingAnomalies)
+                {
+                    var empNo = anomaly.PayrollEmployeeId is long peid
+                        ? _employees.FirstOrDefault(e => e.Employee.Id == peid)?.Employee.EmpNo
+                        : null;
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-1">
+                        <span>
+                            <MudChip T="string" Size="Size.Small" Color="@AnomalySeverityColor(anomaly.Severity)" Class="mr-1">@anomaly.Severity</MudChip>
+                            @if (!string.IsNullOrEmpty(empNo))
+                            {
+                                <b>@empNo</b>
+                                @: —
+                            }
+                            @anomaly.Description
+                        </span>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">รับทราบ</MudButton>
+                    </MudStack>
+                }
+            </MudAlert>
+        }
     </MudPaper>
 
     <MudPaper Class="pa-4">
@@ -164,6 +190,11 @@ else
                     @if (context.Employee.IsNegativeNetPayFlag)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-1">ติดลบ</MudChip>
+                    }
+                    @{ var empAnomalyCount = _anomalies.Count(a => a.PayrollEmployeeId == context.Employee.Id && !a.IsAcknowledged); }
+                    @if (empAnomalyCount > 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">AI: @empAnomalyCount</MudChip>
                     }
                 </MudTd>
                 <MudTd>
@@ -240,6 +271,7 @@ else
     private bool _canGenerateDocuments;
     private bool _canGenerateGL;
     private PayslipGenerationResult? _payslipSummary;
+    private List<Pay_PayrollAnomaly> _anomalies = new();
     private Dictionary<long, long> _payslipIdByEmployeeId = new();
     private List<Pay_BankFileExportBatch> _bankFileBatches = new();
     private List<Pay_GLExportBatch> _glExportBatches = new();
@@ -303,6 +335,26 @@ else
             .Where(b => b.PayrollRunId == RunId)
             .OrderByDescending(b => b.GeneratedDate)
             .ToListAsync();
+
+        _anomalies = await context.Pay_PayrollAnomalies
+            .Where(a => a.PayrollRunId == RunId)
+            .OrderByDescending(a => a.Severity)
+            .ToListAsync();
+    }
+
+    private async Task AcknowledgeAnomalyAsync(long anomalyId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId);
+        if (anomaly is null) return;
+
+        anomaly.IsAcknowledged = true;
+        anomaly.AcknowledgedByUserId = await GetCurrentUserIdAsync();
+        anomaly.AcknowledgedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+
+        await LoadAsync();
+        Snackbar.Add("รับทราบแล้ว", Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()
@@ -422,6 +474,14 @@ else
         PayrollRunStatus.Posted => Color.Secondary,
         PayrollRunStatus.Paid => Color.Success,
         PayrollRunStatus.Cancelled => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch
+    {
+        PayrollAnomalySeverity.Info => Color.Info,
+        PayrollAnomalySeverity.Warning => Color.Warning,
+        PayrollAnomalySeverity.Critical => Color.Error,
         _ => Color.Default,
     };
 }

@@ -349,6 +349,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_TaxBracket> Pay_TaxBrackets { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
+    public virtual DbSet<Pay_PayrollAnomaly> Pay_PayrollAnomalies { get; set; }
     public virtual DbSet<Pay_Payslip> Pay_Payslips { get; set; }
     public virtual DbSet<Pay_BankFileExportBatch> Pay_BankFileExportBatches { get; set; }
     public virtual DbSet<Pay_BankFileExportLine> Pay_BankFileExportLines { get; set; }
@@ -1483,6 +1484,21 @@ public partial class HRMContext : DbContext
             // paths" error (Run already cascades to this table directly above)
             entity.HasOne(d => d.Pay_PayrollEmployee)
                 .WithMany(p => p.Pay_PayrollAuditLogs)
+                .HasForeignKey(d => d.PayrollEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PayrollAnomaly>(entity =>
+        {
+            entity.HasOne(d => d.Pay_PayrollRun)
+                .WithMany()
+                .HasForeignKey(d => d.PayrollRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // secondary path — Restrict avoids SQL Server's "multiple cascade
+            // paths" error (Run already cascades to this table directly above)
+            entity.HasOne(d => d.Pay_PayrollEmployee)
+                .WithMany()
                 .HasForeignKey(d => d.PayrollEmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });

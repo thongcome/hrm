@@ -100,3 +100,19 @@ public enum Pay_InsurancePlanType
     Accident = 2,
     Other = 9
 }
+
+public enum PayrollAnomalyType
+{
+    NewEmployeeOnboardingMismatch = 1,
+    NetPayAbnormalChange = 2,
+    NetPayNegativeOrZero = 3,
+    MissingStandardDeduction = 4,
+    PeriodTotalAbnormal = 5,
+}
+
+public enum PayrollAnomalySeverity
+{
+    Info = 0,
+    Warning = 1,
+    Critical = 2
+}

@@ -260,6 +260,7 @@ builder.Services.AddSingleton<PayrollAnalysisService>();
 builder.Services.AddScoped<ISocialSecurityRateProvider, HrucfsecurityRateProvider>();
 builder.Services.AddScoped<OvertimeEarningsCalculator>();
 builder.Services.AddScoped<LoanDeductionCalculator>();
+builder.Services.AddScoped<HRM.Services.Pay.PayrollAnomalyDetectionService>();
 builder.Services.AddScoped<HRM.Services.Pay.PayrollCalculationService>();
 builder.Services.AddScoped<PayrollWorkflowService>();
 builder.Services.AddSingleton<PrivateFileStorage>();

@@ -8,6 +8,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>รายละเอียดเงินเดือนพนักงาน</PageTitle>
@@ -57,6 +58,40 @@ else
         </MudTable>
     </MudPaper>
 
+    @if (_anomalies.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">ความผิดปกติที่ตรวจพบ (AI)</MudText>
+            @foreach (var anomaly in _anomalies)
+            {
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2" Class="mb-2">
+                    <div>
+                        <MudChip T="string" Size="Size.Small" Color="@AnomalySeverityColor(anomaly.Severity)" Class="mr-1">@anomaly.Severity</MudChip>
+                        @anomaly.Description
+                        @if (anomaly.DetectedValue is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">
+                                ค่าที่ตรวจพบ: @anomaly.DetectedValue.Value.ToString("N2")
+                                @if (anomaly.ReferenceValue is not null)
+                                {
+                                    <text> · ค่าอ้างอิง: @anomaly.ReferenceValue.Value.ToString("N2")</text>
+                                }
+                            </MudText>
+                        }
+                        @if (anomaly.IsAcknowledged)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">รับทราบแล้วเมื่อ @anomaly.AcknowledgedDate?.ToString("dd/MM/yyyy HH:mm")</MudText>
+                        }
+                    </div>
+                    @if (!anomaly.IsAcknowledged)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">รับทราบ</MudButton>
+                    }
+                </MudStack>
+            }
+        </MudPaper>
+    }
+
     @if (_taxDetailJson is not null)
     {
         <MudPaper Class="pa-4">
@@ -73,6 +108,7 @@ else
     private Pay_PayrollEmployee? _employee;
     private bool _forbidden;
     private List<Pay_PayrollLineItem> _lineItems = new();
+    private List<Pay_PayrollAnomaly> _anomalies = new();
     private string? _taxDetailJson;
 
     protected override async Task OnParametersSetAsync()
@@ -104,5 +140,36 @@ else
             .OrderByDescending(a => a.EventDate)
             .Select(a => a.DetailJson)
             .FirstOrDefaultAsync();
+
+        _anomalies = await context.Pay_PayrollAnomalies
+            .Where(a => a.PayrollEmployeeId == EmployeeId)
+            .OrderByDescending(a => a.Severity)
+            .ToListAsync();
     }
+
+    private async Task AcknowledgeAnomalyAsync(long anomalyId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId);
+        if (anomaly is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirstValue("sc_userid");
+
+        anomaly.IsAcknowledged = true;
+        anomaly.AcknowledgedByUserId = long.TryParse(idClaim, out var uid) ? uid : 0;
+        anomaly.AcknowledgedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+
+        await OnParametersSetAsync();
+        Snackbar.Add("รับทราบแล้ว", Severity.Success);
+    }
+
+    private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch
+    {
+        PayrollAnomalySeverity.Info => Color.Info,
+        PayrollAnomalySeverity.Warning => Color.Warning,
+        PayrollAnomalySeverity.Critical => Color.Error,
+        _ => Color.Default,
+    };
 }
