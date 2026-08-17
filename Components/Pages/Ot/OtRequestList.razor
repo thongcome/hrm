@@ -1,6 +1,7 @@
 @page "/ot-requests"
 @using HRM.Models
 @using HRM.Services.Workflow
+@using HRM.Services.Att.Calculators
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -79,14 +80,20 @@
     <MudText Typo="Typo.h6">ยื่นคำขอ OT ใหม่</MudText>
     <MudGrid Class="mt-1">
         <MudItem xs="12" sm="6">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="v => _selectedEmployee = v"
+            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync"
                 SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" />
         </MudItem>
-        <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่ OT" @bind-Date="_otDate" /></MudItem>
+        <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่ OT" Date="_otDate" DateChanged="OnOtDateChangedAsync" /></MudItem>
         <MudItem xs="12" sm="3"></MudItem>
         <MudItem xs="12" sm="3"><MudTimePicker Label="เวลาเริ่ม" @bind-Time="_startTime" /></MudItem>
         <MudItem xs="12" sm="3"><MudTimePicker Label="เวลาสิ้นสุด" @bind-Time="_endTime" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal?" @bind-Value="_otRate" Label="อัตรา OT (บาท/ชม., โดยประมาณ)" /></MudItem>
+        <MudItem xs="12" sm="3">
+            <MudNumericField T="decimal?" @bind-Value="_otRate" Label="อัตรา OT (บาท/ชม.)" />
+            @if (!string.IsNullOrEmpty(_rateSuggestionNote))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_rateSuggestionNote</MudText>
+            }
+        </MudItem>
         <MudItem xs="12"><MudTextField @bind-Value="_objective" Label="วัตถุประสงค์" /></MudItem>
         <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
         <MudItem xs="12">
@@ -112,6 +119,7 @@
     private decimal? _otRate = 100m;
     private string? _objective;
     private string? _remark;
+    private string? _rateSuggestionNote;
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,6 +157,56 @@
             query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
         return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
     }
+
+    private async Task OnEmployeeChangedAsync(Hremployee? employee)
+    {
+        _selectedEmployee = employee;
+        await RecomputeSuggestedRateAsync();
+    }
+
+    private async Task OnOtDateChangedAsync(DateTime? date)
+    {
+        _otDate = date;
+        await RecomputeSuggestedRateAsync();
+    }
+
+    // Auto-suggests the OT rate (บาท/ชม.) from the employee's monthly wage
+    // times the company's configured Att_OtRule multiplier for the day type
+    // the selected date falls on — replacing the old "HR types any number"
+    // flow. Still just a suggestion: HR can freely overtype _otRate
+    // afterwards, and this only recomputes on employee/date change so a
+    // manual override isn't clobbered by unrelated field edits.
+    private async Task RecomputeSuggestedRateAsync()
+    {
+        _rateSuggestionNote = null;
+        if (_selectedEmployee is null || _otDate is null || _selectedEmployee.SalaryAmt is not decimal salary || salary <= 0)
+            return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var companyId = _selectedEmployee.companyid;
+        var date = DateOnly.FromDateTime(_otDate.Value);
+        var isHoliday = await context.Lve_CompanyHolidays.AnyAsync(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate == date);
+        var dayType = OtRateCalculator.ClassifyDayType(date, isHoliday);
+
+        var rule = await context.Att_OtRules.FirstOrDefaultAsync(r => r.CompanyId == companyId && r.DayType == dayType && r.IsActive);
+        if (rule is null)
+        {
+            _rateSuggestionNote = $"ยังไม่ได้ตั้งค่าตัวคูณ OT สำหรับ{DayTypeLabel(dayType)} — ตั้งค่าได้ที่ /att/ot-rules";
+            return;
+        }
+
+        var hourlyWage = OtRateCalculator.CalculateHourlyWage(salary);
+        _otRate = Math.Round(hourlyWage * rule.Multiplier, 2);
+        _rateSuggestionNote = $"คำนวณอัตโนมัติ: {DayTypeLabel(dayType)} × {rule.Multiplier:0.0#} เท่า (ค่าจ้างรายชั่วโมง {hourlyWage:N2} บาท) — แก้ไขเองได้";
+    }
+
+    private static string DayTypeLabel(OtDayType t) => t switch
+    {
+        OtDayType.Workday => "วันทำงานปกติ",
+        OtDayType.Holiday => "วันหยุด",
+        OtDayType.RestDay => "วันหยุดประจำสัปดาห์",
+        _ => t.ToString(),
+    };
 
     private async Task CreateRequestAsync()
     {
@@ -193,6 +251,7 @@
         _selectedEmployee = null;
         _objective = null;
         _remark = null;
+        _rateSuggestionNote = null;
         await RefreshAsync();
     }
 

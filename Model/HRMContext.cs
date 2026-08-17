@@ -397,6 +397,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
     public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
     public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
+    public virtual DbSet<Pos_HeadcountBudget> Pos_HeadcountBudgets { get; set; }
     public virtual DbSet<Job_Family> Job_Families { get; set; }
     public virtual DbSet<Job_Level> Job_Levels { get; set; }
     public virtual DbSet<Comp_Category> Comp_Categories { get; set; }
@@ -488,6 +489,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Att_Project> Att_Projects { get; set; }
     public virtual DbSet<Att_TimesheetSubmission> Att_TimesheetSubmissions { get; set; }
     public virtual DbSet<Att_TimesheetEntry> Att_TimesheetEntries { get; set; }
+    public virtual DbSet<Att_OtRule> Att_OtRules { get; set; }
     public virtual DbSet<Org_OrganizationChangeRequest> Org_OrganizationChangeRequests { get; set; }
     public virtual DbSet<Perf_EvaluationPeriod> Perf_EvaluationPeriods { get; set; }
     public virtual DbSet<Perf_EvaluationType> Perf_EvaluationTypes { get; set; }

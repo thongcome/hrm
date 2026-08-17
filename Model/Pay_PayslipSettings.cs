@@ -80,6 +80,15 @@ public class Pay_PayslipSettings
     [StringLength(50)]
     public string? DefaultPasswordPart2 { get; set; }
 
+    // When true, PositionSlotAdmin.razor refuses to save a new (or
+    // reactivated) manpower-counting Pos_PositionSlot that would push a
+    // matching Pos_HeadcountBudget scope over its ApprovedCount. When false
+    // (default), the same over-budget condition only shows a warning — HR
+    // can still save. Off by default so turning the budget feature on
+    // (creating budget rows) never silently blocks anyone until a company
+    // explicitly opts into hard enforcement.
+    public bool BlockOverBudgetCreation { get; set; }
+
     public DateTime ModifiedDate { get; set; } = DateTime.Now;
     public long? ModifiedByUserId { get; set; }
 }

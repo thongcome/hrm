@@ -105,6 +105,16 @@
 
         <MudDivider Class="my-5" />
 
+        <MudText Typo="Typo.h6" Class="mb-2">งบประมาณอัตรากำลัง (Headcount Budget)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            ตั้งค่างบประมาณเองที่ /pos/headcount-budget — สวิตช์นี้ควบคุมว่าถ้าสร้างเลขที่อัตราใหม่แล้วเกินงบที่อนุมัติไว้ จะแค่เตือน (ปิด) หรือบล็อกไม่ให้บันทึก (เปิด)
+        </MudText>
+        <MudSwitch T="bool" @bind-Value="_settings.BlockOverBudgetCreation" Color="Color.Warning" Label="บล็อกการสร้างเลขที่อัตราที่เกินงบประมาณ" />
+        <br />
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveHeadcountBudgetSettingsAsync">บันทึกค่างบประมาณอัตรากำลัง</MudButton>
+
+        <MudDivider Class="my-5" />
+
         <MudText Typo="Typo.h6" Class="mb-2">รหัสผ่านเริ่มต้นสำหรับสร้าง/รีเซ็ตบัญชีผู้ใช้พนักงาน</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
             ใช้ตอนกด "สร้างบัญชีผู้ใช้" หรือ "รีเซ็ตรหัสผ่าน" ในหน้าจัดการพนักงาน — รหัสผ่านจริงคือค่าทั้งสองช่องต่อกันตรงๆ
@@ -350,6 +360,27 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกค่าทดลองงานเรียบร้อย", Severity.Success);
+    }
+
+    private async Task SaveHeadcountBudgetSettingsAsync()
+    {
+        _error = null;
+        if (_settings is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+        if (existing is null)
+        {
+            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            return;
+        }
+
+        existing.BlockOverBudgetCreation = _settings.BlockOverBudgetCreation;
+        existing.ModifiedDate = DateTime.Now;
+        existing.ModifiedByUserId = await GetCurrentUserIdAsync();
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกค่างบประมาณอัตรากำลังเรียบร้อย", Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()

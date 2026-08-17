@@ -285,6 +285,10 @@ builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
 builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 
+// ----- Pos_* module (Position / Headcount Budget) -----
+builder.Services.AddScoped<HRM.Services.Pos.HeadcountBudgetService>();
+// ----- end Pos_* module -----
+
 // ----- Perf_* module (Performance / KPI) -----
 builder.Services.AddScoped<HRM.Services.Perf.PerfAssignmentResolverService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfScoringService>();

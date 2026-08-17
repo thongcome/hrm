@@ -1,0 +1,228 @@
+@page "/pos/headcount-budget"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pos
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject HeadcountBudgetService BudgetService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>งบประมาณอัตรากำลัง</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1200px">
+    <MudText Typo="Typo.h5">งบประมาณอัตรากำลัง (Headcount Budget)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดจำนวนอัตราที่อนุมัติไว้ต่อขอบเขต (ทั้งบริษัท / หน่วยงาน / ตำแหน่ง) แล้วเทียบกับจำนวนเลขที่อัตราที่ "นับอัตรากำลัง" และใช้งานอยู่จริงในขณะนี้
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="3">
+            <MudNumericField T="int" Value="_fiscalYear" Label="ปีงบประมาณ" ValueChanged="OnFiscalYearChanged" />
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มรายการงบประมาณ" : "แก้ไขรายการงบประมาณ")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="com_organization" Label="หน่วยงาน (เว้นว่าง = ทั้งบริษัท)" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
+                SearchFunc="SearchOrganizationsAsync"
+                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (เว้นว่าง = ทุกตำแหน่งในขอบเขต)" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
+                SearchFunc="SearchExecTypesAsync"
+                ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_approvedCount" Label="จำนวนที่อนุมัติ" Min="0" /></MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งาน" />
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="หมายเหตุ" Lines="2" /></MudItem>
+        <MudItem xs="12">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                @if (_editingId is not null)
+                {
+                    <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                }
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudDivider Class="my-5" />
+
+    <MudText Typo="Typo.h6" Class="mb-2">การใช้งานจริงเทียบกับงบประมาณที่ตั้งไว้ — ปี @_fiscalYear</MudText>
+    <MudTable Items="_utilization" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ขอบเขต</MudTh>
+            <MudTh>อนุมัติ</MudTh>
+            <MudTh>ใช้จริง</MudTh>
+            <MudTh>คงเหลือ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ScopeLabel</MudTd>
+            <MudTd>@context.Budget.ApprovedCount</MudTd>
+            <MudTd>
+                <MudLink Href="@BuildSlotFilterUrl(context.Budget)">@context.UsedCount</MudLink>
+            </MudTd>
+            <MudTd>@context.RemainingCount</MudTd>
+            <MudTd>
+                @if (context.IsOverBudget)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">เกินงบ</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">ปกติ</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context.Budget))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีรายการงบประมาณสำหรับปีนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private int _fiscalYear = DateTime.Today.Year;
+    private List<HeadcountBudgetService.BudgetUtilization> _utilization = new();
+    private string? _error;
+
+    private long? _editingId;
+    private com_organization? _selectedOrg;
+    private Pos_ExecType? _selectedExecType;
+    private int _approvedCount;
+    private bool _isActive = true;
+    private string? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await RefreshAsync();
+    }
+
+    private async Task OnFiscalYearChanged(int value)
+    {
+        _fiscalYear = value;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _utilization = await BudgetService.GetUtilizationAsync(_companyId!, _fiscalYear);
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, term, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, term, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
+    }
+
+    private void StartEdit(Pos_HeadcountBudget budget)
+    {
+        _editingId = budget.Id;
+        _approvedCount = budget.ApprovedCount;
+        _isActive = budget.IsActive;
+        _note = budget.Note;
+        _selectedOrg = null;
+        _selectedExecType = null;
+        _ = LoadEditRefsAsync(budget);
+    }
+
+    private async Task LoadEditRefsAsync(Pos_HeadcountBudget budget)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (budget.OrganizationId is long orgId)
+            _selectedOrg = await context.com_organizations.FirstOrDefaultAsync(o => o.id == orgId);
+        if (budget.PosExecTypeId is long jobId)
+            _selectedExecType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == jobId);
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _selectedOrg = null;
+        _selectedExecType = null;
+        _approvedCount = 0;
+        _isActive = true;
+        _note = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_approvedCount < 0) { _error = "จำนวนที่อนุมัติต้องไม่ติดลบ"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingId is long id)
+        {
+            var existing = await context.Pos_HeadcountBudgets.FirstOrDefaultAsync(b => b.Id == id && b.CompanyId == _companyId);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.OrganizationId = _selectedOrg?.id;
+            existing.PosExecTypeId = _selectedExecType?.Id;
+            existing.ApprovedCount = _approvedCount;
+            existing.IsActive = _isActive;
+            existing.Note = _note;
+        }
+        else
+        {
+            context.Pos_HeadcountBudgets.Add(new Pos_HeadcountBudget
+            {
+                CompanyId = _companyId!,
+                FiscalYear = _fiscalYear,
+                OrganizationId = _selectedOrg?.id,
+                PosExecTypeId = _selectedExecType?.Id,
+                ApprovedCount = _approvedCount,
+                IsActive = _isActive,
+                Note = _note,
+                CreatedDate = DateTime.Now,
+            });
+        }
+        await context.SaveChangesAsync();
+
+        CancelEdit();
+        await RefreshAsync();
+    }
+
+    private string BuildSlotFilterUrl(Pos_HeadcountBudget budget) =>
+        budget.OrganizationId is long orgId ? $"/pos/position-slots?orgId={orgId}" : "/pos/position-slots";
+}

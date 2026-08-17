@@ -56,3 +56,16 @@ public enum Att_TimesheetStatus
     Approved = 3,
     Rejected = 4
 }
+
+// Classifies the calendar date an OT request falls on, for looking up the
+// legally-mandated premium multiplier (พ.ร.บ.คุ้มครองแรงงาน มาตรา 61-63) in
+// Att_OtRule. Holiday takes priority over RestDay if a company's weekly rest
+// day happens to fall on a configured holiday. RestDay uses the same
+// Saturday/Sunday convention as LeaveDayCalculator — this codebase has no
+// per-company configurable weekly rest day yet.
+public enum OtDayType
+{
+    Workday = 1,
+    Holiday = 2,
+    RestDay = 3
+}

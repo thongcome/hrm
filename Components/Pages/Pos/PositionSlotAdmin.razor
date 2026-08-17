@@ -7,10 +7,13 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using HRM.Services.Pos
+@using HRM.Services.Pay
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject HeadcountBudgetService BudgetService
 @attribute [Authorize(Policy = "Menu:POS_ADMIN")]
 
 <PageTitle>เลขที่อัตรา</PageTitle>
@@ -81,6 +84,10 @@
         <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
     </MudGrid>
 
+    @if (!string.IsNullOrEmpty(_budgetWarning))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">@_budgetWarning</MudAlert>
+    }
     @if (!string.IsNullOrEmpty(_error))
     {
         <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
@@ -175,6 +182,7 @@
     private bool _isBoss;
     private bool _isActive = true;
     private string? _remark;
+    private string? _budgetWarning;
 
     protected override async Task OnInitializedAsync()
     {
@@ -346,12 +354,18 @@
 
         Pos_PositionSlot slot;
         long? oldHremployeeId;
+        bool wasCountedInThisScope;
 
         if (_editingId is long id)
         {
             var existing = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == _companyId);
             if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
             oldHremployeeId = existing.HremployeeId; // captured before overwrite below
+            // Was this slot already counting toward the SAME budget scope
+            // before this edit? If so, saving again isn't a "new" addition
+            // to headcount and shouldn't trigger the budget check.
+            wasCountedInThisScope = existing.IsActive && existing.IsManpower
+                && existing.OrganizationId == _selectedOrg?.id && existing.PosExecTypeId == _selectedExecType?.Id;
             existing.PosCode = _posCode;
             existing.PosExecTypeId = _selectedExecType?.Id;
             existing.OrganizationId = _selectedOrg?.id;
@@ -399,6 +413,30 @@
             };
             context.Pos_PositionSlots.Add(slot);
             oldHremployeeId = null; // brand-new row — no prior occupant
+            wasCountedInThisScope = false;
+        }
+
+        // Budget gate: only relevant when this save newly starts counting a
+        // slot toward headcount (IsActive && IsManpower) in a scope it
+        // wasn't already counted in — an unrelated field edit on an
+        // already-counted slot shouldn't re-trigger this.
+        _budgetWarning = null;
+        var willCountNow = _isActive && _isManpower;
+        if (willCountNow && !wasCountedInThisScope)
+        {
+            var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
+            var fiscalYear = HRM.Services.Pay.PayrollDashboardService.GetCurrentFiscalYear(
+                settings?.FiscalYearStartMonth ?? 1, DateOnly.FromDateTime(DateTime.Today));
+            var over = await BudgetService.CheckBeforeAddAsync(_companyId!, fiscalYear, _selectedOrg?.id, _selectedExecType?.Id);
+            if (over is not null && over.UsedCount + 1 > over.Budget.ApprovedCount)
+            {
+                if (settings?.BlockOverBudgetCreation == true)
+                {
+                    _error = $"เกินงบประมาณอัตรากำลังที่อนุมัติไว้สำหรับ {over.ScopeLabel} (อนุมัติ {over.Budget.ApprovedCount}, ใช้อยู่ {over.UsedCount}) — บริษัทนี้ตั้งค่าให้บล็อกการสร้างอัตราเกินงบ";
+                    return;
+                }
+                _budgetWarning = $"คำเตือน: เกินงบประมาณอัตรากำลังที่อนุมัติไว้สำหรับ {over.ScopeLabel} (อนุมัติ {over.Budget.ApprovedCount}, ใช้อยู่ {over.UsedCount} + รายการนี้) — ยังบันทึกได้ แต่ควรตรวจสอบกับ HR";
+            }
         }
 
         // Keep Hremployee.OrganizationId/orgcode/orgcodefull in sync with
@@ -407,7 +445,8 @@
         await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId);
 
         await context.SaveChangesAsync();
-        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        Snackbar.Add(_budgetWarning is null ? "บันทึกเรียบร้อย" : "บันทึกเรียบร้อย (เกินงบประมาณที่ตั้งไว้ ดูคำเตือนด้านบน)",
+            _budgetWarning is null ? Severity.Success : Severity.Warning);
         CancelEdit();
         await LoadAsync();
     }
