@@ -3,6 +3,7 @@
 using HRM.Services;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.JSInterop;
 using System.Text.Json;
 
 public class JsonLocalizationService : IJsonLocalizationService
@@ -11,28 +12,36 @@ public class JsonLocalizationService : IJsonLocalizationService
 
     private readonly IWebHostEnvironment _env;
     private readonly LanguageState _state;
+    private readonly IJSRuntime _js;
     private Dictionary<string, string> _translations = new();
     public string CurrentLanguage { get; private set; } = "th";
 
-    public JsonLocalizationService(IWebHostEnvironment env, LanguageState state, IHttpContextAccessor httpContextAccessor)
+    public JsonLocalizationService(IWebHostEnvironment env, LanguageState state, IHttpContextAccessor httpContextAccessor, IJSRuntime js)
     {
         _env = env;
         _state = state;
+        _js = js;
 
-        // Cookie set by Endpoints/LanguageEndpoints.cs — this only reads it
-        // once at circuit start, so the toggle in MainLayout.razor does a
-        // real navigation (not a live SignalR state change) to guarantee a
-        // fresh circuit picks up the new value from the start.
+        // Cookie set by SetLanguageAsync below (via JS interop, see there) —
+        // read once here at circuit start so a fresh circuit (new tab,
+        // refresh, re-login) opens in the language the user picked last time.
         var cookieValue = httpContextAccessor.HttpContext?.Request.Cookies[CookieName];
         CurrentLanguage = cookieValue == "en" ? "en" : "th";
         LoadLanguage(CurrentLanguage);
     }
 
+    // Live switch: updates state + re-renders every subscribed component in
+    // THIS circuit immediately (no page reload), and separately persists
+    // the choice as a real cookie via JS interop (document.cookie — a
+    // Blazor Server circuit can't set a Set-Cookie response header mid-
+    // circuit) so the NEXT circuit opens in the same language.
     public async Task SetLanguageAsync(string culture)
     {
+        culture = culture == "en" ? "en" : "th";
         CurrentLanguage = culture;
         LoadLanguage(culture);
-        await _state.NotifyAsync(); // ใช้ async version
+        await _js.InvokeVoidAsync("setLanguageCookie", CookieName, culture);
+        await _state.NotifyAsync();
     }
 
 

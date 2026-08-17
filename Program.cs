@@ -234,7 +234,13 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddMudServices();
 
 // Add localization service
-builder.Services.AddSingleton<LanguageState>();
+// Scoped, not Singleton: this is now the live-refresh event bus every
+// localized page subscribes to (see LocalizedComponentBase). A Singleton
+// here would mean one user toggling language fires StateHasChanged on
+// every OTHER connected user's circuit too — it was only safe as a
+// Singleton while the sole subscriber was the isolated Testlanguage.razor
+// demo page.
+builder.Services.AddScoped<LanguageState>();
 // Scoped, not Singleton: JsonLocalizationService reads the per-request
 // language cookie in its constructor (see the file itself), so a Singleton
 // registration would freeze CurrentLanguage at whichever user's cookie
@@ -459,7 +465,6 @@ app.MapPayrollFileEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
-app.MapLanguageEndpoints();
 app.MapEssFileEndpoints();
 app.MapExpenseFileEndpoints();
 app.MapWorkflowFileEndpoints();

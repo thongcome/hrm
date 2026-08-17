@@ -1,10 +1,11 @@
 @using System.Security.Claims
 @using HRM.Services
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject AuthenticationStateProvider AuthStateProvider
 @inject MenuStateService MenuService
 @inject JsonLocalizationService L
-@inject NavigationManager NavManager
+@inject LanguageState LangState
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 
@@ -28,7 +29,7 @@
             <MudText Typo="Typo.h6" Class="ml-3" Style="color:inherit;">HumanOk</MudText>
         </MudLink>
         <MudSpacer />
-        <MudButton Href="@LanguageToggleHref" Variant="Variant.Text" Color="Color.Inherit" Class="mr-2"
+        <MudButton OnClick="ToggleLanguageAsync" Variant="Variant.Text" Color="Color.Inherit" Class="mr-2"
             StartIcon="@Icons.Material.Filled.Language">@(L.CurrentLanguage == "th" ? "EN" : "TH")</MudButton>
         @if (_isAuthenticated)
         {
@@ -306,15 +307,16 @@
     private bool _hasEssAccess;
     private string _userName = "";
 
-    private string LanguageToggleHref
-    {
-        get
-        {
-            var target = L.CurrentLanguage == "th" ? "en" : "th";
-            var returnUrl = Uri.EscapeDataString(NavManager.ToBaseRelativePath(NavManager.Uri) is { Length: > 0 } path ? $"/{path}" : "/");
-            return $"/set-language?lang={target}&returnUrl={returnUrl}";
-        }
-    }
+    // MainLayout can't inherit LocalizedComponentBase (already inherits
+    // LayoutComponentBase — C# allows only one base class), so it wires the
+    // same subscribe/re-render/dispose directly here instead.
+    protected override void OnInitialized() => LangState.OnLanguageChangedAsync += HandleLanguageChangedAsync;
+
+    private Task HandleLanguageChangedAsync() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => LangState.OnLanguageChangedAsync -= HandleLanguageChangedAsync;
+
+    private Task ToggleLanguageAsync() => L.SetLanguageAsync(L.CurrentLanguage == "th" ? "en" : "th");
 
     protected override async Task OnInitializedAsync()
     {

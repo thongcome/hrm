@@ -1,32 +1,11 @@
-﻿@page "/testlanguage"
+@page "/testlanguage"
 @using HRM.Services
+@using HRM.Components.Shared
+@inherits LocalizedComponentBase
 
 @inject JsonLocalizationService L
-@inject LanguageState LangState
 
 <h3>@L.Translate("Hello")</h3>
 
-<button class="btn btn-primary" @onclick='() => ChangeLanguage("en")'>EN</button>
-<button class="btn btn-secondary" @onclick='() => ChangeLanguage("th")'>TH</button>
-
-@code {
-    protected override void OnInitialized()
-    {
-        LangState.OnLanguageChangedAsync += Refresh;
-    }
-
-    private Task Refresh()
-    {
-        return InvokeAsync(StateHasChanged); // ปลอดภัยบน UI Thread
-    }
-
-    public void Dispose()
-    {
-        LangState.OnLanguageChangedAsync -= Refresh;
-    }
-
-    private async Task ChangeLanguage(string lang)
-    {
-        await L.SetLanguageAsync(lang);
-    }
-}
+<button class="btn btn-primary" @onclick='() => L.SetLanguageAsync("en")'>EN</button>
+<button class="btn btn-secondary" @onclick='() => L.SetLanguageAsync("th")'>TH</button>
