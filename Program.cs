@@ -235,7 +235,15 @@ builder.Services.AddMudServices();
 
 // Add localization service
 builder.Services.AddSingleton<LanguageState>();
-builder.Services.AddSingleton<IJsonLocalizationService, JsonLocalizationService>();
+// Scoped, not Singleton: JsonLocalizationService reads the per-request
+// language cookie in its constructor (see the file itself), so a Singleton
+// registration would freeze CurrentLanguage at whichever user's cookie
+// happened to trigger the first resolution and then serve that same
+// language to every user on the server forever. Nothing currently injects
+// this interface (every component injects the concrete class, which was
+// already correctly Scoped), but fixing it now avoids that landmine for
+// whoever reaches for it next.
+builder.Services.AddScoped<IJsonLocalizationService, JsonLocalizationService>();
 
 //builder.Services.AddSingleton(smtpSettings);
 
