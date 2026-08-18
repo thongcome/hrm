@@ -11,39 +11,40 @@
 @inject GpsCheckinService CheckinService
 @inject IJSRuntime JsRuntime
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>เช็คอิน/เช็คเอาท์ด้วย GPS</PageTitle>
+<PageTitle>@L.Translate("CheckinPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("CheckinNotLinked")</MudAlert>
 }
 else if (!_allowed)
 {
-    <MudAlert Severity="Severity.Info" Class="ma-4">บริษัทของคุณยังไม่เปิดใช้งานการเช็คอินด้วย GPS</MudAlert>
+    <MudAlert Severity="Severity.Info" Class="ma-4">@L.Translate("CheckinNotEnabled")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4" MaxWidth="600px">
-        <MudText Typo="Typo.h5">เช็คอิน/เช็คเอาท์ด้วย GPS</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("CheckinPageTitle")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            ต้องอยู่ในพื้นที่ที่บริษัทกำหนดจึงจะเช็คอินสำเร็จ — ระบบจะขออนุญาตเข้าถึงตำแหน่งของคุณ
+            @L.Translate("CheckinDesc")
         </MudText>
 
         <MudDivider Class="my-4" />
 
         @if (_todaysPunches.Count > 0)
         {
-            <MudText Typo="Typo.subtitle2" Class="mb-2">รายการวันนี้</MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-2">@L.Translate("CheckinTodayList")</MudText>
             <MudTable Items="_todaysPunches" Dense="true" Class="mb-4">
                 <HeaderContent>
-                    <MudTh>เวลา</MudTh>
-                    <MudTh>ประเภท</MudTh>
+                    <MudTh>@L.Translate("ColTime")</MudTh>
+                    <MudTh>@L.Translate("ColType")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.PunchTime.ToString("HH:mm:ss")</MudTd>
-                    <MudTd>@(context.Direction == AttPunchDirection.In ? "เช็คอิน" : "เช็คเอาท์")</MudTd>
+                    <MudTd>@(context.Direction == AttPunchDirection.In ? L.Translate("CheckinDirectionIn") : L.Translate("CheckinDirectionOut"))</MudTd>
                 </RowTemplate>
             </MudTable>
         }
@@ -58,7 +59,7 @@ else
             @if (_busy)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                <MudText>กำลังระบุตำแหน่ง...</MudText>
+                <MudText>@L.Translate("CheckinLocating")</MudText>
             }
             else
             {
@@ -78,7 +79,7 @@ else
     private string? _message;
     private Severity _messageSeverity = Severity.Info;
     private List<Att_PunchLog> _todaysPunches = new();
-    private string _nextActionLabel = "เช็คอิน";
+    private string _nextActionLabel = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,8 +99,8 @@ else
     {
         _todaysPunches = await CheckinService.GetTodaysPunchesAsync(_employee!.id);
         _nextActionLabel = _todaysPunches.Count == 0 || _todaysPunches[^1].Direction == AttPunchDirection.Out
-            ? "เช็คอิน"
-            : "เช็คเอาท์";
+            ? L.Translate("CheckinDirectionIn")
+            : L.Translate("CheckinDirectionOut");
     }
 
     private async Task CheckinAsync()

@@ -9,13 +9,14 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject SurveyService SurveyService
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>แบบสำรวจของฉัน</PageTitle>
+<PageTitle>@L.Translate("SurveyListPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">แบบสำรวจที่รอคำตอบ</MudText>
-    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">คำตอบของคุณไม่ระบุตัวตน บริษัทจะเห็นเฉพาะภาพรวม ไม่สามารถทราบได้ว่าใครตอบว่าอะไร</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("SurveyListHeaderTitle")</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">@L.Translate("SurveyListAnonymousNote")</MudText>
 
     @if (!_loaded)
     {
@@ -23,11 +24,11 @@
     }
     else if (_employee is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("NoEmployeeLinkedError")</MudAlert>
     }
     else if (_campaigns.Count == 0)
     {
-        <MudText Typo="Typo.body2" Class="mt-4" Style="opacity:.7;">ไม่มีแบบสำรวจที่รอคำตอบในขณะนี้</MudText>
+        <MudText Typo="Typo.body2" Class="mt-4" Style="opacity:.7;">@L.Translate("SurveyListNone")</MudText>
     }
     else
     {
@@ -40,7 +41,7 @@
                             <MudText Typo="Typo.subtitle1">@c.Title</MudText>
                             <MudText Typo="Typo.body2" Style="opacity:.7;">@CampaignTypeLabel(c.CampaignType)</MudText>
                         </div>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/ess/surveys/{c.Id}")">ตอบแบบสำรวจ</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/ess/surveys/{c.Id}")">@L.Translate("SurveyAnswerButton")</MudButton>
                     </MudStack>
                 </MudPaper>
             }
@@ -65,11 +66,11 @@
         _loaded = true;
     }
 
-    private static string CampaignTypeLabel(Eng_CampaignType t) => t switch
+    private string CampaignTypeLabel(Eng_CampaignType t) => t switch
     {
-        Eng_CampaignType.Survey => "Survey (แบบสำรวจ)",
-        Eng_CampaignType.Pulse => "Pulse (สำรวจสั้น)",
-        Eng_CampaignType.ENPS => "eNPS (คะแนนแนะนำองค์กร)",
+        Eng_CampaignType.Survey => L.Translate("SurveyTypeSurvey"),
+        Eng_CampaignType.Pulse => L.Translate("SurveyTypePulse"),
+        Eng_CampaignType.ENPS => L.Translate("SurveyTypeENPS"),
         _ => "-",
     };
 }

@@ -11,12 +11,13 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject OkrGoalService GoalService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:OKR_ACCESS")]
 
-<PageTitle>OKR ของฉัน</PageTitle>
+<PageTitle>@L.Translate("OkrPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">OKR เป้าหมายของฉัน</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("OkrHeaderTitle")</MudText>
 
     @if (_loading)
     {
@@ -26,11 +27,11 @@
 
     @if (_employee is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("OkrNoEmployee")</MudAlert>
         return;
     }
 
-    <MudSelect T="long?" Value="_cycleId" ValueChanged="OnCycleChangedAsync" Label="วงจร OKR" Class="mt-3">
+    <MudSelect T="long?" Value="_cycleId" ValueChanged="OnCycleChangedAsync" Label="@L.Translate("FieldCycle")" Class="mt-3">
         @foreach (var c in _cycles)
         {
             <MudSelectItem Value="@((long?)c.Id)">@c.Name</MudSelectItem>
@@ -39,13 +40,13 @@
 
     @if (_cycleId is null)
     {
-        <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีวงจร OKR</MudAlert>
+        <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("OkrNoCycle")</MudAlert>
         return;
     }
 
     @if (_myObjectives.Count == 0)
     {
-        <MudAlert Severity="Severity.Info" Class="mt-3">คุณยังไม่มี Objective ในวงจรนี้ — ติดต่อ HR/หัวหน้างานเพื่อสร้างให้</MudAlert>
+        <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("OkrNoObjectives")</MudAlert>
     }
     else
     {
@@ -61,16 +62,16 @@
                     <MudText Typo="Typo.h6">@obj.Title</MudText>
                     <MudChip T="string" Size="Size.Small" Color="StatusColor(obj.Status)">@StatusLabel(obj.Status)</MudChip>
                 </MudStack>
-                <MudText Typo="Typo.caption">ความคืบหน้า: @(progress is null ? "ยังไม่ได้ตั้งตัวชี้วัด" : $"{progress.Value:0.#}%")</MudText>
+                <MudText Typo="Typo.caption">@L.Translate("OkrProgressLabel") @(progress is null ? L.Translate("OkrProgressNotSet") : $"{progress.Value:0.#}%")</MudText>
 
                 @if (obj.KeyResults.Count > 0)
                 {
                     <MudTable Items="obj.KeyResults" Dense="true" Class="mt-2">
                         <HeaderContent>
-                            <MudTh>Key Result</MudTh>
-                            <MudTh>ความคืบหน้า</MudTh>
-                            <MudTh>ค่าปัจจุบัน</MudTh>
-                            <MudTh>Check-in</MudTh>
+                            <MudTh>@L.Translate("OkrKeyResultCol")</MudTh>
+                            <MudTh>@L.Translate("OkrProgressCol")</MudTh>
+                            <MudTh>@L.Translate("OkrCurrentValueCol")</MudTh>
+                            <MudTh>@L.Translate("OkrCheckInCol")</MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             @{ var krProgress = OkrGoalService.CalculateKeyResultProgress(context); }
@@ -83,7 +84,7 @@
                             <MudTd>
                                 <MudStack Row="true" Spacing="1">
                                     <MudNumericField T="decimal" @bind-Value="_checkInValues[context.Id]" Style="max-width:100px;" />
-                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => CheckInAsync(context.Id))">บันทึก</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => CheckInAsync(context.Id))">@L.Translate("Save")</MudButton>
                                 </MudStack>
                             </MudTd>
                         </RowTemplate>
@@ -91,7 +92,7 @@
                 }
                 else
                 {
-                    <MudText Typo="Typo.body2" Class="mt-1">ยังไม่มี Key Result</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("OkrNoKeyResults")</MudText>
                 }
             </MudPaper>
         }
@@ -171,7 +172,7 @@
             var state = await AuthProvider.GetAuthenticationStateAsync();
             var actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
             await GoalService.RecordKeyResultCheckInAsync(keyResultId, _checkInValues.GetValueOrDefault(keyResultId), null, null, actorUserId, enforceOwnerHremployeeId: _employee.id);
-            Snackbar.Add("บันทึก check-in แล้ว", Severity.Success);
+            Snackbar.Add(L.Translate("OkrCheckInSuccess"), Severity.Success);
             await using var context = await DbFactory.CreateDbContextAsync();
             await LoadObjectivesAsync(context);
         }
@@ -181,13 +182,13 @@
         }
     }
 
-    private static string StatusLabel(OkrObjectiveStatus status) => status switch
+    private string StatusLabel(OkrObjectiveStatus status) => status switch
     {
-        OkrObjectiveStatus.NotStarted => "ยังไม่เริ่ม",
-        OkrObjectiveStatus.OnTrack => "ตามแผน",
-        OkrObjectiveStatus.AtRisk => "เสี่ยง",
-        OkrObjectiveStatus.Completed => "สำเร็จ",
-        OkrObjectiveStatus.Cancelled => "ยกเลิก",
+        OkrObjectiveStatus.NotStarted => L.Translate("OkrStatusNotStarted"),
+        OkrObjectiveStatus.OnTrack => L.Translate("OkrStatusOnTrack"),
+        OkrObjectiveStatus.AtRisk => L.Translate("OkrStatusAtRisk"),
+        OkrObjectiveStatus.Completed => L.Translate("OkrStatusCompleted"),
+        OkrObjectiveStatus.Cancelled => L.Translate("OkrStatusCancelled"),
         _ => status.ToString(),
     };
 

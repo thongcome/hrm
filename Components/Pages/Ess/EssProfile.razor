@@ -11,12 +11,13 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>ข้อมูลส่วนตัว</PageTitle>
+<PageTitle>@L.Translate("PersonalInfo")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">ข้อมูลส่วนตัว</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PersonalInfo")</MudText>
 
     @if (!_loaded)
     {
@@ -24,47 +25,47 @@
     }
     else if (_employee is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีนี้ กรุณาติดต่อฝ่ายบุคคล</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("NoEmployeeLinkedError")</MudAlert>
     }
     else
     {
-        <MudText Typo="Typo.h6" Class="mt-4">ข้อมูลทั่วไป (อ่านอย่างเดียว)</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4">@L.Translate("ProfileGeneralInfoTitle")</MudText>
         <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.EmpNo" Label="รหัสพนักงาน" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@($"{_employee.EmpName} {_employee.EmpSurname}")" Label="ชื่อ-นามสกุล" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.PosCode" Label="รหัสตำแหน่ง" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@(_employee.WorkDate?.ToString("dd/MM/yyyy"))" Label="วันที่เริ่มงาน" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.SalexpBank" Label="ธนาคาร (รหัส)" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@MaskAccountNo(_employee.SalexpAccid)" Label="เลขบัญชี" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.EmpNo" Label="@L.Translate("EmpNoLabel")" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@($"{_employee.EmpName} {_employee.EmpSurname}")" Label="@L.Translate("FieldFullName")" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.PosCode" Label="@L.Translate("FieldPosCode")" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(_employee.WorkDate?.ToString("dd/MM/yyyy"))" Label="@L.Translate("FieldWorkDate")" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@_employee.SalexpBank" Label="@L.Translate("FieldBankCode")" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@MaskAccountNo(_employee.SalexpAccid)" Label="@L.Translate("FieldAccountNo")" ReadOnly="true" /></MudItem>
         </MudGrid>
 
         @if (_registeredAddress is not null)
         {
-            <MudText Typo="Typo.h6" Class="mt-4">ที่อยู่ตามทะเบียนบ้าน (อ่านอย่างเดียว)</MudText>
+            <MudText Typo="Typo.h6" Class="mt-4">@L.Translate("ProfileRegisteredAddressTitle")</MudText>
             <MudText Typo="Typo.body2" Class="mt-1">@FormatAddress(_registeredAddress)</MudText>
         }
 
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.h6">ที่อยู่ปัจจุบัน / ติดต่อได้ (แก้ไขได้)</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("ProfileCurrentAddressTitle")</MudText>
         <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.no" Label="บ้านเลขที่/ที่อยู่" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.subdistrict" Label="ตำบล/แขวง" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.districtid" Label="อำเภอ/เขต" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.province" Label="จังหวัด" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.postcode" Label="รหัสไปรษณีย์" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.tel" Label="โทรศัพท์" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.mobileno" Label="มือถือ" /></MudItem>
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_currentAddress.email" Label="อีเมล" Required="true" InputType="InputType.Email"
-                HelperText="จำเป็นสำหรับรับเอกสาร (สลิปเงินเดือน ฯลฯ) ทางอีเมล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.no" Label="@L.Translate("FieldAddressNo")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.subdistrict" Label="@L.Translate("FieldSubdistrict")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.districtid" Label="@L.Translate("FieldDistrict")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.province" Label="@L.Translate("FieldProvince")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.postcode" Label="@L.Translate("FieldPostcode")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.tel" Label="@L.Translate("FieldPhone")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_currentAddress.mobileno" Label="@L.Translate("FieldMobile")" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_currentAddress.email" Label="@L.Translate("FieldEmail")" Required="true" InputType="InputType.Email"
+                HelperText="@L.Translate("ProfileEmailHelperText")" /></MudItem>
         </MudGrid>
 
-        <MudText Typo="Typo.h6" Class="mt-4">ผู้ติดต่อฉุกเฉิน (แก้ไขได้)</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4">@L.Translate("ProfileEmergencyContactTitle")</MudText>
         <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerName" Label="ชื่อ" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerSurname" Label="นามสกุล" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerPhone" Label="เบอร์โทร" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerAddress" Label="ที่อยู่ผู้ติดต่อฉุกเฉิน" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerName" Label="@L.Translate("FieldFirstName")" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerSurname" Label="@L.Translate("FieldLastName")" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerPhone" Label="@L.Translate("FieldPhoneNumber")" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_emerAddress" Label="@L.Translate("FieldEmergencyAddress")" /></MudItem>
         </MudGrid>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -73,7 +74,7 @@
         }
 
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync" Disabled="_saving">
-            บันทึกข้อมูลติดต่อ
+            @L.Translate("ProfileSaveButton")
         </MudButton>
     }
 </MudPaper>
@@ -126,12 +127,12 @@
 
         if (string.IsNullOrWhiteSpace(_currentAddress.email))
         {
-            _error = "กรุณากรอกอีเมล — จำเป็นสำหรับรับเอกสาร (สลิปเงินเดือน ฯลฯ) และการแจ้งเตือนจากบริษัท";
+            _error = L.Translate("ProfileEmailRequiredError");
             return;
         }
         if (!EmployeeEmailResolver.IsValidFormat(_currentAddress.email))
         {
-            _error = "รูปแบบอีเมลไม่ถูกต้อง";
+            _error = L.Translate("InvalidEmailFormatError");
             return;
         }
 
@@ -172,11 +173,11 @@
                 isSensitive: true);
 
             _currentAddress.id = addr.id;
-            Snackbar.Add("บันทึกข้อมูลติดต่อเรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("ProfileSaveSuccess"), Severity.Success);
         }
         catch (Exception ex)
         {
-            _error = "เกิดข้อผิดพลาดขณะบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง";
+            _error = L.Translate("ProfileSaveError");
             Serilog.Log.Error(ex, "ESS profile save failed for employee {Id}", _employee.id);
         }
         finally

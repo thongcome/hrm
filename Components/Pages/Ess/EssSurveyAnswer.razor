@@ -11,9 +11,10 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>ตอบแบบสำรวจ</PageTitle>
+<PageTitle>@L.Translate("SurveyAnswerPageTitle")</PageTitle>
 
 @if (!_loaded)
 {
@@ -23,15 +24,15 @@
 
 @if (_campaign is null)
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบแบบสำรวจนี้ หรือปิดรับคำตอบแล้ว</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("SurveyNotFoundOrClosed")</MudAlert>
     return;
 }
 
 @if (_submitted)
 {
     <MudPaper Class="pa-4 ma-4">
-        <MudAlert Severity="Severity.Success">ขอบคุณสำหรับคำตอบของคุณ — คำตอบถูกบันทึกแบบไม่ระบุตัวตน</MudAlert>
-        <MudButton Href="/ess/surveys" Variant="Variant.Text" Class="mt-2">กลับไปรายการแบบสำรวจ</MudButton>
+        <MudAlert Severity="Severity.Success">@L.Translate("SurveyThankYou")</MudAlert>
+        <MudButton Href="/ess/surveys" Variant="Variant.Text" Class="mt-2">@L.Translate("SurveyBackToList")</MudButton>
     </MudPaper>
     return;
 }
@@ -42,14 +43,14 @@
     {
         <MudText Typo="Typo.body2" Class="mt-1">@_campaign.Description</MudText>
     }
-    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">คำตอบของคุณไม่ระบุตัวตน — ไม่มีการบันทึกว่าคำตอบนี้เป็นของใคร</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">@L.Translate("SurveyAnonymousNote")</MudText>
 
     @if (_campaign.CampaignType == Eng_CampaignType.ENPS)
     {
         <MudDivider Class="my-4" />
-        <MudText Typo="Typo.subtitle1">คุณจะแนะนำให้เพื่อนหรือคนรู้จักมาทำงานที่นี่มากน้อยเพียงใด? (0 = ไม่แนะนำเลย, 10 = แนะนำอย่างยิ่ง)</MudText>
+        <MudText Typo="Typo.subtitle1">@L.Translate("EnpsQuestionText")</MudText>
         <MudSlider T="int" @bind-Value="_npsScore" Min="0" Max="10" Step="1" ValueLabel="true" Class="mt-4" />
-        <MudText Typo="Typo.body2">คะแนนที่เลือก: @_npsScore</MudText>
+        <MudText Typo="Typo.body2">@string.Format(L.Translate("EnpsScoreSelectedTemplate"), _npsScore)</MudText>
     }
 
     <MudDivider Class="my-4" />
@@ -66,8 +67,8 @@
             else if (q.QuestionType == Eng_QuestionType.YesNo)
             {
                 <MudRadioGroup T="bool?" Value="@GetYesNo(q.Id)" ValueChanged="@(v => SetYesNo(q.Id, v))">
-                    <MudRadio T="bool?" Value="true">ใช่</MudRadio>
-                    <MudRadio T="bool?" Value="false">ไม่ใช่</MudRadio>
+                    <MudRadio T="bool?" Value="true">@L.Translate("YesLabel")</MudRadio>
+                    <MudRadio T="bool?" Value="false">@L.Translate("NoLabel")</MudRadio>
                 </MudRadioGroup>
             }
             else if (q.QuestionType == Eng_QuestionType.MultipleChoice)
@@ -81,7 +82,7 @@
             }
             else if (q.QuestionType == Eng_QuestionType.Text)
             {
-                <MudTextField T="string" Value="@GetText(q.Id)" ValueChanged="@(v => SetText(q.Id, v))" Lines="3" Placeholder="พิมพ์คำตอบของคุณ..." />
+                <MudTextField T="string" Value="@GetText(q.Id)" ValueChanged="@(v => SetText(q.Id, v))" Lines="3" Placeholder="@L.Translate("SurveyTextPlaceholder")" />
             }
         </MudPaper>
     }
@@ -91,7 +92,7 @@
         <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
     }
 
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Class="mt-3">ส่งคำตอบ</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Class="mt-3">@L.Translate("SubmitAnswerButton")</MudButton>
 </MudPaper>
 
 @code {
@@ -169,7 +170,7 @@
             || !string.IsNullOrWhiteSpace(a.Choice) || !string.IsNullOrWhiteSpace(a.Text));
         if (!hasAnyAnswer && _campaign!.CampaignType != Eng_CampaignType.ENPS)
         {
-            _error = "กรุณาตอบอย่างน้อย 1 คำถามก่อนส่ง";
+            _error = L.Translate("SurveyAnswerRequiredError");
             return;
         }
 

@@ -10,30 +10,31 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject GrievanceService GrievanceService
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>เรื่องร้องเรียนของฉัน</PageTitle>
+<PageTitle>@L.Translate("GrievanceListPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-        <MudText Typo="Typo.h5">เรื่องร้องเรียนของฉัน</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Nav.NavigateTo("/ess/grievance/new"))">แจ้งเรื่องใหม่</MudButton>
+        <MudText Typo="Typo.h5">@L.Translate("GrievanceListPageTitle")</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Nav.NavigateTo("/ess/grievance/new"))">@L.Translate("GrievanceNewButton")</MudButton>
     </MudStack>
-    <MudText Typo="Typo.body2" Class="mt-1">รายการนี้แสดงเฉพาะเรื่องที่แจ้งแบบระบุตัวตน — เรื่องที่แจ้งแบบไม่ระบุตัวตนจะไม่ปรากฏที่นี่ (ระบบไม่เก็บว่าเป็นใคร)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("GrievanceListSubtitle")</MudText>
 
     @if (_notFound)
     {
-        <MudAlert Severity="Severity.Warning" Class="mt-4">ไม่พบข้อมูลพนักงานของบัญชีนี้</MudAlert>
+        <MudAlert Severity="Severity.Warning" Class="mt-4">@L.Translate("GrievanceNoEmployee")</MudAlert>
     }
     else
     {
         <MudTable Items="_grievances" Dense="true" Hover="true" Class="mt-4">
             <HeaderContent>
-                <MudTh>เลขที่</MudTh>
-                <MudTh>หมวดหมู่</MudTh>
-                <MudTh>หัวข้อ</MudTh>
-                <MudTh>วันที่แจ้ง</MudTh>
-                <MudTh>สถานะ</MudTh>
+                <MudTh>@L.Translate("ColNo")</MudTh>
+                <MudTh>@L.Translate("ColCategory")</MudTh>
+                <MudTh>@L.Translate("ColSubject")</MudTh>
+                <MudTh>@L.Translate("ColDateFiled")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>#@context.Id</MudTd>
@@ -45,7 +46,7 @@
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText>ยังไม่มีเรื่องร้องเรียนที่แจ้งไว้</MudText>
+                <MudText>@L.Translate("GrievanceNoRecords")</MudText>
             </NoRecordsContent>
         </MudTable>
     }

@@ -11,19 +11,20 @@
 @inject GrievanceService GrievanceService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>แจ้งเรื่องร้องเรียน</PageTitle>
+<PageTitle>@L.Translate("GrievanceFormPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">แจ้งเรื่องร้องเรียน (Grievance)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("GrievanceFormTitle")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        เรื่องที่แจ้งจะถูกส่งตรงถึงฝ่ายบุคคลเท่านั้น หากเลือก "ไม่ระบุตัวตน" ระบบจะไม่บันทึกว่าเป็นใครเป็นผู้แจ้งเลย
+        @L.Translate("GrievanceFormDesc")
     </MudText>
 
     @if (_notFound)
     {
-        <MudAlert Severity="Severity.Warning" Class="mt-4">ไม่พบข้อมูลพนักงานของบัญชีนี้</MudAlert>
+        <MudAlert Severity="Severity.Warning" Class="mt-4">@L.Translate("GrievanceNoEmployee")</MudAlert>
     }
     else
     {
@@ -34,33 +35,33 @@
 
         <MudGrid Class="mt-3">
             <MudItem xs="12">
-                <MudSwitch @bind-Value="_isAnonymous" Label="ไม่ระบุตัวตน (Anonymous)" Color="Color.Warning" />
+                <MudSwitch @bind-Value="_isAnonymous" Label="@L.Translate("GrievanceAnonymousLabel")" Color="Color.Warning" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudSelect T="GrievanceCategory" @bind-Value="_category" Label="หมวดหมู่">
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Harassment">การล่วงละเมิด</MudSelectItem>
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Discrimination">การเลือกปฏิบัติ</MudSelectItem>
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.WorkingConditions">สภาพการทำงาน</MudSelectItem>
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Compensation">ค่าตอบแทน</MudSelectItem>
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Management">การบริหารจัดการ</MudSelectItem>
-                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Other">อื่นๆ</MudSelectItem>
+                <MudSelect T="GrievanceCategory" @bind-Value="_category" Label="@L.Translate("ColCategory")">
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Harassment">@L.Translate("GrievanceCatHarassment")</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Discrimination">@L.Translate("GrievanceCatDiscrimination")</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.WorkingConditions">@L.Translate("GrievanceCatWorkingConditions")</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Compensation">@L.Translate("GrievanceCatCompensation")</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Management">@L.Translate("GrievanceCatManagement")</MudSelectItem>
+                    <MudSelectItem T="GrievanceCategory" Value="GrievanceCategory.Other">@L.Translate("GrievanceCatOther")</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudDatePicker Date="_incidentDate" DateChanged="@(d => _incidentDate = d)" Label="วันที่เกิดเหตุ (ถ้าทราบ)" Editable="true" DateFormat="dd/MM/yyyy" />
+                <MudDatePicker Date="_incidentDate" DateChanged="@(d => _incidentDate = d)" Label="@L.Translate("GrievanceIncidentDateLabel")" Editable="true" DateFormat="dd/MM/yyyy" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_subject" Label="หัวข้อ" Required="true" />
+                <MudTextField @bind-Value="_subject" Label="@L.Translate("ColSubject")" Required="true" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_description" Label="รายละเอียด" Lines="6" Required="true" />
+                <MudTextField @bind-Value="_description" Label="@L.Translate("DescriptionLabel")" Lines="6" Required="true" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_involvedPersons" Label="บุคคลที่เกี่ยวข้อง (ถ้ามี)" />
+                <MudTextField @bind-Value="_involvedPersons" Label="@L.Translate("GrievanceInvolvedPersonsLabel")" />
             </MudItem>
         </MudGrid>
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">ส่งเรื่อง</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SubmitAsync">@L.Translate("SubmitGrievanceButton")</MudButton>
     }
 </MudPaper>
 
@@ -93,7 +94,7 @@
         {
             var id = await GrievanceService.SubmitAsync(_employee.id, _employee.companyid, _isAnonymous, _category,
                 _subject, _description, _incidentDate is null ? null : DateOnly.FromDateTime(_incidentDate.Value), _involvedPersons);
-            Snackbar.Add($"ส่งเรื่องร้องเรียนสำเร็จ (เลขที่ #{id})", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("GrievanceSubmitSuccessTemplate"), id), Severity.Success);
             Nav.NavigateTo(_isAnonymous ? "/ess" : "/ess/grievance/my");
         }
         catch (Exception ex)
