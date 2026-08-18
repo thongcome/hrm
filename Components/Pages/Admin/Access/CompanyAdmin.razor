@@ -1,6 +1,7 @@
 @page "/admin/system/companies"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Audit
 @using HRM.Services.Pay
 @using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
@@ -12,14 +13,18 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject PrivateFileStorage FileStorage
+@inject IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
 <PageTitle>ข้อมูลบริษัท (Company)</PageTitle>
 
-<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
-    <MudText Typo="Typo.h5">ข้อมูลบริษัท (Company)</MudText>
+<MudPaper Class="pa-4 mb-4" MaxWidth="1300px">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">ข้อมูลบริษัท (Company)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1">
-        แคตตาล็อกกลางของนิติบุคคล/บริษัทในระบบ — ชื่อ โลโก้ ข้อมูลจดทะเบียน และข้อมูลติดต่อ
+        แคตตาล็อกกลางของนิติบุคคล/บริษัทในระบบ — ทั่วไป กฎหมาย ที่ตั้ง และข้อมูลลูกค้า/การขายเพิ่ม (แถวนี้อาจเป็นบริษัทของเราเองหรือลูกค้าก็ได้)
     </MudText>
 
     <MudDivider Class="my-4" />
@@ -72,18 +77,50 @@
         </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลจดทะเบียน</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลจดทะเบียน / กฎหมาย</MudText>
     <MudGrid>
         <MudItem xs="12" sm="4"><MudTextField @bind-Value="_taxId" Label="เลขประจำตัวผู้เสียภาษี" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_businessTypeName" Label="ประเภทนิติบุคคล" MaxLength="100" HelperText="เช่น บริษัทจำกัด, ห้างหุ้นส่วนจำกัด" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_registeredDate" Label="วันที่จดทะเบียนนิติบุคคล" /></MudItem>
         <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_capitalRegister" Label="ทุนจดทะเบียน (บาท)" Format="N2" /></MudItem>
         <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_amountEmp" Label="จำนวนพนักงานโดยประมาณ" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_vatRegistered" Color="Color.Primary" Label="จดทะเบียนภาษีมูลค่าเพิ่ม (VAT)" />
+        </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลติดต่อ</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ที่ตั้ง / ข้อมูลติดต่อ</MudText>
     <MudGrid>
         <MudItem xs="12"><MudTextField @bind-Value="_addressHq" Label="ที่อยู่สำนักงานใหญ่" Lines="2" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_tel" Label="โทรศัพท์" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_tel" Label="โทรศัพท์" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_mapUrl" Label="ลิงก์แผนที่ (Google Maps)" MaxLength="500" />
+            @if (!string.IsNullOrWhiteSpace(_mapUrl))
+            {
+                <MudLink Href="@_mapUrl" Target="_blank" Typo="Typo.caption">เปิดแผนที่ในแท็บใหม่</MudLink>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลลูกค้า / การขายเพิ่ม (CRM)</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="CustomerStatusType?" @bind-Value="_customerStatus" Label="สถานะลูกค้า" Clearable="true">
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Prospect">ผู้มุ่งหวัง (Prospect)</MudSelectItem>
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Active">ลูกค้าปัจจุบัน</MudSelectItem>
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Inactive">เลิกใช้งานแล้ว</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudAutocomplete T="sc_user" Label="ผู้ดูแลบัญชีลูกค้า (Account Owner)" @bind-Value="_accountOwner"
+                SearchFunc="SearchUsersAsync"
+                ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_nextRenewalDate" Label="วันครบกำหนดต่อสัญญา/ต่ออายุ" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_paymentTermsDays" Label="เทอมการชำระเงิน (วัน)" Min="0" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_salesNote" Label="บันทึกโอกาสขายเพิ่ม / ประวัติการติดต่อ" Lines="3" /></MudItem>
     </MudGrid>
 
     <MudText Typo="Typo.h6" Class="mb-2 mt-4">ระยะเวลา / หมายเหตุ</MudText>
@@ -105,6 +142,87 @@
             <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
         }
     </MudStack>
+
+    @if (_editingId is not null)
+    {
+        <MudDivider Class="my-5" />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">ผู้ติดต่อ (Contacts)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            บุคคลติดต่อของบริษัทนี้ — แยกตามประเภทเพื่อให้รู้ว่าเรื่องเก็บเงินหรือเสนอขายเพิ่มต้องติดต่อใคร
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Name" Label="ชื่อ-นามสกุล" Required="true" MaxLength="200" /></MudItem>
+            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Position" Label="ตำแหน่ง" MaxLength="150" /></MudItem>
+            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Department" Label="แผนก" MaxLength="150" /></MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="CompanyContactType" @bind-Value="_newContact.ContactType" Label="ประเภทผู้ติดต่อ">
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.General">ทั่วไป</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Billing">การเงิน/เก็บเงิน</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Technical">เทคนิค/ใช้งานระบบ</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.DecisionMaker">ผู้มีอำนาจตัดสินใจ</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_newContact.IsPrimary" Label="ผู้ติดต่อหลัก" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Phone" Label="โทรศัพท์" MaxLength="50" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Mobile" Label="มือถือ" MaxLength="50" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Note" Label="หมายเหตุ" MaxLength="1000" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_contactError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_contactError</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveContactAsync">
+                @(_editingContactId is null ? "เพิ่มผู้ติดต่อ" : "บันทึกการแก้ไข")
+            </MudButton>
+            @if (_editingContactId is not null)
+            {
+                <MudButton Variant="Variant.Text" OnClick="CancelContactEdit">ยกเลิก</MudButton>
+            }
+        </MudStack>
+
+        <MudTable Items="_contacts" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>ชื่อ</MudTh>
+                <MudTh>ตำแหน่ง/แผนก</MudTh>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>ติดต่อ</MudTh>
+                <MudTh>หลัก</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Position @(string.IsNullOrWhiteSpace(context.Department) ? "" : $"/ {context.Department}")</MudTd>
+                <MudTd>@ContactTypeLabel(context.ContactType)</MudTd>
+                <MudTd>@(context.Mobile ?? context.Phone ?? context.Email ?? "-")</MudTd>
+                <MudTd>@(context.IsPrimary ? "✓" : "")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                        @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditContact(context))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleContactActiveAsync(context))">
+                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        @if (_contacts.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">ยังไม่มีผู้ติดต่อ</MudText>
+        }
+    }
 
     <MudDivider Class="my-5" />
 
@@ -140,7 +258,7 @@
                             <MudChip T="string" Size="Size.Small" Color="@(item.isActive == true ? Color.Success : Color.Default)">
                                 @(item.isActive == true ? "ใช้งาน" : "ไม่ใช้งาน")
                             </MudChip>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(item))">แก้ไข</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(item))">แก้ไข</MudButton>
                         </MudStack>
                     </MudCardContent>
                 </MudCard>
@@ -182,6 +300,23 @@
     private DateTime? _endDate;
     private string? _remark;
 
+    // ----- legal/map/CRM fields added alongside Com_CompanyContact -----
+    private string? _businessTypeName;
+    private DateTime? _registeredDate;
+    private bool _vatRegistered;
+    private string? _mapUrl;
+    private CustomerStatusType? _customerStatus;
+    private sc_user? _accountOwner;
+    private DateTime? _nextRenewalDate;
+    private string? _salesNote;
+    private int? _paymentTermsDays;
+
+    // ----- contacts child list -----
+    private List<Com_CompanyContact> _contacts = new();
+    private Com_CompanyContact _newContact = new();
+    private long? _editingContactId;
+    private string? _contactError;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
@@ -202,7 +337,20 @@
         await LoadAsync();
     }
 
-    private void StartEdit(com_company item)
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.sc_users.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(u => u.loginname.Contains(search)
+                || u.firstname.Contains(search)
+                || u.lastname.Contains(search));
+        }
+        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private async Task StartEditAsync(com_company item)
     {
         _editingId = item.id;
         _logoPath = item.logp_path;
@@ -224,8 +372,33 @@
         _startDate = item.startdate;
         _endDate = item.enddate;
         _remark = item.remark;
+
+        _businessTypeName = item.BusinessTypeName;
+        _registeredDate = item.RegisteredDate?.ToDateTime(TimeOnly.MinValue);
+        _vatRegistered = item.VatRegistered;
+        _mapUrl = item.MapUrl;
+        _customerStatus = item.CustomerStatus;
+        _nextRenewalDate = item.NextRenewalDate?.ToDateTime(TimeOnly.MinValue);
+        _salesNote = item.SalesNote;
+        _paymentTermsDays = item.PaymentTermsDays;
+
         _error = null;
         _logoError = null;
+        _contactError = null;
+        CancelContactEdit();
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _accountOwner = item.AccountOwnerUserId is long ownerId
+            ? await context.sc_users.FirstOrDefaultAsync(u => u.userid == ownerId)
+            : null;
+
+        _contacts = await context.Com_CompanyContacts
+            .Where(c => c.CompanyId == item.id)
+            .OrderByDescending(c => c.IsPrimary).ThenBy(c => c.Name)
+            .ToListAsync();
+
+        // Editing here surfaces contact names/phone/email — PDPA access log.
+        await AuditLogger.LogAccessAsync("com_company", item.id.ToString(), isSensitive: true, note: "view company profile incl. contacts");
     }
 
     private void CancelEdit()
@@ -249,6 +422,20 @@
         _startDate = null;
         _endDate = null;
         _remark = null;
+
+        _businessTypeName = null;
+        _registeredDate = null;
+        _vatRegistered = false;
+        _mapUrl = null;
+        _customerStatus = null;
+        _accountOwner = null;
+        _nextRenewalDate = null;
+        _salesNote = null;
+        _paymentTermsDays = null;
+
+        _contacts = new();
+        CancelContactEdit();
+
         _error = null;
         _logoError = null;
     }
@@ -266,6 +453,9 @@
         var codeTaken = await context.com_companies.AnyAsync(c =>
             c.code == _code && (_editingId == null || c.id != _editingId));
         if (codeTaken) { _error = "รหัสบริษัทนี้ถูกใช้แล้ว"; return; }
+
+        var registeredDate = _registeredDate is DateTime rd ? DateOnly.FromDateTime(rd) : (DateOnly?)null;
+        var nextRenewalDate = _nextRenewalDate is DateTime nrd ? DateOnly.FromDateTime(nrd) : (DateOnly?)null;
 
         if (_editingId is long id)
         {
@@ -289,6 +479,16 @@
             existing.enddate = _endDate;
             existing.remark = _remark;
             existing.moddate = DateTime.Now;
+
+            existing.BusinessTypeName = _businessTypeName;
+            existing.RegisteredDate = registeredDate;
+            existing.VatRegistered = _vatRegistered;
+            existing.MapUrl = _mapUrl;
+            existing.CustomerStatus = _customerStatus;
+            existing.AccountOwnerUserId = _accountOwner?.userid;
+            existing.NextRenewalDate = nextRenewalDate;
+            existing.SalesNote = _salesNote;
+            existing.PaymentTermsDays = _paymentTermsDays;
         }
         else
         {
@@ -312,6 +512,16 @@
                 enddate = _endDate,
                 remark = _remark,
                 moddate = DateTime.Now,
+
+                BusinessTypeName = _businessTypeName,
+                RegisteredDate = registeredDate,
+                VatRegistered = _vatRegistered,
+                MapUrl = _mapUrl,
+                CustomerStatus = _customerStatus,
+                AccountOwnerUserId = _accountOwner?.userid,
+                NextRenewalDate = nextRenewalDate,
+                SalesNote = _salesNote,
+                PaymentTermsDays = _paymentTermsDays,
             });
         }
 
@@ -358,5 +568,107 @@
         _logoCacheBust = DateTime.Now.Ticks.ToString();
         await LoadAsync();
         Snackbar.Add("อัปโหลดโลโก้เรียบร้อย", Severity.Success);
+    }
+
+    // ----- contacts -----
+
+    private static string ContactTypeLabel(CompanyContactType type) => type switch
+    {
+        CompanyContactType.Billing => "การเงิน/เก็บเงิน",
+        CompanyContactType.Technical => "เทคนิค/ใช้งานระบบ",
+        CompanyContactType.DecisionMaker => "ผู้มีอำนาจตัดสินใจ",
+        _ => "ทั่วไป",
+    };
+
+    private void StartEditContact(Com_CompanyContact contact)
+    {
+        _editingContactId = contact.Id;
+        _newContact = new Com_CompanyContact
+        {
+            Name = contact.Name,
+            Position = contact.Position,
+            Department = contact.Department,
+            Phone = contact.Phone,
+            Mobile = contact.Mobile,
+            Email = contact.Email,
+            ContactType = contact.ContactType,
+            IsPrimary = contact.IsPrimary,
+            Note = contact.Note,
+        };
+        _contactError = null;
+    }
+
+    private void CancelContactEdit()
+    {
+        _editingContactId = null;
+        _newContact = new();
+        _contactError = null;
+    }
+
+    private async Task SaveContactAsync()
+    {
+        _contactError = null;
+        if (_editingId is not long companyId) return;
+        if (string.IsNullOrWhiteSpace(_newContact.Name)) { _contactError = "กรุณาระบุชื่อผู้ติดต่อ"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingContactId is long contactId)
+        {
+            var existing = await context.Com_CompanyContacts.FirstOrDefaultAsync(c => c.Id == contactId && c.CompanyId == companyId);
+            if (existing is null) { _contactError = "ไม่พบข้อมูลผู้ติดต่อ"; return; }
+            existing.Name = _newContact.Name;
+            existing.Position = _newContact.Position;
+            existing.Department = _newContact.Department;
+            existing.Phone = _newContact.Phone;
+            existing.Mobile = _newContact.Mobile;
+            existing.Email = _newContact.Email;
+            existing.ContactType = _newContact.ContactType;
+            existing.IsPrimary = _newContact.IsPrimary;
+            existing.Note = _newContact.Note;
+        }
+        else
+        {
+            context.Com_CompanyContacts.Add(new Com_CompanyContact
+            {
+                CompanyId = companyId,
+                Name = _newContact.Name,
+                Position = _newContact.Position,
+                Department = _newContact.Department,
+                Phone = _newContact.Phone,
+                Mobile = _newContact.Mobile,
+                Email = _newContact.Email,
+                ContactType = _newContact.ContactType,
+                IsPrimary = _newContact.IsPrimary,
+                Note = _newContact.Note,
+                IsActive = true,
+                CreatedDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกผู้ติดต่อเรียบร้อย", Severity.Success);
+        CancelContactEdit();
+
+        _contacts = await context.Com_CompanyContacts
+            .Where(c => c.CompanyId == companyId)
+            .OrderByDescending(c => c.IsPrimary).ThenBy(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task ToggleContactActiveAsync(Com_CompanyContact contact)
+    {
+        if (_editingId is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Com_CompanyContacts.FirstOrDefaultAsync(c => c.Id == contact.Id && c.CompanyId == companyId);
+        if (existing is null) return;
+
+        existing.IsActive = !existing.IsActive;
+        await context.SaveChangesAsync();
+
+        _contacts = await context.Com_CompanyContacts
+            .Where(c => c.CompanyId == companyId)
+            .OrderByDescending(c => c.IsPrimary).ThenBy(c => c.Name)
+            .ToListAsync();
     }
 }

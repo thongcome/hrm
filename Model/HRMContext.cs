@@ -394,6 +394,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Com_SectionType> Com_SectionTypes { get; set; }
     public virtual DbSet<Com_SubSectionType> Com_SubSectionTypes { get; set; }
 
+    public virtual DbSet<Com_CompanyContact> Com_CompanyContacts { get; set; }
+
     public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
     public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
     public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
@@ -705,6 +707,14 @@ public partial class HRMContext : DbContext
         modelBuilder.Entity<com_company>(entity =>
         {
             entity.HasKey(e => e.id).HasName("PK_comp_company");
+        });
+
+        modelBuilder.Entity<Com_CompanyContact>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.Contacts)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<com_organization>(entity =>

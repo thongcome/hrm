@@ -74,6 +74,35 @@ public partial class com_company
     public string? remark { get; set; }
 
     [StringLength(50)]
-    
+
     public string? abbr { get; set; }
+
+    // ----- ข้อมูลตามกฎหมาย (legal/compliance) -----
+    [StringLength(100)]
+    public string? BusinessTypeName { get; set; }          // ประเภทนิติบุคคล เช่น "บริษัทจำกัด", "ห้างหุ้นส่วนจำกัด"
+
+    [Column(TypeName = "date")]
+    public DateOnly? RegisteredDate { get; set; }           // วันที่จดทะเบียนนิติบุคคล
+
+    public bool VatRegistered { get; set; }                 // จดทะเบียนภาษีมูลค่าเพิ่มหรือไม่ (ใช้ตอนออกใบกำกับภาษี)
+
+    // ----- แผนที่ (map) -----
+    [StringLength(500)]
+    public string? MapUrl { get; set; }                     // ลิงก์ Google Maps ไปยังที่ตั้ง
+
+    // ----- ข้อมูลลูกค้า/การขายเพิ่ม (CRM-lite — แถวนี้อาจเป็นบริษัทของเราเองหรือลูกค้าก็ได้) -----
+    public CustomerStatusType? CustomerStatus { get; set; }  // ผู้มุ่งหวัง/ลูกค้าปัจจุบัน/เลิกใช้งานแล้ว
+
+    public long? AccountOwnerUserId { get; set; }            // soft-link -> sc_user.userid, ผู้ดูแลบัญชีลูกค้ารายนี้
+
+    [Column(TypeName = "date")]
+    public DateOnly? NextRenewalDate { get; set; }           // วันครบกำหนดต่อสัญญา/ต่ออายุ
+
+    [Column(TypeName = "nvarchar(max)")]
+    public string? SalesNote { get; set; }                   // บันทึกโอกาสขายเพิ่ม/ประวัติการติดต่อ
+
+    // ----- การเก็บเงิน (billing) -----
+    public int? PaymentTermsDays { get; set; }               // เทอมการชำระเงิน (วัน) เช่น 30
+
+    public virtual ICollection<Com_CompanyContact> Contacts { get; set; } = new List<Com_CompanyContact>();
 }
