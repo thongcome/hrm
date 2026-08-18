@@ -534,6 +534,10 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Km_ArticleComment> Km_ArticleComments { get; set; }
     public virtual DbSet<Km_ExpertProfile> Km_ExpertProfiles { get; set; }
     // ----- end Km_* module -----
+
+    // ----- System-wide UI settings -----
+    public virtual DbSet<SystemLanguageSettings> SystemLanguageSettingsList { get; set; }
+    // ----- end System-wide UI settings -----
     // ----- end Pay_* module -----
 
     // No hardcoded connection-string fallback here on purpose — this

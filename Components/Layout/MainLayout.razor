@@ -29,8 +29,16 @@
             <MudText Typo="Typo.h6" Class="ml-3" Style="color:inherit;">HumanOk</MudText>
         </MudLink>
         <MudSpacer />
-        <MudButton OnClick="ToggleLanguageAsync" Variant="Variant.Text" Color="Color.Inherit" Class="mr-2"
-            StartIcon="@Icons.Material.Filled.Language">@(L.CurrentLanguage == "th" ? "EN" : "TH")</MudButton>
+        @if (L.AvailableLanguages.Count > 1)
+        {
+            <MudMenu Icon="@Icons.Material.Filled.Language" Color="Color.Inherit" Class="mr-2"
+                Label="@LanguageCatalog.AllLabels.GetValueOrDefault(L.CurrentLanguage, L.CurrentLanguage)">
+                @foreach (var code in L.AvailableLanguages)
+                {
+                    <MudMenuItem OnClick="@(() => L.SetLanguageAsync(code))">@LanguageCatalog.AllLabels.GetValueOrDefault(code, code)</MudMenuItem>
+                }
+            </MudMenu>
+        }
         @if (_isAuthenticated)
         {
             <MudText Typo="Typo.body2" Class="mr-3" Style="opacity:.85;">@_userName</MudText>
@@ -275,6 +283,7 @@
                 <MudNavLink Href="/admin/system/users" Icon="@Icons.Material.Filled.ManageAccounts">จัดการผู้ใช้</MudNavLink>
                 <MudNavLink Href="/admin/system/permissions" Icon="@Icons.Material.Filled.Security">จัดการสิทธิ์การใช้ระบบ</MudNavLink>
                 <MudNavLink Href="/admin/system/document-types" Icon="@Icons.Material.Filled.Description">ประเภทเอกสาร (Document Types)</MudNavLink>
+                <MudNavLink Href="/admin/system/languages" Icon="@Icons.Material.Filled.Language">ตั้งค่าภาษา (Language Settings)</MudNavLink>
                 <MudNavLink Href="/admin/workflow-design" Icon="@Icons.Material.Filled.DesignServices">WorkflowDesign (ออกแบบหน้าจอ)</MudNavLink>
             </MudNavGroup>
 
@@ -315,8 +324,6 @@
     private Task HandleLanguageChangedAsync() => InvokeAsync(StateHasChanged);
 
     public void Dispose() => LangState.OnLanguageChangedAsync -= HandleLanguageChangedAsync;
-
-    private Task ToggleLanguageAsync() => L.SetLanguageAsync(L.CurrentLanguage == "th" ? "en" : "th");
 
     protected override async Task OnInitializedAsync()
     {

@@ -1,0 +1,56 @@
+@page "/admin/system/languages"
+@using System.Security.Claims
+@using HRM.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject SystemLanguageSettingsService SettingsService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>ตั้งค่าภาษา (Language Settings)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ตั้งค่าภาษา (Language Settings)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-4">
+        เลือกภาษาที่จะให้เลือกได้จากปุ่มสลับภาษาบนแถบเมนู — ไทยเปิดใช้งานเสมอ (เป็นภาษาหลักของระบบ)
+        ส่วนภาษาอื่นเปิด/ปิดได้ตามต้องการ ค่าเริ่มต้นคือ ไทย + อังกฤษ
+    </MudText>
+
+    <MudStack Spacing="2">
+        <MudCheckBox T="bool" Value="true" ReadOnly="true" Label="ไทย (Thai) — เปิดใช้งานเสมอ" Color="Color.Primary" />
+        <MudCheckBox T="bool" @bind-Value="_enableEnglish" Label="อังกฤษ (English)" Color="Color.Primary" />
+        <MudCheckBox T="bool" @bind-Value="_enableChinese" Label="จีน (中文)" Color="Color.Primary" />
+        <MudCheckBox T="bool" @bind-Value="_enableJapanese" Label="ญี่ปุ่น (日本語)" Color="Color.Primary" />
+    </MudStack>
+
+    <MudAlert Severity="Severity.Info" Class="mt-4" Dense="true">
+        ผู้ใช้ที่เปิดหน้าเว็บค้างไว้อยู่แล้วจะเห็นการเปลี่ยนแปลงนี้หลังรีเฟรชหน้าหรือเข้าสู่ระบบใหม่ ไม่ใช่ทันทีเรียลไทม์
+    </MudAlert>
+
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+</MudPaper>
+
+@code {
+    private bool _enableEnglish = true;
+    private bool _enableChinese;
+    private bool _enableJapanese;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await SettingsService.GetSettingsAsync();
+        _enableEnglish = settings.EnableEnglish;
+        _enableChinese = settings.EnableChinese;
+        _enableJapanese = settings.EnableJapanese;
+    }
+
+    private async Task SaveAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        await SettingsService.SaveSettingsAsync(_enableEnglish, _enableChinese, _enableJapanese, actorUserId);
+        Snackbar.Add("บันทึกการตั้งค่าภาษาเรียบร้อย", Severity.Success);
+    }
+}

@@ -45,6 +45,7 @@ builder.Services.AddScoped<ActivityService>();
 builder.Services.AddScoped<GoalTaskService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<JsonLocalizationService>();
+builder.Services.AddScoped<SystemLanguageSettingsService>();
 // Single AuthenticationBuilder reference, reused below — a second,
 // separate AddAuthentication(...) call is exactly what caused the
 // scheme-conflict bug fixed earlier in this project (the last

@@ -5,6 +5,7 @@
         string Translate(string key);
         void SetLanguage(string culture);
         string CurrentLanguage { get; }
+        IReadOnlyList<string> AvailableLanguages { get; }
     }
 
 }
