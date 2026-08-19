@@ -14,36 +14,37 @@
 @inject IdpPlanService IdpPlanSvc
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
 
-<PageTitle>ผู้สืบทอด — @(_posExecTypeName ?? "")</PageTitle>
+<PageTitle>@L.Translate("SuccessorsPageTitlePrefix") @(_posExecTypeName ?? "")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบตำแหน่งสำคัญนี้</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("KeyPositionNotFoundError")</MudAlert>
 }
 else if (_keyPosition is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
-    <MudButton Class="mb-2" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/key-positions"))">← กลับ</MudButton>
+    <MudButton Class="mb-2" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/key-positions"))">← @L.Translate("BackButton")</MudButton>
 
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
             <MudText Typo="Typo.h5">@_posExecTypeName</MudText>
-            <MudChip T="string" Color="Color.Warning" Size="Size.Small">ข้อมูลเป็นความลับ</MudChip>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L.Translate("ConfidentialDataChip")</MudChip>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1">
-            Business Impact: @ImpactLabel(_keyPosition.BusinessImpact) &nbsp;|&nbsp; Replacement Difficulty: @DifficultyLabel(_keyPosition.ReplacementDifficulty)
+            @L.Translate("BusinessImpactLabel"): @ImpactLabel(_keyPosition.BusinessImpact) &nbsp;|&nbsp; @L.Translate("ReplacementDifficultyLabel"): @DifficultyLabel(_keyPosition.ReplacementDifficulty)
         </MudText>
     </MudPaper>
 
     @if (VisibleSuggestions.Count > 0)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.subtitle1" Class="mb-2">แนะนำจาก Talent Pool / 9-Box ศักยภาพสูง</MudText>
+            <MudText Typo="Typo.subtitle1" Class="mb-2">@L.Translate("TalentPoolSuggestionHeading")</MudText>
             <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
                 @foreach (var s in VisibleSuggestions)
                 {
@@ -57,16 +58,16 @@ else
     }
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">เสนอชื่อผู้สืบทอด</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("NominateSuccessorHeading")</MudText>
         <MudGrid>
             <MudItem xs="12" sm="4">
-                <MudAutocomplete T="Hremployee" Label="ค้นหาพนักงาน" @bind-Value="_selectedEmployee"
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("SearchEmployeeLabel")" @bind-Value="_selectedEmployee"
                     SearchFunc="SearchEmployeesAsync"
                     ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudSelect T="ReadinessLevel" @bind-Value="_readiness" Label="Readiness Level">
+                <MudSelect T="ReadinessLevel" @bind-Value="_readiness" Label="@L.Translate("ReadinessLevelLabel")">
                     @foreach (var v in Enum.GetValues<ReadinessLevel>())
                     {
                         <MudSelectItem Value="@v">@ReadinessLabel(v)</MudSelectItem>
@@ -74,11 +75,11 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (ถ้ามี)" />
+                <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
             </MudItem>
             <MudItem xs="12" sm="2" Class="d-flex align-center">
                 <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="NominateAsync" Disabled="@(_selectedEmployee is null)">
-                    เสนอชื่อ
+                    @L.Translate("NominateButton")
                 </MudButton>
             </MudItem>
         </MudGrid>
@@ -91,10 +92,10 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_nominations" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ผู้สืบทอด</MudTh>
-                <MudTh>Readiness</MudTh>
-                <MudTh>เสนอชื่อเมื่อ</MudTh>
-                <MudTh>หมายเหตุ</MudTh>
+                <MudTh>@L.Translate("SuccessorColLabel")</MudTh>
+                <MudTh>@L.Translate("ReadinessColLabel")</MudTh>
+                <MudTh>@L.Translate("NominatedOnColLabel")</MudTh>
+                <MudTh>@L.Translate("ColRemark")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -104,31 +105,31 @@ else
                 <MudTd>@(context.Note ?? "-")</MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleGapAsync(context))">
-                        @(_gapNominationId == context.Id ? "ซ่อน Gap Analysis" : "ดู Gap Analysis")
+                        @(_gapNominationId == context.Id ? L.Translate("HideGapAnalysisButton") : L.Translate("ViewGapAnalysisButton"))
                     </MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">ถอดออก</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
                 </MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีผู้ถูกเสนอชื่อสำหรับตำแหน่งนี้</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoNominationsYetMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 
     @if (_gapNominationId is not null)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">Gap Analysis — เทียบกับตำแหน่งเป้าหมาย (@_posExecTypeName)</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("GapAnalysisHeadingPrefix") (@_posExecTypeName)</MudText>
             @if (_gapRows.Count == 0)
             {
-                <MudAlert Severity="Severity.Info">ตำแหน่งนี้ยังไม่ได้กำหนดสมรรถนะที่ต้องการ (Job Profile) หรือผู้สืบทอดยังไม่ได้รับการประเมินสมรรถนะเลย</MudAlert>
+                <MudAlert Severity="Severity.Info">@L.Translate("NoJobProfileOrAssessmentMessage")</MudAlert>
             }
             else
             {
                 <MudTable Items="_gapRows" Dense="true" Hover="true">
                     <HeaderContent>
-                        <MudTh>สมรรถนะ</MudTh>
-                        <MudTh>ระดับที่ต้องการ</MudTh>
-                        <MudTh>ระดับปัจจุบัน (Effective)</MudTh>
-                        <MudTh>ช่องว่าง (Gap)</MudTh>
+                        <MudTh>@L.Translate("ColCompetency")</MudTh>
+                        <MudTh>@L.Translate("RequiredLevelColLabel")</MudTh>
+                        <MudTh>@L.Translate("CurrentEffectiveLevelColLabel")</MudTh>
+                        <MudTh>@L.Translate("GapColLabel")</MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -136,11 +137,11 @@ else
                             @context.CompetencyName
                             @if (context.IsCritical)
                             {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">จำเป็น</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@L.Translate("CriticalChip")</MudChip>
                             }
                         </MudTd>
                         <MudTd>@context.RequiredLevel</MudTd>
-                        <MudTd>@(context.EffectiveLevel?.ToString() ?? "ยังไม่ประเมิน")</MudTd>
+                        <MudTd>@(context.EffectiveLevel?.ToString() ?? L.Translate("NotYetAssessedText"))</MudTd>
                         <MudTd>
                             @if (context.Gap is int gap)
                             {
@@ -155,7 +156,7 @@ else
                             @if (context.Gap is int g && g > 0)
                             {
                                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => CreateIdpActionAsync(context))">
-                                    สร้างแผนพัฒนา (IDP)
+                                    @L.Translate("CreateIdpPlanButton")
                                 </MudButton>
                             }
                         </MudTd>
@@ -243,7 +244,7 @@ else
         try
         {
             await SuccService.NominateAsync(Id, _selectedEmployee.id, _readiness, userId, _note);
-            Snackbar.Add("เสนอชื่อผู้สืบทอดเรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("SuccessorNominatedSuccess"), Severity.Success);
             _selectedEmployee = null;
             _readiness = ReadinessLevel.DevelopmentNeeded;
             _note = null;
@@ -258,7 +259,7 @@ else
     private async Task RemoveAsync(long nominationId)
     {
         await SuccService.RemoveNominationAsync(nominationId);
-        Snackbar.Add("ถอดออกจากรายชื่อผู้สืบทอดแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("SuccessorRemovedSuccess"), Severity.Success);
         if (_gapNominationId == nominationId)
             _gapNominationId = null;
         await LoadNominationsAsync();
@@ -307,17 +308,17 @@ else
         }
         else
         {
-            Snackbar.Add($"{nomination.Name} มีแผนพัฒนาปี {year} อยู่แล้ว (สถานะ: {existingPlan.Status}) ไม่สามารถเพิ่มรายการอัตโนมัติได้ — กรุณาไปที่โมดูล IDP โดยตรง", Severity.Warning);
+            Snackbar.Add(string.Format(L.Translate("PlanAlreadyExistsWarningTemplate"), nomination.Name, year, existingPlan.Status), Severity.Warning);
             return;
         }
 
         try
         {
             await IdpPlanSvc.AddActionAsync(planId, gapRow.CompetencyId,
-                $"พัฒนา {gapRow.CompetencyName} เพื่อเตรียมความพร้อมสำหรับตำแหน่ง {_posExecTypeName}",
-                $"ระบุจาก Succession Planning — ต้องการระดับ {gapRow.RequiredLevel}, ปัจจุบัน {(gapRow.EffectiveLevel?.ToString() ?? "ยังไม่ประเมิน")} (ช่องว่าง {gapRow.Gap})",
+                string.Format(L.Translate("IdpActionTitleTemplate"), gapRow.CompetencyName, _posExecTypeName),
+                string.Format(L.Translate("IdpActionDescTemplate"), gapRow.RequiredLevel, gapRow.EffectiveLevel?.ToString() ?? L.Translate("NotYetAssessedText"), gapRow.Gap),
                 targetDate: null, userId);
-            Snackbar.Add("เพิ่มรายการเข้าแผนพัฒนา (IDP) เรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("IdpActionAddedSuccess"), Severity.Success);
         }
         catch (InvalidOperationException ex)
         {
@@ -325,28 +326,28 @@ else
         }
     }
 
-    private static string ImpactLabel(BusinessImpactLevel v) => v switch
+    private string ImpactLabel(BusinessImpactLevel v) => v switch
     {
-        BusinessImpactLevel.Low => "ต่ำ",
-        BusinessImpactLevel.Medium => "ปานกลาง",
-        BusinessImpactLevel.High => "สูง",
+        BusinessImpactLevel.Low => L.Translate("LevelLow"),
+        BusinessImpactLevel.Medium => L.Translate("LevelMedium"),
+        BusinessImpactLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 
-    private static string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
+    private string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
     {
-        ReplacementDifficultyLevel.Low => "ต่ำ",
-        ReplacementDifficultyLevel.Medium => "ปานกลาง",
-        ReplacementDifficultyLevel.High => "สูง",
+        ReplacementDifficultyLevel.Low => L.Translate("LevelLow"),
+        ReplacementDifficultyLevel.Medium => L.Translate("LevelMedium"),
+        ReplacementDifficultyLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 
-    private static string ReadinessLabel(ReadinessLevel v) => v switch
+    private string ReadinessLabel(ReadinessLevel v) => v switch
     {
-        ReadinessLevel.ReadyNow => "พร้อมทันที (Ready Now)",
-        ReadinessLevel.Ready1To2Years => "พร้อมใน 1-2 ปี",
-        ReadinessLevel.Ready3To5Years => "พร้อมใน 3-5 ปี",
-        ReadinessLevel.DevelopmentNeeded => "ต้องพัฒนาเพิ่มเติม",
+        ReadinessLevel.ReadyNow => L.Translate("ReadinessReadyNow"),
+        ReadinessLevel.Ready1To2Years => L.Translate("ReadinessReady1To2Years"),
+        ReadinessLevel.Ready3To5Years => L.Translate("ReadinessReady3To5Years"),
+        ReadinessLevel.DevelopmentNeeded => L.Translate("ReadinessDevelopmentNeeded"),
         _ => v.ToString(),
     };
 

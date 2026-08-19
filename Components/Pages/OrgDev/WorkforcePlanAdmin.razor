@@ -11,23 +11,24 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject WorkforcePlanService PlanService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
 
-<PageTitle>Workforce Planning — Organization Development</PageTitle>
+<PageTitle>@L.Translate("WorkforcePlanPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">แผนอัตรากำลัง (Workforce Planning)</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1 mb-3">ตั้งเป้าอัตรากำลังต่อหน่วยงานต่อปี เทียบกับอัตราจริงที่มีอยู่ (คำนวณสดจากเลขที่อัตรา)</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("WorkforcePlanHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("WorkforcePlanDesc")</MudText>
 
         <MudGrid>
             <MudItem xs="12" sm="3">
-                <MudNumericField T="int" Value="_selectedYear" Label="ปี" Min="2020" Max="2100" ValueChanged="OnYearChangedAsync" />
+                <MudNumericField T="int" Value="_selectedYear" Label="@L.Translate("YearFieldLabel")" Min="2020" Max="2100" ValueChanged="OnYearChangedAsync" />
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -35,11 +36,11 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_plans" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>หน่วยงาน</MudTh>
-                <MudTh>เป้าอัตรากำลัง</MudTh>
-                <MudTh>อัตรากำลังจริง</MudTh>
-                <MudTh>ตำแหน่งว่าง</MudTh>
-                <MudTh>ส่วนต่าง (Gap)</MudTh>
+                <MudTh>@L.Translate("OrganizationFieldLabel")</MudTh>
+                <MudTh>@L.Translate("ColTargetHeadcount")</MudTh>
+                <MudTh>@L.Translate("ColActualHeadcount")</MudTh>
+                <MudTh>@L.Translate("ColVacantPositions")</MudTh>
+                <MudTh>@L.Translate("ColGap")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -50,29 +51,29 @@ else
                 <MudTd>
                     <MudChip T="string" Size="Size.Small" Color="@(context.Gap > 0 ? Color.Warning : context.Gap < 0 ? Color.Info : Color.Success)">@context.Gap</MudChip>
                 </MudTd>
-                <MudTd><MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.PlanId))">ลบ</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.PlanId))">@L.Translate("DeleteButton")</MudButton></MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแผนอัตรากำลังสำหรับปีนี้</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoWorkforcePlanForYearMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">ตั้งเป้าอัตรากำลังใหม่ / แก้ไข</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("SetNewOrEditHeadcountHeading")</MudText>
         <MudGrid>
             <MudItem xs="12" sm="5">
-                <MudAutocomplete T="com_organization" Label="หน่วยงาน" @bind-Value="_selectedOrg"
+                <MudAutocomplete T="com_organization" Label="@L.Translate("OrganizationFieldLabel")" @bind-Value="_selectedOrg"
                     SearchFunc="SearchOrganizationsAsync"
                     ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudNumericField T="int" @bind-Value="_targetHeadcount" Label="เป้าอัตรากำลัง" Min="0" />
+                <MudNumericField T="int" @bind-Value="_targetHeadcount" Label="@L.Translate("ColTargetHeadcount")" Min="0" />
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (ถ้ามี)" />
+                <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
             </MudItem>
             <MudItem xs="12">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@(_selectedOrg is null)">บันทึก</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@(_selectedOrg is null)">@L.Translate("SaveButton")</MudButton>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -123,7 +124,7 @@ else
         var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
 
         await PlanService.SaveAsync(_companyId, _selectedOrg.id, _selectedYear, _targetHeadcount, _note, userId);
-        Snackbar.Add("บันทึกแผนอัตรากำลังแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("WorkforcePlanSavedSuccess"), Severity.Success);
         _selectedOrg = null;
         _targetHeadcount = 0;
         _note = null;
@@ -133,7 +134,7 @@ else
     private async Task RemoveAsync(long planId)
     {
         await PlanService.RemoveAsync(planId);
-        Snackbar.Add("ลบแผนอัตรากำลังแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("WorkforcePlanRemovedSuccess"), Severity.Success);
         await LoadAsync();
     }
 }

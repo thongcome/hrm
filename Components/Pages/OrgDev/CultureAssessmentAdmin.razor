@@ -8,43 +8,44 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject CultureAssessmentService AssessmentService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
 
-<PageTitle>Culture Assessment — Organization Development</PageTitle>
+<PageTitle>@L.Translate("CultureAssessmentPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">การประเมินวัฒนธรรมองค์กร (Culture Assessment)</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("CultureAssessmentHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1 mb-3">
-            บันทึกภาพรวมสุขภาพองค์กรตามช่วงเวลา (การประเมินโดย HR ไม่ใช่แบบสำรวจพนักงาน — สำหรับ pulse survey/eNPS แบบเต็มรูปแบบจะอยู่ในโมดูล Employee Engagement)
+            @L.Translate("CultureAssessmentDesc")
         </MudText>
 
         <MudGrid>
-            <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่ประเมิน" @bind-Date="_assessmentDate" /></MudItem>
-            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_communication" Label="การสื่อสาร (1-5)" Min="1" Max="5" /></MudItem>
-            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_trust" Label="ความไว้วางใจ (1-5)" Min="1" Max="5" /></MudItem>
-            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_collaboration" Label="การร่วมมือ (1-5)" Min="1" Max="5" /></MudItem>
-            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_leadership" Label="ภาวะผู้นำ (1-5)" Min="1" Max="5" /></MudItem>
-            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ" Lines="3" /></MudItem>
-            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึกการประเมิน</MudButton></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Label="@L.Translate("AssessmentDateLabel")" @bind-Date="_assessmentDate" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_communication" Label="@L.Translate("CommunicationScoreLabel")" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_trust" Label="@L.Translate("TrustScoreLabel")" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_collaboration" Label="@L.Translate("CollaborationScoreLabel")" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_leadership" Label="@L.Translate("LeadershipScoreLabel")" Min="1" Max="5" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="@L.Translate("ColRemark")" Lines="3" /></MudItem>
+            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveAssessmentButton")</MudButton></MudItem>
         </MudGrid>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการประเมิน</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("AssessmentHistoryHeading")</MudText>
         <MudTable Items="_history" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>วันที่</MudTh>
-                <MudTh>การสื่อสาร</MudTh>
-                <MudTh>ความไว้วางใจ</MudTh>
-                <MudTh>การร่วมมือ</MudTh>
-                <MudTh>ภาวะผู้นำ</MudTh>
-                <MudTh>เฉลี่ย</MudTh>
+                <MudTh>@L.Translate("ColDate")</MudTh>
+                <MudTh>@L.Translate("ColCommunication")</MudTh>
+                <MudTh>@L.Translate("ColTrust")</MudTh>
+                <MudTh>@L.Translate("ColCollaboration")</MudTh>
+                <MudTh>@L.Translate("ColLeadership")</MudTh>
+                <MudTh>@L.Translate("ColAverage")</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.AssessmentDate.ToString("dd/MM/yyyy")</MudTd>
@@ -54,7 +55,7 @@ else
                 <MudTd>@context.LeadershipScore</MudTd>
                 <MudTd>@(((context.CommunicationScore + context.TrustScore + context.CollaborationScore + context.LeadershipScore) / 4.0).ToString("0.0"))</MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการประเมิน</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoAssessmentsYetMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 }
@@ -95,7 +96,7 @@ else
         await AssessmentService.RecordAsync(_companyId, null, DateOnly.FromDateTime(_assessmentDate.Value),
             _communication, _trust, _collaboration, _leadership, _note, userId);
 
-        Snackbar.Add("บันทึกการประเมินแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("AssessmentSavedSuccess"), Severity.Success);
         _note = null;
         await LoadAsync();
     }

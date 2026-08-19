@@ -8,31 +8,32 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject SuccessionService SuccService
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
 
-<PageTitle>Bench Strength — Succession Planning</PageTitle>
+<PageTitle>@L.Translate("BenchStrengthPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
-    <MudButton Class="mb-2" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/key-positions"))">← กลับไปตำแหน่งสำคัญ</MudButton>
+    <MudButton Class="mb-2" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/key-positions"))">← @L.Translate("BackToKeyPositionsButton")</MudButton>
 
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h5">รายงาน Bench Strength</MudText>
-            <MudChip T="string" Color="Color.Warning" Size="Size.Small">ข้อมูลเป็นความลับ</MudChip>
+            <MudText Typo="Typo.h5">@L.Translate("BenchStrengthReportHeading")</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L.Translate("ConfidentialDataChip")</MudChip>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1 mb-3">
-            สรุปว่าตำแหน่งสำคัญไหนมีผู้สืบทอดพร้อมกี่คน — ตำแหน่งที่ไม่มีผู้สืบทอดเลยถือเป็นความเสี่ยง "Single Point of Failure"
+            @L.Translate("BenchStrengthDesc")
         </MudText>
 
         @if (_rows.Any(r => r.IsSinglePointOfFailure))
         {
             <MudAlert Severity="Severity.Error" Class="mb-3">
-                มี @_rows.Count(r => r.IsSinglePointOfFailure) ตำแหน่งที่ไม่มีผู้สืบทอดเลย (Single Point of Failure)
+                @string.Format(L.Translate("SpofAlertTemplate"), _rows.Count(r => r.IsSinglePointOfFailure))
             </MudAlert>
         }
     </MudPaper>
@@ -40,10 +41,10 @@ else
     @if (_rows.Count > 0)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">Risk Heat-Map — Business Impact × Replacement Difficulty</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("RiskHeatmapHeading")</MudText>
             <MudGrid>
                 <MudItem xs="1" Class="d-flex align-center justify-center">
-                    <MudText Typo="Typo.subtitle2" Style="writing-mode: vertical-rl; transform: rotate(180deg);">Business Impact</MudText>
+                    <MudText Typo="Typo.subtitle2" Style="writing-mode: vertical-rl; transform: rotate(180deg);">@L.Translate("BusinessImpactLabel")</MudText>
                 </MudItem>
                 <MudItem xs="11">
                     <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
@@ -57,18 +58,18 @@ else
                                 <MudPaper Class="pa-3" Style="@GetHeatCellStyle(impactTier, difficultyTier)" Outlined="true">
                                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                                         <MudText Typo="Typo.subtitle2">@GetHeatCellLabel(impactTier, difficultyTier)</MudText>
-                                        <MudChip T="string" Size="Size.Small">@cellRows.Count ตำแหน่ง</MudChip>
+                                        <MudChip T="string" Size="Size.Small">@string.Format(L.Translate("PositionsCountTemplate"), cellRows.Count)</MudChip>
                                     </MudStack>
                                     @if (cellRows.Any(r => r.IsSinglePointOfFailure))
                                     {
                                         <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="mt-1">
-                                            @cellRows.Count(r => r.IsSinglePointOfFailure) ไม่มีผู้สืบทอด
+                                            @string.Format(L.Translate("NoSuccessorsCountTemplate"), cellRows.Count(r => r.IsSinglePointOfFailure))
                                         </MudChip>
                                     }
                                     @if (cellRows.Count > 0)
                                     {
                                         <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleHeatCell(cellKey))" Class="mt-1">
-                                            @(isExpanded ? "ย่อ" : "ดูรายชื่อตำแหน่ง")
+                                            @(isExpanded ? L.Translate("CollapseButton") : L.Translate("ViewPositionListButton"))
                                         </MudButton>
                                     }
                                     @if (isExpanded)
@@ -78,7 +79,7 @@ else
                                             <MudPaper Class="pa-2 mt-1" Outlined="true">
                                                 <MudLink OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{row.KeyPositionId}"))">@row.PosExecTypeName</MudLink>
                                                 <MudText Typo="Typo.caption">
-                                                    พร้อมทันที @row.ReadyNowCount คน จากผู้สืบทอดทั้งหมด @row.TotalSuccessorCount คน
+                                                    @string.Format(L.Translate("ReadyNowOfTotalTemplate"), row.ReadyNowCount, row.TotalSuccessorCount)
                                                 </MudText>
                                             </MudPaper>
                                         }
@@ -87,7 +88,7 @@ else
                             }
                         }
                     </div>
-                    <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center" Style="display:block">Replacement Difficulty — ต่ำ → สูง</MudText>
+                    <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center" Style="display:block">@L.Translate("ReplacementDifficultyLowToHighLabel")</MudText>
                 </MudItem>
             </MudGrid>
         </MudPaper>
@@ -96,12 +97,12 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_rows" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ตำแหน่ง</MudTh>
-                <MudTh>Business Impact</MudTh>
-                <MudTh>Replacement Difficulty</MudTh>
-                <MudTh>พร้อมทันที (Ready Now)</MudTh>
-                <MudTh>ผู้สืบทอดทั้งหมด</MudTh>
-                <MudTh>ความเสี่ยง</MudTh>
+                <MudTh>@L.Translate("ColPosition")</MudTh>
+                <MudTh>@L.Translate("BusinessImpactLabel")</MudTh>
+                <MudTh>@L.Translate("ReplacementDifficultyLabel")</MudTh>
+                <MudTh>@L.Translate("ColReadyNow")</MudTh>
+                <MudTh>@L.Translate("ColTotalSuccessors")</MudTh>
+                <MudTh>@L.Translate("ColRisk")</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>
@@ -114,19 +115,19 @@ else
                 <MudTd>
                     @if (context.IsSinglePointOfFailure)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Error">Single Point of Failure</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">@L.Translate("SinglePointOfFailureChip")</MudChip>
                     }
                     else if (context.ReadyNowCount == 0)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">ยังไม่มีคนพร้อมทันที</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@L.Translate("NoReadyNowChip")</MudChip>
                     }
                     else
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success">ปกติ</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@L.Translate("NormalChip")</MudChip>
                     }
                 </MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตำแหน่งสำคัญที่กำหนดไว้</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoKeyPositionsDefinedMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 }
@@ -151,27 +152,27 @@ else
 
     private void ToggleHeatCell((int, int) cellKey) => _expandedCell = _expandedCell == cellKey ? null : cellKey;
 
-    private static string ImpactLabel(BusinessImpactLevel v) => v switch
+    private string ImpactLabel(BusinessImpactLevel v) => v switch
     {
-        BusinessImpactLevel.Low => "ต่ำ",
-        BusinessImpactLevel.Medium => "ปานกลาง",
-        BusinessImpactLevel.High => "สูง",
+        BusinessImpactLevel.Low => L.Translate("LevelLow"),
+        BusinessImpactLevel.Medium => L.Translate("LevelMedium"),
+        BusinessImpactLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 
-    private static string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
+    private string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
     {
-        ReplacementDifficultyLevel.Low => "ต่ำ",
-        ReplacementDifficultyLevel.Medium => "ปานกลาง",
-        ReplacementDifficultyLevel.High => "สูง",
+        ReplacementDifficultyLevel.Low => L.Translate("LevelLow"),
+        ReplacementDifficultyLevel.Medium => L.Translate("LevelMedium"),
+        ReplacementDifficultyLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 
-    private static string GetHeatCellLabel(int impactTier, int difficultyTier) => (impactTier, difficultyTier) switch
+    private string GetHeatCellLabel(int impactTier, int difficultyTier) => (impactTier, difficultyTier) switch
     {
-        (3, 3) => "วิกฤต (Impact สูง × หายาก)",
-        (1, 1) => "เสี่ยงต่ำสุด",
-        _ => $"Impact {ImpactLabel((BusinessImpactLevel)impactTier)} × Difficulty {DifficultyLabel((ReplacementDifficultyLevel)difficultyTier)}",
+        (3, 3) => L.Translate("CriticalHeatCellLabel"),
+        (1, 1) => L.Translate("LowestRiskHeatCellLabel"),
+        _ => string.Format(L.Translate("ImpactDifficultyCellTemplate"), ImpactLabel((BusinessImpactLevel)impactTier), DifficultyLabel((ReplacementDifficultyLevel)difficultyTier)),
     };
 
     private static string GetHeatCellStyle(int impactTier, int difficultyTier)

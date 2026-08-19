@@ -12,34 +12,35 @@
 @inject SuccessionService SuccService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:SUCC_ADMIN")]
 
-<PageTitle>ตำแหน่งสำคัญ — Succession Planning</PageTitle>
+<PageTitle>@L.Translate("KeyPositionPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h5">ตำแหน่งสำคัญ (Key Positions)</MudText>
-            <MudChip T="string" Color="Color.Warning" Size="Size.Small">ข้อมูลเป็นความลับ</MudChip>
+            <MudText Typo="Typo.h5">@L.Translate("KeyPositionHeading")</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L.Translate("ConfidentialDataChip")</MudChip>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1 mb-3">
-            ระบุตำแหน่ง (Job) ที่สำคัญต่อธุรกิจ พร้อมประเมิน Business Impact และ Replacement Difficulty — จำกัดสิทธิ์เฉพาะผู้ดูแลระบบ
+            @L.Translate("KeyPositionDesc")
         </MudText>
 
         <MudGrid>
             <MudItem xs="12" sm="5">
-                <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" @bind-Value="_selectedExecType"
+                <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("JobFieldLabel")" @bind-Value="_selectedExecType"
                     SearchFunc="SearchExecTypesAsync"
                     ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="6" sm="2">
-                <MudSelect T="BusinessImpactLevel" @bind-Value="_impact" Label="Business Impact">
+                <MudSelect T="BusinessImpactLevel" @bind-Value="_impact" Label="@L.Translate("BusinessImpactLabel")">
                     @foreach (var v in Enum.GetValues<BusinessImpactLevel>())
                     {
                         <MudSelectItem Value="@v">@ImpactLabel(v)</MudSelectItem>
@@ -47,7 +48,7 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" sm="2">
-                <MudSelect T="ReplacementDifficultyLevel" @bind-Value="_difficulty" Label="Replacement Difficulty">
+                <MudSelect T="ReplacementDifficultyLevel" @bind-Value="_difficulty" Label="@L.Translate("ReplacementDifficultyLabel")">
                     @foreach (var v in Enum.GetValues<ReplacementDifficultyLevel>())
                     {
                         <MudSelectItem Value="@v">@DifficultyLabel(v)</MudSelectItem>
@@ -55,11 +56,11 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (ถ้ามี)" />
+                <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
             </MudItem>
         </MudGrid>
         <MudButton Class="mt-2" Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Disabled="@(_selectedExecType is null)">
-            เพิ่มเป็นตำแหน่งสำคัญ
+            @L.Translate("AddAsKeyPositionButton")
         </MudButton>
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -70,11 +71,11 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_keyPositions" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ตำแหน่ง</MudTh>
-                <MudTh>Business Impact</MudTh>
-                <MudTh>Replacement Difficulty</MudTh>
-                <MudTh>ผู้สืบทอดที่เสนอชื่อ</MudTh>
-                <MudTh>หมายเหตุ</MudTh>
+                <MudTh>@L.Translate("ColPosition")</MudTh>
+                <MudTh>@L.Translate("BusinessImpactLabel")</MudTh>
+                <MudTh>@L.Translate("ReplacementDifficultyLabel")</MudTh>
+                <MudTh>@L.Translate("ColNominatedSuccessors")</MudTh>
+                <MudTh>@L.Translate("ColRemark")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -84,24 +85,24 @@ else
                 <MudTd>
                     @if (context.SuccessorCount == 0)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Error">ไม่มีเลย</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">@L.Translate("NoSuccessorsChip")</MudChip>
                     }
                     else
                     {
-                        @($"{context.SuccessorCount} คน")
+                        @string.Format(L.Translate("PeopleCountTemplate"), context.SuccessorCount)
                     }
                 </MudTd>
                 <MudTd>@(context.Note ?? "-")</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{context.Id}"))">จัดการผู้สืบทอด</MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">ถอดออก</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{context.Id}"))">@L.Translate("ManageSuccessorsButton")</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
                 </MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตำแหน่งสำคัญ</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoKeyPositionsYetMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 
-    <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/bench-strength"))">ดูรายงาน Bench Strength</MudButton>
+    <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/succession/bench-strength"))">@L.Translate("ViewBenchStrengthReportButton")</MudButton>
 }
 
 @code {
@@ -147,7 +148,7 @@ else
         try
         {
             await SuccService.AddKeyPositionAsync(_companyId, _selectedExecType.Id, _impact, _difficulty, _note, userId);
-            Snackbar.Add("เพิ่มตำแหน่งสำคัญเรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("KeyPositionAddedSuccess"), Severity.Success);
             _selectedExecType = null;
             _impact = BusinessImpactLevel.Medium;
             _difficulty = ReplacementDifficultyLevel.Medium;
@@ -163,15 +164,15 @@ else
     private async Task RemoveAsync(long id)
     {
         await SuccService.RemoveKeyPositionAsync(id);
-        Snackbar.Add("ถอดออกจากตำแหน่งสำคัญแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("KeyPositionRemovedSuccess"), Severity.Success);
         await LoadAsync();
     }
 
-    private static string ImpactLabel(BusinessImpactLevel v) => v switch
+    private string ImpactLabel(BusinessImpactLevel v) => v switch
     {
-        BusinessImpactLevel.Low => "ต่ำ",
-        BusinessImpactLevel.Medium => "ปานกลาง",
-        BusinessImpactLevel.High => "สูง",
+        BusinessImpactLevel.Low => L.Translate("LevelLow"),
+        BusinessImpactLevel.Medium => L.Translate("LevelMedium"),
+        BusinessImpactLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 
@@ -182,11 +183,11 @@ else
         _ => Color.Default,
     };
 
-    private static string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
+    private string DifficultyLabel(ReplacementDifficultyLevel v) => v switch
     {
-        ReplacementDifficultyLevel.Low => "ต่ำ",
-        ReplacementDifficultyLevel.Medium => "ปานกลาง",
-        ReplacementDifficultyLevel.High => "สูง",
+        ReplacementDifficultyLevel.Low => L.Translate("LevelLow"),
+        ReplacementDifficultyLevel.Medium => L.Translate("LevelMedium"),
+        ReplacementDifficultyLevel.High => L.Translate("LevelHigh"),
         _ => v.ToString(),
     };
 

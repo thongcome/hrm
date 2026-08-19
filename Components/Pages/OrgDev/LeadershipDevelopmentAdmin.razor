@@ -12,35 +12,36 @@
 @inject LeadershipDevelopmentService PlanService
 @inject TalentGridService TalentService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
 
-<PageTitle>Leadership Development — Organization Development</PageTitle>
+<PageTitle>@L.Translate("LeadershipDevPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">แผนพัฒนาผู้นำ (Leadership Development)</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1 mb-3">สร้างแผนพัฒนาให้พนักงานที่มีศักยภาพสูง (แนะนำจาก Talent Pool) พร้อมติดตามเป็นรายการ</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("LeadershipDevHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("LeadershipDevDesc")</MudText>
 
         <MudGrid>
             <MudItem xs="12" sm="4">
-                <MudAutocomplete T="Hremployee" Label="พนักงาน (แนะนำจาก Talent Pool)" @bind-Value="_selectedEmployee"
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeFromTalentPoolLabel")" @bind-Value="_selectedEmployee"
                     SearchFunc="SearchEmployeesAsync"
                     ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่งเป้าหมาย (ถ้ามี)" @bind-Value="_selectedTarget"
+                <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("TargetPositionOptionalLabel")" @bind-Value="_selectedTarget"
                     SearchFunc="SearchExecTypesAsync"
                     ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
             </MudItem>
             <MudItem xs="12" sm="4" Class="d-flex align-center">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreatePlanAsync" Disabled="@(_selectedEmployee is null)">สร้างแผน</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreatePlanAsync" Disabled="@(_selectedEmployee is null)">@L.Translate("CreatePlanButton")</MudButton>
             </MudItem>
         </MudGrid>
     </MudPaper>
@@ -48,10 +49,10 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_plans" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>พนักงาน</MudTh>
-                <MudTh>ตำแหน่งเป้าหมาย</MudTh>
-                <MudTh>สถานะ</MudTh>
-                <MudTh>ความคืบหน้า</MudTh>
+                <MudTh>@L.Translate("ColEmployee")</MudTh>
+                <MudTh>@L.Translate("ColTargetPosition")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
+                <MudTh>@L.Translate("ColProgress")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -66,40 +67,40 @@ else
                     </MudSelect>
                 </MudTd>
                 <MudTd>@context.CompletedMilestones / @context.TotalMilestones</MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleMilestonesAsync(context.PlanId))">@(_expandedPlanId == context.PlanId ? "ซ่อน" : "จัดการรายการ")</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleMilestonesAsync(context.PlanId))">@(_expandedPlanId == context.PlanId ? L.Translate("HideButton") : L.Translate("ManageItemsButton"))</MudButton></MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแผนพัฒนาผู้นำ</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoLeadershipPlansMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 
     @if (_expandedPlanId is not null)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">รายการพัฒนา</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("DevelopmentItemsHeading")</MudText>
             <MudTable Items="_milestones" Dense="true" Hover="true">
                 <HeaderContent>
-                    <MudTh>รายการ</MudTh>
-                    <MudTh>กำหนดเสร็จ</MudTh>
-                    <MudTh>สถานะ</MudTh>
+                    <MudTh>@L.Translate("ColItemLabel")</MudTh>
+                    <MudTh>@L.Translate("ColDueDate")</MudTh>
+                    <MudTh>@L.Translate("ColStatus")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Title</MudTd>
                     <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
-                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == OrgDevMilestoneStatus.Completed ? Color.Success : Color.Default)">@(context.Status == OrgDevMilestoneStatus.Completed ? "เสร็จแล้ว" : "รอดำเนินการ")</MudChip></MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == OrgDevMilestoneStatus.Completed ? Color.Success : Color.Default)">@(context.Status == OrgDevMilestoneStatus.Completed ? L.Translate("CompletedChip") : L.Translate("PendingChip"))</MudChip></MudTd>
                     <MudTd>
                         @if (context.Status == OrgDevMilestoneStatus.Pending)
                         {
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CompleteMilestoneAsync(context.Id))">เสร็จ</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CompleteMilestoneAsync(context.Id))">@L.Translate("CompleteButton")</MudButton>
                         }
                     </MudTd>
                 </RowTemplate>
-                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการ</MudText></NoRecordsContent>
+                <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoItemsYet")</MudText></NoRecordsContent>
             </MudTable>
 
             <MudGrid Class="mt-2">
-                <MudItem xs="12" sm="8"><MudTextField T="string" @bind-Value="_newMilestoneTitle" Label="รายการใหม่" /></MudItem>
-                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMilestoneAsync" Disabled="@string.IsNullOrWhiteSpace(_newMilestoneTitle)">เพิ่ม</MudButton></MudItem>
+                <MudItem xs="12" sm="8"><MudTextField T="string" @bind-Value="_newMilestoneTitle" Label="@L.Translate("NewItemLabel")" /></MudItem>
+                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMilestoneAsync" Disabled="@string.IsNullOrWhiteSpace(_newMilestoneTitle)">@L.Translate("AddButtonPlain")</MudButton></MudItem>
             </MudGrid>
         </MudPaper>
     }
@@ -161,7 +162,7 @@ else
         var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
 
         await PlanService.CreatePlanAsync(_selectedEmployee.id, _selectedTarget?.Id, null, null, null, userId);
-        Snackbar.Add("สร้างแผนพัฒนาผู้นำแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("LeadershipPlanCreatedSuccess"), Severity.Success);
         _selectedEmployee = null;
         _selectedTarget = null;
         await LoadAsync();
@@ -201,12 +202,12 @@ else
         await LoadAsync();
     }
 
-    private static string StatusLabel(LeadershipPlanStatus s) => s switch
+    private string StatusLabel(LeadershipPlanStatus s) => s switch
     {
-        LeadershipPlanStatus.NotStarted => "ยังไม่เริ่ม",
-        LeadershipPlanStatus.InProgress => "กำลังดำเนินการ",
-        LeadershipPlanStatus.Completed => "เสร็จสมบูรณ์",
-        LeadershipPlanStatus.OnHold => "พักไว้",
+        LeadershipPlanStatus.NotStarted => L.Translate("LeadershipStatusNotStarted"),
+        LeadershipPlanStatus.InProgress => L.Translate("LeadershipStatusInProgress"),
+        LeadershipPlanStatus.Completed => L.Translate("LeadershipStatusCompleted"),
+        LeadershipPlanStatus.OnHold => L.Translate("LeadershipStatusOnHold"),
         _ => s.ToString(),
     };
 }

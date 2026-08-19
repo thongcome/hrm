@@ -12,38 +12,39 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject CareerPathService PathService
 @inject IdpAssessmentService IdpService
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:CAREER_ACCESS")]
 
-<PageTitle>เส้นทางความก้าวหน้าของฉัน (Career Path)</PageTitle>
+<PageTitle>@L.Translate("MyCareerPathPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("CheckinNotLinked")</MudAlert>
 }
 else if (_result is null)
 {
-    <MudText Class="ma-4">กำลังโหลด...</MudText>
+    <MudText Class="ma-4">@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">เส้นทางความก้าวหน้าของฉัน</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("MyCareerPathHeading")</MudText>
 
         @if (_result.CurrentPosExecTypeName is null)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">คุณยังไม่ได้ผูกกับเลขที่อัตราตำแหน่งใด — ติดต่อ HR</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("NoPositionSlotLinkedInfo")</MudAlert>
         }
         else if (_result.JobFamilyId is null)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">ตำแหน่งปัจจุบันของคุณ (@_result.CurrentPosExecTypeName) ยังไม่ได้กำหนดสายงาน (Job Family)</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("CurrentPositionNoJobFamilyTemplate"), _result.CurrentPosExecTypeName)</MudAlert>
         }
         else if (_result.Steps.Count == 0)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">สายงาน "@_result.JobFamilyName" ยังไม่ได้กำหนดเส้นทางความก้าวหน้าไว้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("JobFamilyNoPathTemplate"), _result.JobFamilyName)</MudAlert>
         }
         else
         {
-            <MudText Typo="Typo.body2" Class="mt-1 mb-3">สายงาน: @_result.JobFamilyName</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("JobFamilyLabelPrefix") @_result.JobFamilyName</MudText>
             <MudStack Row="true" Spacing="2" Class="flex-wrap">
                 @foreach (var step in _result.Steps)
                 {
@@ -53,11 +54,11 @@ else
                         <MudText Typo="Typo.body2">@step.PosExecTypeName</MudText>
                         @if (isCurrent)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">ตำแหน่งปัจจุบัน</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@L.Translate("CurrentPositionChip")</MudChip>
                         }
                         @if (isNext)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Info">ขั้นถัดไป</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@L.Translate("NextStepChip")</MudChip>
                         }
                     </MudPaper>
                 }
@@ -65,30 +66,30 @@ else
 
             @if (_result.NextStep is not null)
             {
-                <MudText Typo="Typo.h6" Class="mt-4 mb-2">Gap Analysis — เทียบกับขั้นถัดไป (@_result.NextStep.PosExecTypeName)</MudText>
+                <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("GapAnalysisNextStepHeadingPrefix") (@_result.NextStep.PosExecTypeName)</MudText>
                 @if (_gapRows.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Info">ตำแหน่งขั้นถัดไปยังไม่ได้กำหนดสมรรถนะที่ต้องการ หรือคุณยังไม่ได้รับการประเมินสมรรถนะเลย</MudAlert>
+                    <MudAlert Severity="Severity.Info">@L.Translate("NoNextStepRequirementsMessage")</MudAlert>
                 }
                 else
                 {
                     <MudTable Items="_gapRows" Dense="true" Hover="true">
                         <HeaderContent>
-                            <MudTh>สมรรถนะ</MudTh>
-                            <MudTh>ระดับที่ต้องการ</MudTh>
-                            <MudTh>ระดับปัจจุบัน</MudTh>
-                            <MudTh>ช่องว่าง (Gap)</MudTh>
+                            <MudTh>@L.Translate("ColCompetency")</MudTh>
+                            <MudTh>@L.Translate("RequiredLevelColLabel")</MudTh>
+                            <MudTh>@L.Translate("CurrentLevelColLabel")</MudTh>
+                            <MudTh>@L.Translate("GapColLabel")</MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd>
                                 @context.CompetencyName
                                 @if (context.IsCritical)
                                 {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">จำเป็น</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@L.Translate("CriticalChip")</MudChip>
                                 }
                             </MudTd>
                             <MudTd>@context.RequiredLevel</MudTd>
-                            <MudTd>@(context.EffectiveLevel?.ToString() ?? "ยังไม่ประเมิน")</MudTd>
+                            <MudTd>@(context.EffectiveLevel?.ToString() ?? L.Translate("NotYetAssessedText"))</MudTd>
                             <MudTd>
                                 @if (context.Gap is int gap)
                                 {
@@ -105,7 +106,7 @@ else
             }
             else if (_result.CurrentStep is not null)
             {
-                <MudAlert Severity="Severity.Success" Class="mt-3">คุณอยู่ในขั้นสูงสุดของเส้นทางความก้าวหน้าในสายงานนี้แล้ว</MudAlert>
+                <MudAlert Severity="Severity.Success" Class="mt-3">@L.Translate("TopOfCareerPathMessage")</MudAlert>
             }
         }
     </MudPaper>

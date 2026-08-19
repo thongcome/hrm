@@ -11,26 +11,27 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ChangeInitiativeService InitiativeService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
 
-<PageTitle>Change Initiatives — Organization Development</PageTitle>
+<PageTitle>@L.Translate("ChangeInitiativesPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">โครงการเปลี่ยนแปลงองค์กร (Change Initiatives)</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1 mb-3">ติดตามโครงการปรับโครงสร้าง/เปลี่ยนแปลงระบบ พร้อมรายการติดตามความคืบหน้า</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("ChangeInitiativesHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("ChangeInitiativesDesc")</MudText>
 
         <MudTable Items="_initiatives" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ชื่อโครงการ</MudTh>
-                <MudTh>หน่วยงานที่เกี่ยวข้อง</MudTh>
-                <MudTh>สถานะ</MudTh>
-                <MudTh>ความคืบหน้า</MudTh>
+                <MudTh>@L.Translate("ColProjectTitle")</MudTh>
+                <MudTh>@L.Translate("ColRelatedOrganization")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
+                <MudTh>@L.Translate("ColProgress")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -45,58 +46,58 @@ else
                     </MudSelect>
                 </MudTd>
                 <MudTd>@context.CompletedMilestones / @context.TotalMilestones</MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleMilestonesAsync(context.Id))">@(_expandedId == context.Id ? "ซ่อน" : "จัดการรายการ")</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleMilestonesAsync(context.Id))">@(_expandedId == context.Id ? L.Translate("HideButton") : L.Translate("ManageItemsButton"))</MudButton></MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีโครงการเปลี่ยนแปลงองค์กร</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoChangeInitiativesMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 
     @if (_expandedId is not null)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">รายการติดตาม</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TrackingItemsHeading")</MudText>
             <MudTable Items="_milestones" Dense="true" Hover="true">
                 <HeaderContent>
-                    <MudTh>รายการ</MudTh>
-                    <MudTh>กำหนดเสร็จ</MudTh>
-                    <MudTh>สถานะ</MudTh>
+                    <MudTh>@L.Translate("ColItemLabel")</MudTh>
+                    <MudTh>@L.Translate("ColDueDate")</MudTh>
+                    <MudTh>@L.Translate("ColStatus")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Title</MudTd>
                     <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
-                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == OrgDevMilestoneStatus.Completed ? Color.Success : Color.Default)">@(context.Status == OrgDevMilestoneStatus.Completed ? "เสร็จแล้ว" : "รอดำเนินการ")</MudChip></MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == OrgDevMilestoneStatus.Completed ? Color.Success : Color.Default)">@(context.Status == OrgDevMilestoneStatus.Completed ? L.Translate("CompletedChip") : L.Translate("PendingChip"))</MudChip></MudTd>
                     <MudTd>
                         @if (context.Status == OrgDevMilestoneStatus.Pending)
                         {
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CompleteMilestoneAsync(context.Id))">เสร็จ</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CompleteMilestoneAsync(context.Id))">@L.Translate("CompleteButton")</MudButton>
                         }
                     </MudTd>
                 </RowTemplate>
-                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการ</MudText></NoRecordsContent>
+                <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoItemsYet")</MudText></NoRecordsContent>
             </MudTable>
 
             <MudGrid Class="mt-2">
-                <MudItem xs="12" sm="8"><MudTextField T="string" @bind-Value="_newMilestoneTitle" Label="รายการใหม่" /></MudItem>
-                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMilestoneAsync" Disabled="@string.IsNullOrWhiteSpace(_newMilestoneTitle)">เพิ่ม</MudButton></MudItem>
+                <MudItem xs="12" sm="8"><MudTextField T="string" @bind-Value="_newMilestoneTitle" Label="@L.Translate("NewItemLabel")" /></MudItem>
+                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddMilestoneAsync" Disabled="@string.IsNullOrWhiteSpace(_newMilestoneTitle)">@L.Translate("AddButtonPlain")</MudButton></MudItem>
             </MudGrid>
         </MudPaper>
     }
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">สร้างโครงการใหม่</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("CreateNewInitiativeHeading")</MudText>
         <MudGrid>
-            <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_title" Label="ชื่อโครงการ" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_title" Label="@L.Translate("ColProjectTitle")" /></MudItem>
             <MudItem xs="12" sm="6">
-                <MudAutocomplete T="com_organization" Label="หน่วยงานที่เกี่ยวข้อง (ถ้ามี)" @bind-Value="_selectedOrg"
+                <MudAutocomplete T="com_organization" Label="@L.Translate("RelatedOrganizationOptionalLabel")" @bind-Value="_selectedOrg"
                     SearchFunc="SearchOrganizationsAsync"
                     ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
             </MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="วันเริ่มโครงการ" @bind-Date="_startDate" /></MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="กำหนดเสร็จ" @bind-Date="_targetDate" /></MudItem>
-            <MudItem xs="12"><MudTextField T="string" @bind-Value="_description" Label="รายละเอียด" Lines="4" /></MudItem>
-            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAsync" Disabled="@string.IsNullOrWhiteSpace(_title)">สร้างโครงการ</MudButton></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("ProjectStartDateLabel")" @bind-Date="_startDate" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("ColDueDate")" @bind-Date="_targetDate" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_description" Label="@L.Translate("DescriptionLabel")" Lines="4" /></MudItem>
+            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAsync" Disabled="@string.IsNullOrWhiteSpace(_title)">@L.Translate("CreateProjectButton")</MudButton></MudItem>
         </MudGrid>
     </MudPaper>
 }
@@ -148,7 +149,7 @@ else
             _startDate is null ? null : DateOnly.FromDateTime(_startDate.Value),
             _targetDate is null ? null : DateOnly.FromDateTime(_targetDate.Value), userId);
 
-        Snackbar.Add("สร้างโครงการเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("InitiativeCreatedSuccess"), Severity.Success);
         _title = null;
         _selectedOrg = null;
         _startDate = null;
@@ -191,13 +192,13 @@ else
         await LoadAsync();
     }
 
-    private static string StatusLabel(ChangeInitiativeStatus s) => s switch
+    private string StatusLabel(ChangeInitiativeStatus s) => s switch
     {
-        ChangeInitiativeStatus.Planned => "วางแผน",
-        ChangeInitiativeStatus.InProgress => "กำลังดำเนินการ",
-        ChangeInitiativeStatus.Completed => "เสร็จสมบูรณ์",
-        ChangeInitiativeStatus.OnHold => "พักไว้",
-        ChangeInitiativeStatus.Cancelled => "ยกเลิก",
+        ChangeInitiativeStatus.Planned => L.Translate("ChangeStatusPlanned"),
+        ChangeInitiativeStatus.InProgress => L.Translate("LeadershipStatusInProgress"),
+        ChangeInitiativeStatus.Completed => L.Translate("LeadershipStatusCompleted"),
+        ChangeInitiativeStatus.OnHold => L.Translate("LeadershipStatusOnHold"),
+        ChangeInitiativeStatus.Cancelled => L.Translate("ChangeStatusCancelled"),
         _ => s.ToString(),
     };
 }

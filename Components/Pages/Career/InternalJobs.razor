@@ -12,23 +12,24 @@
 @inject RecJobPostingService PostingService
 @inject RecApplicationService ApplicationService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:CAREER_ACCESS")]
 
-<PageTitle>โอกาสเติบโตภายใน (Internal Job Postings)</PageTitle>
+<PageTitle>@L.Translate("InternalJobsPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("CheckinNotLinked")</MudAlert>
 }
 else
 {
     <MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
-        <MudText Typo="Typo.h4" Class="mb-4">โอกาสเติบโตภายใน</MudText>
-        <MudText Typo="Typo.body2" Class="mb-4">ตำแหน่งที่เปิดรับเฉพาะพนักงานภายในบริษัท — สมัครได้ทันทีโดยไม่ต้องกรอกข้อมูลใหม่</MudText>
+        <MudText Typo="Typo.h4" Class="mb-4">@L.Translate("InternalJobsHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">@L.Translate("InternalJobsDesc")</MudText>
 
         @if (_postings.Count == 0)
         {
-            <MudAlert Severity="Severity.Info">ขณะนี้ยังไม่มีตำแหน่งเปิดรับภายใน</MudAlert>
+            <MudAlert Severity="Severity.Info">@L.Translate("NoOpenInternalPostingsMessage")</MudAlert>
         }
         else
         {
@@ -41,7 +42,7 @@ else
                         <MudText Typo="Typo.body2" Class="mt-1" Style="white-space:pre-wrap">@posting.Description</MudText>
                     }
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="@(() => ApplyAsync(posting.Id))" Disabled="@_appliedPostingIds.Contains(posting.Id)">
-                        @(_appliedPostingIds.Contains(posting.Id) ? "สมัครแล้ว" : "สมัครตำแหน่งนี้")
+                        @(_appliedPostingIds.Contains(posting.Id) ? L.Translate("AlreadyAppliedButton") : L.Translate("ApplyToThisPositionButton"))
                     </MudButton>
                 </MudPaper>
             }
@@ -91,12 +92,12 @@ else
         var result = await ApplicationService.ApplyInternalAsync(postingId, _employee!.id, userId);
         if (result.Success)
         {
-            Snackbar.Add("ส่งใบสมัครสำเร็จ ขอบคุณที่สนใจร่วมงานในตำแหน่งนี้", Severity.Success);
+            Snackbar.Add(L.Translate("ApplicationSubmittedSuccess"), Severity.Success);
             await LoadAsync();
         }
         else
         {
-            Snackbar.Add(result.Error ?? "ส่งใบสมัครไม่สำเร็จ", Severity.Error);
+            Snackbar.Add(result.Error ?? L.Translate("ApplicationFailedError"), Severity.Error);
         }
     }
 }

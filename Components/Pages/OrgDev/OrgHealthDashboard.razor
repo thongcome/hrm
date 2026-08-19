@@ -11,54 +11,55 @@
 @inject ChangeInitiativeService ChangeInitiativeService
 @inject CultureAssessmentService CultureAssessmentService
 @inject SuccessionService SuccessionService
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
 
-<PageTitle>Org Health — Organization Development</PageTitle>
+<PageTitle>@L.Translate("OrgHealthPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
-    <MudText Typo="Typo.h4" Class="ma-4">ภาพรวมสุขภาพองค์กร (Org Health)</MudText>
-    <MudText Typo="Typo.body2" Class="mx-4 mb-4">รวมสัญญาณจากแผนอัตรากำลัง โครงการเปลี่ยนแปลง การประเมินวัฒนธรรม และความพร้อมผู้สืบทอด</MudText>
+    <MudText Typo="Typo.h4" Class="ma-4">@L.Translate("OrgHealthHeading")</MudText>
+    <MudText Typo="Typo.body2" Class="mx-4 mb-4">@L.Translate("OrgHealthDesc")</MudText>
 
     <MudGrid Class="pa-4">
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.body2">แผนอัตรากำลัง (ปี @_currentYear)</MudText>
+                <MudText Typo="Typo.body2">@string.Format(L.Translate("WorkforcePlanYearTemplate"), _currentYear)</MudText>
                 <MudText Typo="Typo.h4">@_workforcePlans.Sum(p => p.Gap)</MudText>
-                <MudText Typo="Typo.caption">ส่วนต่างรวมทุกหน่วยงาน (บวก = ขาด, ลบ = เกิน)</MudText>
+                <MudText Typo="Typo.caption">@L.Translate("WorkforceGapCaption")</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.body2">โครงการเปลี่ยนแปลงที่กำลังดำเนินการ</MudText>
+                <MudText Typo="Typo.body2">@L.Translate("InProgressInitiativesLabel")</MudText>
                 <MudText Typo="Typo.h4">@_initiatives.Count(i => i.Status == ChangeInitiativeStatus.InProgress)</MudText>
-                <MudText Typo="Typo.caption">จากทั้งหมด @_initiatives.Count โครงการ</MudText>
+                <MudText Typo="Typo.caption">@string.Format(L.Translate("OutOfTotalInitiativesTemplate"), _initiatives.Count)</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.body2">คะแนนวัฒนธรรมองค์กรล่าสุด</MudText>
+                <MudText Typo="Typo.body2">@L.Translate("LatestCultureScoreLabel")</MudText>
                 @if (_latestCulture is null)
                 {
                     <MudText Typo="Typo.h4">-</MudText>
-                    <MudText Typo="Typo.caption">ยังไม่มีการประเมิน</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("NoAssessmentsYetMessage")</MudText>
                 }
                 else
                 {
                     <MudText Typo="Typo.h4">@(((_latestCulture.CommunicationScore + _latestCulture.TrustScore + _latestCulture.CollaborationScore + _latestCulture.LeadershipScore) / 4.0).ToString("0.0")) / 5</MudText>
-                    <MudText Typo="Typo.caption">ประเมินเมื่อ @_latestCulture.AssessmentDate.ToString("dd/MM/yyyy")</MudText>
+                    <MudText Typo="Typo.caption">@string.Format(L.Translate("AssessedOnTemplate"), _latestCulture.AssessmentDate.ToString("dd/MM/yyyy"))</MudText>
                 }
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.body2">ตำแหน่งสำคัญที่ไม่มีผู้สืบทอด</MudText>
+                <MudText Typo="Typo.body2">@L.Translate("KeyPositionsNoSuccessorLabel")</MudText>
                 <MudText Typo="Typo.h4" Style="@(_benchStrength.Any(b => b.IsSinglePointOfFailure) ? "color:var(--mud-palette-error)" : "")">@_benchStrength.Count(b => b.IsSinglePointOfFailure)</MudText>
-                <MudText Typo="Typo.caption">จากทั้งหมด @_benchStrength.Count ตำแหน่งสำคัญ</MudText>
+                <MudText Typo="Typo.caption">@string.Format(L.Translate("OutOfTotalKeyPositionsTemplate"), _benchStrength.Count)</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -66,13 +67,13 @@ else
     <MudGrid Class="pa-4">
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.h6" Class="mb-2">แผนอัตรากำลังที่ขาด (Gap สูงสุด)</MudText>
+                <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TopWorkforceGapsHeading")</MudText>
                 <MudTable Items="_workforcePlans.Where(p => p.Gap > 0).OrderByDescending(p => p.Gap).Take(5)" Dense="true">
                     <HeaderContent>
-                        <MudTh>หน่วยงาน</MudTh>
-                        <MudTh>เป้า</MudTh>
-                        <MudTh>จริง</MudTh>
-                        <MudTh>Gap</MudTh>
+                        <MudTh>@L.Translate("OrganizationFieldLabel")</MudTh>
+                        <MudTh>@L.Translate("ColTargetShort")</MudTh>
+                        <MudTh>@L.Translate("ColActualShort")</MudTh>
+                        <MudTh>@L.Translate("ColGapShort")</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.OrganizationName</MudTd>
@@ -80,19 +81,19 @@ else
                         <MudTd>@context.ActualHeadcount</MudTd>
                         <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Warning">@context.Gap</MudChip></MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีหน่วยงานที่ขาดอัตรากำลัง</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoUnderstaffedOrgsMessage")</MudText></NoRecordsContent>
                 </MudTable>
-                <MudButton Class="mt-2" Variant="Variant.Text" Href="/orgdev/workforce-plan">ดูทั้งหมด</MudButton>
+                <MudButton Class="mt-2" Variant="Variant.Text" Href="/orgdev/workforce-plan">@L.Translate("ViewAllButton")</MudButton>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4">
-                <MudText Typo="Typo.h6" Class="mb-2">ตำแหน่งสำคัญที่มีความเสี่ยง</MudText>
+                <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("RiskyKeyPositionsHeading")</MudText>
                 <MudTable Items="_benchStrength.Where(b => b.IsSinglePointOfFailure || b.ReadyNowCount == 0)" Dense="true">
                     <HeaderContent>
-                        <MudTh>ตำแหน่ง</MudTh>
-                        <MudTh>ผู้สืบทอด</MudTh>
-                        <MudTh>สถานะ</MudTh>
+                        <MudTh>@L.Translate("ColPosition")</MudTh>
+                        <MudTh>@L.Translate("ColSuccessorsShort")</MudTh>
+                        <MudTh>@L.Translate("ColStatus")</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.PosExecTypeName</MudTd>
@@ -100,17 +101,17 @@ else
                         <MudTd>
                             @if (context.IsSinglePointOfFailure)
                             {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Error">ไม่มีผู้สืบทอด</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error">@L.Translate("NoSuccessorChipShort")</MudChip>
                             }
                             else
                             {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">ยังไม่มีคนพร้อมทันที</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">@L.Translate("NoReadyNowChip")</MudChip>
                             }
                         </MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีตำแหน่งสำคัญที่มีความเสี่ยง</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoRiskyKeyPositionsMessage")</MudText></NoRecordsContent>
                 </MudTable>
-                <MudButton Class="mt-2" Variant="Variant.Text" Href="/succession/bench-strength">ดูทั้งหมด</MudButton>
+                <MudButton Class="mt-2" Variant="Variant.Text" Href="/succession/bench-strength">@L.Translate("ViewAllButton")</MudButton>
             </MudPaper>
         </MudItem>
     </MudGrid>

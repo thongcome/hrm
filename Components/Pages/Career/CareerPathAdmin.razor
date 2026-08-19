@@ -11,23 +11,24 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject CareerPathService PathService
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:CAREER_ADMIN")]
 
-<PageTitle>Career Path — Career Management</PageTitle>
+<PageTitle>@L.Translate("CareerPathPageTitle")</PageTitle>
 
 @if (string.IsNullOrEmpty(_companyId))
 {
-    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">เส้นทางความก้าวหน้าในสายอาชีพ (Career Path)</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("CareerPathHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1 mb-3">
-            กำหนดลำดับตำแหน่ง (Job) ที่คาดว่าพนักงานจะก้าวหน้าไปตามลำดับ ภายในแต่ละสายงาน (Job Family)
+            @L.Translate("CareerPathDesc")
         </MudText>
 
-        <MudSelect T="Job_Family" Value="_selectedFamily" Label="สายงาน (Job Family)" ValueChanged="OnFamilyChangedAsync">
+        <MudSelect T="Job_Family" Value="_selectedFamily" Label="@L.Translate("JobFamilyFieldLabel")" ValueChanged="OnFamilyChangedAsync">
             @foreach (var f in _families)
             {
                 <MudSelectItem Value="f">@f.Name</MudSelectItem>
@@ -40,8 +41,8 @@ else
         <MudPaper Class="pa-4 mb-4">
             <MudTable Items="_steps" Dense="true" Hover="true">
                 <HeaderContent>
-                    <MudTh>ลำดับ</MudTh>
-                    <MudTh>ตำแหน่ง</MudTh>
+                    <MudTh>@L.Translate("ColOrder")</MudTh>
+                    <MudTh>@L.Translate("ColPosition")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -53,21 +54,21 @@ else
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveAsync(context.StepId))" />
                     </MudTd>
                 </RowTemplate>
-                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีลำดับตำแหน่งในสายงานนี้</MudText></NoRecordsContent>
+                <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoStepsInFamilyMessage")</MudText></NoRecordsContent>
             </MudTable>
         </MudPaper>
 
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">เพิ่มตำแหน่งเข้าลำดับ</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("AddPositionToStepHeading")</MudText>
             <MudGrid>
                 <MudItem xs="12" sm="9">
-                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" @bind-Value="_selectedExecType"
+                    <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("JobFieldLabel")" @bind-Value="_selectedExecType"
                         SearchFunc="SearchExecTypesAsync"
                         ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
                         ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
                 </MudItem>
                 <MudItem xs="12" sm="3" Class="d-flex align-center">
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddStepAsync" Disabled="@(_selectedExecType is null)">เพิ่มเข้าลำดับ</MudButton>
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddStepAsync" Disabled="@(_selectedExecType is null)">@L.Translate("AddToStepButton")</MudButton>
                 </MudItem>
             </MudGrid>
             @if (!string.IsNullOrEmpty(_error))
@@ -123,7 +124,7 @@ else
         try
         {
             await PathService.AddStepAsync(_companyId, _selectedFamily.Id, _selectedExecType.Id);
-            Snackbar.Add("เพิ่มเข้าลำดับความก้าวหน้าแล้ว", Severity.Success);
+            Snackbar.Add(L.Translate("StepAddedSuccess"), Severity.Success);
             _selectedExecType = null;
             await LoadStepsAsync();
         }
@@ -142,7 +143,7 @@ else
     private async Task RemoveAsync(long stepId)
     {
         await PathService.RemoveStepAsync(stepId);
-        Snackbar.Add("ถอดออกจากลำดับแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("StepRemovedSuccess"), Severity.Success);
         await LoadStepsAsync();
     }
 }
