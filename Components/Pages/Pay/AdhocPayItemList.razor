@@ -10,26 +10,27 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
 
-<PageTitle>รายการเงินได้-เงินหักเฉพาะกิจ</PageTitle>
+<PageTitle>@L.Translate("AdhocListPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <div>
-            <MudText Typo="Typo.h5">รายการเงินได้-เงินหักเฉพาะกิจ</MudText>
+            <MudText Typo="Typo.h5">@L.Translate("AdhocListPageTitle")</MudText>
             <MudText Typo="Typo.body2" Class="mt-1">
-                HR ป้อนแทนพนักงาน (ระบบยื่นเองของพนักงานจะทำใน phase ถัดไป) — อนุมัติแล้วเท่านั้นที่จะถูกดึงเข้าคำนวณเงินเดือนของงวดที่ระบุ
+                @L.Translate("AdhocListDesc")
             </MudText>
             @if (!string.IsNullOrWhiteSpace(Period))
             {
                 <MudChip T="string" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClose="@(() => Nav.NavigateTo("/pay/adhoc"))">
-                    กรองเฉพาะงวด @Period
+                    @string.Format(L.Translate("AdhocFilteredByPeriod"), Period)
                 </MudChip>
             }
         </div>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showCreate = !_showCreate)">
-            @(_showCreate ? "ปิดฟอร์ม" : "เพิ่มรายการใหม่")
+            @(_showCreate ? L.Translate("AdhocCloseFormButton") : L.Translate("AdhocAddNewButton"))
         </MudButton>
     </MudStack>
 
@@ -38,49 +39,49 @@
         <MudDivider Class="my-3" />
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudAutocomplete T="Hremployee" Label="พนักงาน (ค้นหาด้วยรหัสหรือชื่อ)" @bind-Value="_form.SelectedEmployee"
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeSearchLabel")" @bind-Value="_form.SelectedEmployee"
                     SearchFunc="SearchEmployeesAsync"
                     ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                     Required="true" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="ประเภทรายการ">
+                <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="@L.Translate("AdhocPayItemTypeLabel")">
                     @foreach (var t in _payItemTypes)
                     {
-                        <MudSelectItem T="int" Value="t.Id">@t.NameTh (@t.NameEn) — @(t.DefaultSignFlag > 0 ? "รายรับ" : "รายหัก")</MudSelectItem>
+                        <MudSelectItem T="int" Value="t.Id">@t.NameTh (@t.NameEn) — @(t.DefaultSignFlag > 0 ? L.Translate("AdhocEarningLabel") : L.Translate("AdhocDeductionLabel"))</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudDatePicker @bind-Date="_form.TargetMonth" Label="งวดที่จ่าย/หัก (เดือน/ปี)" Required="true" />
+                <MudDatePicker @bind-Date="_form.TargetMonth" Label="@L.Translate("AdhocTargetMonthLabel")" Required="true" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudNumericField @bind-Value="_form.Amount" Label="จำนวนเงิน" Required="true" />
+                <MudNumericField @bind-Value="_form.Amount" Label="@L.Translate("AmountLabel")" Required="true" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudCheckBox @bind-Value="_form.IsTaxable" Label="นับเป็นเงินได้ที่ต้องเสียภาษี" />
+                <MudCheckBox @bind-Value="_form.IsTaxable" Label="@L.Translate("AdhocIsTaxableLabel")" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_form.Reason" Label="เหตุผล" Required="true" Lines="2" />
+                <MudTextField @bind-Value="_form.Reason" Label="@L.Translate("ReasonLabel")" Required="true" Lines="2" />
             </MudItem>
         </MudGrid>
         @if (!string.IsNullOrEmpty(_error))
         {
             <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
         }
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync">บันทึกคำขอ</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync">@L.Translate("AdhocSubmitButton")</MudButton>
     }
 </MudPaper>
 
 <MudPaper Class="pa-4">
     <MudTable Items="_items" Hover="true" Dense="true" Loading="_loading">
         <HeaderContent>
-            <MudTh>พนักงาน</MudTh>
-            <MudTh>ประเภท</MudTh>
-            <MudTh>งวด</MudTh>
-            <MudTh>จำนวนเงิน</MudTh>
-            <MudTh>เหตุผล</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("EmployeeLabel")</MudTh>
+            <MudTh>@L.Translate("ColType")</MudTh>
+            <MudTh>@L.Translate("Period")</MudTh>
+            <MudTh>@L.Translate("AmountLabel")</MudTh>
+            <MudTh>@L.Translate("ReasonLabel")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -93,17 +94,17 @@
             <MudTd>
                 @if (context.Status == PayAdhocItemStatus.Pending)
                 {
-                    <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">อนุมัติ</MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">ปฏิเสธ</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">@L.Translate("ApproveButton")</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">@L.Translate("RejectButton")</MudButton>
                 }
                 @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">ยกเลิก</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">@L.Translate("CancelButton")</MudButton>
                 }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText>ยังไม่มีรายการ</MudText>
+            <MudText>@L.Translate("NoItemsYet")</MudText>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
@@ -188,7 +189,7 @@
         if (_form.SelectedEmployee is null || _form.TargetMonth is null
             || string.IsNullOrWhiteSpace(_form.Reason) || _form.Amount <= 0 || _form.PayItemTypeId == 0)
         {
-            _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            _error = L.Translate("FillAllFieldsError");
             return;
         }
 
@@ -200,7 +201,7 @@
         var companyId = await GetCurrentCompanyIdAsync();
         if (_form.SelectedEmployee.companyid != companyId)
         {
-            _error = "เลือกได้เฉพาะพนักงานในบริษัทของคุณ";
+            _error = L.Translate("AdhocEmployeeCompanyMismatchError");
             return;
         }
 
@@ -222,7 +223,7 @@
 
         _form = new CreateForm();
         _showCreate = false;
-        Snackbar.Add("บันทึกคำขอเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("AdhocSubmitSuccess"), Severity.Success);
         await LoadAsync();
     }
 
@@ -243,7 +244,7 @@
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
         item.ApprovedDate = DateTime.Now;
         await context.SaveChangesAsync();
-        Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ApprovedSuccess"), Severity.Success);
         await LoadAsync();
     }
 
@@ -256,7 +257,7 @@
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
         item.ApprovedDate = DateTime.Now;
         await context.SaveChangesAsync();
-        Snackbar.Add("ปฏิเสธรายการแล้ว", Severity.Warning);
+        Snackbar.Add(L.Translate("RejectedSuccess"), Severity.Warning);
         await LoadAsync();
     }
 
@@ -267,7 +268,7 @@
         if (item is null) return;
         item.Status = PayAdhocItemStatus.Cancelled;
         await context.SaveChangesAsync();
-        Snackbar.Add("ยกเลิกรายการแล้ว", Severity.Info);
+        Snackbar.Add(L.Translate("CancelledSuccess"), Severity.Info);
         await LoadAsync();
     }
 

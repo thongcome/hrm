@@ -8,14 +8,15 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
 
-<PageTitle>รายการเงินได้/เงินหัก</PageTitle>
+<PageTitle>@L.Translate("LineItemsPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo($"/pay/dashboard/period/{RunId}"))" title="กลับไปหน้ารายชื่อพนักงาน" />
-        <MudText Typo="Typo.h5">รายการเงินได้/เงินหัก</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo($"/pay/dashboard/period/{RunId}"))" title="@L.Translate("BackToEmployeeListTitle")" />
+        <MudText Typo="Typo.h5">@L.Translate("LineItemsPageTitle")</MudText>
     </MudStack>
 
     @if (!_loaded)
@@ -24,7 +25,7 @@
     }
     else if (_payEmployee is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบข้อมูลนี้ หรือไม่ใช่ของบริษัทคุณ</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("DataNotFoundOrNotYourCompanyError")</MudAlert>
     }
     else
     {
@@ -32,40 +33,40 @@
             @_payEmployee.EmpNo — @_payEmployee.Hremployee.EmpName @_payEmployee.Hremployee.EmpSurname
             @if (!string.IsNullOrWhiteSpace(_payEmployee.CostCenterCode))
             {
-                <text> (ศูนย์ต้นทุน: @_payEmployee.CostCenterCode)</text>
+                <text>@string.Format(L.Translate("CostCenterInlineTemplate"), _payEmployee.CostCenterCode)</text>
             }
         </MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            งวด @_payEmployee.Pay_PayrollRun.PayrollPeriod (@_payEmployee.Pay_PayrollRun.PeriodStart.ToString("dd/MM/yyyy") - @_payEmployee.Pay_PayrollRun.PeriodEnd.ToString("dd/MM/yyyy"))
+            @string.Format(L.Translate("PeriodDateRangeTemplate"), _payEmployee.Pay_PayrollRun.PayrollPeriod, _payEmployee.Pay_PayrollRun.PeriodStart.ToString("dd/MM/yyyy"), _payEmployee.Pay_PayrollRun.PeriodEnd.ToString("dd/MM/yyyy"))
         </MudText>
 
-        <MudText Typo="Typo.h6" Class="mt-3 mb-1">เงินได้</MudText>
+        <MudText Typo="Typo.h6" Class="mt-3 mb-1">@L.Translate("EarningsPanelHeading")</MudText>
         <MudSimpleTable Dense="true">
-            <thead><tr><th>รายการ</th><th style="text-align:right">จำนวนเงิน</th></tr></thead>
+            <thead><tr><th>@L.Translate("ColItemName")</th><th style="text-align:right">@L.Translate("ColAmount")</th></tr></thead>
             <tbody>
                 @foreach (var li in _lineItems.Where(l => l.SignFlag > 0))
                 {
                     <tr><td>@li.Pay_PayItemType.NameTh</td><td style="text-align:right">@li.Amount.ToString("N2")</td></tr>
                 }
-                <tr style="font-weight:500"><td>รวมเงินได้</td><td style="text-align:right">@_payEmployee.GrossEarnings.ToString("N2")</td></tr>
+                <tr style="font-weight:500"><td>@L.Translate("TotalEarningsLabel")</td><td style="text-align:right">@_payEmployee.GrossEarnings.ToString("N2")</td></tr>
             </tbody>
         </MudSimpleTable>
 
-        <MudText Typo="Typo.h6" Class="mt-4 mb-1">เงินหัก</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4 mb-1">@L.Translate("DeductionsPanelHeading")</MudText>
         <MudSimpleTable Dense="true">
-            <thead><tr><th>รายการ</th><th style="text-align:right">จำนวนเงิน</th></tr></thead>
+            <thead><tr><th>@L.Translate("ColItemName")</th><th style="text-align:right">@L.Translate("ColAmount")</th></tr></thead>
             <tbody>
                 @foreach (var li in _lineItems.Where(l => l.SignFlag < 0))
                 {
                     <tr><td>@li.Pay_PayItemType.NameTh</td><td style="text-align:right">@li.Amount.ToString("N2")</td></tr>
                 }
-                <tr style="font-weight:500"><td>รวมเงินหัก</td><td style="text-align:right">@_payEmployee.TotalDeductions.ToString("N2")</td></tr>
+                <tr style="font-weight:500"><td>@L.Translate("TotalDeductionsPlainLabel")</td><td style="text-align:right">@_payEmployee.TotalDeductions.ToString("N2")</td></tr>
             </tbody>
         </MudSimpleTable>
 
         <MudSimpleTable Dense="true" Class="mt-4">
             <tbody>
-                <tr style="font-weight:500"><td>สุทธิ</td><td style="text-align:right">@_payEmployee.NetPay.ToString("N2")</td></tr>
+                <tr style="font-weight:500"><td>@L.Translate("NetPayPlainLabel")</td><td style="text-align:right">@_payEmployee.NetPay.ToString("N2")</td></tr>
             </tbody>
         </MudSimpleTable>
     }

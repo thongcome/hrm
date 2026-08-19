@@ -10,37 +10,38 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ประกันกลุ่มพนักงาน</PageTitle>
+<PageTitle>@L.Translate("EmployeeInsurancePageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-        <MudText Typo="Typo.h6">ลงทะเบียนแผนประกันใหม่</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("EnrollNewPlanHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            เลือกแผนจากที่บริษัทกำหนดไว้ — เบี้ยประกันจะถูกดึงมาจากค่าเริ่มต้นของแผน สามารถปรับได้เฉพาะรายกรณี (เช่น เลือกความคุ้มครองแบบมีผู้ติดตาม)
+            @L.Translate("EnrollNewPlanDesc")
         </MudText>
 
         @if (_availablePlans.Count == 0)
         {
             <MudAlert Severity="Severity.Info" Class="mt-3">
-                ยังไม่มีแผนประกันของบริษัทให้เลือก — ไปตั้งค่าที่หน้า <MudLink Href="/pay/admin/insurance-plans">แผนประกันกลุ่ม</MudLink> ก่อน
+                @L.Translate("NoPlansAvailablePrefix") <MudLink Href="/pay/admin/insurance-plans">@L.Translate("NoPlansAvailableLinkText")</MudLink> @L.Translate("NoPlansAvailableSuffix")
             </MudAlert>
         }
         else
         {
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="6">
-                    <MudSelect T="long?" Value="_selectedPlanId" ValueChanged="OnPlanSelected" Label="แผนประกัน">
+                    <MudSelect T="long?" Value="_selectedPlanId" ValueChanged="OnPlanSelected" Label="@L.Translate("InsurancePlanFieldLabel")">
                         @foreach (var plan in _availablePlans)
                         {
                             <MudSelectItem T="long?" Value="@((long?)plan.Id)">@plan.PlanCode — @plan.PlanName</MudSelectItem>
@@ -48,34 +49,34 @@ else
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudDatePicker Date="_effectiveFrom" DateChanged="@(d => _effectiveFrom = d)" Label="มีผลตั้งแต่"
+                    <MudDatePicker Date="_effectiveFrom" DateChanged="@(d => _effectiveFrom = d)" Label="@L.Translate("EffectiveFromLabel")"
                         Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_employeeAmount" Label="เบี้ยประกันฝั่งพนักงาน (ต่องวด)" Format="N2" Min="0" />
+                    <MudNumericField @bind-Value="_employeeAmount" Label="@L.Translate("DefaultEmployeeAmountLabel")" Format="N2" Min="0" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_companyAmount" Label="เบี้ยประกันฝั่งบริษัท (ต่องวด)" Format="N2" Min="0" />
+                    <MudNumericField @bind-Value="_companyAmount" Label="@L.Translate("DefaultCompanyAmountLabel")" Format="N2" Min="0" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_memberCertificateNumber" Label="เลขบัตรสมาชิก/ใบรับรอง (Member Certificate No.)" />
+                    <MudTextField @bind-Value="_memberCertificateNumber" Label="@L.Translate("MemberCertificateNumberLabel")" />
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudDatePicker Date="_cardIssueDate" DateChanged="@(d => _cardIssueDate = d)" Label="วันที่บัตรออก"
+                    <MudDatePicker Date="_cardIssueDate" DateChanged="@(d => _cardIssueDate = d)" Label="@L.Translate("CardIssueDateLabel")"
                         Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudDatePicker Date="_cardExpiryDate" DateChanged="@(d => _cardExpiryDate = d)" Label="วันที่บัตรหมดอายุ"
+                    <MudDatePicker Date="_cardExpiryDate" DateChanged="@(d => _cardExpiryDate = d)" Label="@L.Translate("CardExpiryDateLabel")"
                         Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_beneficiaryName" Label="ผู้รับผลประโยชน์ (ชื่อ-สกุล)" />
+                    <MudTextField @bind-Value="_beneficiaryName" Label="@L.Translate("BeneficiaryNameLabel")" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_beneficiaryRelationship" Label="ความสัมพันธ์กับผู้รับผลประโยชน์" />
+                    <MudTextField @bind-Value="_beneficiaryRelationship" Label="@L.Translate("BeneficiaryRelationshipLabel")" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_remark" Label="หมายเหตุ/เงื่อนไขพิเศษ" Lines="2" />
+                    <MudTextField @bind-Value="_remark" Label="@L.Translate("RemarkSpecialConditionsLabel")" Lines="2" />
                 </MudItem>
             </MudGrid>
 
@@ -84,22 +85,22 @@ else
                 <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
             }
 
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="EnrollAsync">ลงทะเบียน</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="EnrollAsync">@L.Translate("EnrollButton")</MudButton>
         }
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">ประวัติการลงทะเบียนประกัน</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("EnrollmentHistoryHeading")</MudText>
 
         @if (_enrollments.Count == 0)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีการลงทะเบียนประกันสำหรับพนักงานคนนี้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("NoEnrollmentsMessage")</MudAlert>
         }
         else
         {
             <MudSimpleTable Dense="true" Class="mt-2">
                 <thead>
-                    <tr><th>แผน</th><th>เลขบัตรสมาชิก</th><th>เบี้ยประกัน (พนักงาน / บริษัท)</th><th>มีผลตั้งแต่</th><th>สิ้นสุด</th><th>ผู้รับผลประโยชน์</th><th>สถานะ</th><th></th><th></th></tr>
+                    <tr><th>@L.Translate("ColPlan")</th><th>@L.Translate("ColMemberCertNo")</th><th>@L.Translate("ColPremiumEmpCompany")</th><th>@L.Translate("EffectiveFromLabel")</th><th>@L.Translate("ColEnds")</th><th>@L.Translate("ColBeneficiary")</th><th>@L.Translate("ColStatus")</th><th></th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var enrollment in _enrollments)
@@ -112,22 +113,22 @@ else
                             <td>@(enrollment.EffectiveTo?.ToString("dd/MM/yyyy") ?? "-")</td>
                             <td>@(string.IsNullOrEmpty(enrollment.BeneficiaryName) ? "-" : $"{enrollment.BeneficiaryName} ({enrollment.BeneficiaryRelationship ?? "-"})")</td>
                             <td>
-                                @(enrollment.IsActive ? "ใช้งาน" : "สิ้นสุดแล้ว")
+                                @(enrollment.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("EndedStatus"))
                                 @if (enrollment.NeedsReview)
                                 {
-                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-1">รอตรวจสอบ</MudChip>
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-1">@L.Translate("NeedsReviewChip")</MudChip>
                                 }
                             </td>
                             <td>
                                 @if (enrollment.NeedsReview)
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => MarkReviewedAsync(enrollment.Id))">ทำเครื่องหมายว่าตรวจสอบแล้ว</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => MarkReviewedAsync(enrollment.Id))">@L.Translate("MarkReviewedButton")</MudButton>
                                 }
                             </td>
                             <td>
                                 @if (enrollment.IsActive)
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => EndEnrollmentAsync(enrollment.Id))">สิ้นสุดความคุ้มครอง</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => EndEnrollmentAsync(enrollment.Id))">@L.Translate("EndCoverageButton")</MudButton>
                                 }
                             </td>
                         </tr>
@@ -209,12 +210,12 @@ else
 
         if (_selectedPlanId is null)
         {
-            _error = "กรุณาเลือกแผนประกัน";
+            _error = L.Translate("SelectInsurancePlanError");
             return;
         }
         if (_effectiveFrom is null)
         {
-            _error = "กรุณาระบุวันที่มีผล";
+            _error = L.Translate("InvalidEffectiveDateError");
             return;
         }
 
@@ -228,7 +229,7 @@ else
             e.HremployeeId == HremployeeId && e.PlanId == _selectedPlanId && e.IsActive);
         if (alreadyEnrolled)
         {
-            _error = "พนักงานคนนี้ลงทะเบียนแผนนี้อยู่แล้วและยังไม่สิ้นสุด";
+            _error = L.Translate("AlreadyEnrolledActiveError");
             return;
         }
 
@@ -250,7 +251,7 @@ else
         });
 
         await context.SaveChangesAsync();
-        Snackbar.Add("ลงทะเบียนประกันเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("EnrolledSuccess"), Severity.Success);
 
         _selectedPlanId = null;
         _employeeAmount = 0;
@@ -274,7 +275,7 @@ else
         existing.IsActive = false;
         existing.EffectiveTo = DateOnly.FromDateTime(DateTime.Today);
         await context.SaveChangesAsync();
-        Snackbar.Add("สิ้นสุดความคุ้มครองเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("CoverageEndedSuccess"), Severity.Success);
         await LoadAsync();
     }
 
@@ -287,7 +288,7 @@ else
 
         existing.NeedsReview = false;
         await context.SaveChangesAsync();
-        Snackbar.Add("ทำเครื่องหมายว่าตรวจสอบแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("MarkReviewedButton"), Severity.Success);
         await LoadAsync();
     }
 }

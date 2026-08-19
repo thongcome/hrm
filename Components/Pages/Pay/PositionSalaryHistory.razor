@@ -9,45 +9,46 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ประวัติปรับตำแหน่ง/เงินเดือน</PageTitle>
+<PageTitle>@L.Translate("PositionSalaryHistoryNavLabel")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.body2">ตำแหน่งปัจจุบัน: @(_employee.PosCode ?? "-")  ·  เงินเดือนปัจจุบัน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
+        <MudText Typo="Typo.body2">@string.Format(L.Translate("CurrentPositionSalaryTemplate"), _employee.PosCode ?? "-", _employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">ประวัติปรับตำแหน่ง/เงินเดือน</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("PositionSalaryHistoryNavLabel")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            บันทึกอัตโนมัติทุกครั้งที่ตำแหน่งหรือเงินเดือนของพนักงานคนนี้ถูกแก้ไขผ่านหน้า "จัดการพนักงาน"
+            @L.Translate("PositionSalaryHistoryDesc")
         </MudText>
 
         @if (_history.Count == 0)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีประวัติการปรับตำแหน่ง/เงินเดือนสำหรับพนักงานคนนี้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("NoPositionSalaryHistoryMessage")</MudAlert>
         }
         else
         {
             <MudTable Items="_history" Dense="true" Hover="true" Elevation="0" Class="mt-3">
                 <HeaderContent>
-                    <MudTh>วันที่</MudTh>
-                    <MudTh>ประเภท</MudTh>
-                    <MudTh>ตำแหน่ง (เดิม → ใหม่)</MudTh>
-                    <MudTh>เงินเดือน (เดิม → ใหม่)</MudTh>
-                    <MudTh>เลขที่คำสั่ง</MudTh>
-                    <MudTh>หมายเหตุ</MudTh>
-                    <MudTh>ผู้บันทึก</MudTh>
+                    <MudTh>@L.Translate("ColDate")</MudTh>
+                    <MudTh>@L.Translate("ColItemType")</MudTh>
+                    <MudTh>@L.Translate("ColPositionOldNew")</MudTh>
+                    <MudTh>@L.Translate("ColSalaryOldNew")</MudTh>
+                    <MudTh>@L.Translate("ColOrderNo")</MudTh>
+                    <MudTh>@L.Translate("ColRemark")</MudTh>
+                    <MudTh>@L.Translate("ColRecordedBy")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.ChangedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
@@ -112,13 +113,13 @@ else
         return state.User.FindFirstValue("payroll_company");
     }
 
-    private static string FormatChangeType(string? code) => code switch
+    private string FormatChangeType(string? code) => code switch
     {
-        "P" => "เลื่อนตำแหน่ง",
-        "D" => "ลดตำแหน่ง",
-        "T" => "โยกย้าย",
-        "S" => "ปรับเงินเดือนอย่างเดียว",
-        "O" => "อื่นๆ",
+        "P" => L.Translate("ChangeTypePromotion"),
+        "D" => L.Translate("ChangeTypeDemotion"),
+        "T" => L.Translate("ChangeTypeTransfer"),
+        "S" => L.Translate("ChangeTypeSalaryOnly"),
+        "O" => L.Translate("ChangeTypeOther"),
         _ => "-",
     };
 }

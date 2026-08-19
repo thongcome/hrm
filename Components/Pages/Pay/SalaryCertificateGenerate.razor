@@ -12,32 +12,33 @@
 @inject HRM.Services.EmailSender EmailSender
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>หนังสือรับรองเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("NavPaySalaryCert")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="700px">
-    <MudText Typo="Typo.h5">ออกหนังสือรับรองเงินเดือน</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("SalaryCertHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        เอกสารรับรองการทำงานและเงินเดือนของพนักงาน 1 คน สำหรับใช้ยื่นธนาคาร/สถานทูต/หน่วยงานอื่นๆ
+        @L.Translate("SalaryCertDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="8">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน (ค้นหาด้วยรหัสหรือชื่อ)" @bind-Value="_selectedEmployee"
+            <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeSearchLabel")" @bind-Value="_selectedEmployee"
                 SearchFunc="SearchEmployeesAsync"
                 ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
         </MudItem>
         <MudItem xs="12" sm="4" Class="d-flex align-center">
             <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadEmployeeAsync" Disabled="@(_selectedEmployee is null)">
-                โหลดข้อมูล
+                @L.Translate("LoadDataButton")
             </MudButton>
         </MudItem>
     </MudGrid>
@@ -51,54 +52,54 @@
     {
         <MudSimpleTable Dense="true" Class="mt-3">
             <tbody>
-                <tr><td>พนักงาน</td><td>@_data.EmployeeName</td></tr>
-                <tr><td>เลขบัตรประชาชน</td><td>@(_data.IdCard ?? "-")</td></tr>
-                <tr><td>วันที่เริ่มงาน</td><td>@(_data.WorkDate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
-                <tr><td>สถานะ</td><td>@(_data.ResignDate is null ? "ทำงานอยู่ปัจจุบัน" : $"ลาออกแล้ว ({_data.ResignDate:dd/MM/yyyy})")</td></tr>
-                <tr><td>อัตราเงินเดือน</td><td>@(_data.SalaryAmt?.ToString("N2") ?? "ไม่มีข้อมูล")</td></tr>
+                <tr><td>@L.Translate("EmployeeLabel")</td><td>@_data.EmployeeName</td></tr>
+                <tr><td>@L.Translate("IdCardLabel")</td><td>@(_data.IdCard ?? "-")</td></tr>
+                <tr><td>@L.Translate("WorkDateLabel")</td><td>@(_data.WorkDate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                <tr><td>@L.Translate("ColStatus")</td><td>@(_data.ResignDate is null ? L.Translate("CurrentlyActiveLabel") : string.Format(L.Translate("ResignedChipTemplate"), _data.ResignDate.Value.ToString("dd/MM/yyyy")))</td></tr>
+                <tr><td>@L.Translate("SalaryRateLabel")</td><td>@(_data.SalaryAmt?.ToString("N2") ?? L.Translate("NoDataLabel"))</td></tr>
             </tbody>
         </MudSimpleTable>
 
         <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
-            ตำแหน่ง/สังกัดในระบบมักไม่ครบถ้วน กรุณาตรวจสอบและแก้ไขให้ถูกต้องก่อนออกเอกสาร
+            @L.Translate("PositionDeptIncompleteNote")
         </MudAlert>
 
         <MudGrid Class="mt-2">
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_position" Label="ตำแหน่ง" />
+                <MudTextField @bind-Value="_position" Label="@L.Translate("PositionLabel")" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_department" Label="สังกัด/แผนก" />
+                <MudTextField @bind-Value="_department" Label="@L.Translate("DepartmentLabel")" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_addressee" Label='เรียน (ถ้าไม่ระบุจะใช้ "ผู้ที่เกี่ยวข้อง")' Placeholder="เช่น ผู้จัดการธนาคาร ก..." />
+                <MudTextField @bind-Value="_addressee" Label="@L.Translate("AddresseeLabel")" Placeholder="@L.Translate("AddresseePlaceholder")" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_purpose" Label='วัตถุประสงค์ (ต่อจากคำว่า "เพื่อใช้")' Placeholder="เช่น ประกอบการขอสินเชื่อ" />
+                <MudTextField @bind-Value="_purpose" Label="@L.Translate("PurposeLabel")" Placeholder="@L.Translate("PurposePlaceholder")" />
             </MudItem>
         </MudGrid>
 
         <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
             Href="@BuildDownloadUrl()" Target="_blank">
-            ดาวน์โหลด PDF
+            @L.Translate("DownloadPdfButton")
         </MudButton>
 
         @if (string.IsNullOrWhiteSpace(_selectedEmployeeEmail))
         {
             <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
-                พนักงานคนนี้ยังไม่มีอีเมลในระบบ — ไม่สามารถส่งอีเมลได้ กรุณาเพิ่มอีเมลที่หน้า <MudLink Href="/pay/employees">จัดการพนักงาน</MudLink> ก่อน
+                @L.Translate("NoEmployeeEmailWarningPrefix") <MudLink Href="/pay/employees">@L.Translate("EmpAdminHeading")</MudLink> @L.Translate("NoEmployeeEmailWarningSuffix")
             </MudAlert>
         }
         <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
             OnClick="SendEmailAsync" Disabled="@(string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sending)">
-            ส่งอีเมลให้พนักงาน
+            @L.Translate("SendEmailToEmployeeButton")
         </MudButton>
 
         @if (_sendHistory.Count > 0)
         {
-            <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+            <MudText Typo="Typo.subtitle2" Class="mt-4">@L.Translate("SendHistoryHeading")</MudText>
             <MudSimpleTable Dense="true" Class="mt-1">
-                <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                <thead><tr><th>@L.Translate("DateTimeLabel")</th><th>@L.Translate("SentByLabel")</th><th>@L.Translate("NoteLabel")</th></tr></thead>
                 <tbody>
                     @foreach (var log in _sendHistory)
                     {
@@ -154,7 +155,7 @@
 
         if (_selectedEmployee is null)
         {
-            _error = "กรุณาเลือกพนักงาน";
+            _error = L.Translate("SelectEmployeeError");
             return;
         }
 
@@ -162,7 +163,7 @@
         _data = await SalaryCertificateDataService.BuildAsync(context, _selectedEmployee.id, _companyId!);
         if (_data is null)
         {
-            _error = "ไม่พบข้อมูลพนักงานคนนี้";
+            _error = L.Translate("EmployeeDataNotFoundError");
             return;
         }
 
@@ -213,12 +214,12 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             await LoadSendHistoryAsync(context, recordId);
 
-            Snackbar.Add($"ส่งหนังสือรับรองไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("CertificateSentSuccessTemplate"), _selectedEmployeeEmail), Severity.Success);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Salary cert email send failed for employee {Id}", _selectedEmployee.id);
-            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+            Snackbar.Add(L.Translate("EmailSendFailed"), Severity.Error);
         }
         finally
         {

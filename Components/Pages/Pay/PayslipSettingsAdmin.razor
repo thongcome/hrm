@@ -9,16 +9,15 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ตั้งค่ารหัสผ่านสลิปเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("PayslipSettingsPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="700px">
-    <MudText Typo="Typo.h5">ตั้งค่ารหัสผ่านสลิปเงินเดือน (PDF)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PayslipSettingsHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        รหัสผ่านจะถูกคำนวณจากข้อมูลพนักงานตามรูปแบบนี้ทุกครั้งที่สร้าง/เปิดสลิป — ระบบไม่เก็บรหัสผ่านไว้ที่ไหนเลย
-        รูปแบบเดียวกันนี้ยังใช้เป็น<b>รหัสผ่านเริ่มต้นตอนสร้างบัญชีผู้ใช้พนักงาน</b> (หน้า "จัดการพนักงาน" ปุ่ม "สร้างบัญชีผู้ใช้") ด้วย
-        เพื่อให้ทั้งสองที่ใช้สูตรเดียวกัน จำง่าย ไม่ต้องจำรหัสแยกกันสองชุด
+        @((MarkupString)L.Translate("PayslipSettingsDesc"))
     </MudText>
 
     @if (_settings is null)
@@ -36,18 +35,18 @@
     {
         <MudDivider Class="my-4" />
 
-        <MudSelect T="string" Value="_selectedPreset" ValueChanged="OnPresetChanged" Label="รูปแบบสำเร็จรูป">
-            <MudSelectItem Value="@("{BirthDateDDMMYYYY}")">วันเกิด แบบ วว/ดด/ปปปป (ค.ศ.) เช่น 15031990</MudSelectItem>
-            <MudSelectItem Value="@("{BirthDateDDMMYY}")">วันเกิด แบบ วว/ดด/ปป เช่น 150390</MudSelectItem>
-            <MudSelectItem Value="@("{IdCardLast4}")">เลขบัตรประชาชน 4 ตัวท้าย</MudSelectItem>
-            <MudSelectItem Value="@("{IdCardLast4}{EmpNo}")">เลขบัตรประชาชน 4 ตัวท้าย + รหัสพนักงาน</MudSelectItem>
-            <MudSelectItem Value="@("{EmpNo}{BirthDateDDMMYY}")">กำหนดเอง (แก้ไขด้านล่าง)</MudSelectItem>
+        <MudSelect T="string" Value="_selectedPreset" ValueChanged="OnPresetChanged" Label="@L.Translate("PasswordPresetLabel")">
+            <MudSelectItem Value="@("{BirthDateDDMMYYYY}")">@L.Translate("PresetBirthDateLong")</MudSelectItem>
+            <MudSelectItem Value="@("{BirthDateDDMMYY}")">@L.Translate("PresetBirthDateShort")</MudSelectItem>
+            <MudSelectItem Value="@("{IdCardLast4}")">@L.Translate("PresetIdCardLast4")</MudSelectItem>
+            <MudSelectItem Value="@("{IdCardLast4}{EmpNo}")">@L.Translate("PresetIdCardLast4EmpNo")</MudSelectItem>
+            <MudSelectItem Value="@("{EmpNo}{BirthDateDDMMYY}")">@L.Translate("PresetCustom")</MudSelectItem>
         </MudSelect>
 
-        <MudTextField @bind-Value="_settings.PasswordTemplate" Label="รูปแบบรหัสผ่าน (template)" Class="mt-4"
-            HelperText="โทเค็นที่ใช้ได้: {BirthDateDDMMYYYY} {BirthDateDDMMYY} {IdCardLast4} {EmpNo} — ผสมกันได้ เช่น {EmpNo}{BirthDateDDMMYY}" />
+        <MudTextField @bind-Value="_settings.PasswordTemplate" Label="@L.Translate("PasswordTemplateLabel")" Class="mt-4"
+            HelperText="@L.Translate("PasswordTemplateHelperText")" />
         <MudText Typo="Typo.caption" Class="mt-1" Style="opacity:.75;">
-            หมายเหตุ: รูปแบบนี้ใช้เฉพาะรหัสผ่านสลิป PDF เท่านั้น — รหัสผ่านเข้าสู่ระบบครั้งแรกของพนักงานตั้งแยกไว้ด้านล่าง (ไม่ขึ้นกับข้อมูลพนักงาน)
+            @L.Translate("PasswordTemplateCaption")
         </MudText>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -55,96 +54,95 @@
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">@L.Translate("Save")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลบริษัท (สำหรับหนังสือรับรองหักภาษี ณ ที่จ่าย)</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("CompanyInfoForCertHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            ใช้พิมพ์บนหัวหนังสือรับรองหักภาษี 50 ทวิ — เลขผู้เสียภาษี/ที่อยู่เป็นข้อมูลทางกฎหมายจริง กรุณากรอกให้ถูกต้อง
+            @L.Translate("CompanyInfoForCertDesc")
         </MudText>
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.CompanyName" Label="ชื่อบริษัท (ไทย)" />
+                <MudTextField @bind-Value="_settings.CompanyName" Label="@L.Translate("CompanyNameThLabel")" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.CompanyNameEn" Label="ชื่อบริษัท (อังกฤษ)" />
+                <MudTextField @bind-Value="_settings.CompanyNameEn" Label="@L.Translate("CompanyNameEnLabel")" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.CompanyTaxId" Label="เลขประจำตัวผู้เสียภาษี (13 หลัก)" MaxLength="13" />
+                <MudTextField @bind-Value="_settings.CompanyTaxId" Label="@L.Translate("CompanyTaxIdLabel")" MaxLength="13" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.CompanyAddress" Label="ที่อยู่บริษัท" Lines="2" />
+                <MudTextField @bind-Value="_settings.CompanyAddress" Label="@L.Translate("CompanyAddressLabel")" Lines="2" />
             </MudItem>
         </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync">บันทึกข้อมูลบริษัท</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync">@L.Translate("SaveCompanyInfoButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">ปีบัญชี (Fiscal Year)</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("FiscalYearSectionHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            กำหนดเดือนเริ่มต้นปีบัญชี ใช้คำนวณช่วง YTD ในแดชบอร์ดเงินเดือน (ค่าเริ่มต้น: มกราคม = ปีปฏิทินปกติ)
+            @L.Translate("FiscalYearSectionDesc")
         </MudText>
-        <MudSelect T="int" @bind-Value="_settings.FiscalYearStartMonth" Label="เดือนเริ่มต้นปีบัญชี" Class="mud-width-full" Style="max-width: 300px;">
+        <MudSelect T="int" @bind-Value="_settings.FiscalYearStartMonth" Label="@L.Translate("FiscalYearStartMonthLabel")" Class="mud-width-full" Style="max-width: 300px;">
             @for (var m = 1; m <= 12; m++)
             {
                 var month = m;
                 <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
             }
         </MudSelect>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync">บันทึกปีบัญชี</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync">@L.Translate("SaveFiscalYearButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">ทดลองงาน (Probation)</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("ProbationSectionHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            จำนวนวัน (ปฏิทิน) นับจากวันเริ่มงาน ใช้เป็นค่าแนะนำวันครบทดลองงานที่แท็บ Onboarding/Offboarding ของพนักงานแต่ละคน — HR แก้ไขต่อคนได้เสมอ
+            @L.Translate("ProbationSectionDesc")
         </MudText>
-        <MudNumericField @bind-Value="_settings.DefaultProbationDays" Label="จำนวนวันทดลองงานเริ่มต้น" Min="0" Style="max-width: 300px;" />
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProbationSettingsAsync">บันทึกค่าทดลองงาน</MudButton>
+        <MudNumericField @bind-Value="_settings.DefaultProbationDays" Label="@L.Translate("DefaultProbationDaysLabel")" Min="0" Style="max-width: 300px;" />
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProbationSettingsAsync">@L.Translate("SaveProbationButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">งบประมาณอัตรากำลัง (Headcount Budget)</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("HeadcountBudgetSectionHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            ตั้งค่างบประมาณเองที่ /pos/headcount-budget — สวิตช์นี้ควบคุมว่าถ้าสร้างเลขที่อัตราใหม่แล้วเกินงบที่อนุมัติไว้ จะแค่เตือน (ปิด) หรือบล็อกไม่ให้บันทึก (เปิด)
+            @L.Translate("HeadcountBudgetSectionDesc")
         </MudText>
-        <MudSwitch T="bool" @bind-Value="_settings.BlockOverBudgetCreation" Color="Color.Warning" Label="บล็อกการสร้างเลขที่อัตราที่เกินงบประมาณ" />
+        <MudSwitch T="bool" @bind-Value="_settings.BlockOverBudgetCreation" Color="Color.Warning" Label="@L.Translate("BlockOverBudgetLabel")" />
         <br />
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveHeadcountBudgetSettingsAsync">บันทึกค่างบประมาณอัตรากำลัง</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveHeadcountBudgetSettingsAsync">@L.Translate("SaveHeadcountBudgetButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">รหัสผ่านเริ่มต้นสำหรับสร้าง/รีเซ็ตบัญชีผู้ใช้พนักงาน</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("DefaultPasswordSectionHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mb-2">
-            ใช้ตอนกด "สร้างบัญชีผู้ใช้" หรือ "รีเซ็ตรหัสผ่าน" ในหน้าจัดการพนักงาน — รหัสผ่านจริงคือค่าทั้งสองช่องต่อกันตรงๆ
-            (ไม่ขึ้นกับข้อมูลพนักงาน จึงใช้ได้แม้พนักงานยังไม่มีวันเกิด/เลขบัตรในระบบ)
+            @L.Translate("DefaultPasswordSectionDesc")
         </MudText>
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.DefaultPasswordPart1" Label="ส่วนที่ 1" Placeholder="เช่น Abcd" />
+                <MudTextField @bind-Value="_settings.DefaultPasswordPart1" Label="@L.Translate("PasswordPart1Label")" Placeholder="@L.Translate("PasswordPart1Placeholder")" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_settings.DefaultPasswordPart2" Label="ส่วนที่ 2" Placeholder="เช่น 2025" />
+                <MudTextField @bind-Value="_settings.DefaultPasswordPart2" Label="@L.Translate("PasswordPart2Label")" Placeholder="@L.Translate("PasswordPart2Placeholder")" />
             </MudItem>
         </MudGrid>
         @if (!string.IsNullOrEmpty(CombinedDefaultPassword))
         {
             @if (DefaultPasswordPolicyError is null)
             {
-                <MudAlert Severity="Severity.Success" Class="mt-3">รหัสผ่านที่ได้: <b class="mono">@CombinedDefaultPassword</b></MudAlert>
+                <MudAlert Severity="Severity.Success" Class="mt-3">@L.Translate("ResultingPasswordLabel") <b class="mono">@CombinedDefaultPassword</b></MudAlert>
             }
             else
             {
-                <MudAlert Severity="Severity.Error" Class="mt-3">รหัสผ่านที่ได้ "@CombinedDefaultPassword" @DefaultPasswordPolicyError</MudAlert>
+                <MudAlert Severity="Severity.Error" Class="mt-3">@string.Format(L.Translate("ResultingPasswordErrorTemplate"), CombinedDefaultPassword, DefaultPasswordPolicyError)</MudAlert>
             }
         }
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveDefaultPasswordAsync">บันทึกรหัสผ่านเริ่มต้น</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveDefaultPasswordAsync">@L.Translate("SaveDefaultPasswordButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6" Class="mb-2">ทดสอบดูตัวอย่าง</MudText>
-        <MudAutocomplete T="Hremployee" Label="เลือกพนักงานเพื่อดูตัวอย่างรหัสผ่าน" @bind-Value="_previewEmployee"
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TestPreviewSectionHeading")</MudText>
+        <MudAutocomplete T="Hremployee" Label="@L.Translate("SelectEmployeeForPasswordPreviewLabel")" @bind-Value="_previewEmployee"
             SearchFunc="SearchEmployeesAsync"
             ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
             ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
@@ -155,7 +153,7 @@
             @if (result.Success)
             {
                 <MudAlert Severity="Severity.Success" Class="mt-3">
-                    รหัสผ่านสำหรับ @_previewEmployee.EmpNo — @_previewEmployee.EmpName: <b class="mono">@result.Password</b>
+                    @string.Format(L.Translate("PasswordPreviewResultTemplate"), _previewEmployee.EmpNo, _previewEmployee.EmpName) <b class="mono">@result.Password</b>
                 </MudAlert>
             }
             else
@@ -183,7 +181,7 @@
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId))
         {
-            _error = "บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน";
+            _error = L.Translate("CompanyNotLinkedError");
             return;
         }
 
@@ -228,7 +226,7 @@
         _error = null;
         if (_settings is null || string.IsNullOrWhiteSpace(_settings.PasswordTemplate))
         {
-            _error = "กรุณากำหนดรูปแบบรหัสผ่าน";
+            _error = L.Translate("PasswordTemplateRequiredError");
             return;
         }
 
@@ -236,7 +234,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -245,7 +243,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("SettingsSavedSuccess"), Severity.Success);
     }
 
     // Mirrors ASP.NET Core Identity's default PasswordOptions (never
@@ -253,13 +251,13 @@
     // digit + lowercase + uppercase + non-alphanumeric + length >= 6).
     // Checked client-side here so a bad combination is caught when the admin
     // saves it, not the next time HR tries to create an account.
-    private static string? ValidatePasswordPolicy(string value)
+    private string? ValidatePasswordPolicy(string value)
     {
-        if (value.Length < 6) return "— ต้องมีความยาวรวมอย่างน้อย 6 ตัวอักษร";
-        if (!value.Any(char.IsDigit)) return "— ต้องมีตัวเลขอย่างน้อย 1 ตัว";
-        if (!value.Any(char.IsLower)) return "— ต้องมีอักษรพิมพ์เล็กอย่างน้อย 1 ตัว";
-        if (!value.Any(char.IsUpper)) return "— ต้องมีอักษรพิมพ์ใหญ่อย่างน้อย 1 ตัว";
-        if (value.All(char.IsLetterOrDigit)) return "— ต้องมีสัญลักษณ์ (เช่น @ ! #) อย่างน้อย 1 ตัว";
+        if (value.Length < 6) return L.Translate("PasswordPolicyMinLength");
+        if (!value.Any(char.IsDigit)) return L.Translate("PasswordPolicyDigit");
+        if (!value.Any(char.IsLower)) return L.Translate("PasswordPolicyLower");
+        if (!value.Any(char.IsUpper)) return L.Translate("PasswordPolicyUpper");
+        if (value.All(char.IsLetterOrDigit)) return L.Translate("PasswordPolicySymbol");
         return null;
     }
 
@@ -270,12 +268,12 @@
 
         if (string.IsNullOrEmpty(CombinedDefaultPassword))
         {
-            _error = "กรุณากรอกรหัสผ่านเริ่มต้นทั้งสองช่อง";
+            _error = L.Translate("BothPasswordPartsRequiredError");
             return;
         }
         if (DefaultPasswordPolicyError is not null)
         {
-            _error = $"รหัสผ่าน \"{CombinedDefaultPassword}\" ไม่ผ่านเงื่อนไข {DefaultPasswordPolicyError}";
+            _error = string.Format(L.Translate("PasswordDoesNotMeetPolicyTemplate"), CombinedDefaultPassword, DefaultPasswordPolicyError);
             return;
         }
 
@@ -283,7 +281,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -293,7 +291,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกรหัสผ่านเริ่มต้นเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("DefaultPasswordSavedSuccess"), Severity.Success);
     }
 
     private async Task SaveCompanyInfoAsync()
@@ -305,7 +303,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -317,7 +315,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกข้อมูลบริษัทเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("CompanyInfoSavedSuccess"), Severity.Success);
     }
 
     private async Task SaveFiscalYearAsync()
@@ -329,7 +327,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -338,7 +336,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกปีบัญชีเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("FiscalYearSavedSuccess"), Severity.Success);
     }
 
     private async Task SaveProbationSettingsAsync()
@@ -350,7 +348,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -359,7 +357,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกค่าทดลองงานเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ProbationSavedSuccess"), Severity.Success);
     }
 
     private async Task SaveHeadcountBudgetSettingsAsync()
@@ -371,7 +369,7 @@
         var existing = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -380,7 +378,7 @@
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกค่างบประมาณอัตรากำลังเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("HeadcountBudgetSavedSuccess"), Severity.Success);
     }
 
     private async Task<long> GetCurrentUserIdAsync()
@@ -390,20 +388,20 @@
         return long.TryParse(idClaim, out var id) ? id : 0;
     }
 
-    private static string ThaiMonthName(int month) => month switch
+    private string ThaiMonthName(int month) => month switch
     {
-        1 => "มกราคม",
-        2 => "กุมภาพันธ์",
-        3 => "มีนาคม",
-        4 => "เมษายน",
-        5 => "พฤษภาคม",
-        6 => "มิถุนายน",
-        7 => "กรกฎาคม",
-        8 => "สิงหาคม",
-        9 => "กันยายน",
-        10 => "ตุลาคม",
-        11 => "พฤศจิกายน",
-        12 => "ธันวาคม",
+        1 => L.Translate("MonthJanuary"),
+        2 => L.Translate("MonthFebruary"),
+        3 => L.Translate("MonthMarch"),
+        4 => L.Translate("MonthApril"),
+        5 => L.Translate("MonthMay"),
+        6 => L.Translate("MonthJune"),
+        7 => L.Translate("MonthJuly"),
+        8 => L.Translate("MonthAugust"),
+        9 => L.Translate("MonthSeptember"),
+        10 => L.Translate("MonthOctober"),
+        11 => L.Translate("MonthNovember"),
+        12 => L.Translate("MonthDecember"),
         _ => month.ToString(System.Globalization.CultureInfo.InvariantCulture),
     };
 }

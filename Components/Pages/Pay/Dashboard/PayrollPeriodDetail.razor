@@ -8,14 +8,15 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
 
-<PageTitle>รายละเอียดงวดเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("PeriodDetailPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/dashboard"))" title="กลับแดชบอร์ด" />
-        <MudText Typo="Typo.h5">รายละเอียดงวดเงินเดือน</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/dashboard"))" title="@L.Translate("BackToDashboardTitle")" />
+        <MudText Typo="Typo.h5">@L.Translate("PeriodDetailPageTitle")</MudText>
     </MudStack>
 
     @if (!_loaded)
@@ -24,56 +25,56 @@
     }
     else if (_run is null)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">ไม่พบงวดเงินเดือนนี้ หรือไม่ใช่ของบริษัทคุณ</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("PeriodNotFoundOrNotYourCompanyError")</MudAlert>
     }
     else
     {
         <MudText Typo="Typo.body1" Class="mt-2">
-            งวด @_run.PayrollPeriod (@_run.PeriodStart.ToString("dd/MM/yyyy") - @_run.PeriodEnd.ToString("dd/MM/yyyy")) — สถานะ: @_run.Status
+            @string.Format(L.Translate("PeriodStatusInlineTemplate"), _run.PayrollPeriod, _run.PeriodStart.ToString("dd/MM/yyyy"), _run.PeriodEnd.ToString("dd/MM/yyyy"), _run.Status)
         </MudText>
 
         <MudGrid Class="mt-3">
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">รายรับรวม</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("ColGrossEarnings")</MudText>
                     <MudText Typo="Typo.h5">@_employees.Sum(e => e.GrossEarnings).ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">หักรวม</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalDeductionsLabel")</MudText>
                     <MudText Typo="Typo.h5">@_employees.Sum(e => e.TotalDeductions).ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">สุทธิรวม</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalNetPlainLabel")</MudText>
                     <MudText Typo="Typo.h5">@_employees.Sum(e => e.NetPay).ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
         </MudGrid>
 
-        <MudTextField @bind-Value="_searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start"
+        <MudTextField @bind-Value="_searchTerm" Placeholder="@L.Translate("SearchByCodeOrNamePlaceholder")" Adornment="Adornment.Start"
             AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-4 mud-width-full" />
 
         <MudTable Items="_employees" Dense="true" Hover="true" Class="mt-3" Filter="EmpFilter">
             <HeaderContent>
-                <MudTh>รหัสพนักงาน</MudTh>
-                <MudTh>ชื่อ-นามสกุล</MudTh>
-                <MudTh>ศูนย์ต้นทุน</MudTh>
-                <MudTh>รายรับรวม</MudTh>
-                <MudTh>หักรวม</MudTh>
-                <MudTh>สุทธิ</MudTh>
+                <MudTh>@L.Translate("EmpNoLabel")</MudTh>
+                <MudTh>@L.Translate("FieldFullName")</MudTh>
+                <MudTh>@L.Translate("ColCostCenter")</MudTh>
+                <MudTh>@L.Translate("ColGrossEarnings")</MudTh>
+                <MudTh>@L.Translate("TotalDeductionsLabel")</MudTh>
+                <MudTh>@L.Translate("ColNetPay")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.EmpNo</MudTd>
                 <MudTd>@context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
-                <MudTd>@(string.IsNullOrWhiteSpace(context.CostCenterCode) ? "ไม่ระบุ" : context.CostCenterCode)</MudTd>
+                <MudTd>@(string.IsNullOrWhiteSpace(context.CostCenterCode) ? L.Translate("UnspecifiedText") : context.CostCenterCode)</MudTd>
                 <MudTd>@context.GrossEarnings.ToString("N2")</MudTd>
                 <MudTd>@context.TotalDeductions.ToString("N2")</MudTd>
                 <MudTd>@context.NetPay.ToString("N2")</MudTd>
-                <MudTd><MudLink Href="@($"/pay/dashboard/period/{RunId}/employee/{context.Id}")">รายการเงินได้/เงินหัก</MudLink></MudTd>
+                <MudTd><MudLink Href="@($"/pay/dashboard/period/{RunId}/employee/{context.Id}")">@L.Translate("LineItemsPageTitle")</MudLink></MudTd>
             </RowTemplate>
         </MudTable>
     }

@@ -13,53 +13,54 @@
 @inject EmployeeLoanService LoanService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>เงินกู้พนักงาน</PageTitle>
+<PageTitle>@L.Translate("EmployeeLoansPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.body2">เงินเดือนฐาน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
+        <MudText Typo="Typo.body2">@string.Format(L.Translate("BaseSalaryColonTemplate"), _employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-        <MudText Typo="Typo.h6">ยื่นขอเงินกู้ใหม่</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("SubmitNewLoanHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            HR กรอกแทนพนักงาน — ระบบจะแบ่งงวดผ่อนเท่าๆ กัน (ไม่มีดอกเบี้ย) แล้วหักเข้าเงินเดือนอัตโนมัติทุกงวดจนครบ
+            @L.Translate("SubmitNewLoanDesc")
         </MudText>
 
         @if (_hasActiveLoan)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">พนักงานคนนี้มีเงินกู้ที่ยังไม่ปิดยอดอยู่แล้ว — ต้องรอชำระหมดหรือยกเลิกก่อนจึงจะยื่นใหม่ได้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("HasActiveLoanInfo")</MudAlert>
         }
         else
         {
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="4">
-                    <MudNumericField @bind-Value="_principal" Label="ยอดเงินกู้ (บาท)" Format="N2" Min="0" />
+                    <MudNumericField @bind-Value="_principal" Label="@L.Translate("LoanPrincipalLabel")" Format="N2" Min="0" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudNumericField @bind-Value="_totalInstallments" Label="จำนวนงวดผ่อน" Min="1" Max="60" />
+                    <MudNumericField @bind-Value="_totalInstallments" Label="@L.Translate("TotalInstallmentsLabel")" Min="1" Max="60" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudDatePicker Date="_startMonth" DateChanged="OnStartMonthChanged" Label="งวดแรกที่เริ่มหัก"
+                    <MudDatePicker Date="_startMonth" DateChanged="OnStartMonthChanged" Label="@L.Translate("FirstDeductionMonthLabel")"
                         Editable="true" DateFormat="MM/yyyy" PickerVariant="PickerVariant.Dialog" OpenTo="OpenTo.Month" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_reason" Label="เหตุผล/หมายเหตุ" />
+                    <MudTextField @bind-Value="_reason" Label="@L.Translate("ReasonNoteLabel")" />
                 </MudItem>
             </MudGrid>
 
-            <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="PreviewSchedule">ดูตารางผ่อนชำระ</MudButton>
+            <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="PreviewSchedule">@L.Translate("ViewScheduleButton")</MudButton>
 
             @if (!string.IsNullOrEmpty(_error))
             {
@@ -70,7 +71,7 @@ else
             {
                 <MudSimpleTable Dense="true" Class="mt-3">
                     <thead>
-                        <tr><th>งวดที่</th><th>เดือน</th><th>จำนวนเงิน</th><th>ยอดคงเหลือหลังหัก</th></tr>
+                        <tr><th>@L.Translate("ColInstallmentNo")</th><th>@L.Translate("ColMonth")</th><th>@L.Translate("ColAmount")</th><th>@L.Translate("ColBalanceAfter")</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var line in _previewSchedule)
@@ -85,17 +86,17 @@ else
                     </tbody>
                 </MudSimpleTable>
 
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitLoanAsync">ยืนยันยื่นขอเงินกู้</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitLoanAsync">@L.Translate("ConfirmSubmitLoanButton")</MudButton>
             }
         }
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">ประวัติเงินกู้</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("LoanHistoryHeading")</MudText>
 
         @if (_loans.Count == 0)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีประวัติเงินกู้สำหรับพนักงานคนนี้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("NoLoanHistoryMessage")</MudAlert>
         }
         else
         {
@@ -105,20 +106,20 @@ else
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <div>
                             <MudText Typo="Typo.subtitle1">
-                                @loan.PrincipalAmount.ToString("N2") บาท — @loan.TotalInstallments งวด (@FormatStatus(loan.Status))
+                                @string.Format(L.Translate("LoanSummaryTemplate"), loan.PrincipalAmount.ToString("N2"), loan.TotalInstallments, FormatStatus(loan.Status))
                             </MudText>
                             <MudText Typo="Typo.body2">
-                                เริ่มงวด @FormatPeriod(loan.StartPeriod) · คงเหลือ @loan.RemainingBalance.ToString("N2") บาท
+                                @string.Format(L.Translate("LoanDetailTemplate"), FormatPeriod(loan.StartPeriod), loan.RemainingBalance.ToString("N2"))
                                 @if (!string.IsNullOrWhiteSpace(loan.Reason)) { <text> · @loan.Reason</text> }
                             </MudText>
                         </div>
                         <MudStack Row="true" Spacing="1">
                             <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleExpand(loan.Id))">
-                                @(_expandedLoanId == loan.Id ? "ซ่อนตารางงวด" : "ดูตารางงวด")
+                                @(_expandedLoanId == loan.Id ? L.Translate("HideScheduleButton") : L.Translate("ViewScheduleShortButton"))
                             </MudButton>
                             @if (loan.Status == Pay_EmployeeLoanStatus.Active && loan.Pay_EmployeeLoanInstallments.All(i => i.Status != Pay_LoanInstallmentStatus.Consumed))
                             {
-                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => CancelLoanAsync(loan.Id))">ยกเลิก</MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => CancelLoanAsync(loan.Id))">@L.Translate("CancelButton")</MudButton>
                             }
                         </MudStack>
                     </MudStack>
@@ -127,7 +128,7 @@ else
                     {
                         <MudSimpleTable Dense="true" Class="mt-2">
                             <thead>
-                                <tr><th>งวดที่</th><th>เดือน</th><th>จำนวนเงิน</th><th>คงเหลือ</th><th>สถานะ</th></tr>
+                                <tr><th>@L.Translate("ColInstallmentNo")</th><th>@L.Translate("ColMonth")</th><th>@L.Translate("ColAmount")</th><th>@L.Translate("ColBalance")</th><th>@L.Translate("ColStatus")</th></tr>
                             </thead>
                             <tbody>
                                 @foreach (var inst in loan.Pay_EmployeeLoanInstallments.OrderBy(i => i.InstallmentNo))
@@ -205,7 +206,7 @@ else
 
         if (_startMonth is null)
         {
-            _error = "กรุณาเลือกงวดแรกที่เริ่มหัก";
+            _error = L.Translate("SelectFirstDeductionMonthError");
             return;
         }
 
@@ -234,7 +235,7 @@ else
         {
             var startPeriod = $"{_startMonth.Value.Year:D4}{_startMonth.Value.Month:D2}";
             await LoanService.SubmitAsync(HremployeeId, _principal, _totalInstallments, startPeriod, _reason, userId);
-            Snackbar.Add("ยื่นขอเงินกู้เรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("LoanSubmittedSuccess"), Severity.Success);
 
             _principal = 0;
             _totalInstallments = 6;
@@ -253,7 +254,7 @@ else
         try
         {
             await LoanService.CancelAsync(loanId);
-            Snackbar.Add("ยกเลิกเงินกู้เรียบร้อย", Severity.Success);
+            Snackbar.Add(L.Translate("LoanCancelledSuccess"), Severity.Success);
             await LoadLoansAsync();
         }
         catch (InvalidOperationException ex)
@@ -271,19 +272,19 @@ else
         return $"{m:00}/{y}";
     }
 
-    private static string FormatStatus(Pay_EmployeeLoanStatus status) => status switch
+    private string FormatStatus(Pay_EmployeeLoanStatus status) => status switch
     {
-        Pay_EmployeeLoanStatus.Active => "กำลังผ่อนชำระ",
-        Pay_EmployeeLoanStatus.PaidOff => "ปิดยอดแล้ว",
-        Pay_EmployeeLoanStatus.Cancelled => "ยกเลิกแล้ว",
+        Pay_EmployeeLoanStatus.Active => L.Translate("LoanStatusActive"),
+        Pay_EmployeeLoanStatus.PaidOff => L.Translate("LoanStatusPaidOff"),
+        Pay_EmployeeLoanStatus.Cancelled => L.Translate("LoanStatusCancelled"),
         _ => status.ToString(),
     };
 
-    private static string FormatInstallmentStatus(Pay_LoanInstallmentStatus status) => status switch
+    private string FormatInstallmentStatus(Pay_LoanInstallmentStatus status) => status switch
     {
-        Pay_LoanInstallmentStatus.Pending => "รอหัก",
-        Pay_LoanInstallmentStatus.Consumed => "หักแล้ว",
-        Pay_LoanInstallmentStatus.Cancelled => "ยกเลิก",
+        Pay_LoanInstallmentStatus.Pending => L.Translate("InstallmentStatusPending"),
+        Pay_LoanInstallmentStatus.Consumed => L.Translate("InstallmentStatusConsumed"),
+        Pay_LoanInstallmentStatus.Cancelled => L.Translate("CancelButton"),
         _ => status.ToString(),
     };
 }

@@ -9,13 +9,14 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
-<PageTitle>รายละเอียดเงินเดือนพนักงาน</PageTitle>
+<PageTitle>@L.Translate("PayrollEmployeeDetailHeaderPageTitle")</PageTitle>
 
 @if (_forbidden)
 {
-    <MudAlert Severity="Severity.Error">รอบเงินเดือนนี้เป็นของบริษัทอื่น ไม่สามารถเข้าถึงได้</MudAlert>
+    <MudAlert Severity="Severity.Error">@L.Translate("OtherCompanyForbiddenError")</MudAlert>
 }
 else if (_employee is null)
 {
@@ -24,35 +25,35 @@ else if (_employee is null)
 else
 {
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}"))" Class="mb-2">
-        กลับไปหน้ารอบเงินเดือน
+        @L.Translate("BackToPayrollRunButton")
     </MudButton>
 
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">@_employee.Hremployee?.EmpName @_employee.Hremployee?.EmpSurname (@_employee.EmpNo)</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            สัดส่วนวันทำงาน @_employee.ActualWorkingDays/@_employee.WorkingDaysInPeriod (@(_employee.ProrationFactor.ToString("P2")))
+            @string.Format(L.Translate("WorkDaysProportionTemplate"), _employee.ActualWorkingDays, _employee.WorkingDaysInPeriod, _employee.ProrationFactor.ToString("P2"))
         </MudText>
 
         <MudSimpleTable Class="mt-3" Dense="true">
             <tbody>
-                <tr><td>รายรับรวม (Gross)</td><td class="text-right">@_employee.GrossEarnings.ToString("N2")</td></tr>
-                <tr><td>รายหักรวม</td><td class="text-right">@_employee.TotalDeductions.ToString("N2")</td></tr>
-                <tr><td><b>สุทธิ (Net Pay)</b></td><td class="text-right"><b>@_employee.NetPay.ToString("N2")</b></td></tr>
+                <tr><td>@L.Translate("GrossEarningsRowLabel")</td><td class="text-right">@_employee.GrossEarnings.ToString("N2")</td></tr>
+                <tr><td>@L.Translate("ColTotalDeductions")</td><td class="text-right">@_employee.TotalDeductions.ToString("N2")</td></tr>
+                <tr><td><b>@L.Translate("NetPayBoldLabel")</b></td><td class="text-right"><b>@_employee.NetPay.ToString("N2")</b></td></tr>
             </tbody>
         </MudSimpleTable>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">รายการย่อย</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("LineItemsHeading")</MudText>
         <MudTable Items="_lineItems" Dense="true">
             <HeaderContent>
-                <MudTh>รายการ</MudTh>
-                <MudTh>ประเภท</MudTh>
-                <MudTh>จำนวนเงิน</MudTh>
+                <MudTh>@L.Translate("ColItemName")</MudTh>
+                <MudTh>@L.Translate("ColItemType")</MudTh>
+                <MudTh>@L.Translate("ColAmount")</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.Pay_PayItemType.NameTh (@context.Pay_PayItemType.NameEn)</MudTd>
-                <MudTd>@(context.SignFlag > 0 ? "รายรับ" : "รายหัก")</MudTd>
+                <MudTd>@(context.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
                 <MudTd>@((context.SignFlag * context.Amount).ToString("N2"))</MudTd>
             </RowTemplate>
         </MudTable>
@@ -61,7 +62,7 @@ else
     @if (_anomalies.Count > 0)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6" Class="mb-2">ความผิดปกติที่ตรวจพบ (AI)</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("AnomaliesDetectedHeading")</MudText>
             @foreach (var anomaly in _anomalies)
             {
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2" Class="mb-2">
@@ -71,21 +72,21 @@ else
                         @if (anomaly.DetectedValue is not null)
                         {
                             <MudText Typo="Typo.caption" Class="d-block">
-                                ค่าที่ตรวจพบ: @anomaly.DetectedValue.Value.ToString("N2")
+                                @string.Format(L.Translate("DetectedValueTemplate"), anomaly.DetectedValue.Value.ToString("N2"))
                                 @if (anomaly.ReferenceValue is not null)
                                 {
-                                    <text> · ค่าอ้างอิง: @anomaly.ReferenceValue.Value.ToString("N2")</text>
+                                    <text>@string.Format(L.Translate("ReferenceValueInlineTemplate"), anomaly.ReferenceValue.Value.ToString("N2"))</text>
                                 }
                             </MudText>
                         }
                         @if (anomaly.IsAcknowledged)
                         {
-                            <MudText Typo="Typo.caption" Class="d-block">รับทราบแล้วเมื่อ @anomaly.AcknowledgedDate?.ToString("dd/MM/yyyy HH:mm")</MudText>
+                            <MudText Typo="Typo.caption" Class="d-block">@string.Format(L.Translate("AcknowledgedAtTemplate"), anomaly.AcknowledgedDate?.ToString("dd/MM/yyyy HH:mm"))</MudText>
                         }
                     </div>
                     @if (!anomaly.IsAcknowledged)
                     {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">รับทราบ</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">@L.Translate("AcknowledgeButton")</MudButton>
                     }
                 </MudStack>
             }
@@ -95,7 +96,7 @@ else
     @if (_taxDetailJson is not null)
     {
         <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6" Class="mb-2">รายละเอียดการคำนวณภาษี (Audit Trail)</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TaxAuditTrailHeading")</MudText>
             <MudTextField Value="@_taxDetailJson" T="string" Lines="12" ReadOnly="true" Variant="Variant.Outlined" />
         </MudPaper>
     }
@@ -162,7 +163,7 @@ else
         await context.SaveChangesAsync();
 
         await OnParametersSetAsync();
-        Snackbar.Add("รับทราบแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("AcknowledgedSuccess"), Severity.Success);
     }
 
     private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch

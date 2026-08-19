@@ -9,41 +9,36 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ตั้งค่ากองทุนสงเคราะห์ลูกจ้าง</PageTitle>
+<PageTitle>@L.Translate("WelfareFundPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">กองทุนสงเคราะห์ลูกจ้าง (Employee Welfare Fund)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("WelfareFundHeading")</MudText>
     <MudAlert Severity="Severity.Warning" Class="mt-2">
-        เริ่มบังคับใช้จริง 1 ต.ค. 2569 ตาม พ.ร.บ.คุ้มครองแรงงาน หมวด 13 มาตรา 130-134 —
-        <b>ยืนยันแล้วจากตัวบทกฎหมาย</b>: บังคับเฉพาะนายจ้างที่มีลูกจ้างตั้งแต่ 10 คนขึ้นไป (เว้นแต่มีกองทุนสำรองเลี้ยงชีพ/สวัสดิการอื่นตามกฎหมายครอบคลุมอยู่แล้ว —
-        มาตรา 130), อัตราเงินสะสม/เงินสมทบตามกฎหมายต้อง<b>ไม่เกิน 5%</b> ของค่าจ้าง (มาตรา 131) และ<b>ไม่มีเพดานค่าจ้างที่ใช้คำนวณ</b>ในตัวบทกฎหมาย
-        (ค่าเริ่มต้น 0.25%/0.5% ที่ตั้งไว้มาจากกฎกระทรวงที่ประกาศตามมาซึ่งได้ตรวจสอบข้ามหลายแหล่งแล้ว) —
-        <b>รายละเอียดที่ยังไม่ยืนยัน</b>: วันสิ้นสุดของช่วงอัตราแรก (30 ก.ย. 2573 หรือ 2574 — แหล่งข้อมูลขัดแย้งกันเล็กน้อย) และช่องทาง/ความถี่การนำส่งเงินที่แน่ชัดกับกรมสวัสดิการฯ
-        <br />
-        การคำนวณนี้<b>ผูกเข้ากับการคำนวณเงินเดือนจริงแล้ว</b> แต่จะมีผลเฉพาะช่วงอัตราที่เปิดใช้งาน (IsEnabled) เท่านั้น — ทุกช่วงที่ seed ไว้ปิดอยู่โดยดีฟอลต์
+        @((MarkupString)L.Translate("WelfareFundLegalAlert"))
     </MudAlert>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มช่วงอัตราใหม่" : "แก้ไขช่วงอัตรา")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewRateRangeHeading") : L.Translate("EditRateRangeHeading"))</MudText>
     <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6"><MudDatePicker Label="มีผลตั้งแต่" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="ถึงวันที่ (เว้นว่าง = ไม่มีกำหนด)" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_employeeRate" Label="อัตราฝั่งพนักงาน (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_companyRate" Label="อัตราฝั่งบริษัท (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_wageCap" Label="เพดานค่าจ้าง/เดือน (เว้นว่าง = ไม่มีเพดาน)" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_employeeRate" Label="@L.Translate("EmployeeRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_companyRate" Label="@L.Translate("CompanyRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_wageCap" Label="@L.Translate("WageCapLabel")" Format="N2" Min="0" /></MudItem>
         <MudItem xs="12">
-            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Warning" Label="เปิดใช้งาน (มีผลกระทบจริงเมื่อผูกเข้าเงินเดือนในอนาคต)" />
+            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Warning" Label="@L.Translate("EnableSwitchLabel")" />
         </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="หมายเหตุ / แหล่งที่มา" Lines="2" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteSourceLabel")" Lines="2" /></MudItem>
     </MudGrid>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -53,11 +48,11 @@
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มช่วงอัตรา" : "บันทึกการแก้ไข")
+            @(_editingId is null ? L.Translate("AddRateRangeButton") : L.Translate("SaveEditButton"))
         </MudButton>
         @if (_editingId is not null)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
         }
     </MudStack>
 
@@ -65,62 +60,63 @@
 
     <MudTable Items="_policies" Dense="true" Hover="true">
         <HeaderContent>
-            <MudTh>ช่วงวันที่</MudTh>
-            <MudTh>อัตรา (พนักงาน / บริษัท)</MudTh>
-            <MudTh>เพดานค่าจ้าง</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("DateRangeLabel")</MudTh>
+            <MudTh>@L.Translate("ColRateEmpCompany")</MudTh>
+            <MudTh>@L.Translate("ColWageCap")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy") - @(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")</MudTd>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy") - @(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? L.Translate("NoDeadlineText"))</MudTd>
             <MudTd>@context.EmployeeContributionRate.ToString("0.00")% / @context.CompanyContributionRate.ToString("0.00")%</MudTd>
-            <MudTd>@(context.WageCapPerMonth?.ToString("N2") ?? "ไม่มีเพดาน")</MudTd>
+            <MudTd>@(context.WageCapPerMonth?.ToString("N2") ?? L.Translate("NoCapText"))</MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsEnabled ? Color.Warning : Color.Default)">
-                    @(context.IsEnabled ? "เปิดใช้งาน" : "ปิดอยู่")
+                    @(context.IsEnabled ? L.Translate("EnabledChip") : L.Translate("DisabledChip"))
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีการตั้งค่าอัตราสำหรับบริษัทนี้</MudText>
+            <MudText Typo="Typo.body2">@L.Translate("NoRatesConfiguredMessage")</MudText>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h6">ทดสอบคำนวณ</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("TestCalculationHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        ป้อนค่าจ้างและวันที่ เพื่อดูว่าจะถูกหักเท่าไหร่ตามช่วงอัตราที่ตั้งไว้ (ไม่บันทึกข้อมูลใดๆ ใช้สำหรับตรวจสอบ config เท่านั้น)
+        @L.Translate("TestCalculationDesc")
     </MudText>
     <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testWage" Label="ค่าจ้างต่อเดือน (บาท)" Format="N2" Min="0" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ทดสอบ" @bind-Date="_testDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testWage" Label="@L.Translate("MonthlyWageLabel")" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("TestDateLabel")" @bind-Date="_testDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
     </MudGrid>
-    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreview">คำนวณ</MudButton>
+    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreview">@L.Translate("CalculateButton")</MudButton>
 
     @if (_previewResult is not null)
     {
         <MudAlert Severity="Severity.Info" Class="mt-3">
             @if (_previewResult.Value.Matched is null)
             {
-                <text>ไม่พบช่วงอัตราที่ครอบคลุมวันที่นี้ (หรือยังไม่เปิดใช้งาน) — จะไม่มีการหักใดๆ</text>
+                <text>@L.Translate("NoMatchingRateMessage")</text>
             }
             else
             {
-                <text>
-                    ใช้ช่วงอัตรา @_previewResult.Value.Matched.EffectiveFrom.ToString("dd/MM/yyyy") - @(_previewResult.Value.Matched.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")
-                    (@_previewResult.Value.Matched.EmployeeContributionRate.ToString("0.00")% / @_previewResult.Value.Matched.CompanyContributionRate.ToString("0.00")%)<br />
-                    หักจากพนักงาน: <b>@_previewResult.Value.Result.EmployeeAmount.ToString("N2")</b> บาท ·
-                    บริษัทสมทบ: <b>@_previewResult.Value.Result.CompanyAmount.ToString("N2")</b> บาท
-                    @if (!_previewResult.Value.Matched.IsEnabled)
-                    {
-                        <br />
-                        <text><i>(ช่วงอัตรานี้ยังปิดใช้งานอยู่ — ตัวเลขนี้เป็นการทดสอบเฉยๆ ไม่มีผลจริง)</i></text>
-                    }
-                </text>
+                @((MarkupString)string.Format(L.Translate("PreviewMatchedTemplate"),
+                    _previewResult.Value.Matched.EffectiveFrom.ToString("dd/MM/yyyy"),
+                    _previewResult.Value.Matched.EffectiveTo?.ToString("dd/MM/yyyy") ?? L.Translate("NoDeadlineText"),
+                    _previewResult.Value.Matched.EmployeeContributionRate.ToString("0.00"),
+                    _previewResult.Value.Matched.CompanyContributionRate.ToString("0.00"),
+                    _previewResult.Value.Result.EmployeeAmount.ToString("N2"),
+                    _previewResult.Value.Result.CompanyAmount.ToString("N2")))
+                @if (!_previewResult.Value.Matched.IsEnabled)
+                {
+                    <br />
+                    <text><i>@L.Translate("StillDisabledNote")</i></text>
+                }
             }
         </MudAlert>
     }
@@ -194,12 +190,12 @@
 
         if (_effectiveFrom is null)
         {
-            _error = "กรุณาระบุวันที่มีผล";
+            _error = L.Translate("InvalidEffectiveDateError");
             return;
         }
         if (_effectiveTo is not null && _effectiveTo < _effectiveFrom)
         {
-            _error = "วันสิ้นสุดต้องไม่ก่อนวันที่มีผล";
+            _error = L.Translate("EndDateBeforeStartError");
             return;
         }
 
@@ -213,7 +209,7 @@
             var existing = await context.Pay_WelfareFundPolicies.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
             if (existing is null)
             {
-                _error = "ไม่พบช่วงอัตราที่ต้องการแก้ไข";
+                _error = L.Translate("RateRangeNotFoundError");
                 return;
             }
             existing.EffectiveFrom = effectiveFrom;
@@ -240,7 +236,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add(_editingId is null ? "เพิ่มช่วงอัตราเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        Snackbar.Add(_editingId is null ? L.Translate("RateRangeAddedSuccess") : L.Translate("GradeEditSavedSuccess"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }

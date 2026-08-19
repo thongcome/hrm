@@ -9,44 +9,44 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ผังบัญชี</PageTitle>
+<PageTitle>@L.Translate("ChartOfAccountsPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">ผังบัญชี (Chart of Accounts)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("ChartOfAccountsHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        รายการบัญชีทั้ง 5 หมวด (สินทรัพย์/หนี้สิน/ส่วนของผู้ถือหุ้น/รายได้/ค่าใช้จ่าย) — รายการที่ติ๊ก "ใช้เป็นศูนย์ต้นทุน"
-        จะปรากฏในช่องค้นหา Cost Center ของหน้าผังองค์กรและข้อมูลพนักงาน
+        @L.Translate("ChartOfAccountsDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบัญชีใหม่" : "แก้ไขบัญชี")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewAccountHeading") : L.Translate("EditAccountHeading"))</MudText>
     <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัสบัญชี (Code)" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameTh" Label="ชื่อบัญชี (ไทย)" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="ชื่อบัญชี (English)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="@L.Translate("AccountCodeLabel")" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameTh" Label="@L.Translate("AccountNameThLabel")" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="@L.Translate("AccountNameEnLabel")" /></MudItem>
         <MudItem xs="12" sm="6">
-            <MudSelect T="AccountType" @bind-Value="_accountType" Label="หมวดบัญชี">
-                <MudSelectItem T="AccountType" Value="AccountType.Asset">สินทรัพย์ (Asset)</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Liability">หนี้สิน (Liability)</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Equity">ส่วนของผู้ถือหุ้น (Equity)</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Revenue">รายได้ (Revenue)</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Expense">ค่าใช้จ่าย (Expense)</MudSelectItem>
+            <MudSelect T="AccountType" @bind-Value="_accountType" Label="@L.Translate("AccountTypeFieldLabel")">
+                <MudSelectItem T="AccountType" Value="AccountType.Asset">@L.Translate("AccountTypeAssetFull")</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Liability">@L.Translate("AccountTypeLiabilityFull")</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Equity">@L.Translate("AccountTypeEquityFull")</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Revenue">@L.Translate("AccountTypeRevenueFull")</MudSelectItem>
+                <MudSelectItem T="AccountType" Value="AccountType.Expense">@L.Translate("AccountTypeExpenseFull")</MudSelectItem>
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudSwitch T="bool" @bind-Value="_isCostCenter" Color="Color.Primary" Label="ใช้เป็นศูนย์ต้นทุน (Cost Center)" />
+            <MudSwitch T="bool" @bind-Value="_isCostCenter" Color="Color.Primary" Label="@L.Translate("IsCostCenterSwitchLabel")" />
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("IsActiveSwitchLabel")" />
         </MudItem>
     </MudGrid>
 
@@ -57,27 +57,27 @@
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มบัญชี" : "บันทึกการแก้ไข")
+            @(_editingId is null ? L.Translate("AddAccountButton") : L.Translate("SaveEditButton"))
         </MudButton>
         @if (_editingId is not null)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
         }
     </MudStack>
 
     <MudDivider Class="my-5" />
 
-    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (รหัส / ชื่อไทย / ชื่ออังกฤษ)" Immediate="true"
+    <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchAccountPlaceholder")" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
 
     <MudTable Items="_accounts" Dense="true" Hover="true">
         <HeaderContent>
-            <MudTh>รหัส</MudTh>
-            <MudTh>ชื่อบัญชี</MudTh>
-            <MudTh>หมวด</MudTh>
+            <MudTh>@L.Translate("ColCode")</MudTh>
+            <MudTh>@L.Translate("ColAccountName")</MudTh>
+            <MudTh>@L.Translate("ColAccountType")</MudTh>
             <MudTh>Cost Center</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -92,15 +92,15 @@
             </MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                    @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                    @(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีรายการบัญชีสำหรับบริษัทนี้</MudText>
+            <MudText Typo="Typo.body2">@L.Translate("NoAccountsMessage")</MudText>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
@@ -142,13 +142,13 @@
         await LoadAsync();
     }
 
-    private static string AccountTypeLabel(AccountType type) => type switch
+    private string AccountTypeLabel(AccountType type) => type switch
     {
-        AccountType.Asset => "สินทรัพย์",
-        AccountType.Liability => "หนี้สิน",
-        AccountType.Equity => "ส่วนของผู้ถือหุ้น",
-        AccountType.Revenue => "รายได้",
-        AccountType.Expense => "ค่าใช้จ่าย",
+        AccountType.Asset => L.Translate("AccountTypeAssetShort"),
+        AccountType.Liability => L.Translate("AccountTypeLiabilityShort"),
+        AccountType.Equity => L.Translate("AccountTypeEquityShort"),
+        AccountType.Revenue => L.Translate("AccountTypeRevenueShort"),
+        AccountType.Expense => L.Translate("AccountTypeExpenseShort"),
         _ => type.ToString(),
     };
 
@@ -182,7 +182,7 @@
 
         if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_nameTh))
         {
-            _error = "กรุณาระบุรหัสบัญชีและชื่อบัญชี (ไทย)";
+            _error = L.Translate("FillAccountCodeNameError");
             return;
         }
 
@@ -192,7 +192,7 @@
             .AnyAsync(a => a.CompanyId == _companyId && a.Code == _code && a.Id != (_editingId ?? 0));
         if (duplicate)
         {
-            _error = "มีรหัสบัญชีนี้อยู่แล้ว";
+            _error = L.Translate("AccountCodeDuplicateError");
             return;
         }
 
@@ -201,7 +201,7 @@
             var existing = await context.Com_ChartOfAccounts.FirstOrDefaultAsync(a => a.Id == id && a.CompanyId == _companyId);
             if (existing is null)
             {
-                _error = "ไม่พบบัญชีที่ต้องการแก้ไข";
+                _error = L.Translate("AccountNotFoundError");
                 return;
             }
             existing.Code = _code;
@@ -226,7 +226,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add(_editingId is null ? "เพิ่มบัญชีเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        Snackbar.Add(_editingId is null ? L.Translate("AccountAddedSuccess") : L.Translate("GradeEditSavedSuccess"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }

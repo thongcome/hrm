@@ -9,47 +9,46 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ตั้งค่ากองทุนสำรองเลี้ยงชีพ</PageTitle>
+<PageTitle>@L.Translate("ProvidentFundSettingsPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">กองทุนสำรองเลี้ยงชีพ (Provident Fund)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("ProvidentFundHeading")</MudText>
     <MudAlert Severity="Severity.Info" Class="mt-2">
-        กองทุนสมัครใจของนายจ้าง ตาม พ.ร.บ.กองทุนสำรองเลี้ยงชีพ พ.ศ. 2530 — อัตราเงินสะสม/เงินสมทบตามกฎหมายอยู่ในช่วง <b>2-15%</b>
-        และ<b>เงินสมทบนายจ้างต้องไม่ต่ำกว่าเงินสะสมพนักงาน</b> ส่วน vesting/ความถี่การเปลี่ยนอัตราไม่มีมาตรฐานตายตัวตามกฎหมาย — ขึ้นกับข้อบังคับกองทุนแต่ละแห่ง จึงต้องตั้งค่าเอง
+        @((MarkupString)L.Translate("ProvidentFundInfoAlert"))
     </MudAlert>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มช่วงนโยบายใหม่" : "แก้ไขช่วงนโยบาย")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPolicyRangeHeading") : L.Translate("EditPolicyRangeHeading"))</MudText>
     <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6"><MudDatePicker Label="มีผลตั้งแต่" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="ถึงวันที่ (เว้นว่าง = ไม่มีกำหนด)" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minEmployeeRate" Label="อัตราสะสมขั้นต่ำ (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxEmployeeRate" Label="อัตราสะสมสูงสุด (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minCompanyRate" Label="อัตราสมทบขั้นต่ำ (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxCompanyRate" Label="อัตราสมทบสูงสุด (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="6"><MudNumericField T="int?" @bind-Value="_rateChangeLimitPerYear" Label="จำนวนครั้งที่เปลี่ยนอัตราได้ต่อปี (เว้นว่าง = ไม่จำกัด)" Min="1" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minEmployeeRate" Label="@L.Translate("MinEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxEmployeeRate" Label="@L.Translate("MaxEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minCompanyRate" Label="@L.Translate("MinCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxCompanyRate" Label="@L.Translate("MaxCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="6"><MudNumericField T="int?" @bind-Value="_rateChangeLimitPerYear" Label="@L.Translate("RateChangeLimitLabel")" Min="1" /></MudItem>
         <MudItem xs="12" sm="6">
-            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Success" Label="เปิดใช้งาน" />
+            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Success" Label="@L.Translate("PfEnableSwitchLabel")" />
         </MudItem>
         @if (_isEnabled)
         {
             <MudItem xs="12">
                 <MudAlert Severity="Severity.Warning" Dense="true">
-                    การเปิดใช้งานนี้จะทำให้บริษัทได้รับยกเว้นไม่ต้องนำส่งกองทุนสงเคราะห์ลูกจ้างอัตโนมัติ ตามมาตรา 130 พ.ร.บ.คุ้มครองแรงงาน
-                    (ระบบจะข้ามการหักกองทุนสงเคราะห์ลูกจ้างให้เองตอนรันเงินเดือน ถ้าช่วงนโยบายนี้ทับซ้อนกับงวดนั้น)
+                    @L.Translate("PfEnabledWarningAlert")
                 </MudAlert>
             </MudItem>
         }
-        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="หมายเหตุ" Lines="2" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteLabel")" Lines="2" /></MudItem>
     </MudGrid>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -59,11 +58,11 @@
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มช่วงนโยบาย" : "บันทึกการแก้ไข")
+            @(_editingId is null ? L.Translate("AddPolicyRangeButton") : L.Translate("SaveEditButton"))
         </MudButton>
         @if (_editingId is not null)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
         }
     </MudStack>
 
@@ -71,28 +70,28 @@
 
     <MudTable Items="_policies" Dense="true" Hover="true">
         <HeaderContent>
-            <MudTh>ช่วงวันที่</MudTh>
-            <MudTh>ช่วงอัตราสะสม/สมทบ</MudTh>
-            <MudTh>เปลี่ยนอัตราได้/ปี</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("DateRangeLabel")</MudTh>
+            <MudTh>@L.Translate("ColRateRangeEmpCompany")</MudTh>
+            <MudTh>@L.Translate("ColRateChangesPerYear")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy") - @(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")</MudTd>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy") - @(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? L.Translate("NoDeadlineText"))</MudTd>
             <MudTd>@context.MinEmployeeRate.ToString("0.0")-@context.MaxEmployeeRate.ToString("0.0")% / @context.MinCompanyRate.ToString("0.0")-@context.MaxCompanyRate.ToString("0.0")%</MudTd>
-            <MudTd>@(context.RateChangeLimitPerYear?.ToString() ?? "ไม่จำกัด")</MudTd>
+            <MudTd>@(context.RateChangeLimitPerYear?.ToString() ?? L.Translate("UnlimitedText"))</MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsEnabled ? Color.Success : Color.Default)">
-                    @(context.IsEnabled ? "เปิดใช้งาน" : "ปิดอยู่")
+                    @(context.IsEnabled ? L.Translate("EnabledChip") : L.Translate("DisabledChip"))
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => SelectPolicyForTiersAsync(context))">Vesting Tier</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => SelectPolicyForTiersAsync(context))">@L.Translate("VestingTierButton")</MudButton>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีการตั้งค่านโยบายสำหรับบริษัทนี้</MudText>
+            <MudText Typo="Typo.body2">@L.Translate("NoPoliciesConfiguredMessage")</MudText>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
@@ -100,58 +99,57 @@
 @if (_tierPolicyId is not null)
 {
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-        <MudText Typo="Typo.h6">Vesting Tier — สิทธิ์รับเงินสมทบนายจ้างตามอายุงาน</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("VestingTierHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            เงินสะสม (ฝั่งพนักงาน) คืนเต็ม 100% เสมอ — ตารางนี้กำหนดเฉพาะ % ที่จะได้รับจากเงินสมทบฝั่งนายจ้างตามอายุงาน
-            ถ้าไม่ตั้งค่าไว้เลย ระบบจะถือว่า vest เต็ม 100% เสมอ (ไม่ทำให้พนักงานเสียสิทธิ์โดยไม่ตั้งใจ)
+            @L.Translate("VestingTierDesc")
         </MudText>
 
         <MudGrid Class="mt-3">
-            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierMinYears" Label="อายุงานตั้งแต่ (ปี)" Min="0" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_tierMaxYears" Label="ถึงก่อน (ปี, เว้นว่าง=ไม่มีเพดาน)" Min="0" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_tierVestingPercent" Label="% ที่ได้รับ" Format="0.00" Min="0" Max="100" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierSortOrder" Label="ลำดับ" Min="0" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierMinYears" Label="@L.Translate("TierMinYearsLabel")" Min="0" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_tierMaxYears" Label="@L.Translate("TierMaxYearsLabel")" Min="0" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_tierVestingPercent" Label="@L.Translate("TierVestingPercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierSortOrder" Label="@L.Translate("ColSortOrder")" Min="0" /></MudItem>
         </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddTierAsync">เพิ่ม Tier</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddTierAsync">@L.Translate("AddTierButton")</MudButton>
 
         <MudTable Items="_vestingTiers" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
-                <MudTh>อายุงาน (ปี)</MudTh>
-                <MudTh>% ที่ได้รับ</MudTh>
+                <MudTh>@L.Translate("ColYearsOfService")</MudTh>
+                <MudTh>@L.Translate("TierVestingPercentLabel")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@context.MinYearsOfService - @(context.MaxYearsOfService?.ToString() ?? "ไม่มีเพดาน")</MudTd>
+                <MudTd>@context.MinYearsOfService - @(context.MaxYearsOfService?.ToString() ?? L.Translate("NoCapText"))</MudTd>
                 <MudTd>@context.VestingPercent.ToString("0.00")%</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveTierAsync(context.Id))">ลบ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveTierAsync(context.Id))">@L.Translate("DeleteButton")</MudButton>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText Typo="Typo.body2">ยังไม่มี tier — ปัจจุบันถือว่า vest เต็ม 100% เสมอ</MudText>
+                <MudText Typo="Typo.body2">@L.Translate("NoTiersMessage")</MudText>
             </NoRecordsContent>
         </MudTable>
     </MudPaper>
 }
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h6">นโยบายการลงทุน (Employee's Choice)</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("InvestmentPolicyHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        ตัวเลือกนโยบายการลงทุนให้พนักงานเลือกภายในกองทุนเดียวของบริษัท — เก็บไว้อ้างอิงเท่านั้น ไม่กระทบยอดเงินที่หัก
+        @L.Translate("InvestmentPolicyDesc")
     </MudText>
     <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_invCode" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invName" Label="ชื่อนโยบาย" /></MudItem>
-        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_invRiskDescription" Label="คำอธิบายความเสี่ยง เช่น ตราสารหนี้ 100%" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_invCode" Label="@L.Translate("ColCode")" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invName" Label="@L.Translate("InvNameLabel")" /></MudItem>
+        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_invRiskDescription" Label="@L.Translate("InvRiskDescriptionLabel")" /></MudItem>
     </MudGrid>
-    <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddInvestmentPolicyAsync">เพิ่มนโยบายการลงทุน</MudButton>
+    <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddInvestmentPolicyAsync">@L.Translate("AddInvestmentPolicyButton")</MudButton>
 
     <MudTable Items="_investmentPolicies" Dense="true" Hover="true" Class="mt-3">
         <HeaderContent>
-            <MudTh>รหัส</MudTh>
-            <MudTh>ชื่อ</MudTh>
-            <MudTh>ความเสี่ยง</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("ColCode")</MudTh>
+            <MudTh>@L.Translate("ColName")</MudTh>
+            <MudTh>@L.Translate("ColRisk")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -160,46 +158,47 @@
             <MudTd>@context.RiskDescription</MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                    @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                    @(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))
                 </MudChip>
             </MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleInvestmentPolicyActiveAsync(context))">
-                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                 </MudButton>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีนโยบายการลงทุน</MudText>
+            <MudText Typo="Typo.body2">@L.Translate("NoInvestmentPoliciesMessage")</MudText>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h6">ทดสอบคำนวณ</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("TestCalculationHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        ป้อนวันเริ่มงาน วันที่อ้างอิง เงินเดือน และอัตรา — ไม่บันทึกข้อมูลใดๆ ใช้สำหรับตรวจสอบ config เท่านั้น
+        @L.Translate("PfTestCalcDesc")
     </MudText>
     <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="4"><MudDatePicker Label="วันเริ่มงาน" @bind-Date="_testHireDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่อ้างอิง" @bind-Date="_testAsOfDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_testWage" Label="เงินเดือน (บาท)" Format="N2" Min="0" /></MudItem>
-        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testEmployeeRate" Label="อัตราสะสมพนักงาน (%)" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testCompanyRate" Label="อัตราสมทบบริษัท (%)" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker Label="@L.Translate("HireDateLabel")" @bind-Date="_testHireDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker Label="@L.Translate("AsOfDateLabel")" @bind-Date="_testAsOfDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_testWage" Label="@L.Translate("SalaryBahtLabel")" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testEmployeeRate" Label="@L.Translate("TestEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+        <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_testCompanyRate" Label="@L.Translate("TestCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
     </MudGrid>
-    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreviewAsync">คำนวณตัวอย่าง</MudButton>
+    <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="RunPreviewAsync">@L.Translate("CalculatePreviewButton")</MudButton>
 
     @if (_previewResult is not null)
     {
         <MudAlert Severity="Severity.Info" Class="mt-3">
-            หักจากพนักงาน: <b>@_previewResult.Value.Pf.EmployeeAmount.ToString("N2")</b> บาท/เดือน ·
-            บริษัทสมทบ: <b>@_previewResult.Value.Pf.CompanyAmount.ToString("N2")</b> บาท/เดือน
-            <br />
-            อายุงานถึงวันที่อ้างอิง: @_previewResult.Value.Vesting.YearsOfService.ToString("0.00") ปี (@_previewResult.Value.Vesting.ServiceDays วัน) —
-            สิทธิ์รับเงินสมทบนายจ้างถ้าออกวันนี้: <b>@_previewResult.Value.Vesting.VestingPercent.ToString("0.00")%</b>
+            @((MarkupString)string.Format(L.Translate("PfPreviewResultTemplate"),
+                _previewResult.Value.Pf.EmployeeAmount.ToString("N2"),
+                _previewResult.Value.Pf.CompanyAmount.ToString("N2"),
+                _previewResult.Value.Vesting.YearsOfService.ToString("0.00"),
+                _previewResult.Value.Vesting.ServiceDays,
+                _previewResult.Value.Vesting.VestingPercent.ToString("0.00")))
             @if (_previewResult.Value.Vesting.MatchedTierNote is not null)
             {
-                <text> (tier @_previewResult.Value.Vesting.MatchedTierNote)</text>
+                <text> @string.Format(L.Translate("TierNoteTemplate"), _previewResult.Value.Vesting.MatchedTierNote)</text>
             }
             @if (!string.IsNullOrEmpty(_previewPolicyNote))
             {
@@ -310,22 +309,22 @@
 
         if (_effectiveFrom is null)
         {
-            _error = "กรุณาระบุวันที่มีผล";
+            _error = L.Translate("InvalidEffectiveDateError");
             return;
         }
         if (_effectiveTo is not null && _effectiveTo < _effectiveFrom)
         {
-            _error = "วันสิ้นสุดต้องไม่ก่อนวันที่มีผล";
+            _error = L.Translate("EndDateBeforeStartError");
             return;
         }
         if (_minEmployeeRate < 2m || _maxEmployeeRate > 15m || _minCompanyRate < 2m || _maxCompanyRate > 15m)
         {
-            _error = "อัตราตามกฎหมายต้องอยู่ในช่วง 2-15%";
+            _error = L.Translate("PfRateOutOfRangeError");
             return;
         }
         if (_minEmployeeRate > _maxEmployeeRate || _minCompanyRate > _maxCompanyRate)
         {
-            _error = "ค่าต่ำสุดต้องไม่มากกว่าค่าสูงสุด";
+            _error = L.Translate("MinNotGreaterThanMaxError");
             return;
         }
 
@@ -339,7 +338,7 @@
             var existing = await context.Pay_ProvidentFundPolicies.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
             if (existing is null)
             {
-                _error = "ไม่พบนโยบายที่ต้องการแก้ไข";
+                _error = L.Translate("PolicyNotFoundError");
                 return;
             }
             existing.EffectiveFrom = effectiveFrom;
@@ -370,7 +369,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add(_editingId is null ? "เพิ่มนโยบายเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        Snackbar.Add(_editingId is null ? L.Translate("PolicyAddedSuccess") : L.Translate("GradeEditSavedSuccess"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }
@@ -404,7 +403,7 @@
             SortOrder = _tierSortOrder,
         });
         await context.SaveChangesAsync();
-        Snackbar.Add("เพิ่ม tier เรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("TierAddedSuccess"), Severity.Success);
         await LoadTiersAsync();
     }
 
@@ -422,7 +421,7 @@
     {
         if (string.IsNullOrWhiteSpace(_invCode) || string.IsNullOrWhiteSpace(_invName))
         {
-            Snackbar.Add("กรุณาระบุรหัสและชื่อนโยบาย", Severity.Warning);
+            Snackbar.Add(L.Translate("FillInvCodeNameError"), Severity.Warning);
             return;
         }
 
@@ -437,7 +436,7 @@
             IsActive = true,
         });
         await context.SaveChangesAsync();
-        Snackbar.Add("เพิ่มนโยบายการลงทุนเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("InvestmentPolicyAddedSuccess"), Severity.Success);
         _invCode = null; _invName = null; _invRiskDescription = null;
         await LoadInvestmentPoliciesAsync();
     }
@@ -479,8 +478,8 @@
                 .ToListAsync();
 
         _previewPolicyNote = applicablePolicy is null
-            ? "ไม่พบนโยบายที่เปิดใช้งานและมีผลในวันที่อ้างอิงนี้ — ถือว่าไม่มี tier ตั้งไว้ (vest เต็ม 100%)"
-            : $"ใช้ tier จากนโยบายช่วง {applicablePolicy.EffectiveFrom:dd/MM/yyyy} - {(applicablePolicy.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่มีกำหนด")}";
+            ? L.Translate("NoApplicablePolicyNote")
+            : string.Format(L.Translate("UsingTierFromPolicyTemplate"), applicablePolicy.EffectiveFrom.ToString("dd/MM/yyyy"), applicablePolicy.EffectiveTo?.ToString("dd/MM/yyyy") ?? L.Translate("NoDeadlineText"));
 
         var pf = ProvidentFundCalculator.Calculate(_testWage, _testEmployeeRate, _testCompanyRate);
         var vesting = ProvidentFundVestingCalculator.ResolveVesting(hireDate, asOfDate, tiers);

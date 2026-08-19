@@ -12,50 +12,49 @@
 @inject HRM.Services.EmailSender EmailSender
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>ภ.ง.ด.1 / ภ.ง.ด.1ก</PageTitle>
+<PageTitle>@L.Translate("NavPayPor1")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">แบบยื่นภาษีเงินได้หัก ณ ที่จ่าย (ภ.ง.ด.1 / ภ.ง.ด.1ก)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("Por1Heading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        สรุปเงินได้และภาษีหัก ณ ที่จ่ายของพนักงานทั้งบริษัท — ภ.ง.ด.1 รายเดือน (ใช้นำส่งกรมสรรพากรทุกเดือน)
-        และ ภ.ง.ด.1ก สรุปประจำปี (ใช้กระทบยอดปลายปี) นับเฉพาะงวดที่อนุมัติแล้วขึ้นไป
+        @L.Translate("Por1Desc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudAlert Severity="Severity.Info" Class="mt-3" Icon="@Icons.Material.Filled.Info">
-        เอกสารนี้เป็นเอกสารสรุปสำหรับใช้งานภายใน/ประกอบการยื่นแบบเท่านั้น
-        การยื่นแบบจริงต่อกรมสรรพากร (รวมถึงไฟล์อิเล็กทรอนิกส์สำหรับ e-Filing) ต้องตรวจสอบรูปแบบและช่องทางล่าสุดจากกรมสรรพากรก่อนใช้งานจริงเสมอ
+        @L.Translate("Por1DisclaimerNote")
     </MudAlert>
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="8">
-            <MudAutocomplete T="Hremployee" Label="พนักงานผู้รับเอกสาร (สำหรับส่งอีเมล)" Value="_selectedEmployee" ValueChanged="OnEmployeeSelected"
+            <MudAutocomplete T="Hremployee" Label="@L.Translate("Por1RecipientLabel")" Value="_selectedEmployee" ValueChanged="OnEmployeeSelected"
                 SearchFunc="SearchEmployeesAsync"
                 ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true"
-                HelperText="เลือกพนักงานที่จะส่งเอกสารนี้ให้ทางอีเมล — ระบบจะส่งไปยังอีเมลตามข้อมูลพนักงานในระบบเท่านั้น" />
+                HelperText="@L.Translate("Por1RecipientHelperText")" />
         </MudItem>
     </MudGrid>
 
     @if (_selectedEmployee is not null && string.IsNullOrWhiteSpace(_selectedEmployeeEmail))
     {
         <MudAlert Severity="Severity.Warning" Class="mt-2" Dense="true">
-            พนักงานคนนี้ยังไม่มีอีเมลในระบบ — ไม่สามารถส่งอีเมลได้ กรุณาเพิ่มอีเมลที่หน้า <MudLink Href="/pay/employees">จัดการพนักงาน</MudLink> ก่อน
+            @L.Translate("NoEmployeeEmailWarningPrefix") <MudLink Href="/pay/employees">@L.Translate("EmpAdminHeading")</MudLink> @L.Translate("NoEmployeeEmailWarningSuffix")
         </MudAlert>
     }
 
     <MudTabs Class="mt-4" Elevation="0" Rounded="true">
-        <MudTabPanel Text="ภ.ง.ด.1 (รายเดือน)">
+        <MudTabPanel Text="@L.Translate("Por1MonthlyTabLabel")">
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="8">
-                    <MudSelect T="string" Label="งวดเดือนภาษี" @bind-Value="_selectedPeriod">
+                    <MudSelect T="string" Label="@L.Translate("TaxPeriodLabel")" @bind-Value="_selectedPeriod">
                         @foreach (var p in _availablePeriods)
                         {
                             <MudSelectItem Value="@p">@FormatPeriod(p)</MudSelectItem>
@@ -64,7 +63,7 @@
                 </MudItem>
                 <MudItem xs="12" sm="4" Class="d-flex align-center">
                     <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="PreviewMonthlyAsync" Disabled="@(_selectedPeriod is null)">
-                        ดูตัวอย่างยอดรวม
+                        @L.Translate("PreviewTotalsButton")
                     </MudButton>
                 </MudItem>
             </MudGrid>
@@ -78,27 +77,27 @@
             {
                 <MudSimpleTable Dense="true" Class="mt-3">
                     <tbody>
-                        <tr><td>งวดเดือนภาษี</td><td>@_monthlyPreview.PeriodStart.ToString("MM/yyyy")</td></tr>
-                        <tr><td>จำนวนผู้มีเงินได้</td><td>@_monthlyPreview.Lines.Count คน</td></tr>
-                        <tr><td>รวมเงินได้ (บาท)</td><td>@_monthlyPreview.TotalTaxableIncome.ToString("N2")</td></tr>
-                        <tr><td>รวมภาษีหัก ณ ที่จ่าย (บาท)</td><td>@_monthlyPreview.TotalTaxWithheld.ToString("N2")</td></tr>
+                        <tr><td>@L.Translate("TaxPeriodLabel")</td><td>@_monthlyPreview.PeriodStart.ToString("MM/yyyy")</td></tr>
+                        <tr><td>@L.Translate("Por1TaxpayerCountLabel")</td><td>@string.Format(L.Translate("AdhocItemCountUnitPeople"), _monthlyPreview.Lines.Count)</td></tr>
+                        <tr><td>@L.Translate("Por1TotalIncomeLabel")</td><td>@_monthlyPreview.TotalTaxableIncome.ToString("N2")</td></tr>
+                        <tr><td>@L.Translate("Por1TotalTaxWithheldLabel")</td><td>@_monthlyPreview.TotalTaxWithheld.ToString("N2")</td></tr>
                     </tbody>
                 </MudSimpleTable>
 
                 <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
                     Href="@($"/pay/files/por1/monthly/{_companyId}/{_selectedPeriod}")" Target="_blank">
-                    ดาวน์โหลด PDF (ภ.ง.ด.1)
+                    @L.Translate("DownloadPor1MonthlyPdfButton")
                 </MudButton>
                 <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
                     OnClick="SendMonthlyEmailAsync" Disabled="@(_selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sendingMonthly)">
-                    ส่งอีเมลให้พนักงานที่เลือก
+                    @L.Translate("SendToSelectedEmployeeButton")
                 </MudButton>
 
                 @if (_monthlySendHistory.Count > 0)
                 {
-                    <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mt-4">@L.Translate("SendHistoryHeading")</MudText>
                     <MudSimpleTable Dense="true" Class="mt-1">
-                        <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                        <thead><tr><th>@L.Translate("DateTimeLabel")</th><th>@L.Translate("SentByLabel")</th><th>@L.Translate("NoteLabel")</th></tr></thead>
                         <tbody>
                             @foreach (var log in _monthlySendHistory)
                             {
@@ -114,10 +113,10 @@
             }
         </MudTabPanel>
 
-        <MudTabPanel Text="ภ.ง.ด.1ก (สรุปประจำปี)">
+        <MudTabPanel Text="@L.Translate("Por1AnnualTabLabel")">
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="8">
-                    <MudSelect T="int" Label="ปีภาษี" @bind-Value="_selectedYear">
+                    <MudSelect T="int" Label="@L.Translate("TaxYearLabel")" @bind-Value="_selectedYear">
                         @foreach (var y in _availableYears)
                         {
                             <MudSelectItem Value="@y">@y</MudSelectItem>
@@ -126,7 +125,7 @@
                 </MudItem>
                 <MudItem xs="12" sm="4" Class="d-flex align-center">
                     <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="PreviewAnnualAsync" Disabled="@(_selectedYear == 0)">
-                        ดูตัวอย่างยอดรวม
+                        @L.Translate("PreviewTotalsButton")
                     </MudButton>
                 </MudItem>
             </MudGrid>
@@ -140,27 +139,27 @@
             {
                 <MudSimpleTable Dense="true" Class="mt-3">
                     <tbody>
-                        <tr><td>ปีภาษี</td><td>@_annualPreview.TaxYear</td></tr>
-                        <tr><td>จำนวนผู้มีเงินได้ทั้งปี</td><td>@_annualPreview.Lines.Count คน</td></tr>
-                        <tr><td>รวมเงินได้ทั้งปี (บาท)</td><td>@_annualPreview.TotalTaxableIncome.ToString("N2")</td></tr>
-                        <tr><td>รวมภาษีหักทั้งปี (บาท)</td><td>@_annualPreview.TotalTaxWithheld.ToString("N2")</td></tr>
+                        <tr><td>@L.Translate("TaxYearLabel")</td><td>@_annualPreview.TaxYear</td></tr>
+                        <tr><td>@L.Translate("Por1AnnualTaxpayerCountLabel")</td><td>@string.Format(L.Translate("AdhocItemCountUnitPeople"), _annualPreview.Lines.Count)</td></tr>
+                        <tr><td>@L.Translate("Por1AnnualTotalIncomeLabel")</td><td>@_annualPreview.TotalTaxableIncome.ToString("N2")</td></tr>
+                        <tr><td>@L.Translate("Por1AnnualTotalTaxLabel")</td><td>@_annualPreview.TotalTaxWithheld.ToString("N2")</td></tr>
                     </tbody>
                 </MudSimpleTable>
 
                 <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3"
                     Href="@($"/pay/files/por1/annual/{_companyId}/{_selectedYear}")" Target="_blank">
-                    ดาวน์โหลด PDF (ภ.ง.ด.1ก)
+                    @L.Translate("DownloadPor1AnnualPdfButton")
                 </MudButton>
                 <MudButton Color="Color.Tertiary" Variant="Variant.Filled" Class="mt-3 ml-2"
                     OnClick="SendAnnualEmailAsync" Disabled="@(_selectedEmployee is null || string.IsNullOrWhiteSpace(_selectedEmployeeEmail) || _sendingAnnual)">
-                    ส่งอีเมลให้พนักงานที่เลือก
+                    @L.Translate("SendToSelectedEmployeeButton")
                 </MudButton>
 
                 @if (_annualSendHistory.Count > 0)
                 {
-                    <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการส่ง</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mt-4">@L.Translate("SendHistoryHeading")</MudText>
                     <MudSimpleTable Dense="true" Class="mt-1">
-                        <thead><tr><th>วันที่-เวลา</th><th>ผู้ส่ง</th><th>หมายเหตุ</th></tr></thead>
+                        <thead><tr><th>@L.Translate("DateTimeLabel")</th><th>@L.Translate("SentByLabel")</th><th>@L.Translate("NoteLabel")</th></tr></thead>
                         <tbody>
                             @foreach (var log in _annualSendHistory)
                             {
@@ -233,7 +232,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _monthlyPreview = await Por1DataService.BuildMonthlyAsync(context, _companyId!, _selectedPeriod);
         if (_monthlyPreview is null)
-            _monthlyError = "ไม่พบข้อมูลเงินเดือนที่มีภาษีหัก ณ ที่จ่ายในงวดนี้";
+            _monthlyError = L.Translate("Por1NoMonthlyDataError");
     }
 
     private async Task PreviewAnnualAsync()
@@ -245,7 +244,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _annualPreview = await Por1DataService.BuildAnnualAsync(context, _companyId!, _selectedYear);
         if (_annualPreview is null)
-            _annualError = $"ไม่พบข้อมูลเงินเดือนที่อนุมัติแล้วของบริษัทนี้ในปี {_selectedYear}";
+            _annualError = string.Format(L.Translate("Por1NoAnnualDataError"), _selectedYear);
     }
 
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
@@ -296,12 +295,12 @@
                 .Where(a => a.EntityType == "Por1MonthlyEmail" && a.RecordId == recordId)
                 .OrderByDescending(a => a.EventDate).Take(5).ToListAsync();
 
-            Snackbar.Add($"ส่งแบบภ.ง.ด.1 ไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("Por1MonthlySentSuccessTemplate"), _selectedEmployeeEmail), Severity.Success);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "POR.1 monthly email send failed for company {CompanyId}, period {Period}", _companyId, _selectedPeriod);
-            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+            Snackbar.Add(L.Translate("EmailSendFailed"), Severity.Error);
         }
         finally
         {
@@ -332,12 +331,12 @@
                 .Where(a => a.EntityType == "Por1AnnualEmail" && a.RecordId == recordId)
                 .OrderByDescending(a => a.EventDate).Take(5).ToListAsync();
 
-            Snackbar.Add($"ส่งแบบภ.ง.ด.1ก ไปที่ {_selectedEmployeeEmail} เรียบร้อย", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("Por1AnnualSentSuccessTemplate"), _selectedEmployeeEmail), Severity.Success);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "POR.1 annual email send failed for company {CompanyId}, year {Year}", _companyId, _selectedYear);
-            Snackbar.Add("ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", Severity.Error);
+            Snackbar.Add(L.Translate("EmailSendFailed"), Severity.Error);
         }
         finally
         {

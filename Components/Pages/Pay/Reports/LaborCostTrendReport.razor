@@ -7,29 +7,30 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
 
-<PageTitle>แนวโน้มต้นทุนแรงงาน</PageTitle>
+<PageTitle>@L.Translate("NavPayLaborCostTrend")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">แนวโน้มต้นทุนแรงงาน (Labor Cost Trend)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("LaborCostTrendHeading")</MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudAlert Severity="Severity.Info" Class="mt-3">
-        "ต้นทุนนายจ้าง" ที่แสดงเป็นค่าประมาณ (รายรับรวมของพนักงาน + เงินสมทบกองทุนสำรองเลี้ยงชีพฝั่งนายจ้าง) เนื่องจากระบบยังไม่มีฟิลด์เก็บเงินสมทบประกันสังคมฝั่งนายจ้างแยกต่างหาก
+        @L.Translate("LaborCostTrendEstimateNote")
     </MudAlert>
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_periodCount" Label="ย้อนหลังกี่งวด" Min="1" Max="36" />
+            <MudNumericField @bind-Value="_periodCount" Label="@L.Translate("PeriodCountLabel")" Min="1" Max="36" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">@L.Translate("LoadDataButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -39,7 +40,7 @@
 
         <MudSimpleTable Dense="true" Class="mt-4">
             <thead>
-                <tr><th>งวด</th><th>รายรับรวมพนักงาน (Gross)</th><th>เงินสมทบ PF (นายจ้าง)</th><th>ต้นทุนรวมโดยประมาณ</th></tr>
+                <tr><th>@L.Translate("Period")</th><th>@L.Translate("ColGrossTotal")</th><th>@L.Translate("ColEmployerPf")</th><th>@L.Translate("ColEstimatedTotalCost")</th></tr>
             </thead>
             <tbody>
                 @foreach (var row in _rows)
@@ -56,7 +57,7 @@
     }
     else if (_loaded)
     {
-        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีข้อมูลรอบเงินเดือนที่อนุมัติแล้วสำหรับบริษัทนี้</MudAlert>
+        <MudAlert Severity="Severity.Info" Class="mt-4">@L.Translate("NoApprovedRunsMessage")</MudAlert>
     }
 </MudPaper>
 
@@ -104,8 +105,8 @@
         _labels = _rows.Select(r => r.Period).ToArray();
         _series = new List<ChartSeries>
         {
-            new ChartSeries { Name = "รายรับรวมพนักงาน", Data = _rows.Select(r => (double)r.Gross).ToArray() },
-            new ChartSeries { Name = "เงินสมทบ PF (นายจ้าง)", Data = _rows.Select(r => (double)r.EmployerPf).ToArray() },
+            new ChartSeries { Name = L.Translate("ColGrossTotal"), Data = _rows.Select(r => (double)r.Gross).ToArray() },
+            new ChartSeries { Name = L.Translate("ColEmployerPf"), Data = _rows.Select(r => (double)r.EmployerPf).ToArray() },
         };
 
         _loaded = true;

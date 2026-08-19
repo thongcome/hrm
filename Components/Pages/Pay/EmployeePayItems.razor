@@ -10,61 +10,62 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>เงินได้-เงินหักเฉพาะกิจ</PageTitle>
+<PageTitle>@L.Translate("AdhocPayItemsPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.body2">@_employee.DeptgrpCode / @_employee.PosCode &nbsp;·&nbsp; เงินเดือนฐาน: @(_employee.SalaryAmt?.ToString("N2") ?? "-")</MudText>
+        <MudText Typo="Typo.body2">@((MarkupString)string.Format(L.Translate("DeptPosSalaryTemplate"), _employee.DeptgrpCode, _employee.PosCode, _employee.SalaryAmt?.ToString("N2") ?? "-"))</MudText>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-            <MudText Typo="Typo.subtitle1">งวด:</MudText>
+            <MudText Typo="Typo.subtitle1">@L.Translate("PeriodColonLabel")</MudText>
             <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodMonthChangedAsync" Editable="true"
                 DateFormat="MM/yyyy" PickerVariant="PickerVariant.Dialog" OpenTo="OpenTo.Month" Class="mud-width-200" />
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1">
-            เพิ่ม/ลบรายการเงินได้-เงินหักเฉพาะกิจ (Pay_AdhocPayItem) ของพนักงานคนนี้สำหรับงวดที่เลือก — ต้องผ่านการอนุมัติก่อนจึงจะถูกดึงเข้าคำนวณเงินเดือนจริง
+            @L.Translate("AdhocPayItemsDesc")
         </MudText>
     </MudPaper>
 
     @if (_payrollEmployee is not null)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.h6">ผลคำนวณเงินเดือนงวดนี้ (จากรอบที่คำนวณแล้ว)</MudText>
+            <MudText Typo="Typo.h6">@L.Translate("CalculatedPayrollResultHeading")</MudText>
             <MudText Typo="Typo.body2" Class="mt-1">
-                สัดส่วนวันทำงาน @_payrollEmployee.ActualWorkingDays/@_payrollEmployee.WorkingDaysInPeriod (@(_payrollEmployee.ProrationFactor.ToString("P2")))
+                @string.Format(L.Translate("WorkDaysProportionTemplate"), _payrollEmployee.ActualWorkingDays, _payrollEmployee.WorkingDaysInPeriod, _payrollEmployee.ProrationFactor.ToString("P2"))
             </MudText>
 
             <MudSimpleTable Class="mt-3" Dense="true">
                 <tbody>
-                    <tr><td>รายรับรวม (Gross)</td><td class="text-right">@_payrollEmployee.GrossEarnings.ToString("N2")</td></tr>
-                    <tr><td>รายหักรวม</td><td class="text-right">@_payrollEmployee.TotalDeductions.ToString("N2")</td></tr>
-                    <tr><td><b>สุทธิ (Net Pay)</b></td><td class="text-right"><b>@_payrollEmployee.NetPay.ToString("N2")</b></td></tr>
+                    <tr><td>@L.Translate("GrossEarningsRowLabel")</td><td class="text-right">@_payrollEmployee.GrossEarnings.ToString("N2")</td></tr>
+                    <tr><td>@L.Translate("ColTotalDeductions")</td><td class="text-right">@_payrollEmployee.TotalDeductions.ToString("N2")</td></tr>
+                    <tr><td><b>@L.Translate("NetPayBoldLabel")</b></td><td class="text-right"><b>@_payrollEmployee.NetPay.ToString("N2")</b></td></tr>
                 </tbody>
             </MudSimpleTable>
 
-            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">รายการย่อย</MudText>
+            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">@L.Translate("LineItemsHeading")</MudText>
             <MudTable Items="_calculatedLineItems" Dense="true">
                 <HeaderContent>
-                    <MudTh>รายการ</MudTh>
-                    <MudTh>ประเภท</MudTh>
-                    <MudTh>จำนวนเงิน</MudTh>
+                    <MudTh>@L.Translate("ColItemName")</MudTh>
+                    <MudTh>@L.Translate("ColItemType")</MudTh>
+                    <MudTh>@L.Translate("ColAmount")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Pay_PayItemType.NameTh (@context.Pay_PayItemType.NameEn)</MudTd>
-                    <MudTd>@(context.SignFlag > 0 ? "รายรับ" : "รายหัก")</MudTd>
+                    <MudTd>@(context.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
                     <MudTd>@((context.SignFlag * context.Amount).ToString("N2"))</MudTd>
                 </RowTemplate>
             </MudTable>
@@ -73,7 +74,7 @@ else
     else
     {
         <MudAlert Severity="Severity.Info" Class="mb-4">
-            ยังไม่มีการคำนวณเงินเดือนสำหรับงวดนี้ — รายการเงินได้/เงินหักเฉพาะกิจด้านล่างจะถูกดึงเข้าคำนวณเมื่อมีการประมวลผลเงินเดือนของงวดนี้
+            @L.Translate("NoCalculationYetInfo")
         </MudAlert>
     }
 
@@ -81,16 +82,16 @@ else
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
-                    <MudText Typo="Typo.h6" Color="Color.Success">เงินได้</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Success">@L.Translate("EarningsPanelHeading")</MudText>
                     <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                        OnClick="@(() => OpenCreate(PayItemCategory.Earning))">+ เพิ่ม</MudButton>
+                        OnClick="@(() => OpenCreate(PayItemCategory.Earning))">@L.Translate("AddButtonShort")</MudButton>
                 </MudStack>
                 <MudTable Items="_earningItems" Dense="true" Hover="true">
                     <HeaderContent>
-                        <MudTh>ประเภท</MudTh>
-                        <MudTh>จำนวนเงิน</MudTh>
-                        <MudTh>เหตุผล</MudTh>
-                        <MudTh>สถานะ</MudTh>
+                        <MudTh>@L.Translate("ColItemType")</MudTh>
+                        <MudTh>@L.Translate("ColAmount")</MudTh>
+                        <MudTh>@L.Translate("ReasonLabel")</MudTh>
+                        <MudTh>@L.Translate("ColStatus")</MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -101,18 +102,18 @@ else
                         <MudTd>
                             @if (context.Status == PayAdhocItemStatus.Pending)
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" Title="อนุมัติ" OnClick="@(() => ApproveAsync(context.Id))" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" Title="ปฏิเสธ" OnClick="@(() => RejectAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" Title="@L.Translate("ApproveButton")" OnClick="@(() => ApproveAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" Title="@L.Translate("RejectButton")" OnClick="@(() => RejectAsync(context.Id))" />
                             }
                             @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="ลบรายการ" OnClick="@(() => CancelItemAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="@L.Translate("DeleteItemTitle")" OnClick="@(() => CancelItemAsync(context.Id))" />
                             }
                         </MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText>ยังไม่มีรายการ</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText>@L.Translate("NoItemsYet")</MudText></NoRecordsContent>
                     <FooterContent>
-                        <MudTd colspan="2"><b>รวม: @_earningItems.Where(i => i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount).ToString("N2")</b></MudTd>
+                        <MudTd colspan="2"><b>@string.Format(L.Translate("TotalColonTemplate"), _earningItems.Where(i => i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount).ToString("N2"))</b></MudTd>
                         <MudTd colspan="3"></MudTd>
                     </FooterContent>
                 </MudTable>
@@ -121,16 +122,16 @@ else
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
-                    <MudText Typo="Typo.h6" Color="Color.Error">เงินหัก</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Error">@L.Translate("DeductionsPanelHeading")</MudText>
                     <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Filled"
-                        OnClick="@(() => OpenCreate(PayItemCategory.Deduction))">+ เพิ่ม</MudButton>
+                        OnClick="@(() => OpenCreate(PayItemCategory.Deduction))">@L.Translate("AddButtonShort")</MudButton>
                 </MudStack>
                 <MudTable Items="_deductionItems" Dense="true" Hover="true">
                     <HeaderContent>
-                        <MudTh>ประเภท</MudTh>
-                        <MudTh>จำนวนเงิน</MudTh>
-                        <MudTh>เหตุผล</MudTh>
-                        <MudTh>สถานะ</MudTh>
+                        <MudTh>@L.Translate("ColItemType")</MudTh>
+                        <MudTh>@L.Translate("ColAmount")</MudTh>
+                        <MudTh>@L.Translate("ReasonLabel")</MudTh>
+                        <MudTh>@L.Translate("ColStatus")</MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -141,18 +142,18 @@ else
                         <MudTd>
                             @if (context.Status == PayAdhocItemStatus.Pending)
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" Title="อนุมัติ" OnClick="@(() => ApproveAsync(context.Id))" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" Title="ปฏิเสธ" OnClick="@(() => RejectAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" Title="@L.Translate("ApproveButton")" OnClick="@(() => ApproveAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" Title="@L.Translate("RejectButton")" OnClick="@(() => RejectAsync(context.Id))" />
                             }
                             @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="ลบรายการ" OnClick="@(() => CancelItemAsync(context.Id))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Title="@L.Translate("DeleteItemTitle")" OnClick="@(() => CancelItemAsync(context.Id))" />
                             }
                         </MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText>ยังไม่มีรายการ</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText>@L.Translate("NoItemsYet")</MudText></NoRecordsContent>
                     <FooterContent>
-                        <MudTd colspan="2"><b>รวม: @_deductionItems.Where(i => i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount).ToString("N2")</b></MudTd>
+                        <MudTd colspan="2"><b>@string.Format(L.Translate("TotalColonTemplate"), _deductionItems.Where(i => i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount).ToString("N2"))</b></MudTd>
                         <MudTd colspan="3"></MudTd>
                     </FooterContent>
                 </MudTable>
@@ -163,10 +164,10 @@ else
     @if (_showCreate)
     {
         <MudPaper Class="pa-4 mt-4">
-            <MudText Typo="Typo.h6">เพิ่มรายการ@(_createCategory == PayItemCategory.Earning ? "เงินได้" : "เงินหัก")เฉพาะกิจ</MudText>
+            <MudText Typo="Typo.h6">@string.Format(L.Translate("AddAdhocItemHeadingTemplate"), _createCategory == PayItemCategory.Earning ? L.Translate("EarningsPanelHeading") : L.Translate("DeductionsPanelHeading"))</MudText>
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="6">
-                    <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="ประเภทรายการ">
+                    <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="@L.Translate("AdhocPayItemTypeLabel")">
                         @foreach (var t in _payItemTypes.Where(t => t.Category == _createCategory))
                         {
                             <MudSelectItem T="int" Value="t.Id">@t.NameTh (@t.NameEn)</MudSelectItem>
@@ -174,21 +175,21 @@ else
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_form.Amount" Label="จำนวนเงิน" Required="true" />
+                    <MudNumericField @bind-Value="_form.Amount" Label="@L.Translate("AmountLabel")" Required="true" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudCheckBox @bind-Value="_form.IsTaxable" Label="นับเป็นเงินได้ที่ต้องเสียภาษี" />
+                    <MudCheckBox @bind-Value="_form.IsTaxable" Label="@L.Translate("AdhocIsTaxableLabel")" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_form.Reason" Label="เหตุผล" Required="true" Lines="2" />
+                    <MudTextField @bind-Value="_form.Reason" Label="@L.Translate("ReasonLabel")" Required="true" Lines="2" />
                 </MudItem>
             </MudGrid>
             @if (!string.IsNullOrEmpty(_error))
             {
                 <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
             }
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync">บันทึก</MudButton>
-            <MudButton Variant="Variant.Text" Class="mt-3" OnClick="@(() => _showCreate = false)">ยกเลิก</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync">@L.Translate("SaveButton")</MudButton>
+            <MudButton Variant="Variant.Text" Class="mt-3" OnClick="@(() => _showCreate = false)">@L.Translate("CancelButton")</MudButton>
         </MudPaper>
     }
 }
@@ -307,7 +308,7 @@ else
         _error = null;
         if (string.IsNullOrWhiteSpace(_form.Reason) || _form.Amount <= 0 || _form.PayItemTypeId == 0)
         {
-            _error = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            _error = L.Translate("FillAllFieldsError");
             return;
         }
 
@@ -327,7 +328,7 @@ else
         await context.SaveChangesAsync();
 
         _showCreate = false;
-        Snackbar.Add("บันทึกรายการเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ItemSavedSuccess"), Severity.Success);
         await LoadAsync();
     }
 
@@ -348,7 +349,7 @@ else
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
         item.ApprovedDate = DateTime.Now;
         await context.SaveChangesAsync();
-        Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ApprovedSuccess"), Severity.Success);
         await LoadAsync();
     }
 
@@ -361,7 +362,7 @@ else
         item.ApprovedByUserId = await GetCurrentUserIdAsync();
         item.ApprovedDate = DateTime.Now;
         await context.SaveChangesAsync();
-        Snackbar.Add("ปฏิเสธรายการแล้ว", Severity.Warning);
+        Snackbar.Add(L.Translate("RejectedSuccess"), Severity.Warning);
         await LoadAsync();
     }
 
@@ -372,7 +373,7 @@ else
         if (item is null) return;
         item.Status = PayAdhocItemStatus.Cancelled;
         await context.SaveChangesAsync();
-        Snackbar.Add("ลบรายการแล้ว", Severity.Info);
+        Snackbar.Add(L.Translate("CancelledSuccess"), Severity.Info);
         await LoadAsync();
     }
 

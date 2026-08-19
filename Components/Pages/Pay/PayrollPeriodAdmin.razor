@@ -8,19 +8,20 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>จัดการงวดเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("PeriodAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">จัดการงวดเงินเดือน (Payroll Period)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PeriodAdminHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        งวดที่กำหนดไว้ที่นี่จะปรากฏเป็นตัวเลือกในหน้า "ตรวจสอบรายชื่อพนักงาน" (/payrollprocess) แทนการกรอกปี/เดือน/งวดเอง
+        @L.Translate("PeriodAdminDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
     }
     else
     {
@@ -28,10 +29,10 @@
 
         <MudGrid>
             <MudItem xs="12" sm="4">
-                <MudNumericField @bind-Value="_newModel.Year" Label="ปี (ค.ศ.)" Min="2020" Max="2100" />
+                <MudNumericField @bind-Value="_newModel.Year" Label="@L.Translate("YearAdCeLabel")" Min="2020" Max="2100" />
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudSelect T="int" @bind-Value="_newModel.Month" Label="เดือน">
+                <MudSelect T="int" @bind-Value="_newModel.Month" Label="@L.Translate("MonthLabel")">
                     @for (var m = 1; m <= 12; m++)
                     {
                         var month = m;
@@ -40,17 +41,17 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudNumericField @bind-Value="_newModel.TermNo" Label="งวดที่" Min="1" Max="9" />
+                <MudNumericField @bind-Value="_newModel.TermNo" Label="@L.Translate("TermNoLabel")" Min="1" Max="9" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudDatePicker @bind-Date="_newPeriodStart" Label="วันที่เริ่มงวด" />
+                <MudDatePicker @bind-Date="_newPeriodStart" Label="@L.Translate("PeriodStartDateLabel")" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudDatePicker @bind-Date="_newPeriodEnd" Label="วันที่สิ้นสุดงวด" />
+                <MudDatePicker @bind-Date="_newPeriodEnd" Label="@L.Translate("PeriodEndDateLabel")" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_newModel.Label" Label="ชื่อแสดงผล (Label)"
-                    HelperText="ปล่อยว่างไว้เพื่อให้ระบบตั้งชื่อให้อัตโนมัติจากปี/เดือน/งวด" />
+                <MudTextField @bind-Value="_newModel.Label" Label="@L.Translate("DisplayLabelField")"
+                    HelperText="@L.Translate("DisplayLabelHelperText")" />
             </MudItem>
         </MudGrid>
 
@@ -59,18 +60,18 @@
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="AddPeriodAsync">เพิ่มงวด</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="AddPeriodAsync">@L.Translate("AddPeriodButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
         <MudTable Items="_periods" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ปี</MudTh>
-                <MudTh>เดือน</MudTh>
-                <MudTh>งวดที่</MudTh>
-                <MudTh>ชื่อแสดงผล</MudTh>
-                <MudTh>ช่วงวันที่</MudTh>
-                <MudTh>สถานะ</MudTh>
+                <MudTh>@L.Translate("YearAdCeLabel")</MudTh>
+                <MudTh>@L.Translate("MonthLabel")</MudTh>
+                <MudTh>@L.Translate("TermNoLabel")</MudTh>
+                <MudTh>@L.Translate("DisplayLabelField")</MudTh>
+                <MudTh>@L.Translate("DateRangeLabel")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -79,10 +80,10 @@
                 <MudTd>@context.TermNo</MudTd>
                 <MudTd>@context.Label</MudTd>
                 <MudTd>@context.PeriodStart.ToString("dd/MM/yyyy") - @context.PeriodEnd.ToString("dd/MM/yyyy")</MudTd>
-                <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+                <MudTd>@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
-                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                        @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                     </MudButton>
                 </MudTd>
             </RowTemplate>
@@ -134,7 +135,7 @@
 
         if (_newPeriodStart is null || _newPeriodEnd is null || _newPeriodEnd < _newPeriodStart)
         {
-            _error = "กรุณาระบุช่วงวันที่ของงวดให้ถูกต้อง";
+            _error = L.Translate("InvalidPeriodDateRangeError");
             return;
         }
 
@@ -147,12 +148,12 @@
             p.CompanyId == _companyId && p.Year == _newModel.Year && p.Month == _newModel.Month && p.TermNo == _newModel.TermNo);
         if (duplicate)
         {
-            _error = $"มีงวดปี {_newModel.Year} เดือน {ThaiMonthName(_newModel.Month)} งวดที่ {_newModel.TermNo} อยู่แล้ว";
+            _error = string.Format(L.Translate("PeriodDuplicateErrorTemplate"), _newModel.Year, ThaiMonthName(_newModel.Month), _newModel.TermNo);
             return;
         }
 
         var label = string.IsNullOrWhiteSpace(_newModel.Label)
-            ? $"{ThaiMonthName(_newModel.Month)} {_newModel.Year + 543} งวดที่ {_newModel.TermNo}"
+            ? string.Format(L.Translate("PeriodAutoLabelTemplate"), ThaiMonthName(_newModel.Month), _newModel.Year + 543, _newModel.TermNo)
             : _newModel.Label;
 
         context.Pay_PayrollPeriods.Add(new Pay_PayrollPeriod
@@ -168,7 +169,7 @@
         });
         await context.SaveChangesAsync();
 
-        Snackbar.Add("เพิ่มงวดเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("PeriodAddedSuccess"), Severity.Success);
         _newModel = new NewPeriodModel();
         await LoadAsync();
     }
@@ -184,20 +185,20 @@
         await LoadAsync();
     }
 
-    private static string ThaiMonthName(int month) => month switch
+    private string ThaiMonthName(int month) => month switch
     {
-        1 => "มกราคม",
-        2 => "กุมภาพันธ์",
-        3 => "มีนาคม",
-        4 => "เมษายน",
-        5 => "พฤษภาคม",
-        6 => "มิถุนายน",
-        7 => "กรกฎาคม",
-        8 => "สิงหาคม",
-        9 => "กันยายน",
-        10 => "ตุลาคม",
-        11 => "พฤศจิกายน",
-        12 => "ธันวาคม",
+        1 => L.Translate("MonthJanuary"),
+        2 => L.Translate("MonthFebruary"),
+        3 => L.Translate("MonthMarch"),
+        4 => L.Translate("MonthApril"),
+        5 => L.Translate("MonthMay"),
+        6 => L.Translate("MonthJune"),
+        7 => L.Translate("MonthJuly"),
+        8 => L.Translate("MonthAugust"),
+        9 => L.Translate("MonthSeptember"),
+        10 => L.Translate("MonthOctober"),
+        11 => L.Translate("MonthNovember"),
+        12 => L.Translate("MonthDecember"),
         _ => month.ToString(System.Globalization.CultureInfo.InvariantCulture),
     };
 }

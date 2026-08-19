@@ -10,6 +10,7 @@
 @inject NavigationManager Nav
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 
 @* Shared "frame" for every /pay/employees/{id}/* tab so the header + nav
    menu stay visible across in-app navigation between tabs — LayoutComponentBase
@@ -19,7 +20,7 @@
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
@@ -35,15 +36,15 @@ else
                         <MudText Typo="Typo.h5">@_employee.EmpNo — @_employee.EmpName @_employee.EmpSurname</MudText>
                         @if (_employee.ResignDate is not null)
                         {
-                            <MudChip T="string" Color="Color.Default" Size="Size.Small">ลาออกแล้ว (@_employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
+                            <MudChip T="string" Color="Color.Default" Size="Size.Small">@string.Format(L.Translate("ResignedChipTemplate"), _employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
                         }
                         else
                         {
-                            <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">@L.Translate("ActiveChip")</MudChip>
                         }
                     </MudStack>
                     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/pay/employees"))">
-                        กลับไปรายการพนักงาน
+                        @L.Translate("BackToEmployeeListButton")
                     </MudButton>
                 </MudStack>
             </MudPaper>
@@ -54,13 +55,13 @@ else
         <MudItem xs="12" md="3">
             <MudPaper Class="pa-2">
                 <MudNavMenu>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}")" Match="NavLinkMatch.All">ข้อมูลทั่วไป</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/pay-items")">เงินได้-เงินหัก</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/position-salary-history")">ประวัติปรับตำแหน่ง/เงินเดือน</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/loans")">เงินกู้พนักงาน</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/insurance")">ประกันกลุ่ม</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/provident-fund")">กองทุนสำรองเลี้ยงชีพ</MudNavLink>
-                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/lifecycle")">Onboarding/Offboarding</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}")" Match="NavLinkMatch.All">@L.Translate("GeneralInfoHeading")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/pay-items")">@L.Translate("PayItemsNavLabel")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/position-salary-history")">@L.Translate("PositionSalaryHistoryNavLabel")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/loans")">@L.Translate("EmployeeLoansNavLabel")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/insurance")">@L.Translate("GroupInsuranceNavLabel")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/provident-fund")">@L.Translate("ProvidentFundNavLabel")</MudNavLink>
+                    <MudNavLink Href="@($"/pay/employees/{_employeeId}/lifecycle")">@L.Translate("OnboardingOffboardingNavLabel")</MudNavLink>
                 </MudNavMenu>
             </MudPaper>
         </MudItem>

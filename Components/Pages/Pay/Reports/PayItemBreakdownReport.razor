@@ -7,28 +7,29 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
 
-<PageTitle>สัดส่วนรายรับ-รายหักตามประเภท</PageTitle>
+<PageTitle>@L.Translate("NavPayItemBreakdown")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">สัดส่วนรายรับ-รายหักตามประเภท (Pay Item / GL Breakdown)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PayItemBreakdownHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        สรุปยอดต่องวดแยกตามประเภทรายการ (Pay_PayItemType) พร้อมรหัสบัญชี GL สำหรับส่งต่อฝ่ายบัญชี
+        @L.Translate("PayItemBreakdownDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="4">
-            <MudDatePicker @bind-Date="_period" Label="งวด" Editable="true" />
+            <MudDatePicker @bind-Date="_period" Label="@L.Translate("Period")" Editable="true" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">@L.Translate("LoadDataButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -37,17 +38,17 @@
         <MudGrid Class="mt-4">
             <MudItem xs="12" sm="6">
                 <MudChart ChartType="ChartType.Donut" InputData="@_earningData" InputLabels="@_earningLabels" Width="100%" Height="300px" />
-                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">รายรับ (Earning)</MudText>
+                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">@L.Translate("AdhocEarningLabel")</MudText>
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudChart ChartType="ChartType.Donut" InputData="@_deductionData" InputLabels="@_deductionLabels" Width="100%" Height="300px" />
-                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">รายหัก (Deduction)</MudText>
+                <MudText Typo="Typo.subtitle2" Class="text-center mt-1">@L.Translate("AdhocDeductionLabel")</MudText>
             </MudItem>
         </MudGrid>
 
         <MudSimpleTable Dense="true" Class="mt-4">
             <thead>
-                <tr><th>ประเภท</th><th>หมวด</th><th>รหัสบัญชี GL</th><th>ยอดรวม</th></tr>
+                <tr><th>@L.Translate("ColType")</th><th>@L.Translate("ColCategory")</th><th>@L.Translate("ColGLAccountCode")</th><th>@L.Translate("ColTotalAmount")</th></tr>
             </thead>
             <tbody>
                 @foreach (var row in _rows)
@@ -64,7 +65,7 @@
     }
     else if (_loaded)
     {
-        <MudAlert Severity="Severity.Info" Class="mt-4">ไม่พบข้อมูลสำหรับงวดนี้</MudAlert>
+        <MudAlert Severity="Severity.Info" Class="mt-4">@L.Translate("NoDataForPeriodMessage")</MudAlert>
     }
 </MudPaper>
 

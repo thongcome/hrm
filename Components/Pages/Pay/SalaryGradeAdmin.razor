@@ -8,43 +8,44 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>โครงสร้างเงินเดือน (Pay Grade)</PageTitle>
+<PageTitle>@L.Translate("SalaryGradePageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">โครงสร้างเงินเดือน / เกรดเงินเดือน (Salary Grade)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("SalaryGradeHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        กำหนดช่วงเงินเดือนต่ำสุด-กลาง-สูงสุดของแต่ละเกรด — ใช้เทียบกับเงินเดือนจริงของพนักงานที่หน้า "จัดการพนักงาน" เพื่อดูว่าอยู่ในช่วงที่กำหนดหรือไม่
+        @L.Translate("SalaryGradeDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มเกรดใหม่" : $"แก้ไขเกรด — {_form.GradeCode}")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewGradeHeading") : string.Format(L.Translate("EditGradeHeadingTemplate"), _form.GradeCode))</MudText>
     <MudGrid Class="mt-1">
         <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.GradeCode" Label="รหัสเกรด" Required="true" />
+            <MudTextField @bind-Value="_form.GradeCode" Label="@L.Translate("GradeCodeLabel")" Required="true" />
         </MudItem>
         <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.GradeName" Label="ชื่อเกรด" Required="true" />
+            <MudTextField @bind-Value="_form.GradeName" Label="@L.Translate("GradeNameLabel")" Required="true" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MinSalary" Label="เงินเดือนต่ำสุด" Format="N2" Min="0" />
+            <MudNumericField @bind-Value="_form.MinSalary" Label="@L.Translate("MinSalaryLabel")" Format="N2" Min="0" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MidSalary" Label="เงินเดือนกลาง (Midpoint)" Format="N2" Min="0" />
+            <MudNumericField @bind-Value="_form.MidSalary" Label="@L.Translate("MidSalaryLabel")" Format="N2" Min="0" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MaxSalary" Label="เงินเดือนสูงสุด" Format="N2" Min="0" />
+            <MudNumericField @bind-Value="_form.MaxSalary" Label="@L.Translate("MaxSalaryLabel")" Format="N2" Min="0" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+            <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
         </MudItem>
     </MudGrid>
 
@@ -55,11 +56,11 @@
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มเกรด" : "บันทึกการแก้ไข")
+            @(_editingId is null ? L.Translate("AddGradeButton") : L.Translate("SaveEditButton"))
         </MudButton>
         @if (_editingId is not null)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
         }
     </MudStack>
 
@@ -67,21 +68,21 @@
 
     <MudTable Items="_grades" Dense="true" Hover="true">
         <HeaderContent>
-            <MudTh>รหัส</MudTh>
-            <MudTh>ชื่อเกรด</MudTh>
-            <MudTh>ช่วงเงินเดือน (ต่ำสุด - กลาง - สูงสุด)</MudTh>
-            <MudTh>สถานะ</MudTh>
+            <MudTh>@L.Translate("ColCode")</MudTh>
+            <MudTh>@L.Translate("GradeNameLabel")</MudTh>
+            <MudTh>@L.Translate("SalaryRangeColHeader")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.GradeCode</MudTd>
             <MudTd>@context.GradeName</MudTd>
             <MudTd>@context.MinSalary.ToString("N2") - @context.MidSalary.ToString("N2") - @context.MaxSalary.ToString("N2")</MudTd>
-            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
-                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                 </MudButton>
             </MudTd>
         </RowTemplate>
@@ -152,13 +153,13 @@
 
         if (string.IsNullOrWhiteSpace(_form.GradeCode) || string.IsNullOrWhiteSpace(_form.GradeName))
         {
-            _error = "กรุณากรอกรหัสเกรดและชื่อเกรด";
+            _error = L.Translate("FillGradeCodeNameError");
             return;
         }
 
         if (_form.MinSalary > _form.MidSalary || _form.MidSalary > _form.MaxSalary)
         {
-            _error = "ช่วงเงินเดือนต้องเรียงจากต่ำสุด ≤ กลาง ≤ สูงสุด";
+            _error = L.Translate("SalaryRangeOrderError");
             return;
         }
 
@@ -168,7 +169,7 @@
             g.CompanyId == _companyId && g.GradeCode == _form.GradeCode && g.Id != (_editingId ?? 0));
         if (duplicate)
         {
-            _error = $"มีรหัสเกรด {_form.GradeCode} อยู่แล้ว";
+            _error = string.Format(L.Translate("GradeCodeDuplicateErrorTemplate"), _form.GradeCode);
             return;
         }
 
@@ -177,7 +178,7 @@
             var existing = await context.Pay_SalaryGrades.FirstOrDefaultAsync(g => g.Id == id && g.CompanyId == _companyId);
             if (existing is null)
             {
-                _error = "ไม่พบเกรดที่ต้องการแก้ไข";
+                _error = L.Translate("GradeNotFoundError");
                 return;
             }
             existing.GradeCode = _form.GradeCode;
@@ -203,7 +204,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add(_editingId is null ? "เพิ่มเกรดเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย", Severity.Success);
+        Snackbar.Add(_editingId is null ? L.Translate("GradeAddedSuccess") : L.Translate("GradeEditSavedSuccess"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }

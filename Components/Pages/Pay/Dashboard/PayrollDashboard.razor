@@ -9,16 +9,17 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_REPORTS")]
 
-<PageTitle>แดชบอร์ดเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("NavPayDashboard")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">แดชบอร์ดเงินเดือน (Payroll Dashboard)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PayDashboardHeading")</MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
@@ -29,54 +30,54 @@
     else
     {
         <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3" Spacing="2">
-            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="@(() => GoToFiscalYear(_fiscalYear - 1))" title="ปีบัญชีก่อนหน้า" />
-            <MudText Typo="Typo.h6">ปีบัญชี @FiscalYearLabel()</MudText>
-            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="@(() => GoToFiscalYear(_fiscalYear + 1))" title="ปีบัญชีถัดไป" />
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="@(() => GoToFiscalYear(_fiscalYear - 1))" title="@L.Translate("PreviousFiscalYearTitle")" />
+            <MudText Typo="Typo.h6">@L.Translate("FiscalYearLabel") @FiscalYearLabel()</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="@(() => GoToFiscalYear(_fiscalYear + 1))" title="@L.Translate("NextFiscalYearTitle")" />
             @if (_fiscalYear != _currentFiscalYear)
             {
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => GoToFiscalYear(_currentFiscalYear))">กลับปีปัจจุบัน</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => GoToFiscalYear(_currentFiscalYear))">@L.Translate("BackToCurrentYearButton")</MudButton>
             }
             <MudText Typo="Typo.caption" Class="ml-2">(@_fyStart.ToString("dd/MM/yyyy") - @_fyEnd.ToString("dd/MM/yyyy"))</MudText>
         </MudStack>
 
-        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">ภาพรวมตั้งแต่ต้นปีบัญชี (YTD)</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">@L.Translate("YtdOverviewHeading")</MudText>
         <MudGrid>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">รายรับรวม (Gross)</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("ColGrossTotal")</MudText>
                     <MudText Typo="Typo.h5">@_ytd.TotalGross.ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">หักรวม</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalDeductionsLabel")</MudText>
                     <MudText Typo="Typo.h5">@_ytd.TotalDeductions.ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">สุทธิรวม (Net)</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalNetPayLabel")</MudText>
                     <MudText Typo="Typo.h5">@_ytd.TotalNetPay.ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">ภาษีหัก ณ ที่จ่ายรวม</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalTaxWithheldLabel")</MudText>
                     <MudText Typo="Typo.h5">@_ytd.TotalTax.ToString("N2")</MudText>
                 </MudPaper>
             </MudItem>
         </MudGrid>
-        <MudText Typo="Typo.caption" Class="mt-1">จำนวนพนักงานที่จ่ายจริงในปีบัญชีนี้: @_ytd.EmployeeCount คน (นับเฉพาะงวดที่อนุมัติแล้วขึ้นไป)</MudText>
+        <MudText Typo="Typo.caption" Class="mt-1">@string.Format(L.Translate("EmployeesPaidInFiscalYearTemplate"), _ytd.EmployeeCount)</MudText>
 
-        <MudText Typo="Typo.subtitle1" Class="mt-5 mb-2">สรุปตามศูนย์ต้นทุน (YTD)</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mt-5 mb-2">@L.Translate("CostCenterSummaryHeading")</MudText>
         @if (_costCenters.Count == 0)
         {
-            <MudAlert Severity="Severity.Info">ยังไม่มีข้อมูลในปีบัญชีนี้</MudAlert>
+            <MudAlert Severity="Severity.Info">@L.Translate("NoDataInFiscalYearMessage")</MudAlert>
         }
         else
         {
             <MudSimpleTable Dense="true">
-                <thead><tr><th>ศูนย์ต้นทุน</th><th>รายรับรวม</th><th>จำนวนพนักงาน</th></tr></thead>
+                <thead><tr><th>@L.Translate("CostCenterLabel")</th><th>@L.Translate("ColGrossTotal")</th><th>@L.Translate("PayRunColEmployeeCount")</th></tr></thead>
                 <tbody>
                     @foreach (var cc in _costCenters)
                     {
@@ -90,15 +91,15 @@
             </MudSimpleTable>
         }
 
-        <MudText Typo="Typo.subtitle1" Class="mt-5 mb-2">รายงวดในปีบัญชีนี้</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mt-5 mb-2">@L.Translate("PeriodsInFiscalYearHeading")</MudText>
         @if (_periods.Count == 0)
         {
-            <MudAlert Severity="Severity.Info">ยังไม่มีงวดเงินเดือนในปีบัญชีนี้</MudAlert>
+            <MudAlert Severity="Severity.Info">@L.Translate("NoPayrollPeriodsInFiscalYearMessage")</MudAlert>
         }
         else
         {
             <MudSimpleTable Dense="true" Hover="true">
-                <thead><tr><th>งวด</th><th>ช่วงวันที่</th><th>สถานะ</th><th>จำนวนพนักงาน</th><th>สุทธิรวม</th><th></th></tr></thead>
+                <thead><tr><th>@L.Translate("Period")</th><th>@L.Translate("DateRangeLabel")</th><th>@L.Translate("ColStatus")</th><th>@L.Translate("PayRunColEmployeeCount")</th><th>@L.Translate("TotalNetPayLabel")</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var p in _periods)
                     {
@@ -108,7 +109,7 @@
                             <td>@p.Status</td>
                             <td>@p.EmployeeCount</td>
                             <td>@p.TotalNetPay.ToString("N2")</td>
-                            <td><MudLink Href="@($"/pay/dashboard/period/{p.RunId}")">ดูรายละเอียด</MudLink></td>
+                            <td><MudLink Href="@($"/pay/dashboard/period/{p.RunId}")">@L.Translate("ViewDetailsLink")</MudLink></td>
                         </tr>
                     }
                 </tbody>
@@ -118,40 +119,40 @@
         @if (_negativeNetPay.Count > 0)
         {
             <MudAlert Severity="Severity.Error" Class="mt-5">
-                พนักงานสุทธิติดลบในงวดล่าสุด: @string.Join(", ", _negativeNetPay.Select(e => $"{e.EmpNo} ({e.Hremployee.EmpName})"))
+                @string.Format(L.Translate("NegativeNetPayInLatestPeriodTemplate"), string.Join(", ", _negativeNetPay.Select(e => $"{e.EmpNo} ({e.Hremployee.EmpName})")))
             </MudAlert>
         }
         @if (_excluded.Count > 0)
         {
             <MudAlert Severity="Severity.Warning" Class="mt-2">
-                พนักงานที่ถูกยกเว้นในงวดล่าสุด: @string.Join(", ", _excluded.Select(e => $"{e.EmpNo} ({e.ExcludeReason})"))
+                @string.Format(L.Translate("ExcludedEmployeesInLatestPeriodTemplate"), string.Join(", ", _excluded.Select(e => $"{e.EmpNo} ({e.ExcludeReason})")))
             </MudAlert>
         }
 
         <MudGrid Class="mt-3">
             <MudItem xs="12" sm="6" md="4">
                 <MudPaper Class="pa-3" Elevation="2">
-                    <MudText Typo="Typo.caption">พนักงานทำงานอยู่ / ลาออกแล้ว</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("ActiveResignedEmployeesLabel")</MudText>
                     <MudText Typo="Typo.h5">@_activeCount / @_resignedCount</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" md="4">
                 <MudPaper Class="pa-3" Elevation="2" Style="@(_pendingApprovalCount > 0 ? "border-left:4px solid var(--mud-palette-warning)" : "")">
-                    <MudText Typo="Typo.caption">รอบรออนุมัติ (Reviewed)</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("RunsPendingApprovalLabel")</MudText>
                     <MudText Typo="Typo.h5">@_pendingApprovalCount</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" md="4">
                 <MudPaper Class="pa-3" Elevation="2" Style="@(_pendingAdhocCount > 0 ? "border-left:4px solid var(--mud-palette-warning)" : "")">
-                    <MudText Typo="Typo.caption">รายการเฉพาะกิจรออนุมัติ</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("AdhocPendingApprovalLabel")</MudText>
                     <MudText Typo="Typo.h5">@_pendingAdhocCount</MudText>
                 </MudPaper>
             </MudItem>
         </MudGrid>
 
-        <MudText Typo="Typo.h6" Class="mt-5 mb-2">สถานะรอบเงินเดือน (10 งวดล่าสุด)</MudText>
+        <MudText Typo="Typo.h6" Class="mt-5 mb-2">@L.Translate("RunStatusBoardHeading")</MudText>
         <MudSimpleTable Dense="true">
-            <thead><tr><th>สถานะ</th><th>จำนวนรอบ</th></tr></thead>
+            <thead><tr><th>@L.Translate("ColStatus")</th><th>@L.Translate("RunCountLabel")</th></tr></thead>
             <tbody>
                 @foreach (var kv in _runStatusBoard.OrderBy(k => k.Key))
                 {
@@ -160,9 +161,9 @@
             </tbody>
         </MudSimpleTable>
 
-        <MudText Typo="Typo.h6" Class="mt-5 mb-2">กิจกรรมล่าสุด</MudText>
+        <MudText Typo="Typo.h6" Class="mt-5 mb-2">@L.Translate("RecentActivityHeading")</MudText>
         <MudSimpleTable Dense="true">
-            <thead><tr><th>เวลา</th><th>เหตุการณ์</th><th>งวด</th><th>หมายเหตุ</th></tr></thead>
+            <thead><tr><th>@L.Translate("TimeLabel")</th><th>@L.Translate("EventLabel")</th><th>@L.Translate("Period")</th><th>@L.Translate("NoteLabel")</th></tr></thead>
             <tbody>
                 @foreach (var log in _recentActivity)
                 {

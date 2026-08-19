@@ -8,22 +8,23 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Navigation
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
-<PageTitle>สร้างรอบเงินเดือน</PageTitle>
+<PageTitle>@L.Translate("PayRunCreatePageTitle")</PageTitle>
 
 <MudPaper Class="pa-4" MaxWidth="600px">
-    <MudText Typo="Typo.h5" Class="mb-4">สร้างรอบเงินเดือนใหม่</MudText>
+    <MudText Typo="Typo.h5" Class="mb-4">@L.Translate("PayRunCreateHeading")</MudText>
 
     <MudForm @ref="_form" Model="_model">
-        <MudTextField Value="_model.CompanyId" Label="รหัสบริษัท (CompanyId)" ReadOnly="true"
-            HelperText="กำหนดจากบัญชีผู้ใช้ของคุณ แก้ไขไม่ได้" />
-        <MudSelect @bind-Value="_model.RunType" Label="ประเภทรอบ" Class="mt-3">
-            <MudSelectItem Value="PayrollRunType.Regular">รอบปกติ (Regular)</MudSelectItem>
-            <MudSelectItem Value="PayrollRunType.Bonus">โบนัส (Bonus)</MudSelectItem>
+        <MudTextField Value="_model.CompanyId" Label="@L.Translate("PayRunFieldCompanyId")" ReadOnly="true"
+            HelperText="@L.Translate("PayRunCompanyIdHelper")" />
+        <MudSelect @bind-Value="_model.RunType" Label="@L.Translate("ColType")" Class="mt-3">
+            <MudSelectItem Value="PayrollRunType.Regular">@L.Translate("PayRunTypeRegular")</MudSelectItem>
+            <MudSelectItem Value="PayrollRunType.Bonus">@L.Translate("PayRunTypeBonus")</MudSelectItem>
         </MudSelect>
-        <MudDatePicker @bind-Date="_periodMonth" Label="เดือน/ปี ของงวด" Class="mt-3" />
-        <MudDatePicker @bind-Date="_payDate" Label="วันที่จ่ายเงิน" Class="mt-3" />
+        <MudDatePicker @bind-Date="_periodMonth" Label="@L.Translate("PayRunFieldPeriodMonth")" Class="mt-3" />
+        <MudDatePicker @bind-Date="_payDate" Label="@L.Translate("PayRunFieldPayDate")" Class="mt-3" />
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -31,8 +32,8 @@
         }
 
         <MudStack Row="true" Class="mt-4" Justify="Justify.FlexEnd">
-            <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("/pay/runs"))">ยกเลิก</MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">สร้างรอบ (Draft)</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("/pay/runs"))">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("PayRunCreateSubmitButton")</MudButton>
         </MudStack>
     </MudForm>
 </MudPaper>
@@ -63,8 +64,8 @@
         if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null || _payDate is null)
         {
             _error = string.IsNullOrWhiteSpace(_model.CompanyId)
-                ? "บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน"
-                : "กรุณากรอกข้อมูลให้ครบถ้วน";
+                ? L.Translate("CompanyNotLinkedError")
+                : L.Translate("FillAllFieldsError");
             return;
         }
 
@@ -81,7 +82,7 @@
             r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.RunType == _model.RunType);
         if (duplicate)
         {
-            _error = $"มีรอบ {_model.RunType} ของงวด {period} สำหรับบริษัท {_model.CompanyId} อยู่แล้ว";
+            _error = string.Format(L.Translate("PayRunDuplicateError"), _model.RunType, period, _model.CompanyId);
             return;
         }
 

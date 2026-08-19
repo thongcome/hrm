@@ -7,25 +7,26 @@
 @using MudBlazor
 @inject DocumentExpiryService ExpiryService
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>เอกสารใกล้หมดอายุ</PageTitle>
+<PageTitle>@L.Translate("NavPayDocExpiry")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">เอกสารใกล้หมดอายุ</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("NavPayDocExpiry")</MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_daysAhead" Label="แสดงล่วงหน้ากี่วัน" Min="1" Max="365" />
+            <MudNumericField @bind-Value="_daysAhead" Label="@L.Translate("DaysAheadLabel")" Min="1" Max="365" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">@L.Translate("LoadDataButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -35,32 +36,32 @@
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Outlined="true">
                     <MudText Typo="Typo.h4" Color="Color.Error">@_rows.Count(r => r.Status == DocumentExpiryService.ExpiryStatus.Expired)</MudText>
-                    <MudText Typo="Typo.caption">หมดอายุแล้ว</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("ExpiryStatusExpired")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Outlined="true">
                     <MudText Typo="Typo.h4" Color="Color.Warning">@_rows.Count(r => r.Status == DocumentExpiryService.ExpiryStatus.ExpiringSoon)</MudText>
-                    <MudText Typo="Typo.caption">ใกล้หมดอายุ (ภายใน 30 วัน)</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("ExpiringSoonWithin30Days")</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudPaper Class="pa-3" Outlined="true">
                     <MudText Typo="Typo.h4">@_rows.Count</MudText>
-                    <MudText Typo="Typo.caption">รวมทั้งหมดในช่วงที่เลือก</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("TotalInSelectedRange")</MudText>
                 </MudPaper>
             </MudItem>
         </MudGrid>
 
         @if (_rows.Count == 0)
         {
-            <MudText Typo="Typo.body2" Class="mt-4" Style="opacity:.7;">ไม่พบเอกสารที่หมดอายุหรือใกล้หมดอายุในช่วงที่เลือก</MudText>
+            <MudText Typo="Typo.body2" Class="mt-4" Style="opacity:.7;">@L.Translate("NoExpiringDocumentsMessage")</MudText>
         }
         else
         {
             <MudSimpleTable Dense="true" Class="mt-4">
                 <thead>
-                    <tr><th>รหัสพนักงาน</th><th>ชื่อ</th><th>ประเภทเอกสาร</th><th>วันหมดอายุ</th><th>เหลือกี่วัน</th><th>สถานะ</th><th></th></tr>
+                    <tr><th>@L.Translate("EmpNoLabel")</th><th>@L.Translate("ColName")</th><th>@L.Translate("DocumentTypeLabel")</th><th>@L.Translate("ExpiryDateLabel")</th><th>@L.Translate("DaysRemainingLabel")</th><th>@L.Translate("ColStatus")</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var row in _rows)
@@ -72,7 +73,7 @@
                             <td>@row.ExpiryDate.ToString("dd/MM/yyyy")</td>
                             <td>@row.DaysRemaining</td>
                             <td><MudChip T="string" Size="Size.Small" Color="@StatusColor(row.Status)">@StatusLabel(row.Status)</MudChip></td>
-                            <td><MudLink Href="@($"/pay/employees/{row.HremployeeId}")">ไปที่ข้อมูลพนักงาน</MudLink></td>
+                            <td><MudLink Href="@($"/pay/employees/{row.HremployeeId}")">@L.Translate("GoToEmployeeDataLink")</MudLink></td>
                         </tr>
                     }
                 </tbody>
@@ -104,25 +105,25 @@
         _loaded = true;
     }
 
-    private static string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
+    private string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
     {
-        Pay_EmployeeDocumentType.IdCard => "บัตรประชาชน",
-        Pay_EmployeeDocumentType.Contract => "สัญญาจ้าง",
-        Pay_EmployeeDocumentType.EducationCertificate => "วุฒิการศึกษา",
-        Pay_EmployeeDocumentType.ResignationLetter => "ใบลาออก",
-        Pay_EmployeeDocumentType.BankBook => "สมุดบัญชีธนาคาร",
-        Pay_EmployeeDocumentType.WorkPermit => "ใบอนุญาตทำงาน",
-        Pay_EmployeeDocumentType.Visa => "วีซ่า",
-        Pay_EmployeeDocumentType.DrivingLicense => "ใบขับขี่",
-        Pay_EmployeeDocumentType.ProfessionalLicense => "ใบประกอบวิชาชีพ",
-        _ => "อื่นๆ",
+        Pay_EmployeeDocumentType.IdCard => L.Translate("DocTypeIdCard"),
+        Pay_EmployeeDocumentType.Contract => L.Translate("DocTypeContract"),
+        Pay_EmployeeDocumentType.EducationCertificate => L.Translate("DocTypeEducationCertificate"),
+        Pay_EmployeeDocumentType.ResignationLetter => L.Translate("DocTypeResignationLetter"),
+        Pay_EmployeeDocumentType.BankBook => L.Translate("DocTypeBankBook"),
+        Pay_EmployeeDocumentType.WorkPermit => L.Translate("DocTypeWorkPermit"),
+        Pay_EmployeeDocumentType.Visa => L.Translate("DocTypeVisa"),
+        Pay_EmployeeDocumentType.DrivingLicense => L.Translate("DocTypeDrivingLicense"),
+        Pay_EmployeeDocumentType.ProfessionalLicense => L.Translate("DocTypeProfessionalLicense"),
+        _ => L.Translate("DocTypeOther"),
     };
 
-    private static string StatusLabel(DocumentExpiryService.ExpiryStatus status) => status switch
+    private string StatusLabel(DocumentExpiryService.ExpiryStatus status) => status switch
     {
-        DocumentExpiryService.ExpiryStatus.Expired => "หมดอายุแล้ว",
-        DocumentExpiryService.ExpiryStatus.ExpiringSoon => "ใกล้หมดอายุ",
-        _ => "ปกติ",
+        DocumentExpiryService.ExpiryStatus.Expired => L.Translate("ExpiryStatusExpired"),
+        DocumentExpiryService.ExpiryStatus.ExpiringSoon => L.Translate("ExpiryStatusExpiringSoon"),
+        _ => L.Translate("ExpiryStatusNormal"),
     };
 
     private static Color StatusColor(DocumentExpiryService.ExpiryStatus status) => status switch

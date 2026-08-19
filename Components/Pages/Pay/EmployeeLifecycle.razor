@@ -13,85 +13,86 @@
 @inject ISnackbar Snackbar
 @inject LifecycleTaskService LifecycleService
 @inject IAuditLogger AuditLogger
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>Onboarding/Offboarding</PageTitle>
+<PageTitle>@L.Translate("OnboardingOffboardingNavLabel")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText>กำลังโหลด...</MudText>
+    <MudText>@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h6">ทดลองงาน / Onboarding / Offboarding</MudText>
+            <MudText Typo="Typo.h6">@L.Translate("ProbationOnboardOffboardHeading")</MudText>
             <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
         </MudStack>
 
         <MudDivider Class="my-3" />
 
-        <MudText Typo="Typo.subtitle1">ทดลองงาน</MudText>
+        <MudText Typo="Typo.subtitle1">@L.Translate("ProbationSubheading")</MudText>
         @if (_employee.WorkDate is null)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-2">พนักงานคนนี้ยังไม่มีวันเริ่มงาน (WorkDate) — ตั้งค่าก่อนจึงจะคำนวณวันครบทดลองงานได้</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-2">@L.Translate("NoWorkDateInfo")</MudAlert>
         }
         else if (_employee.ProbationConfirmedDate is not null)
         {
             <MudChip T="string" Color="Color.Success" Size="Size.Small" Class="mt-2">
-                ผ่านทดลองงานแล้ว (ยืนยันเมื่อ @_employee.ProbationConfirmedDate.Value.ToString("dd/MM/yyyy"))
+                @string.Format(L.Translate("ProbationPassedChipTemplate"), _employee.ProbationConfirmedDate.Value.ToString("dd/MM/yyyy"))
             </MudChip>
         }
         else
         {
             <MudGrid Class="mt-1">
                 <MudItem xs="12" sm="4">
-                    <MudText Typo="Typo.body2">วันเริ่มงาน: @_employee.WorkDate.Value.ToString("dd/MM/yyyy")</MudText>
+                    <MudText Typo="Typo.body2">@string.Format(L.Translate("WorkDateColonTemplate"), _employee.WorkDate.Value.ToString("dd/MM/yyyy"))</MudText>
                 </MudItem>
                 <MudItem xs="12" sm="4">
                     <MudDatePicker Date="_probationEndDate" DateChanged="@(d => _probationEndDate = d)"
-                        Label="วันครบทดลองงาน (แนะนำอัตโนมัติ แก้ไขได้)" Editable="true" DateFormat="dd/MM/yyyy" />
+                        Label="@L.Translate("ProbationEndDateLabel")" Editable="true" DateFormat="dd/MM/yyyy" />
                 </MudItem>
                 <MudItem xs="12" sm="4" Class="d-flex align-center">
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmProbationAsync">ยืนยันผ่านทดลองงาน</MudButton>
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmProbationAsync">@L.Translate("ConfirmProbationButton")</MudButton>
                 </MudItem>
             </MudGrid>
         }
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.subtitle1">Onboarding Checklist</MudText>
+        <MudText Typo="Typo.subtitle1">@L.Translate("OnboardingChecklistHeading")</MudText>
         @RenderChecklist(_onboardingTasks, LifecycleTaskDirection.Onboarding)
     </MudPaper>
 
     @if (_employee.ResignDate is not null)
     {
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.subtitle1">Offboarding Checklist</MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">วันที่ลาออก: @_employee.ResignDate.Value.ToString("dd/MM/yyyy")</MudText>
+            <MudText Typo="Typo.subtitle1">@L.Translate("OffboardingChecklistHeading")</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">@string.Format(L.Translate("ResignDateColonTemplate"), _employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudText>
             @RenderChecklist(_offboardingTasks, LifecycleTaskDirection.Offboarding)
         </MudPaper>
 
         <MudPaper Class="pa-4 mb-4">
-            <MudText Typo="Typo.subtitle1">บันทึกผลสัมภาษณ์ลาออก (Exit Interview)</MudText>
+            <MudText Typo="Typo.subtitle1">@L.Translate("ExitInterviewHeading")</MudText>
 
             @if (_latestExitInterview is not null)
             {
                 <MudAlert Severity="Severity.Info" Class="mt-2">
-                    บันทึกล่าสุด: @_latestExitInterview.InterviewDate.ToString("dd/MM/yyyy") — เหตุผล: @ReasonLabel(_latestExitInterview.ReasonCode)
+                    @string.Format(L.Translate("LatestExitInterviewTemplate"), _latestExitInterview.InterviewDate.ToString("dd/MM/yyyy"), ReasonLabel(_latestExitInterview.ReasonCode))
                 </MudAlert>
             }
 
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="4">
-                    <MudDatePicker Date="_interviewDate" DateChanged="@(d => _interviewDate = d)" Label="วันที่สัมภาษณ์" Editable="true" DateFormat="dd/MM/yyyy" />
+                    <MudDatePicker Date="_interviewDate" DateChanged="@(d => _interviewDate = d)" Label="@L.Translate("InterviewDateLabel")" Editable="true" DateFormat="dd/MM/yyyy" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudSelect T="ExitReasonCode" @bind-Value="_reasonCode" Label="เหตุผลหลัก">
+                    <MudSelect T="ExitReasonCode" @bind-Value="_reasonCode" Label="@L.Translate("MainReasonLabel")">
                         @foreach (ExitReasonCode reason in Enum.GetValues<ExitReasonCode>())
                         {
                             <MudSelectItem Value="reason">@ReasonLabel(reason)</MudSelectItem>
@@ -99,17 +100,17 @@ else
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudSwitch T="bool?" Value="_wouldRecommend" ValueChanged="@(v => _wouldRecommend = v)" Label="จะแนะนำบริษัทให้คนอื่นหรือไม่" Color="Color.Primary" />
+                    <MudSwitch T="bool?" Value="_wouldRecommend" ValueChanged="@(v => _wouldRecommend = v)" Label="@L.Translate("WouldRecommendCompanyLabel")" Color="Color.Primary" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_reasonNote" Label="รายละเอียดเหตุผล (ถ้ามี)" Lines="2" />
+                    <MudTextField @bind-Value="_reasonNote" Label="@L.Translate("ReasonDetailOptionalLabel")" Lines="2" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_feedback" Label="ความคิดเห็น/ข้อเสนอแนะ" Lines="2" />
+                    <MudTextField @bind-Value="_feedback" Label="@L.Translate("FeedbackSuggestionsLabel")" Lines="2" />
                 </MudItem>
             </MudGrid>
 
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveExitInterviewAsync">บันทึกผลสัมภาษณ์</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveExitInterviewAsync">@L.Translate("SaveInterviewResultButton")</MudButton>
         </MudPaper>
     }
 }
@@ -184,12 +185,12 @@ else
     {
         if (_probationEndDate is null)
         {
-            Snackbar.Add("กรุณาระบุวันครบทดลองงาน", Severity.Warning);
+            Snackbar.Add(L.Translate("SpecifyProbationEndDateError"), Severity.Warning);
             return;
         }
         var actorUserId = await GetActorUserIdAsync();
         await LifecycleService.ConfirmProbationAsync(HremployeeId, actorUserId, _probationEndDate.Value);
-        Snackbar.Add("ยืนยันผ่านทดลองงานเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ProbationConfirmedSuccess"), Severity.Success);
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == HremployeeId);
@@ -204,7 +205,7 @@ else
             await LifecycleService.StartOffboardingAsync(HremployeeId, actorUserId);
 
         await LoadTasksAsync();
-        Snackbar.Add("เริ่ม Checklist เรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("StartChecklistSuccess"), Severity.Success);
     }
 
     private async Task CompleteAsync(long taskId)
@@ -232,7 +233,7 @@ else
         var key = (long)direction;
         if (!_newAdHocTitle.TryGetValue(key, out var title) || string.IsNullOrWhiteSpace(title))
         {
-            Snackbar.Add("กรุณาระบุชื่องาน", Severity.Warning);
+            Snackbar.Add(L.Translate("SpecifyTaskTitleError"), Severity.Warning);
             return;
         }
 
@@ -246,14 +247,14 @@ else
     {
         if (_interviewDate is null)
         {
-            Snackbar.Add("กรุณาระบุวันที่สัมภาษณ์", Severity.Warning);
+            Snackbar.Add(L.Translate("SpecifyInterviewDateError"), Severity.Warning);
             return;
         }
 
         var actorUserId = await GetActorUserIdAsync();
         await LifecycleService.RecordExitInterviewAsync(HremployeeId, actorUserId, _interviewDate.Value,
             _reasonCode, _reasonNote, _wouldRecommend, _feedback);
-        Snackbar.Add("บันทึกผลสัมภาษณ์ลาออกเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ExitInterviewSavedSuccess"), Severity.Success);
 
         _reasonNote = null;
         _feedback = null;
@@ -261,16 +262,16 @@ else
         await LoadExitInterviewAsync();
     }
 
-    private static string ReasonLabel(ExitReasonCode code) => code switch
+    private string ReasonLabel(ExitReasonCode code) => code switch
     {
-        ExitReasonCode.BetterOpportunity => "ได้งานที่ดีกว่า",
-        ExitReasonCode.Compensation => "ค่าตอบแทน",
-        ExitReasonCode.Relocation => "ย้ายที่อยู่",
-        ExitReasonCode.PersonalHealth => "สุขภาพส่วนตัว",
-        ExitReasonCode.FamilyReason => "เหตุผลครอบครัว",
-        ExitReasonCode.Retirement => "เกษียณอายุ",
-        ExitReasonCode.Termination => "ถูกเลิกจ้าง",
-        _ => "อื่นๆ",
+        ExitReasonCode.BetterOpportunity => L.Translate("ExitReasonBetterOpportunity"),
+        ExitReasonCode.Compensation => L.Translate("ExitReasonCompensation"),
+        ExitReasonCode.Relocation => L.Translate("ExitReasonRelocation"),
+        ExitReasonCode.PersonalHealth => L.Translate("ExitReasonPersonalHealth"),
+        ExitReasonCode.FamilyReason => L.Translate("ExitReasonFamilyReason"),
+        ExitReasonCode.Retirement => L.Translate("ExitReasonRetirement"),
+        ExitReasonCode.Termination => L.Translate("ExitReasonTermination"),
+        _ => L.Translate("DocTypeOther"),
     };
 
     private RenderFragment RenderChecklist(List<Hrd_LifecycleTaskInstance> tasks, LifecycleTaskDirection direction) => @<text>
@@ -278,7 +279,7 @@ else
         {
             <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-2"
                 OnClick="@(() => StartAsync(direction))">
-                @(direction == LifecycleTaskDirection.Onboarding ? "เริ่ม Onboarding" : "เริ่ม Offboarding")
+                @(direction == LifecycleTaskDirection.Onboarding ? L.Translate("StartOnboardingButton") : L.Translate("StartOffboardingButton"))
             </MudButton>
         }
         else
@@ -286,12 +287,12 @@ else
             var doneCount = tasks.Count(t => t.Status != LifecycleTaskStatus.Pending);
             var percent = tasks.Count == 0 ? 0 : (double)doneCount / tasks.Count * 100;
 
-            <MudText Typo="Typo.body2" Class="mt-1">ความคืบหน้า: @doneCount / @tasks.Count</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">@string.Format(L.Translate("ProgressColonTemplate"), doneCount, tasks.Count)</MudText>
             <MudProgressLinear Color="Color.Success" Value="percent" Class="my-2" />
 
             <MudSimpleTable Dense="true">
                 <thead>
-                    <tr><th>งาน</th><th>สถานะ</th><th>ผู้ทำเสร็จ/วันที่</th><th></th></tr>
+                    <tr><th>@L.Translate("ColTask")</th><th>@L.Translate("ColStatus")</th><th>@L.Translate("ColCompletedByDate")</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var task in tasks)
@@ -303,12 +304,12 @@ else
                             <td>
                                 @if (task.Status == LifecycleTaskStatus.Pending)
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => CompleteAsync(task.Id))">เสร็จ</MudButton>
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SkipAsync(task.Id))">ข้าม</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => CompleteAsync(task.Id))">@L.Translate("CompleteButton")</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SkipAsync(task.Id))">@L.Translate("SkipButton")</MudButton>
                                 }
                                 else
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ReopenAsync(task.Id))">เปิดใหม่</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ReopenAsync(task.Id))">@L.Translate("ReopenButton")</MudButton>
                                 }
                             </td>
                         </tr>
@@ -317,8 +318,8 @@ else
             </MudSimpleTable>
 
             <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
-                <MudTextField T="string" Value="@GetAdHocTitle(direction)" ValueChanged="@(v => _newAdHocTitle[(long)direction] = v)" Label="เพิ่มงานเอง" Class="flex-grow-1" />
-                <MudButton Variant="Variant.Outlined" OnClick="@(() => AddAdHocAsync(direction))">เพิ่ม</MudButton>
+                <MudTextField T="string" Value="@GetAdHocTitle(direction)" ValueChanged="@(v => _newAdHocTitle[(long)direction] = v)" Label="@L.Translate("AddOwnTaskLabel")" Class="flex-grow-1" />
+                <MudButton Variant="Variant.Outlined" OnClick="@(() => AddAdHocAsync(direction))">@L.Translate("AddButtonPlain")</MudButton>
             </MudStack>
         }
     </text>;
@@ -326,10 +327,10 @@ else
     private string GetAdHocTitle(LifecycleTaskDirection direction)
         => _newAdHocTitle.TryGetValue((long)direction, out var v) ? v : "";
 
-    private static string StatusLabel(LifecycleTaskStatus status) => status switch
+    private string StatusLabel(LifecycleTaskStatus status) => status switch
     {
-        LifecycleTaskStatus.Completed => "เสร็จแล้ว",
-        LifecycleTaskStatus.Skipped => "ข้าม",
-        _ => "รอดำเนินการ",
+        LifecycleTaskStatus.Completed => L.Translate("TaskStatusCompleted"),
+        LifecycleTaskStatus.Skipped => L.Translate("SkipButton"),
+        _ => L.Translate("TaskStatusPending"),
     };
 }

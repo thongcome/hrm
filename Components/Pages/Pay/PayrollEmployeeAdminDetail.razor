@@ -16,13 +16,14 @@
 @inject SeveranceService SeveranceService
 @inject NavigationManager Nav
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>รายละเอียดพนักงาน (Payroll)</PageTitle>
+<PageTitle>@L.Translate("PayrollEmployeeDetailPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน หรือพนักงานไม่ได้อยู่ในบริษัทของคุณ</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("EmployeeDataNotFoundOrOutsideCompanyError")</MudAlert>
 }
 else if (_employee is null)
 {
@@ -31,7 +32,7 @@ else if (_employee is null)
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">ข้อมูลทั่วไป</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("GeneralInfoHeading")</MudText>
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
             @if (!string.IsNullOrEmpty(_employee.PhotoStoragePath))
@@ -50,7 +51,7 @@ else
                 <MudFileUpload T="IBrowserFile" FilesChanged="OnPhotoSelected" Accept=".jpg,.jpeg,.png">
                     <ActivatorContent>
                         <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.PhotoCamera">
-                            @(string.IsNullOrEmpty(_employee.PhotoStoragePath) ? "อัปโหลดรูปพนักงาน" : "เปลี่ยนรูปพนักงาน")
+                            @(string.IsNullOrEmpty(_employee.PhotoStoragePath) ? L.Translate("UploadEmployeePhotoButton") : L.Translate("ChangeEmployeePhotoButton"))
                         </MudButton>
                     </ActivatorContent>
                 </MudFileUpload>
@@ -70,23 +71,23 @@ else
                     CurrentSlot="_currentSlot" CurrentOrgLabel="@_currentOrgLabel" />
 
                 <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
-                    ถ้าเปลี่ยนตำแหน่งหรือเงินเดือนในฟอร์มด้านบน ระบบจะบันทึกลง "ประวัติปรับตำแหน่ง/เงินเดือน" ให้อัตโนมัติ — ช่องด้านล่างนี้ไม่บังคับ ใช้เผื่ออยากระบุรายละเอียดเพิ่ม
+                    @L.Translate("PositionSalaryAutoTrackNote")
                 </MudAlert>
                 <MudGrid Class="mt-1">
                     <MudItem xs="12" sm="4">
-                        <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="ประเภทการเปลี่ยนแปลง" Clearable="true">
-                            <MudSelectItem T="string" Value="@("P")">เลื่อนตำแหน่ง</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("D")">ลดตำแหน่ง</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("T")">โยกย้าย</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("S")">ปรับเงินเดือนอย่างเดียว</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("O")">อื่นๆ</MudSelectItem>
+                        <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="@L.Translate("ChangeTypeLabel")" Clearable="true">
+                            <MudSelectItem T="string" Value="@("P")">@L.Translate("ChangeTypePromotion")</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("D")">@L.Translate("ChangeTypeDemotion")</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("T")">@L.Translate("ChangeTypeTransfer")</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("S")">@L.Translate("ChangeTypeSalaryOnly")</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("O")">@L.Translate("ChangeTypeOther")</MudSelectItem>
                         </MudSelect>
                     </MudItem>
                     <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryOrderNo" Label="เลขที่คำสั่ง" />
+                        <MudTextField @bind-Value="_positionSalaryOrderNo" Label="@L.Translate("OrderNoLabel")" />
                     </MudItem>
                     <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryReason" Label="หมายเหตุ/เหตุผล" />
+                        <MudTextField @bind-Value="_positionSalaryReason" Label="@L.Translate("ReasonNoteLabel")" />
                     </MudItem>
                 </MudGrid>
 
@@ -94,19 +95,19 @@ else
                 {
                     <MudAlert Severity="Severity.Error" Class="mt-3">@_formError</MudAlert>
                 }
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">บันทึก</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">@L.Translate("SaveButton")</MudButton>
             </MudPaper>
 
             <MudPaper Class="pa-4 mb-4">
-                <MudText Typo="Typo.h6" Class="mb-2">ลาออก / ค่าชดเชย</MudText>
+                <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("ResignSeveranceHeading")</MudText>
                 @if (_employee.ResignDate is null)
                 {
-                    <MudDatePicker @bind-Date="_resignDate" Label="วันที่ลาออก" Class="mt-1" />
+                    <MudDatePicker @bind-Date="_resignDate" Label="@L.Translate("ResignDateLabel")" Class="mt-1" />
                     @if (!string.IsNullOrEmpty(_resignError))
                     {
                         <MudAlert Severity="Severity.Error" Class="mt-2">@_resignError</MudAlert>
                     }
-                    <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="ConfirmResignAsync">ยืนยันลงวันที่ลาออก</MudButton>
+                    <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="ConfirmResignAsync">@L.Translate("ConfirmResignDateButton")</MudButton>
                 }
                 else
                 {
@@ -117,43 +118,43 @@ else
                     @if (_severancePreview is not null)
                     {
                         <MudAlert Severity="Severity.Warning" Class="mt-2">
-                            ตรวจสอบก่อนว่าการเลิกจ้างเข้าข่ายข้อยกเว้นตามมาตรา 119 หรือไม่ (เช่น ทุจริต ฝ่าฝืนระเบียบร้ายแรง) หากเข้าข่ายข้อยกเว้น ไม่ต้องยื่นรายการนี้
+                            @L.Translate("Section119WarningNote")
                         </MudAlert>
                         <MudSimpleTable Dense="true" Class="mt-3">
                             <tbody>
-                                <tr><td>อายุงาน</td><td>@_severancePreview.ContinuousServiceDays วัน</td></tr>
-                                <tr><td>เกณฑ์ที่เข้าเงื่อนไข</td><td>@_severancePreview.TierDescription</td></tr>
-                                <tr><td>จำนวนวันที่ได้รับ</td><td>@_severancePreview.EntitledDays วัน</td></tr>
-                                <tr><td>ค่าจ้างต่อวัน</td><td>@_severancePreview.DailyWage.ToString("N2")</td></tr>
-                                <tr><td>ยอดค่าชดเชยตามกฎหมาย (ขั้นต่ำ)</td><td>@_severancePreview.Amount.ToString("N2")</td></tr>
+                                <tr><td>@L.Translate("TenureLabel")</td><td>@_severancePreview.ContinuousServiceDays @L.Translate("DaysUnit")</td></tr>
+                                <tr><td>@L.Translate("MatchedTierLabel")</td><td>@_severancePreview.TierDescription</td></tr>
+                                <tr><td>@L.Translate("EntitledDaysLabel")</td><td>@_severancePreview.EntitledDays @L.Translate("DaysUnit")</td></tr>
+                                <tr><td>@L.Translate("DailyWageLabel")</td><td>@_severancePreview.DailyWage.ToString("N2")</td></tr>
+                                <tr><td>@L.Translate("StatutoryMinSeveranceLabel")</td><td>@_severancePreview.Amount.ToString("N2")</td></tr>
                             </tbody>
                         </MudSimpleTable>
 
                         <MudGrid Class="mt-3">
                             <MudItem xs="12" sm="4">
-                                <MudDatePicker @bind-Date="_severanceTargetMonth" Label="งวดที่จะจ่าย" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                                <MudDatePicker @bind-Date="_severanceTargetMonth" Label="@L.Translate("SeverancePayPeriodLabel")" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
                             </MudItem>
                             <MudItem xs="12" sm="4">
-                                <MudNumericField @bind-Value="_severanceAmount" Label="จำนวนเงินที่จะยื่น" Format="N2" />
+                                <MudNumericField @bind-Value="_severanceAmount" Label="@L.Translate("SeveranceAmountLabel")" Format="N2" />
                             </MudItem>
                         </MudGrid>
-                        <MudTextField @bind-Value="_severanceReason" Label="เหตุผล" Lines="2" Class="mt-2" />
+                        <MudTextField @bind-Value="_severanceReason" Label="@L.Translate("ReasonLabel")" Lines="2" Class="mt-2" />
 
-                        <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeveranceAsync">ยื่นค่าชดเชย</MudButton>
+                        <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeveranceAsync">@L.Translate("SubmitSeveranceButton")</MudButton>
                     }
                 }
             </MudPaper>
 
             <MudPaper Class="pa-4 mb-4">
-                <MudText Typo="Typo.h6" Class="mb-2">เอกสาร</MudText>
+                <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("DocumentsHeading")</MudText>
                 <MudSimpleTable Dense="true" Class="mt-2">
                     <thead>
-                        <tr><th>ประเภท</th><th>ชื่อไฟล์</th><th>วันที่อัปโหลด</th><th>วันหมดอายุ</th><th></th></tr>
+                        <tr><th>@L.Translate("ColDocType")</th><th>@L.Translate("ColFileName")</th><th>@L.Translate("ColUploadDate")</th><th>@L.Translate("ColExpiryDate")</th><th></th></tr>
                     </thead>
                     <tbody>
                         @if (_docs.Count == 0)
                         {
-                            <tr><td colspan="5"><MudText Typo="Typo.caption">ยังไม่มีเอกสารแนบ</MudText></td></tr>
+                            <tr><td colspan="5"><MudText Typo="Typo.caption">@L.Translate("NoAttachmentsMessage")</MudText></td></tr>
                         }
                         @foreach (var doc in _docs)
                         {
@@ -167,7 +168,7 @@ else
                                         <MudChip T="string" Size="Size.Small" Color="@ExpiryChipColor(exp)">@exp.ToString("dd/MM/yyyy")</MudChip>
                                     }
                                 </td>
-                                <td><MudLink Href="@($"/pay/files/employee-doc/{doc.Id}")" Target="_blank">ดาวน์โหลด</MudLink></td>
+                                <td><MudLink Href="@($"/pay/files/employee-doc/{doc.Id}")" Target="_blank">@L.Translate("DownloadButton")</MudLink></td>
                             </tr>
                         }
                     </tbody>
@@ -175,33 +176,33 @@ else
 
                 <MudGrid Class="mt-3">
                     <MudItem xs="12" sm="3">
-                        <MudSelect T="Pay_EmployeeDocumentType" @bind-Value="_uploadDocType" Label="ประเภทเอกสาร">
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.IdCard">บัตรประชาชน</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Contract">สัญญาจ้าง</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.EducationCertificate">วุฒิการศึกษา</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ResignationLetter">ใบลาออก</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.BankBook">สมุดบัญชีธนาคาร</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.WorkPermit">ใบอนุญาตทำงาน</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Visa">วีซ่า</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.DrivingLicense">ใบขับขี่</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ProfessionalLicense">ใบประกอบวิชาชีพ</MudSelectItem>
-                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Other">อื่นๆ</MudSelectItem>
+                        <MudSelect T="Pay_EmployeeDocumentType" @bind-Value="_uploadDocType" Label="@L.Translate("DocumentTypeLabel")">
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.IdCard">@L.Translate("DocTypeIdCard")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Contract">@L.Translate("DocTypeContract")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.EducationCertificate">@L.Translate("DocTypeEducationCertificate")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ResignationLetter">@L.Translate("DocTypeResignationLetter")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.BankBook">@L.Translate("DocTypeBankBook")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.WorkPermit">@L.Translate("DocTypeWorkPermit")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Visa">@L.Translate("DocTypeVisa")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.DrivingLicense">@L.Translate("DocTypeDrivingLicense")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.ProfessionalLicense">@L.Translate("DocTypeProfessionalLicense")</MudSelectItem>
+                            <MudSelectItem T="Pay_EmployeeDocumentType" Value="Pay_EmployeeDocumentType.Other">@L.Translate("DocTypeOther")</MudSelectItem>
                         </MudSelect>
                     </MudItem>
                     <MudItem xs="12" sm="3">
-                        <MudDatePicker @bind-Date="_uploadExpiryDate" Label="วันหมดอายุ (ถ้ามี)" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                        <MudDatePicker @bind-Date="_uploadExpiryDate" Label="@L.Translate("ExpiryDateOptionalLabel")" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
                     </MudItem>
                     <MudItem xs="12" sm="3">
                         <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
                             <ActivatorContent>
                                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
-                                    @(_uploadFile?.Name ?? "เลือกไฟล์")
+                                    @(_uploadFile?.Name ?? L.Translate("SelectFileButton"))
                                 </MudButton>
                             </ActivatorContent>
                         </MudFileUpload>
                     </MudItem>
                     <MudItem xs="12" sm="3">
-                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UploadDocAsync" Disabled="_uploadFile is null">อัปโหลด</MudButton>
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UploadDocAsync" Disabled="_uploadFile is null">@L.Translate("UploadButton")</MudButton>
                     </MudItem>
                 </MudGrid>
 
@@ -301,7 +302,7 @@ else
             {
                 _severancePreview = await SeveranceService.PreviewAsync(_employee.id);
                 _severanceAmount = _severancePreview.Amount;
-                _severanceReason = $"ค่าชดเชยตามกฎหมาย มาตรา 118 ({_severancePreview.TierDescription})";
+                _severanceReason = string.Format(L.Translate("SeveranceReasonTemplate"), _severancePreview.TierDescription);
                 _severanceTargetMonth = DateTime.Today;
             }
             catch (InvalidOperationException ex)
@@ -328,13 +329,13 @@ else
         if (_employee is null || string.IsNullOrWhiteSpace(_employee.EmpName) || string.IsNullOrWhiteSpace(_employee.EmpSurname)
             || string.IsNullOrWhiteSpace(_formEmployeeEmail))
         {
-            _formError = "กรุณากรอกชื่อ นามสกุล และอีเมล";
+            _formError = L.Translate("FillNameEmailError");
             return;
         }
 
         if (!EmployeeEmailResolver.IsValidFormat(_formEmployeeEmail))
         {
-            _formError = "รูปแบบอีเมลไม่ถูกต้อง";
+            _formError = L.Translate("InvalidEmailFormatError");
             return;
         }
 
@@ -344,7 +345,7 @@ else
             var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id && e.companyid == _companyId);
             if (existing is null)
             {
-                _formError = "ไม่พบข้อมูลพนักงาน";
+                _formError = L.Translate("EmployeeDataNotFoundError");
                 return;
             }
 
@@ -402,11 +403,11 @@ else
         {
             // Never let a DB-level failure bubble up as an unhandled
             // exception — that crashes the whole Blazor circuit.
-            _formError = "บันทึกไม่สำเร็จ — ข้อมูลอาจไม่ถูกต้องตามรูปแบบที่ระบบกำหนด กรุณาตรวจสอบแล้วลองใหม่";
+            _formError = L.Translate("SaveFailedGenericError");
             return;
         }
 
-        Snackbar.Add("บันทึกข้อมูลเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("DataSavedSuccessGeneric"), Severity.Success);
     }
 
     private async Task ConfirmResignAsync()
@@ -415,7 +416,7 @@ else
 
         if (_resignDate is null)
         {
-            _resignError = "กรุณาระบุวันที่ลาออก";
+            _resignError = L.Translate("PleaseSpecifyResignDateError");
             return;
         }
 
@@ -423,14 +424,14 @@ else
         var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id && e.companyid == _companyId);
         if (existing is null)
         {
-            _resignError = "ไม่พบข้อมูลพนักงาน";
+            _resignError = L.Translate("EmployeeDataNotFoundError");
             return;
         }
 
         existing.ResignDate = _resignDate;
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกวันที่ลาออกเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ResignDateSavedSuccess"), Severity.Success);
         await OnParametersSetAsync();
     }
 
@@ -440,7 +441,7 @@ else
 
         if (_employee is null || _severanceTargetMonth is null || _severanceAmount <= 0 || string.IsNullOrWhiteSpace(_severanceReason))
         {
-            _severanceError = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            _severanceError = L.Translate("FillAllFieldsError");
             return;
         }
 
@@ -462,7 +463,7 @@ else
             return;
         }
 
-        Snackbar.Add("ยื่นค่าชดเชยเรียบร้อย รออนุมัติที่หน้ารายการเฉพาะกิจ", Severity.Success);
+        Snackbar.Add(L.Translate("SeveranceSubmittedSuccess"), Severity.Success);
         Nav.NavigateTo($"/pay/adhoc/{targetPeriod}");
     }
 
@@ -484,13 +485,13 @@ else
         const long maxSize = 5 * 1024 * 1024; // 5 MB
         if (file.Size > maxSize)
         {
-            _photoError = "ไฟล์ใหญ่เกินไป (จำกัด 5 MB)";
+            _photoError = L.Translate("FileTooLargePhotoError");
             return;
         }
         var ext = Path.GetExtension(file.Name).ToLowerInvariant();
         if (ext != ".jpg" && ext != ".jpeg" && ext != ".png")
         {
-            _photoError = "รองรับเฉพาะไฟล์ .jpg/.jpeg/.png";
+            _photoError = L.Translate("UnsupportedImageFormatError");
             return;
         }
 
@@ -508,7 +509,7 @@ else
         await context.SaveChangesAsync();
 
         _employee.PhotoStoragePath = relativePath;
-        Snackbar.Add("อัปโหลดรูปพนักงานเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("PhotoUploadedSuccess"), Severity.Success);
     }
 
     private async Task UploadDocAsync()
@@ -519,7 +520,7 @@ else
         const long maxSize = 10 * 1024 * 1024; // 10 MB
         if (_uploadFile.Size > maxSize)
         {
-            _docError = "ไฟล์ใหญ่เกินไป (จำกัด 10 MB)";
+            _docError = L.Translate("FileTooLargeDocError");
             return;
         }
 
@@ -549,24 +550,24 @@ else
         });
         await context.SaveChangesAsync();
 
-        Snackbar.Add("อัปโหลดเอกสารเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("DocUploadedSuccess"), Severity.Success);
         _uploadFile = null;
         _uploadExpiryDate = null;
         await LoadDocsAsync(context);
     }
 
-    private static string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
+    private string DocTypeLabel(Pay_EmployeeDocumentType type) => type switch
     {
-        Pay_EmployeeDocumentType.IdCard => "บัตรประชาชน",
-        Pay_EmployeeDocumentType.Contract => "สัญญาจ้าง",
-        Pay_EmployeeDocumentType.EducationCertificate => "วุฒิการศึกษา",
-        Pay_EmployeeDocumentType.ResignationLetter => "ใบลาออก",
-        Pay_EmployeeDocumentType.BankBook => "สมุดบัญชีธนาคาร",
-        Pay_EmployeeDocumentType.WorkPermit => "ใบอนุญาตทำงาน",
-        Pay_EmployeeDocumentType.Visa => "วีซ่า",
-        Pay_EmployeeDocumentType.DrivingLicense => "ใบขับขี่",
-        Pay_EmployeeDocumentType.ProfessionalLicense => "ใบประกอบวิชาชีพ",
-        _ => "อื่นๆ",
+        Pay_EmployeeDocumentType.IdCard => L.Translate("DocTypeIdCard"),
+        Pay_EmployeeDocumentType.Contract => L.Translate("DocTypeContract"),
+        Pay_EmployeeDocumentType.EducationCertificate => L.Translate("DocTypeEducationCertificate"),
+        Pay_EmployeeDocumentType.ResignationLetter => L.Translate("DocTypeResignationLetter"),
+        Pay_EmployeeDocumentType.BankBook => L.Translate("DocTypeBankBook"),
+        Pay_EmployeeDocumentType.WorkPermit => L.Translate("DocTypeWorkPermit"),
+        Pay_EmployeeDocumentType.Visa => L.Translate("DocTypeVisa"),
+        Pay_EmployeeDocumentType.DrivingLicense => L.Translate("DocTypeDrivingLicense"),
+        Pay_EmployeeDocumentType.ProfessionalLicense => L.Translate("DocTypeProfessionalLicense"),
+        _ => L.Translate("DocTypeOther"),
     };
 
     private static Color ExpiryChipColor(DateOnly expiryDate)

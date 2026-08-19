@@ -15,13 +15,14 @@
 @inject PayslipGenerationService PayslipGenerationService
 @inject BankFileExportService BankFileExportService
 @inject GLExportService GLExportService
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
-<PageTitle>รอบเงินเดือน #@RunId</PageTitle>
+<PageTitle>@string.Format(L.Translate("RunDetailPageTitle"), RunId)</PageTitle>
 
 @if (_forbidden)
 {
-    <MudAlert Severity="Severity.Error">รอบเงินเดือนนี้เป็นของบริษัทอื่น ไม่สามารถเข้าถึงได้</MudAlert>
+    <MudAlert Severity="Severity.Error">@L.Translate("RunDetailForbidden")</MudAlert>
 }
 else if (_run is null)
 {
@@ -32,10 +33,9 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <div>
-                <MudText Typo="Typo.h5">รอบเงินเดือน @_run.CompanyId — @_run.PayrollPeriod (@_run.RunType)</MudText>
+                <MudText Typo="Typo.h5">@L.Translate("RunDetailHeadingPrefix") @_run.CompanyId — @_run.PayrollPeriod (@_run.RunType)</MudText>
                 <MudText Typo="Typo.body2" Class="mt-1">
-                    งวด @_run.PeriodStart.ToString("dd/MM/yyyy") - @_run.PeriodEnd.ToString("dd/MM/yyyy") ·
-                    จ่ายเงิน @_run.PayDate.ToString("dd/MM/yyyy")
+                    @string.Format(L.Translate("RunDetailPeriodLine"), _run.PeriodStart.ToString("dd/MM/yyyy"), _run.PeriodEnd.ToString("dd/MM/yyyy"), _run.PayDate.ToString("dd/MM/yyyy"))
                 </MudText>
             </div>
             <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@_run.Status</MudChip>
@@ -47,51 +47,51 @@ else
             @if (_allowed.Contains(PayrollAction.Calculate))
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CalculateAsync" Disabled="_busy">
-                    @(_employees.Count == 0 ? "คำนวณ" : "คำนวณใหม่")
+                    @(_employees.Count == 0 ? L.Translate("CalculateButton") : L.Translate("RecalculateButton"))
                 </MudButton>
             }
             @if (_allowed.Contains(PayrollAction.SubmitForReview))
             {
-                <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="_busy">ส่งตรวจสอบ</MudButton>
+                <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="_busy">@L.Translate("SubmitForReviewButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.Approve))
             {
-                <MudButton Color="Color.Tertiary" Variant="Variant.Filled" OnClick="ApproveAsync" Disabled="_busy">อนุมัติ</MudButton>
+                <MudButton Color="Color.Tertiary" Variant="Variant.Filled" OnClick="ApproveAsync" Disabled="_busy">@L.Translate("ApproveButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.Post))
             {
-                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="PostAsync" Disabled="_busy">บันทึกบัญชี (Post)</MudButton>
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="PostAsync" Disabled="_busy">@L.Translate("PostButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.MarkPaid))
             {
-                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="MarkPaidAsync" Disabled="_busy">ยืนยันจ่ายเงินแล้ว</MudButton>
+                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="MarkPaidAsync" Disabled="_busy">@L.Translate("MarkPaidButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.Cancel))
             {
-                <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="CancelAsync" Disabled="_busy">ยกเลิกรอบ</MudButton>
+                <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="CancelAsync" Disabled="_busy">@L.Translate("CancelRunButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.CreateAdjustment))
             {
-                <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">สร้างรอบปรับปรุง</MudButton>
+                <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">@L.Translate("CreateAdjustmentButton")</MudButton>
             }
             @if (_canGenerateDocuments)
             {
-                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GeneratePayslipsAsync" Disabled="_busy">สร้างสลิปทั้งหมด</MudButton>
-                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateBankFileAsync" Disabled="_busy">สร้างไฟล์ธนาคาร</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GeneratePayslipsAsync" Disabled="_busy">@L.Translate("GeneratePayslipsButton")</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateBankFileAsync" Disabled="_busy">@L.Translate("GenerateBankFileButton")</MudButton>
             }
             @if (_canGenerateGL)
             {
-                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateGLExportAsync" Disabled="_busy">สร้างไฟล์บัญชี (GL)</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateGLExportAsync" Disabled="_busy">@L.Translate("GenerateGLButton")</MudButton>
             }
         </MudStack>
 
         @if (_payslipSummary is not null)
         {
             <MudAlert Severity="@(_payslipSummary.SkippedReasons.Count > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
-                สร้างสลิปสำเร็จ @_payslipSummary.Generated คน
+                @string.Format(L.Translate("PayslipGenerateSuccessTemplate"), _payslipSummary.Generated)
                 @if (_payslipSummary.SkippedReasons.Count > 0)
                 {
-                    <div>ข้าม @_payslipSummary.SkippedReasons.Count คน:
+                    <div>@string.Format(L.Translate("PayslipSkippedTemplate"), _payslipSummary.SkippedReasons.Count)
                         <ul class="mb-0">
                             @foreach (var reason in _payslipSummary.SkippedReasons)
                             {
@@ -106,7 +106,7 @@ else
         @if (_negativeCount > 0)
         {
             <MudAlert Severity="Severity.Warning" Class="mt-3">
-                มีพนักงาน @_negativeCount คน ที่เงินสุทธิติดลบ (ถูกปรับเป็น 0 ชั่วคราว) — ต้องแก้ไขข้อมูลหรือทำเครื่องหมายยกเว้นก่อนจึงจะอนุมัติได้
+                @string.Format(L.Translate("NegativeNetPayWarning"), _negativeCount)
             </MudAlert>
         }
 
@@ -117,17 +117,17 @@ else
                     <span>
                         @if (_pendingAdhocCount > 0)
                         {
-                            <text>มีรายการเงินได้-เงินหักเฉพาะกิจ <b>@_pendingAdhocCount รายการ</b> ที่ยังไม่ได้อนุมัติสำหรับงวดนี้ </text>
+                            <text>@((MarkupString)string.Format(L.Translate("PendingAdhocWarningPart"), BoldItemCount(_pendingAdhocCount)))</text>
                         }
                         @if (_unconsumedApprovedAdhocCount > 0)
                         {
-                            <text>มีรายการที่อนุมัติแล้ว <b>@_unconsumedApprovedAdhocCount รายการ</b> แต่ยังไม่ถูกรวมในการคำนวณล่าสุด </text>
+                            <text>@((MarkupString)string.Format(L.Translate("UnconsumedApprovedAdhocWarningPart"), BoldItemCount(_unconsumedApprovedAdhocCount)))</text>
                         }
-                        — กรุณาอนุมัติให้ครบแล้วกด "คำนวณใหม่" ก่อนอนุมัติ/จ่ายเงินรอบนี้
+                        @L.Translate("AdhocWarningSuffix")
                     </span>
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error"
                         OnClick="@(() => Navigation.NavigateTo($"/pay/adhoc/{_run!.PayrollPeriod}"))">
-                        ไปดูรายการ
+                        @L.Translate("GoToListButton")
                     </MudButton>
                 </MudStack>
             </MudAlert>
@@ -137,7 +137,7 @@ else
         @if (pendingAnomalies.Count > 0)
         {
             <MudAlert Severity="Severity.Warning" Class="mt-3">
-                <MudText Typo="Typo.subtitle2" Class="mb-2">AI ตรวจพบความผิดปกติ @pendingAnomalies.Count รายการ</MudText>
+                <MudText Typo="Typo.subtitle2" Class="mb-2">@string.Format(L.Translate("AnomalyDetectedTemplate"), pendingAnomalies.Count)</MudText>
                 @foreach (var anomaly in pendingAnomalies)
                 {
                     var empNo = anomaly.PayrollEmployeeId is long peid
@@ -153,7 +153,7 @@ else
                             }
                             @anomaly.Description
                         </span>
-                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">รับทราบ</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">@L.Translate("AcknowledgeButton")</MudButton>
                     </MudStack>
                 }
             </MudAlert>
@@ -161,16 +161,16 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4">
-        <MudText Typo="Typo.h6" Class="mb-2">รายชื่อพนักงาน (@_employees.Count คน) — สุทธิรวม @_employees.Sum(e => e.Employee.NetPay).ToString("N2")</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">@string.Format(L.Translate("EmployeeListHeadingTemplate"), _employees.Count, _employees.Sum(e => e.Employee.NetPay).ToString("N2"))</MudText>
         <MudTable Items="_employees" Hover="true" Dense="true">
             <HeaderContent>
-                <MudTh>รหัสพนักงาน</MudTh>
-                <MudTh>ชื่อ</MudTh>
-                <MudTh>สัดส่วนวันทำงาน</MudTh>
-                <MudTh>รายรับรวม</MudTh>
-                <MudTh>รายหักรวม</MudTh>
-                <MudTh>สุทธิ</MudTh>
-                <MudTh>สลิป</MudTh>
+                <MudTh>@L.Translate("EmpNoLabel")</MudTh>
+                <MudTh>@L.Translate("ColName")</MudTh>
+                <MudTh>@L.Translate("ColWorkDaysRatio")</MudTh>
+                <MudTh>@L.Translate("ColGrossEarnings")</MudTh>
+                <MudTh>@L.Translate("ColTotalDeductions")</MudTh>
+                <MudTh>@L.Translate("ColNetPay")</MudTh>
+                <MudTh>@L.Translate("ColPayslip")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -189,7 +189,7 @@ else
                     @context.Employee.NetPay.ToString("N2")
                     @if (context.Employee.IsNegativeNetPayFlag)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-1">ติดลบ</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-1">@L.Translate("NegativeChip")</MudChip>
                     }
                     @{ var empAnomalyCount = _anomalies.Count(a => a.PayrollEmployeeId == context.Employee.Id && !a.IsAcknowledged); }
                     @if (empAnomalyCount > 0)
@@ -200,17 +200,17 @@ else
                 <MudTd>
                     @if (_payslipIdByEmployeeId.TryGetValue(context.Employee.Id, out var payslipId))
                     {
-                        <MudLink Href="@($"/pay/files/payslip/{payslipId}")" Target="_blank">ดาวน์โหลด</MudLink>
+                        <MudLink Href="@($"/pay/files/payslip/{payslipId}")" Target="_blank">@L.Translate("DownloadButton")</MudLink>
                     }
                 </MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}/employee/{context.Employee.Id}"))">
-                        รายละเอียด
+                        @L.Translate("DescriptionLabel")
                     </MudButton>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText>ยังไม่ได้คำนวณ — กดปุ่ม "คำนวณ" ด้านบน</MudText>
+                <MudText>@L.Translate("NotCalculatedYetMessage")</MudText>
             </NoRecordsContent>
         </MudTable>
     </MudPaper>
@@ -218,19 +218,19 @@ else
     @if (_bankFileBatches.Count > 0)
     {
         <MudPaper Class="pa-4 mt-4">
-            <MudText Typo="Typo.h6" Class="mb-2">ไฟล์ธนาคารที่สร้างแล้ว</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("BankFilesGeneratedHeading")</MudText>
             <MudTable Items="_bankFileBatches" Hover="true" Dense="true">
                 <HeaderContent>
-                    <MudTh>วันที่สร้าง</MudTh>
-                    <MudTh>จำนวนรายการ</MudTh>
-                    <MudTh>ยอดรวม</MudTh>
+                    <MudTh>@L.Translate("ColGeneratedDate")</MudTh>
+                    <MudTh>@L.Translate("ColRecordCount")</MudTh>
+                    <MudTh>@L.Translate("ColTotalAmount")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
                     <MudTd>@context.TotalRecordCount</MudTd>
                     <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
-                    <MudTd><MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank">ดาวน์โหลด</MudLink></MudTd>
+                    <MudTd><MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank">@L.Translate("DownloadButton")</MudLink></MudTd>
                 </RowTemplate>
             </MudTable>
         </MudPaper>
@@ -239,19 +239,19 @@ else
     @if (_glExportBatches.Count > 0)
     {
         <MudPaper Class="pa-4 mt-4">
-            <MudText Typo="Typo.h6" Class="mb-2">ไฟล์บัญชี (GL) ที่สร้างแล้ว</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("GLFilesGeneratedHeading")</MudText>
             <MudTable Items="_glExportBatches" Hover="true" Dense="true">
                 <HeaderContent>
-                    <MudTh>วันที่สร้าง</MudTh>
-                    <MudTh>Debit รวม</MudTh>
-                    <MudTh>Credit รวม</MudTh>
+                    <MudTh>@L.Translate("ColGeneratedDate")</MudTh>
+                    <MudTh>@L.Translate("ColTotalDebit")</MudTh>
+                    <MudTh>@L.Translate("ColTotalCredit")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
                     <MudTd>@context.TotalDebit.ToString("N2")</MudTd>
                     <MudTd>@context.TotalCredit.ToString("N2")</MudTd>
-                    <MudTd><MudLink Href="@($"/pay/files/gl-export/{context.Id}")" Target="_blank">ดาวน์โหลด</MudLink></MudTd>
+                    <MudTd><MudLink Href="@($"/pay/files/gl-export/{context.Id}")" Target="_blank">@L.Translate("DownloadButton")</MudLink></MudTd>
                 </RowTemplate>
             </MudTable>
         </MudPaper>
@@ -354,8 +354,10 @@ else
         await context.SaveChangesAsync();
 
         await LoadAsync();
-        Snackbar.Add("รับทราบแล้ว", Severity.Success);
+        Snackbar.Add(L.Translate("AcknowledgedSuccess"), Severity.Success);
     }
+
+    private string BoldItemCount(int count) => $"<b>{string.Format(L.Translate("AdhocItemCountUnit"), count)}</b>";
 
     private async Task<long> GetCurrentUserIdAsync()
     {
@@ -386,37 +388,37 @@ else
 
     private Task CalculateAsync() => RunActionAsync(
         async uid => await WorkflowService.CalculateAsync(RunId, uid),
-        "คำนวณเรียบร้อย");
+        L.Translate("CalculatedSuccess"));
 
     private Task SubmitForReviewAsync() => RunActionAsync(
         async uid => await WorkflowService.SubmitForReviewAsync(RunId, uid),
-        "ส่งตรวจสอบเรียบร้อย");
+        L.Translate("SubmittedForReviewSuccess"));
 
     private async Task ApproveAsync()
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "ยืนยันการอนุมัติ", "หลังอนุมัติแล้วจะแก้ไขตัวเลขในรอบนี้ไม่ได้ ต้องสร้างรอบปรับปรุงแยกแทน ยืนยันหรือไม่?",
-            yesText: "อนุมัติ", cancelText: "ยกเลิก");
+            L.Translate("ConfirmApproveTitle"), L.Translate("ConfirmApproveMessage"),
+            yesText: L.Translate("ApproveButton"), cancelText: L.Translate("CancelButton"));
         if (confirmed != true) return;
 
-        await RunActionAsync(async uid => await WorkflowService.ApproveAsync(RunId, uid, null), "อนุมัติเรียบร้อย");
+        await RunActionAsync(async uid => await WorkflowService.ApproveAsync(RunId, uid, null), L.Translate("ApprovedSuccess"));
     }
 
     private Task PostAsync() => RunActionAsync(
         async uid => await WorkflowService.PostAsync(RunId, uid),
-        "บันทึกบัญชีเรียบร้อย");
+        L.Translate("PostedSuccess"));
 
     private Task MarkPaidAsync() => RunActionAsync(
         async uid => await WorkflowService.MarkPaidAsync(RunId, uid),
-        "ยืนยันการจ่ายเงินเรียบร้อย");
+        L.Translate("MarkedPaidSuccess"));
 
     private async Task CancelAsync()
     {
         var confirmed = await DialogService.ShowMessageBox(
-            "ยืนยันการยกเลิก", "ต้องการยกเลิกรอบเงินเดือนนี้หรือไม่?", yesText: "ยกเลิกรอบ", cancelText: "กลับ");
+            L.Translate("ConfirmCancelRunTitle"), L.Translate("ConfirmCancelRunMessage"), yesText: L.Translate("CancelRunButton"), cancelText: L.Translate("BackButton"));
         if (confirmed != true) return;
 
-        await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), "ยกเลิกรอบเรียบร้อย");
+        await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), L.Translate("RunCancelledSuccess"));
     }
 
     private async Task CreateAdjustmentAsync()
@@ -445,7 +447,7 @@ else
         {
             _payslipSummary = await PayslipGenerationService.GenerateAsync(RunId);
             await LoadAsync();
-            Snackbar.Add($"สร้างสลิปสำเร็จ {_payslipSummary.Generated} คน", Severity.Success);
+            Snackbar.Add(string.Format(L.Translate("PayslipGenerateSuccessTemplate"), _payslipSummary.Generated), Severity.Success);
         }
         catch (Exception ex)
         {
@@ -459,11 +461,11 @@ else
 
     private Task GenerateBankFileAsync() => RunActionAsync(
         async uid => await BankFileExportService.ExportAsync(RunId, uid),
-        "สร้างไฟล์ธนาคารเรียบร้อย");
+        L.Translate("BankFileGeneratedSuccess"));
 
     private Task GenerateGLExportAsync() => RunActionAsync(
         async uid => await GLExportService.ExportAsync(RunId, uid),
-        "สร้างไฟล์บัญชี (GL) เรียบร้อย");
+        L.Translate("GLGeneratedSuccess"));
 
     private static Color StatusColor(PayrollRunStatus status) => status switch
     {

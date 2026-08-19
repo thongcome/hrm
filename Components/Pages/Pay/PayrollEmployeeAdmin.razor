@@ -17,40 +17,41 @@
 @inject IPasswordHasher<sc_user> PasswordHasher
 @inject UserManager<ApplicationUser> UserManager
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
-<PageTitle>จัดการพนักงาน (Payroll)</PageTitle>
+<PageTitle>@L.Translate("EmpAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-        <MudText Typo="Typo.h5">จัดการพนักงาน (สำหรับงาน Payroll)</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("EmpAdminHeading")</MudText>
         @if (!string.IsNullOrEmpty(_companyId))
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate">+ เพิ่มพนักงาน</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate">+ @L.Translate("EmpAdminAddButton")</MudButton>
         }
     </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1">
-        หน้านี้จัดการเฉพาะข้อมูลพื้นฐานที่ใช้จริงในงาน Payroll (ไม่ใช่ระบบบุคคลากรเต็มรูปแบบ) — ข้อมูลอื่นๆ เช่นที่อยู่/ผู้ติดต่อฉุกเฉิน แก้ไขผ่านหน้า Employee เดิม
+        @L.Translate("EmpAdminDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
-    <MudTextField @bind-Value="_searchTerm" Placeholder="ค้นหา รหัสหรือชื่อ" Adornment="Adornment.Start"
+    <MudTextField @bind-Value="_searchTerm" Placeholder="@L.Translate("SearchByCodeOrNamePlaceholder")" Adornment="Adornment.Start"
         AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-4 mud-width-full" />
 
     <MudTable Items="@_employees" Dense="true" Hover="true" Elevation="0" Filter="EmpFilter" Class="mt-3">
         <HeaderContent>
-            <MudTh>รหัสพนักงาน</MudTh>
-            <MudTh>ชื่อ-นามสกุล</MudTh>
-            <MudTh>แผนก/ตำแหน่ง</MudTh>
-            <MudTh>เงินเดือน</MudTh>
-            <MudTh>สถานะ</MudTh>
-            <MudTh>บัญชีผู้ใช้ระบบ</MudTh>
-            <MudTh>การดำเนินการ</MudTh>
+            <MudTh>@L.Translate("EmpNoLabel")</MudTh>
+            <MudTh>@L.Translate("FieldFullName")</MudTh>
+            <MudTh>@L.Translate("ColDeptPosition")</MudTh>
+            <MudTh>@L.Translate("SalaryLabel")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
+            <MudTh>@L.Translate("ColUserAccount")</MudTh>
+            <MudTh>@L.Translate("ColActions")</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.EmpNo</MudTd>
@@ -60,28 +61,28 @@
             <MudTd>
                 @if (context.ResignDate is not null)
                 {
-                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ลาออกแล้ว (@context.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">@string.Format(L.Translate("ResignedChipTemplate"), context.ResignDate.Value.ToString("dd/MM/yyyy"))</MudChip>
                 }
                 else
                 {
-                    <MudChip T="string" Color="Color.Success" Size="Size.Small">ทำงานอยู่</MudChip>
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">@L.Translate("ActiveChip")</MudChip>
                 }
             </MudTd>
             <MudTd>
                 @if (_linkedUsers.TryGetValue(context.EmpNo, out var linkedUser))
                 {
                     <MudChip T="string" Color="@(linkedUser.isdisable ? Color.Default : Color.Success)" Size="Size.Small">@linkedUser.loginname</MudChip>
-                    <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="รีเซ็ตรหัสผ่าน" OnClick="@(() => OpenResetPasswordAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="@L.Translate("ResetPasswordLabel")" OnClick="@(() => OpenResetPasswordAsync(context))" />
                 }
                 else
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenUserAccount(context))">สร้างบัญชีผู้ใช้</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenUserAccount(context))">@L.Translate("CreateUserAccountButton")</MudButton>
                 }
             </MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                     EndIcon="@Icons.Material.Filled.ChevronRight"
-                    OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}"))">รายละเอียด</MudButton>
+                    OnClick="@(() => Nav.NavigateTo($"/pay/employees/{context.id}"))">@L.Translate("DescriptionLabel")</MudButton>
             </MudTd>
         </RowTemplate>
     </MudTable>
@@ -90,7 +91,7 @@
     {
         <MudPaper Class="pa-4 mt-4" Outlined="true">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">เพิ่มพนักงานใหม่</MudText>
+                <MudText Typo="Typo.h6">@L.Translate("AddNewEmployeeHeading")</MudText>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _formEmployee = null)" />
             </MudStack>
 
@@ -108,7 +109,7 @@
                 <MudAlert Severity="Severity.Error" Class="mt-3">@_formError</MudAlert>
             }
 
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">บันทึก</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">@L.Translate("Save")</MudButton>
         </MudPaper>
     }
 
@@ -116,29 +117,29 @@
     {
         <MudPaper Class="pa-4 mt-4" Outlined="true">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">สร้างบัญชีผู้ใช้ระบบ — @_userAccountEmployee.EmpNo @_userAccountEmployee.EmpName @_userAccountEmployee.EmpSurname</MudText>
+                <MudText Typo="Typo.h6">@string.Format(L.Translate("CreateUserAccountHeadingTemplate"), _userAccountEmployee.EmpNo, _userAccountEmployee.EmpName, _userAccountEmployee.EmpSurname)</MudText>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _userAccountEmployee = null)" />
             </MudStack>
             <MudText Typo="Typo.body2" Class="mt-1">
-                ใช้รหัสพนักงาน (@_userAccountEmployee.EmpNo) เป็นทั้งตัวผูกกับพนักงานคนนี้และเป็นชื่อเข้าสู่ระบบ (login)
+                @string.Format(L.Translate("CreateUserAccountDesc"), _userAccountEmployee.EmpNo)
             </MudText>
 
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="4">
-                    <MudTextField Value="@_userAccountEmployee.EmpNo" Label="ชื่อเข้าสู่ระบบ (login)" ReadOnly="true" />
+                    <MudTextField Value="@_userAccountEmployee.EmpNo" Label="@L.Translate("LoginNameLabel")" ReadOnly="true" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudTextField Value="@_userAccountEmployee.EmpName" Label="ชื่อ" ReadOnly="true" />
+                    <MudTextField Value="@_userAccountEmployee.EmpName" Label="@L.Translate("FirstNameLabel")" ReadOnly="true" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
-                    <MudTextField Value="@_userAccountEmployee.EmpSurname" Label="นามสกุล" ReadOnly="true" />
+                    <MudTextField Value="@_userAccountEmployee.EmpSurname" Label="@L.Translate("LastNameLabel")" ReadOnly="true" />
                 </MudItem>
                 <MudItem xs="12" sm="8">
-                    <MudTextField @bind-Value="_userAccountEmail" Label="อีเมล (สำหรับส่งรหัสผ่านเริ่มต้น — เว้นว่างได้)" />
+                    <MudTextField @bind-Value="_userAccountEmail" Label="@L.Translate("EmailForInitialPasswordLabel")" />
                 </MudItem>
             </MudGrid>
 
-            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือกกลุ่มผู้ใช้ (Role)</MudText>
+            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">@L.Translate("SelectRoleHeading")</MudText>
             <MudGrid>
                 @foreach (var role in _userAccountRoles)
                 {
@@ -161,7 +162,7 @@
 
             @if (string.IsNullOrEmpty(_userAccountInfo))
             {
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="CreateUserAccountAsync">สร้างบัญชีผู้ใช้</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="CreateUserAccountAsync">@L.Translate("CreateUserAccountButton")</MudButton>
             }
         </MudPaper>
     }
@@ -170,14 +171,14 @@
     {
         <MudPaper Class="pa-4 mt-4" Outlined="true">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">รีเซ็ตรหัสผ่าน — @_resetPasswordEmployee.EmpNo @_resetPasswordEmployee.EmpName @_resetPasswordEmployee.EmpSurname</MudText>
+                <MudText Typo="Typo.h6">@string.Format(L.Translate("ResetPasswordHeadingTemplate"), _resetPasswordEmployee.EmpNo, _resetPasswordEmployee.EmpName, _resetPasswordEmployee.EmpSurname)</MudText>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _resetPasswordEmployee = null)" />
             </MudStack>
             <MudText Typo="Typo.body2" Class="mt-1">
-                จะตั้งรหัสผ่านกลับไปเป็นรหัสผ่านเริ่มต้นของบริษัท (ตั้งค่าได้ที่ /pay/admin/payslip-settings)
+                @L.Translate("ResetPasswordDesc")
             </MudText>
 
-            <MudTextField @bind-Value="_resetPasswordEmail" Label="อีเมล (สำหรับส่งรหัสผ่านใหม่ — เว้นว่างได้)" Class="mt-2" />
+            <MudTextField @bind-Value="_resetPasswordEmail" Label="@L.Translate("EmailForNewPasswordLabel")" Class="mt-2" />
 
             @if (!string.IsNullOrEmpty(_resetPasswordError))
             {
@@ -190,7 +191,7 @@
 
             @if (string.IsNullOrEmpty(_resetPasswordInfo))
             {
-                <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-4" OnClick="ConfirmResetPasswordAsync">ยืนยันรีเซ็ตรหัสผ่าน</MudButton>
+                <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-4" OnClick="ConfirmResetPasswordAsync">@L.Translate("ConfirmResetPasswordButton")</MudButton>
             }
         </MudPaper>
     }
@@ -328,19 +329,19 @@
             || string.IsNullOrWhiteSpace(_formEmployee.EmpName) || string.IsNullOrWhiteSpace(_formEmployee.EmpSurname)
             || string.IsNullOrWhiteSpace(_formEmployeeEmail))
         {
-            _formError = "กรุณากรอกรหัสพนักงาน ชื่อ นามสกุล และอีเมล";
+            _formError = L.Translate("FillEmpBasicFieldsError");
             return;
         }
 
         if (!EmployeeEmailResolver.IsValidFormat(_formEmployeeEmail))
         {
-            _formError = "รูปแบบอีเมลไม่ถูกต้อง";
+            _formError = L.Translate("InvalidEmailFormatError");
             return;
         }
 
         if (_formEmployee.EmpNo.Length > MaxEmpNoLength)
         {
-            _formError = $"รหัสพนักงานยาวเกินไป (สูงสุด {MaxEmpNoLength} ตัวอักษร) — ปรับรูปแบบได้ที่หน้า Master Data > รูปแบบรหัสพนักงาน";
+            _formError = string.Format(L.Translate("EmpNoTooLongError"), MaxEmpNoLength);
             return;
         }
 
@@ -354,7 +355,7 @@
             var duplicate = await context.Hremployee.AnyAsync(e => e.EmpNo == _formEmployee.EmpNo);
             if (duplicate)
             {
-                _formError = $"มีรหัสพนักงาน {_formEmployee.EmpNo} อยู่แล้วในระบบ";
+                _formError = string.Format(L.Translate("EmpNoDuplicateError"), _formEmployee.EmpNo);
                 return;
             }
 
@@ -382,11 +383,11 @@
             // Never let a DB-level failure (truncation, constraint, etc.) bubble
             // up as an unhandled exception — that crashes the whole Blazor
             // circuit and makes every button on the page silently stop working.
-            _formError = "บันทึกไม่สำเร็จ — ข้อมูลอาจไม่ถูกต้องตามรูปแบบที่ระบบกำหนด (เช่น รหัสพนักงานยาวเกินไป) กรุณาตรวจสอบแล้วลองใหม่";
+            _formError = L.Translate("SaveFailedGenericError");
             return;
         }
 
-        Snackbar.Add("เพิ่มพนักงานเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("EmpAddedSuccess"), Severity.Success);
         _formEmployee = null;
         await LoadAsync();
     }
@@ -434,14 +435,14 @@
         var newPassword = await GetDefaultPasswordAsync(context);
         if (newPassword is null)
         {
-            _resetPasswordError = "ยังไม่ได้ตั้งค่ารหัสผ่านเริ่มต้นของบริษัท — กรุณาตั้งค่าที่ /pay/admin/payslip-settings ก่อน";
+            _resetPasswordError = L.Translate("DefaultPasswordNotSetError");
             return;
         }
 
         var scUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == _resetPasswordEmployee.EmpNo);
         if (scUser is null)
         {
-            _resetPasswordError = "ไม่พบบัญชีผู้ใช้ของพนักงานคนนี้";
+            _resetPasswordError = L.Translate("UserAccountNotFoundError");
             return;
         }
 
@@ -458,15 +459,15 @@
         var appUser = await UserManager.Users.FirstOrDefaultAsync(u => u.userid == scUser.userid);
         if (appUser is null)
         {
-            _resetPasswordError = "บัญชีนี้ยังไม่ได้ผูกกับ Identity — กรุณาผูกที่หน้า \"ผูกบัญชี Identity\" ก่อน";
+            _resetPasswordError = L.Translate("IdentityNotLinkedError");
             return;
         }
         await UserManager.RemovePasswordAsync(appUser);
         await UserManager.AddPasswordAsync(appUser, newPassword);
 
         var emailNote = await TrySendCredentialEmailAsync(_resetPasswordEmail, scUser.loginname, newPassword, isReset: true);
-        _resetPasswordInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {newPassword} {emailNote}";
-        Snackbar.Add("รีเซ็ตรหัสผ่านเรียบร้อย", Severity.Success);
+        _resetPasswordInfo = string.Format(L.Translate("ResetPasswordSuccessTemplate"), newPassword, emailNote);
+        Snackbar.Add(L.Translate("ResetPasswordSuccessSnackbar"), Severity.Success);
     }
 
     private async Task CreateUserAccountAsync()
@@ -476,7 +477,7 @@
 
         if (_selectedUserAccountRoleIds.Count == 0)
         {
-            _userAccountError = "กรุณาเลือกอย่างน้อย 1 กลุ่มผู้ใช้";
+            _userAccountError = L.Translate("SelectAtLeastOneRoleError");
             return;
         }
 
@@ -485,14 +486,14 @@
         var duplicate = await context.sc_users.AnyAsync(u => u.loginname == _userAccountEmployee.EmpNo);
         if (duplicate)
         {
-            _userAccountError = $"มีชื่อเข้าสู่ระบบ '{_userAccountEmployee.EmpNo}' อยู่แล้วในระบบ";
+            _userAccountError = string.Format(L.Translate("LoginNameDuplicateError"), _userAccountEmployee.EmpNo);
             return;
         }
 
         var accountPassword = await GetDefaultPasswordAsync(context);
         if (accountPassword is null)
         {
-            _userAccountError = "ยังไม่ได้ตั้งค่ารหัสผ่านเริ่มต้นของบริษัท — กรุณาตั้งค่าที่ /pay/admin/payslip-settings ก่อน";
+            _userAccountError = L.Translate("DefaultPasswordNotSetError");
             return;
         }
 
@@ -537,7 +538,7 @@
         {
             // Same defense as SaveEmployeeAsync — never let a DB-level failure
             // crash the whole Blazor circuit.
-            _userAccountError = "สร้างบัญชีผู้ใช้ไม่สำเร็จ — กรุณาลองใหม่ หรือตรวจสอบว่ารหัสพนักงานถูกต้อง";
+            _userAccountError = L.Translate("CreateUserAccountFailedError");
             return;
         }
 
@@ -567,18 +568,16 @@
             // but don't roll back; HR can still finish the link manually via
             // /admin/link-identity-account (e.g. if the derived password
             // somehow still fails a policy check we didn't anticipate).
-            _userAccountError = "สร้าง sc_user สำเร็จ แต่ผูกบัญชี Identity ไม่สำเร็จ: " +
-                string.Join(", ", identityResult.Errors.Select(e => e.Description)) +
-                " — กรุณาผูกบัญชีด้วยตนเองที่หน้า \"ผูกบัญชี Identity\"";
+            _userAccountError = string.Format(L.Translate("IdentityLinkFailedError"),
+                string.Join(", ", identityResult.Errors.Select(e => e.Description)));
             await LoadAsync();
             return;
         }
 
         var emailNote = await TrySendCredentialEmailAsync(_userAccountEmail, newUser.loginname, accountPassword, isReset: false);
 
-        _userAccountInfo = $"สร้างบัญชีผู้ใช้เรียบร้อย ชื่อเข้าสู่ระบบ {newUser.loginname} รหัสผ่านเริ่มต้นคือ {accountPassword} " +
-            $"— ใช้ล็อกอินที่ /login ได้ทันที {emailNote}";
-        Snackbar.Add("สร้างบัญชีผู้ใช้และผูกบัญชี Identity เรียบร้อย — ล็อกอินได้ทันที", Severity.Success);
+        _userAccountInfo = string.Format(L.Translate("CreateUserAccountSuccessTemplate"), newUser.loginname, accountPassword, emailNote);
+        Snackbar.Add(L.Translate("CreateUserAccountSuccessSnackbar"), Severity.Success);
         await LoadAsync();
     }
 
@@ -605,7 +604,7 @@
     // password that's already shown on screen.
     private async Task<string> TrySendCredentialEmailAsync(string? email, string loginname, string password, bool isReset)
     {
-        if (string.IsNullOrWhiteSpace(email)) return "(ไม่ได้ระบุอีเมล — กรุณาแจ้งรหัสผ่านนี้ให้พนักงานเอง)";
+        if (string.IsNullOrWhiteSpace(email)) return L.Translate("NoEmailProvidedNote");
 
         var subject = isReset ? "รีเซ็ตรหัสผ่านเข้าระบบ HumanOk" : "บัญชีผู้ใช้ระบบ HumanOk ของคุณ";
         var body = $"<p>ชื่อเข้าสู่ระบบ: <b>{loginname}</b></p><p>รหัสผ่าน{(isReset ? "ใหม่" : "เริ่มต้น")}: <b>{password}</b></p>" +
@@ -613,12 +612,12 @@
         try
         {
             await EmailSender.SendEmailAsync(email, subject, body);
-            return $"— ส่งรหัสผ่านไปที่ {email} เรียบร้อย";
+            return string.Format(L.Translate("EmailSentNote"), email);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to send credential email to {Email}", email);
-            return $"— ส่งอีเมลไปที่ {email} ไม่สำเร็จ (กรุณาแจ้งรหัสผ่านนี้ให้พนักงานเอง)";
+            return string.Format(L.Translate("EmailSendFailedNote"), email);
         }
     }
 
