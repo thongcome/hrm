@@ -8,43 +8,44 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>จัดการกะการทำงาน</PageTitle>
+<PageTitle>@L.Translate("ShiftAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">จัดการกะการทำงาน (Shift)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("ShiftAdminHeading")</MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     @if (_trackingMode != AttTrackingMode.ShiftBased)
     {
         <MudAlert Severity="Severity.Info" Class="mt-4">
-            บริษัทนี้ยังไม่ได้เปิดใช้งานระบบกะ — ไปตั้งค่าที่ <MudLink Href="/att/settings">ตั้งค่าบันทึกเวลาเข้างาน</MudLink> เลือก "มีระบบกะ" ก่อน
+            @L.Translate("ShiftNotEnabledPrefix") <MudLink Href="/att/settings">@L.Translate("AttSettingsPageTitle")</MudLink> @L.Translate("ShiftNotEnabledSuffix")
         </MudAlert>
         return;
     }
 
-    <MudText Typo="Typo.h6" Class="mt-4">รายการกะ</MudText>
+    <MudText Typo="Typo.h6" Class="mt-4">@L.Translate("ShiftListHeading")</MudText>
     <MudGrid Class="mt-2">
         <MudItem xs="12" sm="3">
-            <MudTextField @bind-Value="_newShiftCode" Label="รหัสกะ" />
+            <MudTextField @bind-Value="_newShiftCode" Label="@L.Translate("ShiftCodeLabel")" />
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudTextField @bind-Value="_newShiftName" Label="ชื่อกะ" />
+            <MudTextField @bind-Value="_newShiftName" Label="@L.Translate("ShiftNameLabel")" />
         </MudItem>
         <MudItem xs="12" sm="2">
-            <MudTimePicker @bind-Time="_newStartTime" Label="เวลาเข้ากะ" />
+            <MudTimePicker @bind-Time="_newStartTime" Label="@L.Translate("ShiftStartTimeLabel")" />
         </MudItem>
         <MudItem xs="12" sm="2">
-            <MudTimePicker @bind-Time="_newEndTime" Label="เวลาออกกะ" />
+            <MudTimePicker @bind-Time="_newEndTime" Label="@L.Translate("ShiftEndTimeLabel")" />
         </MudItem>
         <MudItem xs="12" sm="2">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddShiftAsync" Class="mt-2">เพิ่มกะ</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddShiftAsync" Class="mt-2">@L.Translate("AddShiftButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -55,9 +56,9 @@
 
     <MudTable Items="_shifts" Dense="true" Class="mt-3">
         <HeaderContent>
-            <MudTh>รหัสกะ</MudTh>
-            <MudTh>ชื่อกะ</MudTh>
-            <MudTh>เวลา</MudTh>
+            <MudTh>@L.Translate("ShiftCodeLabel")</MudTh>
+            <MudTh>@L.Translate("ShiftNameLabel")</MudTh>
+            <MudTh>@L.Translate("ColTime")</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.ShiftCode</MudTd>
@@ -68,21 +69,21 @@
 
     <MudDivider Class="my-5" />
 
-    <MudText Typo="Typo.h6">มอบหมายกะรายบุคคล/รายวัน</MudText>
-    <MudText Typo="Typo.body2" Class="mt-1">กำหนดว่าพนักงานคนไหนเข้ากะไหนในวันไหน — รองรับตารางกะหมุนเวียน</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("IndividualDailyAssignHeading")</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("IndividualDailyAssignDesc")</MudText>
 
     <MudGrid Class="mt-2">
         <MudItem xs="12" sm="4">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_assignEmployee"
+            <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeFieldLabel")" @bind-Value="_assignEmployee"
                 SearchFunc="SearchEmployeesAsync"
                 ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudDatePicker @bind-Date="_assignDate" Label="วันที่" />
+            <MudDatePicker @bind-Date="_assignDate" Label="@L.Translate("ColDate")" />
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudSelect T="long?" @bind-Value="_assignShiftId" Label="กะ">
+            <MudSelect T="long?" @bind-Value="_assignShiftId" Label="@L.Translate("ShiftFieldLabel")">
                 @foreach (var s in _shifts)
                 {
                     <MudSelectItem T="long?" Value="@((long?)s.Id)">@s.ShiftName (@s.ShiftCode)</MudSelectItem>
@@ -90,7 +91,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="2">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignShiftAsync" Class="mt-2">มอบหมาย</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignShiftAsync" Class="mt-2">@L.Translate("AssignButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -101,10 +102,10 @@
 
     <MudTable Items="_assignments" Dense="true" Class="mt-3">
         <HeaderContent>
-            <MudTh>รหัสพนักงาน</MudTh>
-            <MudTh>ชื่อ</MudTh>
-            <MudTh>วันที่</MudTh>
-            <MudTh>กะ</MudTh>
+            <MudTh>@L.Translate("EmpNoLabel")</MudTh>
+            <MudTh>@L.Translate("ColName")</MudTh>
+            <MudTh>@L.Translate("ColDate")</MudTh>
+            <MudTh>@L.Translate("ShiftFieldLabel")</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.Hremployee.EmpNo</MudTd>
@@ -116,21 +117,21 @@
 
     <MudDivider Class="my-5" />
 
-    <MudText Typo="Typo.h6">มอบหมายกะแบบตาราง (หลายคน/หลายวัน)</MudText>
-    <MudText Typo="Typo.body2" Class="mt-1">เลือกทั้งหน่วยงาน หรือเลือกพนักงานเอง แล้วกำหนดช่วงวันที่ + รูปแบบกะ ระบบจะสร้าง/แก้ไขตารางให้ทีเดียว</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("RosterAssignHeading")</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("RosterAssignDesc")</MudText>
 
     <MudGrid Class="mt-2">
         <MudItem xs="12" sm="4">
-            <MudSelect T="string" Value="_rosterTargetMode" ValueChanged="@(v => { _rosterTargetMode = v; _rosterPreviewCount = null; })" Label="กลุ่มเป้าหมาย">
-                <MudSelectItem Value="@("Org")">ทั้งหน่วยงาน (รวมหน่วยงานย่อย)</MudSelectItem>
-                <MudSelectItem Value="@("Employees")">เลือกพนักงานเอง</MudSelectItem>
+            <MudSelect T="string" Value="_rosterTargetMode" ValueChanged="@(v => { _rosterTargetMode = v; _rosterPreviewCount = null; })" Label="@L.Translate("TargetGroupLabel")">
+                <MudSelectItem Value="@("Org")">@L.Translate("TargetModeOrgLabel")</MudSelectItem>
+                <MudSelectItem Value="@("Employees")">@L.Translate("TargetModeEmployeesLabel")</MudSelectItem>
             </MudSelect>
         </MudItem>
 
         @if (_rosterTargetMode == "Org")
         {
             <MudItem xs="12" sm="8">
-                <MudAutocomplete T="com_organization" Label="หน่วยงาน" @bind-Value="_rosterOrg"
+                <MudAutocomplete T="com_organization" Label="@L.Translate("OrganizationFieldLabel")" @bind-Value="_rosterOrg"
                     SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
@@ -138,12 +139,12 @@
         else
         {
             <MudItem xs="12" sm="6">
-                <MudAutocomplete T="Hremployee" Label="พนักงาน (รหัสหรือชื่อ)" Value="_rosterNewEmployee" ValueChanged="v => _rosterNewEmployee = v"
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeCodeOrNameLabel")" Value="_rosterNewEmployee" ValueChanged="v => _rosterNewEmployee = v"
                     SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="2">
-                <MudButton Variant="Variant.Outlined" OnClick="AddRosterEmployee" Class="mt-2">เพิ่ม</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="AddRosterEmployee" Class="mt-2">@L.Translate("AddButtonPlain")</MudButton>
             </MudItem>
         }
     </MudGrid>
@@ -160,15 +161,15 @@
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="3">
-            <MudDatePicker @bind-Date="_rosterStartDate" Label="วันเริ่ม" />
+            <MudDatePicker @bind-Date="_rosterStartDate" Label="@L.Translate("RosterStartDateLabel")" />
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudDatePicker @bind-Date="_rosterEndDate" Label="วันสิ้นสุด" />
+            <MudDatePicker @bind-Date="_rosterEndDate" Label="@L.Translate("RosterEndDateLabel")" />
         </MudItem>
         <MudItem xs="12" sm="6">
-            <MudSelect T="string" Value="_rosterPatternMode" ValueChanged="@(v => { _rosterPatternMode = v; _rosterPreviewCount = null; })" Label="รูปแบบกะ">
-                <MudSelectItem Value="@("Single")">กะเดียวตลอดช่วง</MudSelectItem>
-                <MudSelectItem Value="@("Weekly")">รูปแบบรายสัปดาห์ (เว้นว่าง = วันหยุด)</MudSelectItem>
+            <MudSelect T="string" Value="_rosterPatternMode" ValueChanged="@(v => { _rosterPatternMode = v; _rosterPreviewCount = null; })" Label="@L.Translate("ShiftPatternLabel")">
+                <MudSelectItem Value="@("Single")">@L.Translate("PatternSingleLabel")</MudSelectItem>
+                <MudSelectItem Value="@("Weekly")">@L.Translate("PatternWeeklyLabel")</MudSelectItem>
             </MudSelect>
         </MudItem>
     </MudGrid>
@@ -177,7 +178,7 @@
     {
         <MudGrid Class="mt-2">
             <MudItem xs="12" sm="6">
-                <MudSelect T="long?" @bind-Value="_rosterSingleShiftId" Label="กะ">
+                <MudSelect T="long?" @bind-Value="_rosterSingleShiftId" Label="@L.Translate("ShiftFieldLabel")">
                     @foreach (var s in _shifts)
                     {
                         <MudSelectItem T="long?" Value="@((long?)s.Id)">@s.ShiftName (@s.ShiftCode)</MudSelectItem>
@@ -205,10 +206,10 @@
     }
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Variant="Variant.Outlined" OnClick="PreviewRosterAsync">ดูตัวอย่างก่อนบันทึก</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="PreviewRosterAsync">@L.Translate("PreviewBeforeSaveButton")</MudButton>
         @if (_rosterPreviewCount is not null)
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CommitRosterAsync">ยืนยันบันทึก (@_rosterPreviewCount รายการ)</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CommitRosterAsync">@string.Format(L.Translate("ConfirmSaveCountTemplate"), _rosterPreviewCount)</MudButton>
         }
     </MudStack>
 
@@ -281,7 +282,7 @@
 
         if (string.IsNullOrWhiteSpace(_newShiftCode) || string.IsNullOrWhiteSpace(_newShiftName) || _newStartTime is null || _newEndTime is null)
         {
-            _shiftError = "กรุณากรอกข้อมูลกะให้ครบถ้วน";
+            _shiftError = L.Translate("FillShiftDataError");
             return;
         }
 
@@ -289,7 +290,7 @@
         var duplicate = await context.Att_ShiftDefinitions.AnyAsync(s => s.CompanyId == _companyId && s.ShiftCode == _newShiftCode);
         if (duplicate)
         {
-            _shiftError = $"มีรหัสกะ {_newShiftCode} อยู่แล้ว";
+            _shiftError = string.Format(L.Translate("ShiftCodeDuplicateTemplate"), _newShiftCode);
             return;
         }
 
@@ -304,7 +305,7 @@
         });
         await context.SaveChangesAsync();
 
-        Snackbar.Add("เพิ่มกะเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ShiftAddedSuccess"), Severity.Success);
         _newShiftCode = "";
         _newShiftName = "";
         _newStartTime = null;
@@ -331,7 +332,7 @@
 
         if (_assignEmployee is null || _assignDate is null || _assignShiftId is null)
         {
-            _assignError = "กรุณาเลือกพนักงาน วันที่ และกะให้ครบถ้วน";
+            _assignError = L.Translate("SelectEmployeeDateShiftError");
             return;
         }
 
@@ -356,7 +357,7 @@
         }
         await context.SaveChangesAsync();
 
-        Snackbar.Add("มอบหมายกะเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ShiftAssignedSuccess"), Severity.Success);
         await LoadAssignmentsAsync();
     }
 
@@ -380,15 +381,15 @@
     private string? _rosterError;
     private string? _rosterInfo;
 
-    private static string DayLabel(DayOfWeek d) => d switch
+    private string DayLabel(DayOfWeek d) => d switch
     {
-        DayOfWeek.Monday => "จันทร์",
-        DayOfWeek.Tuesday => "อังคาร",
-        DayOfWeek.Wednesday => "พุธ",
-        DayOfWeek.Thursday => "พฤหัสบดี",
-        DayOfWeek.Friday => "ศุกร์",
-        DayOfWeek.Saturday => "เสาร์",
-        _ => "อาทิตย์",
+        DayOfWeek.Monday => L.Translate("DayMonday"),
+        DayOfWeek.Tuesday => L.Translate("DayTuesday"),
+        DayOfWeek.Wednesday => L.Translate("DayWednesday"),
+        DayOfWeek.Thursday => L.Translate("DayThursday"),
+        DayOfWeek.Friday => L.Translate("DayFriday"),
+        DayOfWeek.Saturday => L.Translate("DaySaturday"),
+        _ => L.Translate("DaySunday"),
     };
 
     private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
@@ -402,7 +403,7 @@
     private void AddRosterEmployee()
     {
         _rosterError = null;
-        if (_rosterNewEmployee is null) { _rosterError = "กรุณาเลือกพนักงาน"; return; }
+        if (_rosterNewEmployee is null) { _rosterError = L.Translate("SelectEmployeeError"); return; }
         if (!_rosterEmployees.Any(e => e.id == _rosterNewEmployee.id))
             _rosterEmployees.Add(_rosterNewEmployee);
         _rosterNewEmployee = null;
@@ -436,10 +437,10 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         if (_rosterTargetMode == "Org")
         {
-            if (_rosterOrg is null) { _rosterError = "กรุณาเลือกหน่วยงาน"; return null; }
+            if (_rosterOrg is null) { _rosterError = L.Translate("SelectOrganizationError"); return null; }
             return await HRM.Services.Shared.OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, _companyId!, _rosterOrg.id);
         }
-        if (_rosterEmployees.Count == 0) { _rosterError = "กรุณาเพิ่มพนักงานอย่างน้อย 1 คน"; return null; }
+        if (_rosterEmployees.Count == 0) { _rosterError = L.Translate("AddAtLeastOneEmployeeError"); return null; }
         return _rosterEmployees;
     }
 
@@ -453,7 +454,7 @@
         if (employees is null) return;
 
         var dates = ComputeRosterDates();
-        if (dates.Count == 0) { _rosterError = "ไม่มีวันที่/กะให้บันทึก ตรวจสอบช่วงวันที่และรูปแบบกะอีกครั้ง"; return; }
+        if (dates.Count == 0) { _rosterError = L.Translate("NoDatesShiftToSaveError"); return; }
 
         _rosterPreviewCount = employees.Count * dates.Count;
     }
@@ -467,7 +468,7 @@
         if (employees is null) return;
 
         var dates = ComputeRosterDates();
-        if (dates.Count == 0) { _rosterError = "ไม่มีวันที่/กะให้บันทึก ตรวจสอบช่วงวันที่และรูปแบบกะอีกครั้ง"; return; }
+        if (dates.Count == 0) { _rosterError = L.Translate("NoDatesShiftToSaveError"); return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var employeeIds = employees.Select(e => e.id).ToList();
@@ -507,7 +508,7 @@
         }
         await context.SaveChangesAsync();
 
-        _rosterInfo = $"บันทึกตารางกะสำเร็จ — สร้างใหม่ {created} รายการ, แก้ไข {updated} รายการ";
+        _rosterInfo = string.Format(L.Translate("RosterCommitSuccessTemplate"), created, updated);
         _rosterPreviewCount = null;
         _rosterEmployees.Clear();
         await LoadAssignmentsAsync();

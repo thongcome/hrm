@@ -9,35 +9,35 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>พื้นที่อนุญาตให้เช็คอิน (Geofence)</PageTitle>
+<PageTitle>@L.Translate("GeofenceAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">พื้นที่อนุญาตให้เช็คอินด้วย GPS (Geofence)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("GeofenceAdminHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        พนักงานเช็คอินผ่านมือถือที่ /ess/attendance-checkin จะสำเร็จได้ก็ต่อเมื่ออยู่ในรัศมีของสถานที่ใดสถานที่หนึ่งด้านล่างเท่านั้น (บังคับพื้นที่เข้มงวด) —
-        เพิ่มได้หลายสถานที่ (สำนักงานใหญ่ สาขา ฯลฯ)
+        @L.Translate("GeofenceAdminDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
     }
     else
     {
         <MudDivider Class="my-4" />
 
-        <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (ชื่อสถานที่)" Immediate="true" DebounceInterval="300"
+        <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchLocationNamePlaceholder")" Immediate="true" DebounceInterval="300"
             ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
 
         <MudTable Items="_locations" Dense="true" Hover="true">
             <HeaderContent>
-                <MudTh>ชื่อสถานที่</MudTh>
-                <MudTh>ละติจูด</MudTh>
-                <MudTh>ลองจิจูด</MudTh>
-                <MudTh>รัศมี (เมตร)</MudTh>
-                <MudTh>สถานะ</MudTh>
+                <MudTh>@L.Translate("ColLocationName")</MudTh>
+                <MudTh>@L.Translate("ColLatitude")</MudTh>
+                <MudTh>@L.Translate("ColLongitude")</MudTh>
+                <MudTh>@L.Translate("ColRadiusMeters")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -45,25 +45,25 @@
                 <MudTd>@context.Latitude</MudTd>
                 <MudTd>@context.Longitude</MudTd>
                 <MudTd>@context.RadiusMeters</MudTd>
-                <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+                <MudTd>@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">@L.Translate("EditButton")</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">
-                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                        @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                     </MudButton>
                 </MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีพื้นที่อนุญาต</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoLocationsMessage")</MudText></NoRecordsContent>
         </MudTable>
 
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสถานที่ใหม่" : "แก้ไขสถานที่")</MudText>
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewLocationHeading") : L.Translate("EditLocationHeading"))</MudText>
         <MudGrid Class="mt-2">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Name" Label="ชื่อสถานที่" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_form.RadiusMeters" Label="รัศมี (เมตร)" Min="10" Max="5000" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Latitude" Label="ละติจูด (Latitude)" Format="0.000000" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Longitude" Label="ลองจิจูด (Longitude)" Format="0.000000" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Name" Label="@L.Translate("ColLocationName")" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_form.RadiusMeters" Label="@L.Translate("ColRadiusMeters")" Min="10" Max="5000" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Latitude" Label="@L.Translate("LatitudeFieldLabel")" Format="0.000000" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Longitude" Label="@L.Translate("LongitudeFieldLabel")" Format="0.000000" /></MudItem>
         </MudGrid>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -72,10 +72,10 @@
         }
 
         <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? "เพิ่ม" : "บันทึก")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? L.Translate("AddButtonPlain") : L.Translate("SaveButton"))</MudButton>
             @if (_editingId is not null)
             {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
             }
         </MudStack>
     }
@@ -146,12 +146,12 @@
 
         if (string.IsNullOrWhiteSpace(_form.Name))
         {
-            _error = "กรุณาระบุชื่อสถานที่";
+            _error = L.Translate("SpecifyLocationNameError");
             return;
         }
         if (_form.Latitude == 0 || _form.Longitude == 0)
         {
-            _error = "กรุณาระบุพิกัดละติจูด/ลองจิจูดให้ถูกต้อง";
+            _error = L.Translate("InvalidLatLongError");
             return;
         }
 
@@ -172,7 +172,7 @@
         else
         {
             var existing = await context.Att_GeofenceLocations.FirstOrDefaultAsync(l => l.Id == _editingId && l.CompanyId == _companyId);
-            if (existing is null) { _error = "ไม่พบรายการนี้แล้ว กรุณาโหลดหน้าใหม่"; return; }
+            if (existing is null) { _error = L.Translate("RecordNotFoundReloadError"); return; }
             existing.Name = _form.Name;
             existing.Latitude = _form.Latitude;
             existing.Longitude = _form.Longitude;
@@ -180,7 +180,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }

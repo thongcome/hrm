@@ -8,19 +8,20 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>อัตราคูณค่าล่วงเวลา (OT)</PageTitle>
+<PageTitle>@L.Translate("OtRuleAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">อัตราคูณค่าล่วงเวลา (OT Multiplier)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("OtRuleAdminHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        ตัวคูณค่าจ้างชั่วโมงต่อประเภทวัน ตามมาตรา 61-63 พ.ร.บ.คุ้มครองแรงงาน (ทำงานล่วงเวลาวันทำงานปกติ ไม่น้อยกว่า 1.5 เท่า / วันหยุด ไม่น้อยกว่า 3 เท่า) — ปรับได้ตามข้อบังคับบริษัท
+        @L.Translate("OtRuleAdminDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
         return;
     }
 
@@ -28,9 +29,9 @@
 
     <MudTable Items="_rules" Dense="true" Hover="true">
         <HeaderContent>
-            <MudTh>ประเภทวัน</MudTh>
-            <MudTh>ตัวคูณ</MudTh>
-            <MudTh>ใช้งาน</MudTh>
+            <MudTh>@L.Translate("DayTypeLabel")</MudTh>
+            <MudTh>@L.Translate("MultiplierLabel")</MudTh>
+            <MudTh>@L.Translate("InUseLabel")</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -38,39 +39,39 @@
             <MudTd>@context.Multiplier.ToString("0.0#")</MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                    @(context.IsActive ? "ใช้อยู่" : "ปิดใช้งาน")
+                    @(context.IsActive ? L.Translate("InUseChip") : L.Translate("DisabledChip"))
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีการตั้งค่า — เพิ่มด้านล่าง (แนะนำให้ตั้งครบทั้ง 3 ประเภทวัน)</MudText>
+            <MudText Typo="Typo.body2">@L.Translate("OtRuleNoSettingsMessage")</MudText>
         </NoRecordsContent>
     </MudTable>
 
     <MudDivider Class="my-5" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มอัตราคูณ" : "แก้ไขอัตราคูณ")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddMultiplierHeading") : L.Translate("EditMultiplierHeading"))</MudText>
     <MudGrid Class="mt-1">
         <MudItem xs="12" sm="4">
-            <MudSelect T="OtDayType" @bind-Value="_dayType" Label="ประเภทวัน" Disabled="_editingId is not null">
-                <MudSelectItem T="OtDayType" Value="OtDayType.Workday">วันทำงานปกติ</MudSelectItem>
-                <MudSelectItem T="OtDayType" Value="OtDayType.Holiday">วันหยุด (ตามปฏิทินวันหยุดบริษัท)</MudSelectItem>
-                <MudSelectItem T="OtDayType" Value="OtDayType.RestDay">วันหยุดประจำสัปดาห์</MudSelectItem>
+            <MudSelect T="OtDayType" @bind-Value="_dayType" Label="@L.Translate("DayTypeLabel")" Disabled="_editingId is not null">
+                <MudSelectItem T="OtDayType" Value="OtDayType.Workday">@L.Translate("DayTypeWorkday")</MudSelectItem>
+                <MudSelectItem T="OtDayType" Value="OtDayType.Holiday">@L.Translate("DayTypeHoliday")</MudSelectItem>
+                <MudSelectItem T="OtDayType" Value="OtDayType.RestDay">@L.Translate("DayTypeRestDay")</MudSelectItem>
             </MudSelect>
         </MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_multiplier" Label="ตัวคูณ (เท่า)" Min="0" Format="0.0#" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_multiplier" Label="@L.Translate("MultiplierTimesLabel")" Min="0" Format="0.0#" /></MudItem>
         <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งาน" />
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("InUseLabel")" />
         </MudItem>
         <MudItem xs="12">
             <MudStack Row="true" Spacing="2">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveButton")</MudButton>
                 @if (_editingId is not null)
                 {
-                    <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
                 }
             </MudStack>
         </MudItem>
@@ -106,11 +107,11 @@
         _rules = await context.Att_OtRules.Where(r => r.CompanyId == _companyId).OrderBy(r => r.DayType).ToListAsync();
     }
 
-    private static string DayTypeLabel(OtDayType t) => t switch
+    private string DayTypeLabel(OtDayType t) => t switch
     {
-        OtDayType.Workday => "วันทำงานปกติ",
-        OtDayType.Holiday => "วันหยุด (ตามปฏิทินวันหยุดบริษัท)",
-        OtDayType.RestDay => "วันหยุดประจำสัปดาห์",
+        OtDayType.Workday => L.Translate("DayTypeWorkday"),
+        OtDayType.Holiday => L.Translate("DayTypeHoliday"),
+        OtDayType.RestDay => L.Translate("DayTypeRestDay"),
         _ => t.ToString(),
     };
 
@@ -133,13 +134,13 @@
     private async Task SaveAsync()
     {
         _error = null;
-        if (_multiplier < 0) { _error = "ตัวคูณต้องไม่ติดลบ"; return; }
+        if (_multiplier < 0) { _error = L.Translate("MultiplierNonNegativeError"); return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
         if (_editingId is long id)
         {
             var existing = await context.Att_OtRules.FirstOrDefaultAsync(r => r.Id == id && r.CompanyId == _companyId);
-            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            if (existing is null) { _error = L.Translate("OtRuleNotFoundError"); return; }
             existing.Multiplier = _multiplier;
             existing.IsActive = _isActive;
         }
@@ -149,7 +150,7 @@
             // convention (not a DB constraint) matching every other config
             // table in this app — warn instead of silently duplicating.
             var duplicate = await context.Att_OtRules.AnyAsync(r => r.CompanyId == _companyId && r.DayType == _dayType && r.IsActive);
-            if (duplicate) { _error = "ประเภทวันนี้มีอัตราคูณที่ใช้งานอยู่แล้ว — แก้ไขรายการเดิมแทนการเพิ่มใหม่"; return; }
+            if (duplicate) { _error = L.Translate("OtRuleDuplicateActiveError"); return; }
 
             context.Att_OtRules.Add(new Att_OtRule
             {
@@ -161,7 +162,7 @@
         }
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
         CancelEdit();
         await RefreshAsync();
     }

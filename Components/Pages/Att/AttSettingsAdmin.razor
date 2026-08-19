@@ -8,19 +8,20 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>ตั้งค่าบันทึกเวลาเข้างาน</PageTitle>
+<PageTitle>@L.Translate("AttSettingsPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="700px">
-    <MudText Typo="Typo.h5">ตั้งค่าบันทึกเวลาเข้างาน (Time Attendance)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("AttSettingsHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        ฟีเจอร์นี้เป็นทางเลือก — บริษัทที่ไม่ต้องการติดตามเวลาเข้างานเลยสามารถเลือก "ไม่เปิดใช้งาน" ได้ หน้าอื่นๆ ในโมดูลนี้จะไม่ทำงานจนกว่าจะเปิดใช้งานที่นี่
+        @L.Translate("AttSettingsDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
     }
     else if (_settings is null)
     {
@@ -32,13 +33,13 @@
 
         <MudRadioGroup T="AttTrackingMode" @bind-Value="_settings.TrackingMode">
             <MudRadio T="AttTrackingMode" Value="AttTrackingMode.None" Color="Color.Primary">
-                ไม่เปิดใช้งาน — ไม่ติดตามเวลาเข้างานเลย
+                @L.Translate("TrackingModeNoneLabel")
             </MudRadio>
             <MudRadio T="AttTrackingMode" Value="AttTrackingMode.SimpleInOut" Color="Color.Primary">
-                บันทึกเวลาเข้า-ออกอย่างเดียว — ไม่มีระบบกะ ใช้เวลาเริ่ม-เลิกงานเดียวกันทุกวัน
+                @L.Translate("TrackingModeSimpleInOutLabel")
             </MudRadio>
             <MudRadio T="AttTrackingMode" Value="AttTrackingMode.ShiftBased" Color="Color.Primary">
-                มีระบบกะ — พนักงานแต่ละคนหมุนเวียนเข้ากะต่างกันได้ในแต่ละวัน
+                @L.Translate("TrackingModeShiftBasedLabel")
             </MudRadio>
         </MudRadioGroup>
 
@@ -46,18 +47,18 @@
         {
             <MudGrid Class="mt-3">
                 <MudItem xs="12" sm="6">
-                    <MudTimePicker @bind-Time="_workStart" Label="เวลาเริ่มงาน (ค่าเริ่มต้น)" />
+                    <MudTimePicker @bind-Time="_workStart" Label="@L.Translate("DefaultWorkStartLabel")" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTimePicker @bind-Time="_workEnd" Label="เวลาเลิกงาน (ค่าเริ่มต้น)" />
+                    <MudTimePicker @bind-Time="_workEnd" Label="@L.Translate("DefaultWorkEndLabel")" />
                 </MudItem>
             </MudGrid>
         }
 
         @if (_settings.TrackingMode != AttTrackingMode.None)
         {
-            <MudCheckBox T="bool" @bind-Value="_settings.AllowWfh" Label="อนุญาตให้บันทึก Work From Home (WFH)" Class="mt-3" />
-            <MudCheckBox T="bool" @bind-Value="_settings.AllowGpsCheckin" Label="อนุญาตให้พนักงานเช็คอินด้วย GPS ผ่านมือถือ (ต้องตั้งค่าพื้นที่อนุญาตก่อน)" Class="mt-1" />
+            <MudCheckBox T="bool" @bind-Value="_settings.AllowWfh" Label="@L.Translate("AllowWfhLabel")" Class="mt-3" />
+            <MudCheckBox T="bool" @bind-Value="_settings.AllowGpsCheckin" Label="@L.Translate("AllowGpsCheckinLabel")" Class="mt-1" />
         }
 
         @if (!string.IsNullOrEmpty(_error))
@@ -65,7 +66,7 @@
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">@L.Translate("SaveButton")</MudButton>
     }
 </MudPaper>
 
@@ -103,7 +104,7 @@
 
         if (_settings.TrackingMode == AttTrackingMode.SimpleInOut && (_workStart is null || _workEnd is null))
         {
-            _error = "กรุณาระบุเวลาเริ่ม-เลิกงานเริ่มต้น";
+            _error = L.Translate("SpecifyDefaultWorkTimeError");
             return;
         }
 
@@ -111,7 +112,7 @@
         var existing = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         if (existing is null)
         {
-            _error = "ไม่พบการตั้งค่า กรุณาโหลดหน้าใหม่";
+            _error = L.Translate("SettingsNotFoundError");
             return;
         }
 
@@ -124,6 +125,6 @@
             ? TimeOnly.FromTimeSpan(_workEnd.Value) : null;
 
         await context.SaveChangesAsync();
-        Snackbar.Add("บันทึกการตั้งค่าเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("SettingsSavedSuccess"), Severity.Success);
     }
 }

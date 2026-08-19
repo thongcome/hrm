@@ -11,27 +11,28 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject TimesheetService TimesheetSvc
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
-<PageTitle>Timesheet ของฉัน</PageTitle>
+<PageTitle>@L.Translate("MyTimesheetPageTitle")</PageTitle>
 
 @if (_notFound)
 {
-    <MudAlert Severity="Severity.Warning" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับพนักงานคนใด</MudAlert>
+    <MudAlert Severity="Severity.Warning" Class="ma-4">@L.Translate("CheckinNotLinked")</MudAlert>
 }
 else if (_employee is null)
 {
-    <MudText Class="ma-4">กำลังโหลด...</MudText>
+    <MudText Class="ma-4">@L.Translate("LoadingText")</MudText>
 }
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">Timesheet ของฉัน</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1">บันทึกชั่วโมงทำงานรายสัปดาห์ (จันทร์-อาทิตย์) แล้วส่งให้หัวหน้าอนุมัติ</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("MyTimesheetPageTitle")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("MyTimesheetDesc")</MudText>
 
         <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
-            <MudDatePicker Label="เลือกวันในสัปดาห์ที่ต้องการ" @bind-Date="_pickedDate" Editable="true" DateFormat="dd/MM/yyyy" />
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenWeekAsync">เปิด/สร้าง Timesheet สัปดาห์นี้</MudButton>
+            <MudDatePicker Label="@L.Translate("PickWeekDateLabel")" @bind-Date="_pickedDate" Editable="true" DateFormat="dd/MM/yyyy" />
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenWeekAsync">@L.Translate("OpenCreateWeekButton")</MudButton>
         </MudStack>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -44,17 +45,17 @@ else
     {
         <MudPaper Class="pa-4 mb-4">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                <MudText Typo="Typo.h6">สัปดาห์ @_current.WeekStartDate.ToString("dd/MM/yyyy") - @_current.WeekEndDate.ToString("dd/MM/yyyy")</MudText>
+                <MudText Typo="Typo.h6">@string.Format(L.Translate("WeekRangeTemplate"), _current.WeekStartDate.ToString("dd/MM/yyyy"), _current.WeekEndDate.ToString("dd/MM/yyyy"))</MudText>
                 <MudChip T="string" Size="Size.Small" Color="StatusColor(_current.Status)">@StatusLabel(_current.Status)</MudChip>
             </MudStack>
-            <MudText Typo="Typo.body2" Class="mt-1">รวม @_entries.Sum(e => e.Hours) ชั่วโมง</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">@string.Format(L.Translate("TotalHoursTemplate"), _entries.Sum(e => e.Hours))</MudText>
 
             <MudTable Items="_entries" Dense="true" Class="mt-3">
                 <HeaderContent>
-                    <MudTh>วันที่</MudTh>
-                    <MudTh>โครงการ</MudTh>
-                    <MudTh>ชั่วโมง</MudTh>
-                    <MudTh>หมายเหตุ</MudTh>
+                    <MudTh>@L.Translate("ColDate")</MudTh>
+                    <MudTh>@L.Translate("ColProjectName")</MudTh>
+                    <MudTh>@L.Translate("HoursLabel")</MudTh>
+                    <MudTh>@L.Translate("ColRemark")</MudTh>
                     @if (_current.Status == Att_TimesheetStatus.Draft)
                     {
                         <MudTh></MudTh>
@@ -70,14 +71,14 @@ else
                         <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveEntryAsync(context.Id))" /></MudTd>
                     }
                 </RowTemplate>
-                <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการ</MudText></NoRecordsContent>
+                <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoItemsYet")</MudText></NoRecordsContent>
             </MudTable>
 
             @if (_current.Status == Att_TimesheetStatus.Draft)
             {
                 <MudGrid Class="mt-3">
                     <MudItem xs="12" sm="4">
-                        <MudSelect T="long?" @bind-Value="_newProjectId" Label="โครงการ">
+                        <MudSelect T="long?" @bind-Value="_newProjectId" Label="@L.Translate("ColProjectName")">
                             @foreach (var p in _projects)
                             {
                                 <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Code — @p.Name</MudSelectItem>
@@ -85,47 +86,47 @@ else
                         </MudSelect>
                     </MudItem>
                     <MudItem xs="12" sm="3">
-                        <MudDatePicker Label="วันที่" @bind-Date="_newWorkDate" Editable="true" DateFormat="dd/MM/yyyy" />
+                        <MudDatePicker Label="@L.Translate("ColDate")" @bind-Date="_newWorkDate" Editable="true" DateFormat="dd/MM/yyyy" />
                     </MudItem>
                     <MudItem xs="12" sm="2">
-                        <MudNumericField T="decimal" @bind-Value="_newHours" Label="ชั่วโมง" Min="0.5m" Max="24m" Step="0.5m" />
+                        <MudNumericField T="decimal" @bind-Value="_newHours" Label="@L.Translate("HoursLabel")" Min="0.5m" Max="24m" Step="0.5m" />
                     </MudItem>
                     <MudItem xs="12" sm="3">
-                        <MudTextField @bind-Value="_newNote" Label="หมายเหตุ (ไม่บังคับ)" />
+                        <MudTextField @bind-Value="_newNote" Label="@L.Translate("NoteOptionalLabel")" />
                     </MudItem>
                     <MudItem xs="12">
-                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddEntryAsync">เพิ่มรายการ</MudButton>
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddEntryAsync">@L.Translate("AddItemButton")</MudButton>
                     </MudItem>
                 </MudGrid>
 
                 <MudDivider Class="my-4" />
-                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="SubmitAsync">ส่งอนุมัติ</MudButton>
+                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="SubmitAsync">@L.Translate("SubmitForApprovalButton")</MudButton>
             }
             else if (_current.Status == Att_TimesheetStatus.PendingApproval)
             {
                 <MudAlert Severity="Severity.Info" Class="mt-3">
-                    รออนุมัติอยู่ — ไปที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ</MudLink> เพื่อดูสถานะ
+                    @L.Translate("PendingApprovalGoToInboxPrefix") <MudLink Href="/wf/my-inbox">@L.Translate("ApprovalInboxLinkText")</MudLink> @L.Translate("PendingApprovalGoToInboxSuffix")
                 </MudAlert>
             }
         </MudPaper>
     }
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">ประวัติ Timesheet</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("TimesheetHistoryHeading")</MudText>
         <MudTable Items="_history" Dense="true" Hover="true" Class="mt-2">
             <HeaderContent>
-                <MudTh>สัปดาห์</MudTh>
-                <MudTh>รวมชั่วโมง</MudTh>
-                <MudTh>สถานะ</MudTh>
+                <MudTh>@L.Translate("WeekLabel")</MudTh>
+                <MudTh>@L.Translate("TotalHoursLabel")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.WeekStartDate.ToString("dd/MM/yyyy") - @context.WeekEndDate.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@context.TotalHours</MudTd>
                 <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/att/timesheet/{context.Id}")">ดูรายละเอียด</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/att/timesheet/{context.Id}")">@L.Translate("ViewDetailsLink")</MudButton></MudTd>
             </RowTemplate>
-            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประวัติ</MudText></NoRecordsContent>
+            <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoHistoryYetMessage")</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
 }
@@ -173,7 +174,7 @@ else
     private async Task OpenWeekAsync()
     {
         _error = null;
-        if (_pickedDate is null) { _error = "กรุณาเลือกวันที่"; return; }
+        if (_pickedDate is null) { _error = L.Translate("SelectDateError"); return; }
 
         var weekStart = TimesheetService.WeekStartFor(DateOnly.FromDateTime(_pickedDate.Value));
         var (userId, _) = await GetActorAsync();
@@ -194,8 +195,8 @@ else
     private async Task AddEntryAsync()
     {
         _error = null;
-        if (_newProjectId is null) { _error = "กรุณาเลือกโครงการ"; return; }
-        if (_newWorkDate is null) { _error = "กรุณาระบุวันที่"; return; }
+        if (_newProjectId is null) { _error = L.Translate("SelectProjectError"); return; }
+        if (_newWorkDate is null) { _error = L.Translate("SpecifyDateError"); return; }
 
         try
         {
@@ -225,7 +226,7 @@ else
         {
             var (userId, empId) = await GetActorAsync();
             await TimesheetSvc.SubmitForApprovalAsync(_current!.Id, userId, empId);
-            Snackbar.Add("ส่งอนุมัติแล้ว", Severity.Success);
+            Snackbar.Add(L.Translate("SentForApprovalSuccess"), Severity.Success);
             await RefreshCurrentAsync();
             await LoadHistoryAsync();
         }
@@ -241,12 +242,12 @@ else
         _ => Color.Default,
     };
 
-    private static string StatusLabel(Att_TimesheetStatus status) => status switch
+    private string StatusLabel(Att_TimesheetStatus status) => status switch
     {
-        Att_TimesheetStatus.Draft => "ฉบับร่าง",
-        Att_TimesheetStatus.PendingApproval => "รออนุมัติ",
-        Att_TimesheetStatus.Approved => "อนุมัติแล้ว",
-        Att_TimesheetStatus.Rejected => "ไม่อนุมัติ",
+        Att_TimesheetStatus.Draft => L.Translate("DraftStatusChip"),
+        Att_TimesheetStatus.PendingApproval => L.Translate("PendingApprovalStatusChip"),
+        Att_TimesheetStatus.Approved => L.Translate("ApprovedStatusChip"),
+        Att_TimesheetStatus.Rejected => L.Translate("RejectedStatusChip"),
         _ => status.ToString(),
     };
 }

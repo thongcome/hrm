@@ -10,50 +10,51 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>นำเข้าไฟล์ log เครื่องสแกน</PageTitle>
+<PageTitle>@L.Translate("PunchLogImportPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">นำเข้าไฟล์ log จากเครื่องสแกน (ลายนิ้วมือ/Face Recognition)</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("PunchLogImportHeading")</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        รองรับไฟล์ CSV แบบ 3 คอลัมน์: รหัสพนักงาน, วันที่เวลา, ทิศทาง (เข้า/ออก — ใส่ว่างได้ถ้าเครื่องไม่ระบุ) ไม่มีหัวตาราง
+        @L.Translate("PunchLogImportDesc")
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     @if (_trackingMode == AttTrackingMode.None)
     {
         <MudAlert Severity="Severity.Info" Class="mt-4">
-            บริษัทนี้ยังไม่ได้เปิดใช้งานระบบบันทึกเวลาเข้างาน — ไปตั้งค่าที่ <MudLink Href="/att/settings">ตั้งค่าบันทึกเวลาเข้างาน</MudLink> ก่อน
+            @L.Translate("AttNotEnabledPrefix") <MudLink Href="/att/settings">@L.Translate("AttSettingsPageTitle")</MudLink> @L.Translate("NoPlansAvailableSuffix")
         </MudAlert>
         return;
     }
 
     <MudExpansionPanels Class="mt-3">
-        <MudExpansionPanel Text="เครื่องสแกนที่ลงทะเบียนไว้ (คลิกเพื่อเพิ่มเครื่องใหม่)">
+        <MudExpansionPanel Text="@L.Translate("RegisteredDevicesPanelHeading")">
             <MudGrid>
                 <MudItem xs="12" sm="3">
-                    <MudTextField @bind-Value="_newDeviceCode" Label="รหัสเครื่อง" />
+                    <MudTextField @bind-Value="_newDeviceCode" Label="@L.Translate("DeviceCodeLabel")" />
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudTextField @bind-Value="_newDeviceName" Label="ชื่อเครื่อง" />
+                    <MudTextField @bind-Value="_newDeviceName" Label="@L.Translate("DeviceNameLabel")" />
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudSelect T="AttDeviceType" @bind-Value="_newDeviceType" Label="ประเภทเครื่อง">
-                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Fingerprint">ลายนิ้วมือ</MudSelectItem>
-                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.FaceRecognition">Face Recognition</MudSelectItem>
-                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.CardReader">บัตรสแกน</MudSelectItem>
-                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Mobile">มือถือ/แอป</MudSelectItem>
-                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Manual">อื่นๆ/ป้อนเอง</MudSelectItem>
+                    <MudSelect T="AttDeviceType" @bind-Value="_newDeviceType" Label="@L.Translate("DeviceTypeLabel")">
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Fingerprint">@L.Translate("DeviceTypeFingerprint")</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.FaceRecognition">@L.Translate("DeviceTypeFaceRecognition")</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.CardReader">@L.Translate("DeviceTypeCardReader")</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Mobile">@L.Translate("DeviceTypeMobile")</MudSelectItem>
+                        <MudSelectItem T="AttDeviceType" Value="AttDeviceType.Manual">@L.Translate("DeviceTypeManual")</MudSelectItem>
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddDeviceAsync">เพิ่มเครื่อง</MudButton>
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddDeviceAsync">@L.Translate("AddDeviceButton")</MudButton>
                 </MudItem>
             </MudGrid>
             @if (!string.IsNullOrEmpty(_deviceError))
@@ -65,8 +66,8 @@
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="5">
-            <MudSelect T="long?" @bind-Value="_deviceId" Label="เครื่องสแกน (ไม่บังคับ)">
-                <MudSelectItem T="long?" Value="@((long?)null)">— ไม่ระบุ —</MudSelectItem>
+            <MudSelect T="long?" @bind-Value="_deviceId" Label="@L.Translate("ScanDeviceOptionalLabel")">
+                <MudSelectItem T="long?" Value="@((long?)null)">@L.Translate("UnspecifiedDashText")</MudSelectItem>
                 @foreach (var d in _devices)
                 {
                     <MudSelectItem T="long?" Value="@((long?)d.Id)">@d.DeviceName (@d.DeviceCode)</MudSelectItem>
@@ -77,13 +78,13 @@
             <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected">
                 <ActivatorContent>
                     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
-                        @(_uploadFile?.Name ?? "เลือกไฟล์ CSV")
+                        @(_uploadFile?.Name ?? L.Translate("SelectCsvFileButton"))
                     </MudButton>
                 </ActivatorContent>
             </MudFileUpload>
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ImportAsync" Disabled="_uploadFile is null">นำเข้า</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ImportAsync" Disabled="_uploadFile is null">@L.Translate("ImportButton")</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -95,24 +96,24 @@
     @if (_lastResult is not null)
     {
         <MudAlert Severity="@(_lastResult.SkippedRows > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
-            นำเข้าสำเร็จ @_lastResult.ImportedRows/@_lastResult.TotalRows แถว
+            @string.Format(L.Translate("ImportSuccessTemplate"), _lastResult.ImportedRows, _lastResult.TotalRows)
             @if (_lastResult.SkippedRows > 0)
             {
-                <span> — ข้าม @_lastResult.SkippedRows แถว: @_lastResult.ErrorSummary</span>
+                <span>@string.Format(L.Translate("SkippedRowsInlineTemplate"), _lastResult.SkippedRows, _lastResult.ErrorSummary)</span>
             }
         </MudAlert>
     }
 
     <MudDivider Class="my-5" />
 
-    <MudText Typo="Typo.h6">ประวัติการนำเข้า</MudText>
+    <MudText Typo="Typo.h6">@L.Translate("ImportHistoryHeading")</MudText>
     <MudTable Items="_batches" Dense="true" Class="mt-2">
         <HeaderContent>
-            <MudTh>วันที่นำเข้า</MudTh>
-            <MudTh>ไฟล์</MudTh>
-            <MudTh>ทั้งหมด</MudTh>
-            <MudTh>สำเร็จ</MudTh>
-            <MudTh>ข้าม</MudTh>
+            <MudTh>@L.Translate("ColImportDate")</MudTh>
+            <MudTh>@L.Translate("ColFile")</MudTh>
+            <MudTh>@L.Translate("ColTotal")</MudTh>
+            <MudTh>@L.Translate("ColSuccess")</MudTh>
+            <MudTh>@L.Translate("ColSkipped")</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.ImportedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
@@ -169,7 +170,7 @@
 
         if (string.IsNullOrWhiteSpace(_newDeviceCode) || string.IsNullOrWhiteSpace(_newDeviceName))
         {
-            _deviceError = "กรุณากรอกรหัสและชื่อเครื่อง";
+            _deviceError = L.Translate("FillDeviceCodeNameError");
             return;
         }
 
@@ -177,7 +178,7 @@
         var duplicate = await context.Att_Devices.AnyAsync(d => d.CompanyId == _companyId && d.DeviceCode == _newDeviceCode);
         if (duplicate)
         {
-            _deviceError = $"มีรหัสเครื่อง {_newDeviceCode} อยู่แล้ว";
+            _deviceError = string.Format(L.Translate("DeviceCodeDuplicateTemplate"), _newDeviceCode);
             return;
         }
 
@@ -191,7 +192,7 @@
         });
         await context.SaveChangesAsync();
 
-        Snackbar.Add("เพิ่มเครื่องสแกนเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("DeviceAddedSuccess"), Severity.Success);
         _newDeviceCode = "";
         _newDeviceName = "";
 
@@ -214,7 +215,7 @@
         const long maxSize = 10 * 1024 * 1024;
         if (_uploadFile.Size > maxSize)
         {
-            _importError = "ไฟล์ใหญ่เกินไป (จำกัด 10 MB)";
+            _importError = L.Translate("FileTooLargeImportError");
             return;
         }
 
@@ -260,7 +261,7 @@
             var parts = line.Split(',');
             if (parts.Length < 2)
             {
-                errors.Add($"รูปแบบแถวไม่ถูกต้อง: {line}");
+                errors.Add(string.Format(L.Translate("InvalidRowFormatTemplate"), line));
                 continue;
             }
 
@@ -270,13 +271,13 @@
 
             if (!employeesByCode.TryGetValue(empCode, out var hremployeeId))
             {
-                errors.Add($"ไม่พบรหัสพนักงาน {empCode}");
+                errors.Add(string.Format(L.Translate("EmpCodeNotFoundTemplate"), empCode));
                 continue;
             }
 
             if (!DateTime.TryParse(dateTimeRaw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var punchTime))
             {
-                errors.Add($"วันที่เวลาอ่านไม่ได้: {dateTimeRaw} ({empCode})");
+                errors.Add(string.Format(L.Translate("DateTimeParseErrorTemplate"), dateTimeRaw, empCode));
                 continue;
             }
 
@@ -309,7 +310,7 @@
 
         _lastResult = batch;
         _uploadFile = null;
-        Snackbar.Add("นำเข้าไฟล์เรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("FileImportedSuccess"), Severity.Success);
         await LoadBatchesAsync();
     }
 }

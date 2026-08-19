@@ -10,53 +10,54 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject AttendanceAggregationService AggregationService
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
-<PageTitle>รายงานบันทึกเวลาเข้างาน</PageTitle>
+<PageTitle>@L.Translate("AttendanceReportPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">รายงานบันทึกเวลาเข้างาน</MudText>
+    <MudText Typo="Typo.h5">@L.Translate("AttendanceReportPageTitle")</MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
-        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("CompanyNotLinkedError")</MudAlert>
         return;
     }
 
     @if (_trackingMode == AttTrackingMode.None)
     {
         <MudAlert Severity="Severity.Info" Class="mt-4">
-            บริษัทนี้ยังไม่ได้เปิดใช้งานระบบบันทึกเวลาเข้างาน — ไปตั้งค่าที่ <MudLink Href="/att/settings">ตั้งค่าบันทึกเวลาเข้างาน</MudLink> ก่อน
+            @L.Translate("AttNotEnabledPrefix") <MudLink Href="/att/settings">@L.Translate("AttSettingsPageTitle")</MudLink> @L.Translate("NoPlansAvailableSuffix")
         </MudAlert>
         return;
     }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="4">
-            <MudDatePicker @bind-Date="_fromDate" Label="จากวันที่" />
+            <MudDatePicker @bind-Date="_fromDate" Label="@L.Translate("FromDateLabel")" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudDatePicker @bind-Date="_toDate" Label="ถึงวันที่" />
+            <MudDatePicker @bind-Date="_toDate" Label="@L.Translate("ToDateLabel")" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="RecalculateAsync" Class="mt-2">คำนวณใหม่</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="RecalculateAsync" Class="mt-2">@L.Translate("RecalculateButton")</MudButton>
         </MudItem>
     </MudGrid>
 
     @if (_lastResultCount is not null)
     {
-        <MudAlert Severity="Severity.Success" Class="mt-2">คำนวณสำเร็จ @_lastResultCount รายการ (คน x วัน)</MudAlert>
+        <MudAlert Severity="Severity.Success" Class="mt-2">@string.Format(L.Translate("RecalcSuccessTemplate"), _lastResultCount)</MudAlert>
     }
 
     <MudTable Items="_rows" Dense="true" Class="mt-3">
         <HeaderContent>
-            <MudTh>รหัสพนักงาน</MudTh>
-            <MudTh>ชื่อ</MudTh>
-            <MudTh>วันที่</MudTh>
-            <MudTh>เข้างาน</MudTh>
-            <MudTh>ออกงาน</MudTh>
-            <MudTh>สถานะ</MudTh>
-            <MudTh>สถานที่</MudTh>
+            <MudTh>@L.Translate("EmpNoLabel")</MudTh>
+            <MudTh>@L.Translate("ColName")</MudTh>
+            <MudTh>@L.Translate("ColDate")</MudTh>
+            <MudTh>@L.Translate("ColClockIn")</MudTh>
+            <MudTh>@L.Translate("ColClockOut")</MudTh>
+            <MudTh>@L.Translate("ColStatus")</MudTh>
+            <MudTh>@L.Translate("ColLocation")</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.Hremployee.EmpNo</MudTd>
@@ -67,18 +68,18 @@
             <MudTd>
                 @if (context.IsLate)
                 {
-                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">สาย</MudChip>
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L.Translate("LateChip")</MudChip>
                 }
                 @if (context.IsEarlyLeave)
                 {
-                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">ออกก่อน</MudChip>
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L.Translate("EarlyLeaveChip")</MudChip>
                 }
                 @if (!context.IsLate && !context.IsEarlyLeave)
                 {
-                    <MudChip T="string" Color="Color.Success" Size="Size.Small">ปกติ</MudChip>
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">@L.Translate("NormalChip")</MudChip>
                 }
             </MudTd>
-            <MudTd>@(context.WorkLocation == AttWorkLocation.Wfh ? "WFH" : context.WorkLocation == AttWorkLocation.Mixed ? "ผสม" : "ที่ทำงาน")</MudTd>
+            <MudTd>@(context.WorkLocation == AttWorkLocation.Wfh ? L.Translate("LocationWfh") : context.WorkLocation == AttWorkLocation.Mixed ? L.Translate("LocationMixed") : L.Translate("LocationOffice"))</MudTd>
         </RowTemplate>
     </MudTable>
 
@@ -86,29 +87,29 @@
     {
         <MudDivider Class="my-5" />
 
-        <MudText Typo="Typo.h6">บันทึก Work From Home แทนพนักงาน (HR ป้อนแทน)</MudText>
+        <MudText Typo="Typo.h6">@L.Translate("WfhManualEntryHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">
-            รอจนกว่าพนักงานจะเข้าระบบ self-service ได้เอง — ตอนนี้ HR บันทึกแทนก่อน
+            @L.Translate("WfhManualEntryDesc")
         </MudText>
 
         <MudGrid Class="mt-2">
             <MudItem xs="12" sm="4">
-                <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_wfhEmployee"
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeFieldLabel")" @bind-Value="_wfhEmployee"
                     SearchFunc="SearchEmployeesAsync"
                     ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                     ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudDatePicker @bind-Date="_wfhDate" Label="วันที่ WFH" />
+                <MudDatePicker @bind-Date="_wfhDate" Label="@L.Translate("WfhDateLabel")" />
             </MudItem>
             <MudItem xs="12" sm="2">
-                <MudTimePicker @bind-Time="_wfhCheckIn" Label="เวลาเข้างาน" />
+                <MudTimePicker @bind-Time="_wfhCheckIn" Label="@L.Translate("ClockInTimeLabel")" />
             </MudItem>
             <MudItem xs="12" sm="2">
-                <MudTimePicker @bind-Time="_wfhCheckOut" Label="เวลาเลิกงาน" />
+                <MudTimePicker @bind-Time="_wfhCheckOut" Label="@L.Translate("ClockOutTimeLabel")" />
             </MudItem>
             <MudItem xs="12" sm="1">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveWfhAsync" Class="mt-2">บันทึก</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveWfhAsync" Class="mt-2">@L.Translate("SaveButton")</MudButton>
             </MudItem>
         </MudGrid>
 
@@ -174,7 +175,7 @@
         var result = await AggregationService.RunAsync(_companyId, from, to);
         _lastResultCount = result.DaysProcessed;
 
-        Snackbar.Add("คำนวณเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("RecalcSavedSuccess"), Severity.Success);
         await LoadRowsAsync();
     }
 
@@ -197,7 +198,7 @@
 
         if (_wfhEmployee is null || _wfhDate is null || _wfhCheckIn is null || _wfhCheckOut is null)
         {
-            _wfhError = "กรุณากรอกข้อมูลให้ครบถ้วน";
+            _wfhError = L.Translate("FillAllFieldsError");
             return;
         }
 
@@ -224,7 +225,7 @@
         });
         await context.SaveChangesAsync();
 
-        Snackbar.Add("บันทึก WFH เรียบร้อย — กด \"คำนวณใหม่\" เพื่อให้แสดงในตาราง", Severity.Success);
+        Snackbar.Add(L.Translate("WfhSavedSuccessNote"), Severity.Success);
         _wfhEmployee = null;
         _wfhCheckIn = null;
         _wfhCheckOut = null;
