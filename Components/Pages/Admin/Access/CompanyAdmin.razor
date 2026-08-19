@@ -14,22 +14,23 @@
 @inject ISnackbar Snackbar
 @inject PrivateFileStorage FileStorage
 @inject IAuditLogger AuditLogger
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
-<PageTitle>ข้อมูลบริษัท (Company)</PageTitle>
+<PageTitle>@L.Translate("CompanyAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="1300px">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudText Typo="Typo.h5">ข้อมูลบริษัท (Company)</MudText>
+        <MudText Typo="Typo.h5">@L.Translate("CompanyAdminPageTitle")</MudText>
         <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
     </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1">
-        แคตตาล็อกกลางของนิติบุคคล/บริษัทในระบบ — ทั่วไป กฎหมาย ที่ตั้ง และข้อมูลลูกค้า/การขายเพิ่ม (แถวนี้อาจเป็นบริษัทของเราเองหรือลูกค้าก็ได้)
+        @L.Translate("CompanyAdminDesc")
     </MudText>
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบริษัท" : "แก้ไข")</MudText>
+    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddCompanyHeading") : L.Translate("EditButton"))</MudText>
 
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mt-3 mb-2">
         @if (_editingId is long logoId && !string.IsNullOrEmpty(_logoPath))
@@ -48,13 +49,13 @@
             <MudFileUpload T="IBrowserFile" FilesChanged="OnLogoSelected" Accept=".jpg,.jpeg,.png" Disabled="_editingId is null">
                 <ActivatorContent>
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Image" Disabled="_editingId is null">
-                        @(string.IsNullOrEmpty(_logoPath) ? "อัปโหลดโลโก้" : "เปลี่ยนโลโก้")
+                        @(string.IsNullOrEmpty(_logoPath) ? L.Translate("UploadLogoButton") : L.Translate("ChangeLogoButton"))
                     </MudButton>
                 </ActivatorContent>
             </MudFileUpload>
             @if (_editingId is null)
             {
-                <MudText Typo="Typo.caption" Color="Color.Default">บันทึกข้อมูลบริษัทก่อน จึงจะอัปโหลดโลโก้ได้</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Default">@L.Translate("SaveCompanyFirstForLogoNote")</MudText>
             }
             @if (_logoError is not null)
             {
@@ -63,71 +64,71 @@
         </MudStack>
     </MudStack>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลทั่วไป</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">@L.Translate("GeneralInfoHeading")</MudText>
     <MudGrid>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัสบริษัท (Code)" Required="true" MaxLength="50" /></MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" MaxLength="50" /></MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="ชื่อบริษัท (ไทย)" Required="true" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_nameEn" Label="ชื่อบริษัท (อังกฤษ)" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_slogan" Label="สโลแกน" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_website" Label="เว็บไซต์" MaxLength="500" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_mission" Label="พันธกิจ (Mission)" Lines="2" MaxLength="2000" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="@L.Translate("CompanyCodeLabel")" Required="true" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_abbr" Label="@L.Translate("AbbreviationLabel")" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="@L.Translate("CompanyNameThLabel")" Required="true" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_nameEn" Label="@L.Translate("CompanyNameEnLabel")" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_slogan" Label="@L.Translate("SloganLabel")" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_website" Label="@L.Translate("WebsiteLabel")" MaxLength="500" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_mission" Label="@L.Translate("MissionLabel")" Lines="2" MaxLength="2000" /></MudItem>
         <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("ActiveSwitchLabel")" />
         </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลจดทะเบียน / กฎหมาย</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">@L.Translate("LegalRegistrationHeading")</MudText>
     <MudGrid>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_taxId" Label="เลขประจำตัวผู้เสียภาษี" MaxLength="50" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_businessTypeName" Label="ประเภทนิติบุคคล" MaxLength="100" HelperText="เช่น บริษัทจำกัด, ห้างหุ้นส่วนจำกัด" /></MudItem>
-        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_registeredDate" Label="วันที่จดทะเบียนนิติบุคคล" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_capitalRegister" Label="ทุนจดทะเบียน (บาท)" Format="N2" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_amountEmp" Label="จำนวนพนักงานโดยประมาณ" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_taxId" Label="@L.Translate("TaxIdLabel")" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_businessTypeName" Label="@L.Translate("BusinessTypeNameLabel")" MaxLength="100" HelperText="@L.Translate("BusinessTypeNameHelperText")" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_registeredDate" Label="@L.Translate("RegisteredDateLabel")" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_capitalRegister" Label="@L.Translate("RegisteredCapitalLabel")" Format="N2" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField @bind-Value="_amountEmp" Label="@L.Translate("ApproxEmployeeCountLabel")" /></MudItem>
         <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_vatRegistered" Color="Color.Primary" Label="จดทะเบียนภาษีมูลค่าเพิ่ม (VAT)" />
+            <MudSwitch T="bool" @bind-Value="_vatRegistered" Color="Color.Primary" Label="@L.Translate("VatRegisteredSwitchLabel")" />
         </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ที่ตั้ง / ข้อมูลติดต่อ</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">@L.Translate("LocationContactHeading")</MudText>
     <MudGrid>
-        <MudItem xs="12"><MudTextField @bind-Value="_addressHq" Label="ที่อยู่สำนักงานใหญ่" Lines="2" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_tel" Label="โทรศัพท์" MaxLength="500" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_addressHq" Label="@L.Translate("HqAddressLabel")" Lines="2" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_tel" Label="@L.Translate("FieldPhone")" MaxLength="500" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="@L.Translate("FieldEmail")" MaxLength="250" InputType="InputType.Email" /></MudItem>
         <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_mapUrl" Label="ลิงก์แผนที่ (Google Maps)" MaxLength="500" />
+            <MudTextField @bind-Value="_mapUrl" Label="@L.Translate("MapLinkLabel")" MaxLength="500" />
             @if (!string.IsNullOrWhiteSpace(_mapUrl))
             {
-                <MudLink Href="@_mapUrl" Target="_blank" Typo="Typo.caption">เปิดแผนที่ในแท็บใหม่</MudLink>
+                <MudLink Href="@_mapUrl" Target="_blank" Typo="Typo.caption">@L.Translate("OpenMapNewTabLink")</MudLink>
             }
         </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ข้อมูลลูกค้า / การขายเพิ่ม (CRM)</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">@L.Translate("CrmHeading")</MudText>
     <MudGrid>
         <MudItem xs="12" sm="3">
-            <MudSelect T="CustomerStatusType?" @bind-Value="_customerStatus" Label="สถานะลูกค้า" Clearable="true">
-                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Prospect">ผู้มุ่งหวัง (Prospect)</MudSelectItem>
-                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Active">ลูกค้าปัจจุบัน</MudSelectItem>
-                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Inactive">เลิกใช้งานแล้ว</MudSelectItem>
+            <MudSelect T="CustomerStatusType?" @bind-Value="_customerStatus" Label="@L.Translate("CustomerStatusLabel")" Clearable="true">
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Prospect">@L.Translate("CustomerStatusProspect")</MudSelectItem>
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Active">@L.Translate("CustomerStatusActive")</MudSelectItem>
+                <MudSelectItem T="CustomerStatusType?" Value="@CustomerStatusType.Inactive">@L.Translate("CustomerStatusInactive")</MudSelectItem>
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudAutocomplete T="sc_user" Label="ผู้ดูแลบัญชีลูกค้า (Account Owner)" @bind-Value="_accountOwner"
+            <MudAutocomplete T="sc_user" Label="@L.Translate("AccountOwnerLabel")" @bind-Value="_accountOwner"
                 SearchFunc="SearchUsersAsync"
                 ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
         </MudItem>
-        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_nextRenewalDate" Label="วันครบกำหนดต่อสัญญา/ต่ออายุ" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_paymentTermsDays" Label="เทอมการชำระเงิน (วัน)" Min="0" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_salesNote" Label="บันทึกโอกาสขายเพิ่ม / ประวัติการติดต่อ" Lines="3" /></MudItem>
+        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_nextRenewalDate" Label="@L.Translate("NextRenewalDateLabel")" /></MudItem>
+        <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_paymentTermsDays" Label="@L.Translate("PaymentTermsDaysLabel")" Min="0" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_salesNote" Label="@L.Translate("SalesNoteLabel")" Lines="3" /></MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h6" Class="mb-2 mt-4">ระยะเวลา / หมายเหตุ</MudText>
+    <MudText Typo="Typo.h6" Class="mb-2 mt-4">@L.Translate("DurationRemarkHeading")</MudText>
     <MudGrid>
-        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_startDate" Label="วันที่เริ่มดำเนินการ" /></MudItem>
-        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_endDate" Label="วันที่สิ้นสุด (ถ้ามี)" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" MaxLength="2000" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_startDate" Label="@L.Translate("StartDateOperationLabel")" /></MudItem>
+        <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_endDate" Label="@L.Translate("EndDateIfAnyLabel")" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="@L.Translate("ColRemark")" Lines="2" MaxLength="2000" /></MudItem>
     </MudGrid>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -136,10 +137,10 @@
     }
 
     <MudStack Row="true" Spacing="2" Class="mt-4">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveButton")</MudButton>
         @if (_editingId is not null)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
         }
     </MudStack>
 
@@ -148,30 +149,30 @@
         <MudDivider Class="my-5" />
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h6">ผู้ติดต่อ (Contacts)</MudText>
+            <MudText Typo="Typo.h6">@L.Translate("ContactsHeading")</MudText>
             <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mb-3">
-            บุคคลติดต่อของบริษัทนี้ — แยกตามประเภทเพื่อให้รู้ว่าเรื่องเก็บเงินหรือเสนอขายเพิ่มต้องติดต่อใคร
+            @L.Translate("ContactsDesc")
         </MudText>
 
         <MudGrid>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Name" Label="ชื่อ-นามสกุล" Required="true" MaxLength="200" /></MudItem>
-            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Position" Label="ตำแหน่ง" MaxLength="150" /></MudItem>
-            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Department" Label="แผนก" MaxLength="150" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Name" Label="@L.Translate("FullNameLabel")" Required="true" MaxLength="200" /></MudItem>
+            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Position" Label="@L.Translate("PositionLabel")" MaxLength="150" /></MudItem>
+            <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newContact.Department" Label="@L.Translate("ContactDepartmentLabel")" MaxLength="150" /></MudItem>
             <MudItem xs="12" sm="2">
-                <MudSelect T="CompanyContactType" @bind-Value="_newContact.ContactType" Label="ประเภทผู้ติดต่อ">
-                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.General">ทั่วไป</MudSelectItem>
-                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Billing">การเงิน/เก็บเงิน</MudSelectItem>
-                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Technical">เทคนิค/ใช้งานระบบ</MudSelectItem>
-                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.DecisionMaker">ผู้มีอำนาจตัดสินใจ</MudSelectItem>
+                <MudSelect T="CompanyContactType" @bind-Value="_newContact.ContactType" Label="@L.Translate("ContactTypeFieldLabel")">
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.General">@L.Translate("ContactTypeGeneral")</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Billing">@L.Translate("ContactTypeBilling")</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.Technical">@L.Translate("ContactTypeTechnical")</MudSelectItem>
+                    <MudSelectItem T="CompanyContactType" Value="@CompanyContactType.DecisionMaker">@L.Translate("ContactTypeDecisionMaker")</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_newContact.IsPrimary" Label="ผู้ติดต่อหลัก" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Phone" Label="โทรศัพท์" MaxLength="50" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Mobile" Label="มือถือ" MaxLength="50" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Email" Label="อีเมล" MaxLength="250" InputType="InputType.Email" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Note" Label="หมายเหตุ" MaxLength="1000" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_newContact.IsPrimary" Label="@L.Translate("PrimaryContactLabel")" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Phone" Label="@L.Translate("FieldPhone")" MaxLength="50" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Mobile" Label="@L.Translate("FieldMobile")" MaxLength="50" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Email" Label="@L.Translate("FieldEmail")" MaxLength="250" InputType="InputType.Email" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newContact.Note" Label="@L.Translate("ColRemark")" MaxLength="1000" /></MudItem>
         </MudGrid>
 
         @if (!string.IsNullOrEmpty(_contactError))
@@ -181,22 +182,22 @@
 
         <MudStack Row="true" Spacing="2" Class="mt-3">
             <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveContactAsync">
-                @(_editingContactId is null ? "เพิ่มผู้ติดต่อ" : "บันทึกการแก้ไข")
+                @(_editingContactId is null ? L.Translate("AddContactButton") : L.Translate("SaveEditButton"))
             </MudButton>
             @if (_editingContactId is not null)
             {
-                <MudButton Variant="Variant.Text" OnClick="CancelContactEdit">ยกเลิก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelContactEdit">@L.Translate("CancelButton")</MudButton>
             }
         </MudStack>
 
         <MudTable Items="_contacts" Dense="true" Hover="true" Class="mt-4">
             <HeaderContent>
-                <MudTh>ชื่อ</MudTh>
-                <MudTh>ตำแหน่ง/แผนก</MudTh>
-                <MudTh>ประเภท</MudTh>
-                <MudTh>ติดต่อ</MudTh>
-                <MudTh>หลัก</MudTh>
-                <MudTh>สถานะ</MudTh>
+                <MudTh>@L.Translate("ColName")</MudTh>
+                <MudTh>@L.Translate("PositionDepartmentColLabel")</MudTh>
+                <MudTh>@L.Translate("ColType")</MudTh>
+                <MudTh>@L.Translate("ContactColLabel")</MudTh>
+                <MudTh>@L.Translate("PrimaryColLabel")</MudTh>
+                <MudTh>@L.Translate("ColStatus")</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -207,26 +208,26 @@
                 <MudTd>@(context.IsPrimary ? "✓" : "")</MudTd>
                 <MudTd>
                     <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                        @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                        @(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))
                     </MudChip>
                 </MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditContact(context))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditContact(context))">@L.Translate("EditButton")</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleContactActiveAsync(context))">
-                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                        @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                     </MudButton>
                 </MudTd>
             </RowTemplate>
         </MudTable>
         @if (_contacts.Count == 0)
         {
-            <MudText Typo="Typo.body2" Class="mt-2">ยังไม่มีผู้ติดต่อ</MudText>
+            <MudText Typo="Typo.body2" Class="mt-2">@L.Translate("NoContactsYetMessage")</MudText>
         }
     }
 
     <MudDivider Class="my-5" />
 
-    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+    <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchLabel")" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
 
@@ -256,9 +257,9 @@
                         </MudStack>
                         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-3">
                             <MudChip T="string" Size="Size.Small" Color="@(item.isActive == true ? Color.Success : Color.Default)">
-                                @(item.isActive == true ? "ใช้งาน" : "ไม่ใช้งาน")
+                                @(item.isActive == true ? L.Translate("PeriodActiveStatus") : L.Translate("NotActiveChip"))
                             </MudChip>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(item))">แก้ไข</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(item))">@L.Translate("EditButton")</MudButton>
                         </MudStack>
                     </MudCardContent>
                 </MudCard>
@@ -267,7 +268,7 @@
         @if (_items.Count == 0)
         {
             <MudItem xs="12">
-                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+                <MudText Typo="Typo.body2">@L.Translate("NoDataYetMessage")</MudText>
             </MudItem>
         }
     </MudGrid>
@@ -443,8 +444,8 @@
     private async Task SaveAsync()
     {
         _error = null;
-        if (string.IsNullOrWhiteSpace(_code)) { _error = "กรุณาระบุรหัสบริษัท"; return; }
-        if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อบริษัท"; return; }
+        if (string.IsNullOrWhiteSpace(_code)) { _error = L.Translate("CompanyCodeRequiredError"); return; }
+        if (string.IsNullOrWhiteSpace(_name)) { _error = L.Translate("CompanyNameRequiredError"); return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
@@ -452,7 +453,7 @@
         // DB-level unique constraint on it.
         var codeTaken = await context.com_companies.AnyAsync(c =>
             c.code == _code && (_editingId == null || c.id != _editingId));
-        if (codeTaken) { _error = "รหัสบริษัทนี้ถูกใช้แล้ว"; return; }
+        if (codeTaken) { _error = L.Translate("CompanyCodeTakenError"); return; }
 
         var registeredDate = _registeredDate is DateTime rd ? DateOnly.FromDateTime(rd) : (DateOnly?)null;
         var nextRenewalDate = _nextRenewalDate is DateTime nrd ? DateOnly.FromDateTime(nrd) : (DateOnly?)null;
@@ -460,7 +461,7 @@
         if (_editingId is long id)
         {
             var existing = await context.com_companies.FirstOrDefaultAsync(c => c.id == id);
-            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            if (existing is null) { _error = L.Translate("OtRuleNotFoundError"); return; }
             existing.code = _code;
             existing.abbr = _abbr;
             existing.name = _name;
@@ -526,7 +527,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
         CancelEdit();
         await LoadAsync();
     }
@@ -539,13 +540,13 @@
         const long maxSize = 5 * 1024 * 1024; // 5 MB
         if (file.Size > maxSize)
         {
-            _logoError = "ไฟล์ใหญ่เกินไป (จำกัด 5 MB)";
+            _logoError = L.Translate("LogoFileTooLargeError");
             return;
         }
         var ext = Path.GetExtension(file.Name).ToLowerInvariant();
         if (ext != ".jpg" && ext != ".jpeg" && ext != ".png")
         {
-            _logoError = "รองรับเฉพาะไฟล์ .jpg/.jpeg/.png";
+            _logoError = L.Translate("LogoFileTypeError");
             return;
         }
 
@@ -567,17 +568,17 @@
         _logoPath = relativePath;
         _logoCacheBust = DateTime.Now.Ticks.ToString();
         await LoadAsync();
-        Snackbar.Add("อัปโหลดโลโก้เรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("LogoUploadedSuccess"), Severity.Success);
     }
 
     // ----- contacts -----
 
-    private static string ContactTypeLabel(CompanyContactType type) => type switch
+    private string ContactTypeLabel(CompanyContactType type) => type switch
     {
-        CompanyContactType.Billing => "การเงิน/เก็บเงิน",
-        CompanyContactType.Technical => "เทคนิค/ใช้งานระบบ",
-        CompanyContactType.DecisionMaker => "ผู้มีอำนาจตัดสินใจ",
-        _ => "ทั่วไป",
+        CompanyContactType.Billing => L.Translate("ContactTypeBilling"),
+        CompanyContactType.Technical => L.Translate("ContactTypeTechnical"),
+        CompanyContactType.DecisionMaker => L.Translate("ContactTypeDecisionMaker"),
+        _ => L.Translate("ContactTypeGeneral"),
     };
 
     private void StartEditContact(Com_CompanyContact contact)
@@ -609,14 +610,14 @@
     {
         _contactError = null;
         if (_editingId is not long companyId) return;
-        if (string.IsNullOrWhiteSpace(_newContact.Name)) { _contactError = "กรุณาระบุชื่อผู้ติดต่อ"; return; }
+        if (string.IsNullOrWhiteSpace(_newContact.Name)) { _contactError = L.Translate("ContactNameRequiredError"); return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
         if (_editingContactId is long contactId)
         {
             var existing = await context.Com_CompanyContacts.FirstOrDefaultAsync(c => c.Id == contactId && c.CompanyId == companyId);
-            if (existing is null) { _contactError = "ไม่พบข้อมูลผู้ติดต่อ"; return; }
+            if (existing is null) { _contactError = L.Translate("ContactNotFoundError"); return; }
             existing.Name = _newContact.Name;
             existing.Position = _newContact.Position;
             existing.Department = _newContact.Department;
@@ -647,7 +648,7 @@
         }
 
         await context.SaveChangesAsync();
-        Snackbar.Add("บันทึกผู้ติดต่อเรียบร้อย", Severity.Success);
+        Snackbar.Add(L.Translate("ContactSavedSuccess"), Severity.Success);
         CancelContactEdit();
 
         _contacts = await context.Com_CompanyContacts
