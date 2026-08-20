@@ -1,5 +1,6 @@
 @page "/employee"
 @page "/employee/{Id:long}"
+@layout EmployeeHubLayout
 @using HRM.Models
 @using HRM.Services.Audit
 @using Microsoft.AspNetCore.Authorization
@@ -7,65 +8,33 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject IAuditLogger AuditLogger
-@inject NavigationManager Nav
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>ข้อมูลพนักงาน</PageTitle>
 
-<MudPaper Class="pa-4 mb-4" MaxWidth="500px">
-    <MudText Typo="Typo.h6" Class="mb-2">ค้นหาพนักงาน</MudText>
-    <MudAutocomplete T="Hremployee" Label="รหัสพนักงาน / ชื่อ" Value="_searchSelected" ValueChanged="OnEmployeePicked"
-        SearchFunc="SearchEmployeesAsync"
-        ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-</MudPaper>
-
-@if (Id == 0 || _emp is null)
+@if (Id != 0 && _emp is not null)
 {
-    <MudAlert Severity="Severity.Info" Class="ma-4">ค้นหาและเลือกพนักงานเพื่อดูข้อมูล</MudAlert>
-}
-else
-{
-    <MudGrid Class="pa-2">
-        <MudItem xs="12" md="9">
-            <MudPaper Class="pa-4 mb-4">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudText Typo="Typo.h5">ข้อมูลทั่วไป</MudText>
-                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
-                </MudStack>
-                <MudSimpleTable Dense="true" Class="mt-2">
-                    <tbody>
-                        <tr><td>ชื่อ-สกุล</td><td>@_emp.EmpName @_emp.EmpSurname</td><td>รหัสพนักงาน</td><td>@_emp.EmpNo</td></tr>
-                        <tr><td>เลขประจำตัวประชาชน</td><td>@_emp.IdCard</td><td>วันเกิด</td><td>@(_emp.BirthDate?.ToString("dd/MM/yyyy"))</td></tr>
-                        <tr><td>วันเริ่มงาน</td><td>@(_emp.WorkDate?.ToString("dd/MM/yyyy"))</td><td>อายุงาน</td><td>@TenureText()</td></tr>
-                        <tr><td>ตำแหน่ง</td><td colspan="3">@(_currentSlot?.Name ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</td></tr>
-                        <tr><td>สังกัด</td><td colspan="3">@_orgName</td></tr>
-                    </tbody>
-                </MudSimpleTable>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" md="3">
-            <MudPaper Class="pa-2">
-                <MudNavMenu>
-                    <MudNavLink Href="@($"/employee/{Id}")" Match="NavLinkMatch.All">ข้อมูลทั่วไป</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/education")">ประวัติการศึกษา</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/experience")">ประสบการณ์ก่อนเข้าทำงาน</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/marriage")">ประวัติการสมรส</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/family")">บุคคลในครอบครัว</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/name-change")">ประวัติการเปลี่ยนชื่อ-สกุล</MudNavLink>
-                    <MudNavLink Href="@($"/employee/{Id}/contact-person")">บุคคลติดต่อในยามฉุกเฉิน</MudNavLink>
-                    <MudNavLink Href="/pay/employees">ข้อมูลเงินเดือน/ธนาคาร</MudNavLink>
-                </MudNavMenu>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ข้อมูลทั่วไป</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudSimpleTable Dense="true" Class="mt-2">
+            <tbody>
+                <tr><td>ชื่อ-สกุล</td><td>@_emp.EmpName @_emp.EmpSurname</td><td>รหัสพนักงาน</td><td>@_emp.EmpNo</td></tr>
+                <tr><td>เลขประจำตัวประชาชน</td><td>@_emp.IdCard</td><td>วันเกิด</td><td>@(_emp.BirthDate?.ToString("dd/MM/yyyy"))</td></tr>
+                <tr><td>วันเริ่มงาน</td><td>@(_emp.WorkDate?.ToString("dd/MM/yyyy"))</td><td>อายุงาน</td><td>@TenureText()</td></tr>
+                <tr><td>ตำแหน่ง</td><td colspan="3">@(_currentSlot?.Name ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</td></tr>
+                <tr><td>สังกัด</td><td colspan="3">@_orgName</td></tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
 }
 
 @code {
     [Parameter] public long Id { get; set; }
 
     private Hremployee? _emp;
-    private Hremployee? _searchSelected;
     private Pos_PositionSlot? _currentSlot;
     private string? _orgName;
 
@@ -77,7 +46,6 @@ else
         _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
         if (_emp is null) return;
 
-        _searchSelected = _emp;
         _currentSlot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.HremployeeId == Id && s.IsActive);
         if (_currentSlot?.OrganizationId is not null)
         {
@@ -99,24 +67,5 @@ else
         var years = span.Days / 365;
         var months = (span.Days % 365) / 30;
         return $"{years} ปี {months} เดือน";
-    }
-
-    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Hremployee.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            query = query.Where(e => e.EmpNo.Contains(search)
-                || (e.EmpName != null && e.EmpName.Contains(search))
-                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
-        }
-        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
-    }
-
-    private void OnEmployeePicked(Hremployee? emp)
-    {
-        _searchSelected = emp;
-        if (emp is not null) Nav.NavigateTo($"/employee/{emp.id}");
     }
 }

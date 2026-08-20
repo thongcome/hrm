@@ -1,0 +1,116 @@
+@layout HRM.Components.Layout.MainLayout
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using System.Text.RegularExpressions
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IDbContextFactory<HRMContext> DbFactory
+
+@* Shared "frame" for /employee and every /employee/{id}/* section page, so
+   the search box + section nav menu stay visible across in-app navigation
+   between sections instead of disappearing on every click (each section used
+   to be its own standalone page with no shared chrome at all) — mirrors
+   PayrollEmployeeHubLayout.razor's pattern. LayoutComponentBase doesn't get
+   route parameters, so the employee id is parsed from the URL directly and
+   re-derived on every LocationChanged. *@
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="500px">
+    <MudText Typo="Typo.h6" Class="mb-2">ค้นหาพนักงาน</MudText>
+    <MudAutocomplete T="Hremployee" Label="รหัสพนักงาน / ชื่อ" Value="_searchSelected" ValueChanged="OnEmployeePicked"
+        SearchFunc="SearchEmployeesAsync"
+        ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+</MudPaper>
+
+@if (_employeeId == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="ma-4">ค้นหาและเลือกพนักงานเพื่อดูข้อมูล</MudAlert>
+}
+else if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else if (_searchSelected is null)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+}
+else
+{
+    <MudGrid Class="pa-2">
+        <MudItem xs="12" md="9">
+            @Body
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-2">
+                <MudNavMenu>
+                    <MudNavLink Href="@($"/employee/{_employeeId}")" Match="NavLinkMatch.All">ข้อมูลทั่วไป</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/education")">ประวัติการศึกษา</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/experience")">ประสบการณ์ก่อนเข้าทำงาน</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/marriage")">ประวัติการสมรส</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/family")">บุคคลในครอบครัว</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/name-change")">ประวัติการเปลี่ยนชื่อ-สกุล</MudNavLink>
+                    <MudNavLink Href="@($"/employee/{_employeeId}/contact-person")">บุคคลติดต่อในยามฉุกเฉิน</MudNavLink>
+                    <MudNavLink Href="/pay/employees">ข้อมูลเงินเดือน/ธนาคาร</MudNavLink>
+                </MudNavMenu>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private long _employeeId;
+    private Hremployee? _searchSelected;
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        await LoadForCurrentUriAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await LoadForCurrentUriAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadForCurrentUriAsync()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var match = Regex.Match(relativePath, @"^employee/(\d+)");
+        var id = match.Success ? long.Parse(match.Groups[1].Value) : 0;
+        if (id == _employeeId && (id == 0 || _searchSelected is not null || _notFound)) return; // already resolved for this id
+
+        _employeeId = id;
+        _notFound = false;
+        _searchSelected = null;
+        if (_employeeId == 0) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _searchSelected = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _employeeId);
+        if (_searchSelected is null) _notFound = true;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void OnEmployeePicked(Hremployee? emp)
+    {
+        _searchSelected = emp;
+        if (emp is not null) Nav.NavigateTo($"/employee/{emp.id}");
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}
