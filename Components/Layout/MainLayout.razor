@@ -3,7 +3,6 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject AuthenticationStateProvider AuthStateProvider
-@inject MenuStateService MenuService
 @inject JsonLocalizationService L
 @inject LanguageState LangState
 @using Microsoft.AspNetCore.Components.Authorization
@@ -56,18 +55,6 @@
                 @L.Translate("NavAllLinksTemp")
             </MudNavLink>
 
-            @if (MenuService.AllowedMenus.Any())
-            {
-                <MudNavGroup Title="@L.Translate("NavPermittedMenus")" Icon="@Icons.Material.Filled.VerifiedUser" Expanded="true">
-                    @foreach (var menu in MenuService.AllowedMenus.OrderBy(m => m.menuorder))
-                    {
-                        <MudNavLink Href="@menu.url" Icon="@(string.IsNullOrEmpty(menu.icon) ? Icons.Material.Filled.ChevronRight : menu.icon)">
-                            @menu.menuname
-                        </MudNavLink>
-                    }
-                </MudNavGroup>
-            }
-
             @if (_hasEssAccess)
             {
                 <MudNavGroup Title="@L.Translate("NavEss")" Icon="@Icons.Material.Filled.Person" Expanded="false">
@@ -76,225 +63,402 @@
                     <MudNavLink Href="/ess/payslips" Icon="@Icons.Material.Filled.Receipt">@L.Translate("NavEssPayslips")</MudNavLink>
                     <MudNavLink Href="/ess/attendance-checkin" Icon="@Icons.Material.Filled.MyLocation">@L.Translate("NavEssCheckin")</MudNavLink>
                     <MudNavLink Href="/att/my-timesheet" Icon="@Icons.Material.Filled.Schedule">@L.Translate("NavEssTimesheet")</MudNavLink>
-                    <MudNavLink Href="/ess/my-okr" Icon="@Icons.Material.Filled.TrackChanges">@L.Translate("NavEssOkr")</MudNavLink>
-                    <MudNavLink Href="/ess/lms/catalog" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavEssLmsCatalog")</MudNavLink>
-                    <MudNavLink Href="/ess/lms/my-training" Icon="@Icons.Material.Filled.School">@L.Translate("NavEssLmsHistory")</MudNavLink>
-                    <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Campaign">@L.Translate("NavEssAnnouncements")</MudNavLink>
+                    @if (Has("OKR_ACCESS"))
+                    {
+                        <MudNavLink Href="/ess/my-okr" Icon="@Icons.Material.Filled.TrackChanges">@L.Translate("NavEssOkr")</MudNavLink>
+                    }
+                    @if (Has("LMS_ACCESS"))
+                    {
+                        <MudNavLink Href="/ess/lms/catalog" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavEssLmsCatalog")</MudNavLink>
+                        <MudNavLink Href="/ess/lms/my-training" Icon="@Icons.Material.Filled.School">@L.Translate("NavEssLmsHistory")</MudNavLink>
+                    }
+                    @if (Has("HR_ANNOUNCE_ACCESS"))
+                    {
+                        <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Campaign">@L.Translate("NavEssAnnouncements")</MudNavLink>
+                    }
                     <MudNavLink Href="/ess/surveys" Icon="@Icons.Material.Filled.Poll">@L.Translate("NavEssSurveys")</MudNavLink>
                     <MudNavLink Href="/ess/recognition" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavEssRecognition")</MudNavLink>
-                    <MudNavLink Href="/exp/my-claims" Icon="@Icons.Material.Filled.ReceiptLong">@L.Translate("NavEssExpenseClaims")</MudNavLink>
+                    @if (Has("EXP_ACCESS"))
+                    {
+                        <MudNavLink Href="/exp/my-claims" Icon="@Icons.Material.Filled.ReceiptLong">@L.Translate("NavEssExpenseClaims")</MudNavLink>
+                    }
                     <MudNavLink Href="/ess/grievance/new" Icon="@Icons.Material.Filled.ReportProblem">@L.Translate("NavEssGrievanceNew")</MudNavLink>
                     <MudNavLink Href="/ess/grievance/my" Icon="@Icons.Material.Filled.ListAlt">@L.Translate("NavEssGrievanceMy")</MudNavLink>
                 </MudNavGroup>
             }
 
-            <MudNavGroup Title="@L.Translate("NavRecruitment")" Icon="@Icons.Material.Filled.PersonSearch" Expanded="false">
-                <MudNavLink Href="/rec/requisitions" Icon="@Icons.Material.Filled.RequestPage">@L.Translate("NavRecRequisitions")</MudNavLink>
-                <MudNavLink Href="/rec/postings" Icon="@Icons.Material.Filled.Campaign">@L.Translate("NavRecPostings")</MudNavLink>
-                <MudNavLink Href="/rec/offers" Icon="@Icons.Material.Filled.Mail">@L.Translate("NavRecOffers")</MudNavLink>
-                <MudNavLink Href="/rec/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavRecDashboard")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("REC_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavRecruitment")" Icon="@Icons.Material.Filled.PersonSearch" Expanded="false">
+                    <MudNavLink Href="/rec/requisitions" Icon="@Icons.Material.Filled.RequestPage">@L.Translate("NavRecRequisitions")</MudNavLink>
+                    <MudNavLink Href="/rec/postings" Icon="@Icons.Material.Filled.Campaign">@L.Translate("NavRecPostings")</MudNavLink>
+                    <MudNavLink Href="/rec/offers" Icon="@Icons.Material.Filled.Mail">@L.Translate("NavRecOffers")</MudNavLink>
+                    <MudNavLink Href="/rec/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavRecDashboard")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavEmployee")" Icon="@Icons.Material.Filled.Person" Expanded="false">
-                <MudNavLink Href="/employee" Icon="@Icons.Material.Filled.Search">@L.Translate("NavEmployeeSearch")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("PAY_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavEmployee")" Icon="@Icons.Material.Filled.Person" Expanded="false">
+                    <MudNavLink Href="/employee" Icon="@Icons.Material.Filled.Search">@L.Translate("NavEmployeeSearch")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavOrganization")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
-                <MudNavLink Href="/org/organizations" Icon="@Icons.Material.Filled.Business">@L.Translate("NavOrgUnits")</MudNavLink>
-                <MudNavLink Href="/org/section-types" Icon="@Icons.Material.Filled.Layers">@L.Translate("NavOrgUnitTypes")</MudNavLink>
-                <MudNavLink Href="/org/subsection-types" Icon="@Icons.Material.Filled.Category">@L.Translate("NavOrgSubTypes")</MudNavLink>
-                <MudNavLink Href="/org/set-boss" Icon="@Icons.Material.Filled.SupervisorAccount">@L.Translate("NavOrgSetBoss")</MudNavLink>
-                <MudNavLink Href="/org/change-history" Icon="@Icons.Material.Filled.History">@L.Translate("NavOrgChangeHistory")</MudNavLink>
-                <MudNavLink Href="/org/headcount" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavOrgHeadcount")</MudNavLink>
-                <MudNavLink Href="/org/chart" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavOrgChartVisual")</MudNavLink>
-                <MudNavLink Href="/org/chart-draggable" Icon="@Icons.Material.Filled.PanTool">@L.Translate("NavOrgChartDraggable")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("ORG_ADMIN", "POS_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavOrganization")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
+                    @if (Has("ORG_ADMIN"))
+                    {
+                        <MudNavLink Href="/org/organizations" Icon="@Icons.Material.Filled.Business">@L.Translate("NavOrgUnits")</MudNavLink>
+                        <MudNavLink Href="/org/section-types" Icon="@Icons.Material.Filled.Layers">@L.Translate("NavOrgUnitTypes")</MudNavLink>
+                        <MudNavLink Href="/org/subsection-types" Icon="@Icons.Material.Filled.Category">@L.Translate("NavOrgSubTypes")</MudNavLink>
+                        <MudNavLink Href="/org/set-boss" Icon="@Icons.Material.Filled.SupervisorAccount">@L.Translate("NavOrgSetBoss")</MudNavLink>
+                        <MudNavLink Href="/org/change-history" Icon="@Icons.Material.Filled.History">@L.Translate("NavOrgChangeHistory")</MudNavLink>
+                    }
+                    @if (Has("POS_ADMIN"))
+                    {
+                        <MudNavLink Href="/org/headcount" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavOrgHeadcount")</MudNavLink>
+                    }
+                    @if (Has("ORG_ADMIN"))
+                    {
+                        <MudNavLink Href="/org/chart" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavOrgChartVisual")</MudNavLink>
+                        <MudNavLink Href="/org/chart-draggable" Icon="@Icons.Material.Filled.PanTool">@L.Translate("NavOrgChartDraggable")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavPosition")" Icon="@Icons.Material.Filled.Badge" Expanded="false">
-                <MudNavLink Href="/pos/employee-types" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavPosEmployeeTypes")</MudNavLink>
-                <MudNavLink Href="/pos/exec-types" Icon="@Icons.Material.Filled.WorkOutline">@L.Translate("NavPosExecTypes")</MudNavLink>
-                <MudNavLink Href="/pos/position-slots" Icon="@Icons.Material.Filled.EventSeat">@L.Translate("NavPosSlots")</MudNavLink>
-                <MudNavLink Href="/pos/headcount-budget" Icon="@Icons.Material.Filled.PieChart">@L.Translate("NavPosHeadcountBudget")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("POS_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavPosition")" Icon="@Icons.Material.Filled.Badge" Expanded="false">
+                    <MudNavLink Href="/pos/employee-types" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavPosEmployeeTypes")</MudNavLink>
+                    <MudNavLink Href="/pos/exec-types" Icon="@Icons.Material.Filled.WorkOutline">@L.Translate("NavPosExecTypes")</MudNavLink>
+                    <MudNavLink Href="/pos/position-slots" Icon="@Icons.Material.Filled.EventSeat">@L.Translate("NavPosSlots")</MudNavLink>
+                    <MudNavLink Href="/pos/headcount-budget" Icon="@Icons.Material.Filled.PieChart">@L.Translate("NavPosHeadcountBudget")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavJobCompetency")" Icon="@Icons.Material.Filled.EmojiObjects" Expanded="false">
-                <MudNavLink Href="/job/families" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavJobFamilies")</MudNavLink>
-                <MudNavLink Href="/job/levels" Icon="@Icons.Material.Filled.Stairs">@L.Translate("NavJobLevels")</MudNavLink>
-                <MudNavLink Href="/competency/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavCompetencyCategories")</MudNavLink>
-                <MudNavLink Href="/competency/library" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavCompetencyLibrary")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("JOBCOMP_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavJobCompetency")" Icon="@Icons.Material.Filled.EmojiObjects" Expanded="false">
+                    <MudNavLink Href="/job/families" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavJobFamilies")</MudNavLink>
+                    <MudNavLink Href="/job/levels" Icon="@Icons.Material.Filled.Stairs">@L.Translate("NavJobLevels")</MudNavLink>
+                    <MudNavLink Href="/competency/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavCompetencyCategories")</MudNavLink>
+                    <MudNavLink Href="/competency/library" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavCompetencyLibrary")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavAttendance")" Icon="@Icons.Material.Filled.AccessTime" Expanded="false">
-                <MudNavLink Href="/att/settings" Icon="@Icons.Material.Filled.Tune">@L.Translate("NavAttSettings")</MudNavLink>
-                <MudNavLink Href="/att/shifts" Icon="@Icons.Material.Filled.Schedule">@L.Translate("NavAttShifts")</MudNavLink>
-                <MudNavLink Href="/att/import" Icon="@Icons.Material.Filled.UploadFile">@L.Translate("NavAttImport")</MudNavLink>
-                <MudNavLink Href="/att/report" Icon="@Icons.Material.Filled.Assessment">@L.Translate("NavAttReport")</MudNavLink>
-                <MudNavLink Href="/att/geofence-locations" Icon="@Icons.Material.Filled.MyLocation">@L.Translate("NavAttGeofence")</MudNavLink>
-                <MudNavLink Href="/att/projects" Icon="@Icons.Material.Filled.Work">@L.Translate("NavAttProjects")</MudNavLink>
-                <MudNavLink Href="/att/ot-rules" Icon="@Icons.Material.Filled.MoneyOff">@L.Translate("NavAttOtRules")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("ATT_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavAttendance")" Icon="@Icons.Material.Filled.AccessTime" Expanded="false">
+                    <MudNavLink Href="/att/settings" Icon="@Icons.Material.Filled.Tune">@L.Translate("NavAttSettings")</MudNavLink>
+                    <MudNavLink Href="/att/shifts" Icon="@Icons.Material.Filled.Schedule">@L.Translate("NavAttShifts")</MudNavLink>
+                    <MudNavLink Href="/att/import" Icon="@Icons.Material.Filled.UploadFile">@L.Translate("NavAttImport")</MudNavLink>
+                    <MudNavLink Href="/att/report" Icon="@Icons.Material.Filled.Assessment">@L.Translate("NavAttReport")</MudNavLink>
+                    <MudNavLink Href="/att/geofence-locations" Icon="@Icons.Material.Filled.MyLocation">@L.Translate("NavAttGeofence")</MudNavLink>
+                    <MudNavLink Href="/att/projects" Icon="@Icons.Material.Filled.Work">@L.Translate("NavAttProjects")</MudNavLink>
+                    <MudNavLink Href="/att/ot-rules" Icon="@Icons.Material.Filled.MoneyOff">@L.Translate("NavAttOtRules")</MudNavLink>
+                </MudNavGroup>
+            }
 
             <MudNavGroup Title="@L.Translate("NavPayroll")" Icon="@Icons.Material.Filled.Payments" Expanded="true">
+                @* These four legacy links carry no [Authorize(Policy="Menu:...")] at all today — left ungated so behavior is unchanged; flagged separately as its own gap. *@
                 <MudNavLink Href="/hrpayrolldasboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPayDashboardLegacy")</MudNavLink>
                 <MudNavLink Href="/hremployees" Icon="@Icons.Material.Filled.People">@L.Translate("NavPayHrEmployeesLegacy")</MudNavLink>
-                <MudNavLink Href="/pay/employees" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavPayEmployeesAdmin")</MudNavLink>
-                <MudNavLink Href="/payrollprocess" Icon="@Icons.Material.Filled.PlaylistPlay">@L.Translate("NavPayProcess")</MudNavLink>
+                @if (Has("PAY_ADMIN"))
+                {
+                    <MudNavLink Href="/pay/employees" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavPayEmployeesAdmin")</MudNavLink>
+                }
+                @if (Has("PAY_RUNS"))
+                {
+                    <MudNavLink Href="/payrollprocess" Icon="@Icons.Material.Filled.PlaylistPlay">@L.Translate("NavPayProcess")</MudNavLink>
+                }
                 <MudNavLink Href="/AIpayrollprocess" Icon="@Icons.Material.Filled.AutoAwesome">@L.Translate("NavPayAiProcess")</MudNavLink>
-                <MudNavLink Href="/pay/runs" Icon="@Icons.Material.Filled.RequestQuote">@L.Translate("NavPayRunsNew")</MudNavLink>
-                <MudNavLink Href="/pay/adhoc" Icon="@Icons.Material.Filled.PostAdd">@L.Translate("NavPayAdhoc")</MudNavLink>
-                <MudNavLink Href="/pay/admin/payslip-settings" Icon="@Icons.Material.Filled.Receipt">@L.Translate("NavPaySlipSettings")</MudNavLink>
-                <MudNavLink Href="/pay/admin/periods" Icon="@Icons.Material.Filled.CalendarMonth">@L.Translate("NavPayPeriods")</MudNavLink>
-                <MudNavLink Href="/pay/admin/salary-grades" Icon="@Icons.Material.Filled.BarChart">@L.Translate("NavPaySalaryGrades")</MudNavLink>
-                <MudNavLink Href="/pay/admin/lifecycle-task-templates" Icon="@Icons.Material.Filled.ChecklistRtl">@L.Translate("NavPayLifecycleChecklist")</MudNavLink>
-                <MudNavLink Href="/pay/admin/insurance-plans" Icon="@Icons.Material.Filled.HealthAndSafety">@L.Translate("NavPayInsurancePlans")</MudNavLink>
-                <MudNavLink Href="/pay/admin/welfare-fund-policy" Icon="@Icons.Material.Filled.Savings">@L.Translate("NavPayWelfareFund")</MudNavLink>
-                <MudNavLink Href="/pay/admin/provident-fund-policy" Icon="@Icons.Material.Filled.Savings">@L.Translate("NavPayProvidentFund")</MudNavLink>
-                <MudNavLink Href="/pay/admin/chart-of-accounts" Icon="@Icons.Material.Filled.AccountBalance">@L.Translate("NavPayChartOfAccounts")</MudNavLink>
-                <MudNavLink Href="/pay/admin/document-expiry" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavPayDocExpiry")</MudNavLink>
-                <MudNavLink Href="/pay/reports/labor-cost-trend" Icon="@Icons.Material.Filled.TrendingUp">@L.Translate("NavPayLaborCostTrend")</MudNavLink>
-                <MudNavLink Href="/pay/reports/pay-item-breakdown" Icon="@Icons.Material.Filled.PieChart">@L.Translate("NavPayItemBreakdown")</MudNavLink>
-                <MudNavLink Href="/pay/withholding-cert" Icon="@Icons.Material.Filled.Receipt">@L.Translate("NavPayWithholdingCert")</MudNavLink>
-                <MudNavLink Href="/pay/por1" Icon="@Icons.Material.Filled.RequestPage">@L.Translate("NavPayPor1")</MudNavLink>
-                <MudNavLink Href="/pay/salary-cert" Icon="@Icons.Material.Filled.Description">@L.Translate("NavPaySalaryCert")</MudNavLink>
-                <MudNavLink Href="/pay/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPayDashboard")</MudNavLink>
+                @if (Has("PAY_RUNS"))
+                {
+                    <MudNavLink Href="/pay/runs" Icon="@Icons.Material.Filled.RequestQuote">@L.Translate("NavPayRunsNew")</MudNavLink>
+                }
+                @if (Has("PAY_ADHOC"))
+                {
+                    <MudNavLink Href="/pay/adhoc" Icon="@Icons.Material.Filled.PostAdd">@L.Translate("NavPayAdhoc")</MudNavLink>
+                }
+                @if (Has("PAY_ADMIN"))
+                {
+                    <MudNavLink Href="/pay/admin/payslip-settings" Icon="@Icons.Material.Filled.Receipt">@L.Translate("NavPaySlipSettings")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/periods" Icon="@Icons.Material.Filled.CalendarMonth">@L.Translate("NavPayPeriods")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/salary-grades" Icon="@Icons.Material.Filled.BarChart">@L.Translate("NavPaySalaryGrades")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/lifecycle-task-templates" Icon="@Icons.Material.Filled.ChecklistRtl">@L.Translate("NavPayLifecycleChecklist")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/insurance-plans" Icon="@Icons.Material.Filled.HealthAndSafety">@L.Translate("NavPayInsurancePlans")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/welfare-fund-policy" Icon="@Icons.Material.Filled.Savings">@L.Translate("NavPayWelfareFund")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/provident-fund-policy" Icon="@Icons.Material.Filled.Savings">@L.Translate("NavPayProvidentFund")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/chart-of-accounts" Icon="@Icons.Material.Filled.AccountBalance">@L.Translate("NavPayChartOfAccounts")</MudNavLink>
+                    <MudNavLink Href="/pay/admin/document-expiry" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavPayDocExpiry")</MudNavLink>
+                }
+                @if (Has("PAY_REPORTS"))
+                {
+                    <MudNavLink Href="/pay/reports/labor-cost-trend" Icon="@Icons.Material.Filled.TrendingUp">@L.Translate("NavPayLaborCostTrend")</MudNavLink>
+                    <MudNavLink Href="/pay/reports/pay-item-breakdown" Icon="@Icons.Material.Filled.PieChart">@L.Translate("NavPayItemBreakdown")</MudNavLink>
+                }
+                @if (Has("PAY_ADMIN"))
+                {
+                    <MudNavLink Href="/pay/withholding-cert" Icon="@Icons.Material.Filled.Receipt">@L.Translate("NavPayWithholdingCert")</MudNavLink>
+                    <MudNavLink Href="/pay/por1" Icon="@Icons.Material.Filled.RequestPage">@L.Translate("NavPayPor1")</MudNavLink>
+                    <MudNavLink Href="/pay/salary-cert" Icon="@Icons.Material.Filled.Description">@L.Translate("NavPaySalaryCert")</MudNavLink>
+                }
+                @if (Has("PAY_REPORTS"))
+                {
+                    <MudNavLink Href="/pay/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPayDashboard")</MudNavLink>
+                }
             </MudNavGroup>
 
-            <MudNavGroup Title="@L.Translate("NavPerformance")" Icon="@Icons.Material.Filled.Assessment" Expanded="false">
-                <MudNavLink Href="/perf/periods" Icon="@Icons.Material.Filled.DateRange">@L.Translate("NavPerfPeriods")</MudNavLink>
-                <MudNavLink Href="/perf/evaluation-types" Icon="@Icons.Material.Filled.Description">@L.Translate("NavPerfEvalTypes")</MudNavLink>
-                <MudNavLink Href="/perf/rater-directions" Icon="@Icons.Material.Filled.CompareArrows">@L.Translate("NavPerfRaterDirections")</MudNavLink>
-                <MudNavLink Href="/perf/assignments" Icon="@Icons.Material.Filled.AssignmentInd">@L.Translate("NavPerfAssignments")</MudNavLink>
-                <MudNavLink Href="/perf/goals" Icon="@Icons.Material.Filled.Flag">@L.Translate("NavPerfGoals")</MudNavLink>
-                <MudNavLink Href="/perf/calibration" Icon="@Icons.Material.Filled.Tune">@L.Translate("NavPerfCalibration")</MudNavLink>
-                <MudNavLink Href="/perf/hr-dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPerfHrDashboard")</MudNavLink>
-                <MudNavLink Href="/perf/my-evaluations" Icon="@Icons.Material.Filled.RateReview">@L.Translate("NavPerfMyEvaluations")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("PERF_ADMIN", "PERF_ACCESS"))
+            {
+                <MudNavGroup Title="@L.Translate("NavPerformance")" Icon="@Icons.Material.Filled.Assessment" Expanded="false">
+                    @if (Has("PERF_ADMIN"))
+                    {
+                        <MudNavLink Href="/perf/periods" Icon="@Icons.Material.Filled.DateRange">@L.Translate("NavPerfPeriods")</MudNavLink>
+                        <MudNavLink Href="/perf/evaluation-types" Icon="@Icons.Material.Filled.Description">@L.Translate("NavPerfEvalTypes")</MudNavLink>
+                        <MudNavLink Href="/perf/rater-directions" Icon="@Icons.Material.Filled.CompareArrows">@L.Translate("NavPerfRaterDirections")</MudNavLink>
+                        <MudNavLink Href="/perf/assignments" Icon="@Icons.Material.Filled.AssignmentInd">@L.Translate("NavPerfAssignments")</MudNavLink>
+                        <MudNavLink Href="/perf/goals" Icon="@Icons.Material.Filled.Flag">@L.Translate("NavPerfGoals")</MudNavLink>
+                        <MudNavLink Href="/perf/calibration" Icon="@Icons.Material.Filled.Tune">@L.Translate("NavPerfCalibration")</MudNavLink>
+                        <MudNavLink Href="/perf/hr-dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPerfHrDashboard")</MudNavLink>
+                    }
+                    @if (Has("PERF_ACCESS"))
+                    {
+                        <MudNavLink Href="/perf/my-evaluations" Icon="@Icons.Material.Filled.RateReview">@L.Translate("NavPerfMyEvaluations")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavOkr")" Icon="@Icons.Material.Filled.TrackChanges" Expanded="false">
-                <MudNavLink Href="/okr/cycles" Icon="@Icons.Material.Filled.DateRange">@L.Translate("NavOkrCycles")</MudNavLink>
-                <MudNavLink Href="/okr/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavOkrCategories")</MudNavLink>
-                <MudNavLink Href="/okr/tree" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavOkrTree")</MudNavLink>
-                <MudNavLink Href="/okr/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavOkrDashboard")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("OKR_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavOkr")" Icon="@Icons.Material.Filled.TrackChanges" Expanded="false">
+                    <MudNavLink Href="/okr/cycles" Icon="@Icons.Material.Filled.DateRange">@L.Translate("NavOkrCycles")</MudNavLink>
+                    <MudNavLink Href="/okr/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavOkrCategories")</MudNavLink>
+                    <MudNavLink Href="/okr/tree" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavOkrTree")</MudNavLink>
+                    <MudNavLink Href="/okr/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavOkrDashboard")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavTalent")" Icon="@Icons.Material.Filled.GridView" Expanded="false">
-                <MudNavLink Href="/talent/team-rating" Icon="@Icons.Material.Filled.Star">@L.Translate("NavTalentTeamRating")</MudNavLink>
-                <MudNavLink Href="/talent/nine-box" Icon="@Icons.Material.Filled.GridOn">@L.Translate("NavTalentNineBox")</MudNavLink>
-                <MudNavLink Href="/talent/pool" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavTalentPool")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("TALENT_ADMIN", "TALENT_ACCESS"))
+            {
+                <MudNavGroup Title="@L.Translate("NavTalent")" Icon="@Icons.Material.Filled.GridView" Expanded="false">
+                    @if (Has("TALENT_ACCESS"))
+                    {
+                        <MudNavLink Href="/talent/team-rating" Icon="@Icons.Material.Filled.Star">@L.Translate("NavTalentTeamRating")</MudNavLink>
+                    }
+                    @if (Has("TALENT_ADMIN"))
+                    {
+                        <MudNavLink Href="/talent/nine-box" Icon="@Icons.Material.Filled.GridOn">@L.Translate("NavTalentNineBox")</MudNavLink>
+                        <MudNavLink Href="/talent/pool" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavTalentPool")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavIdp")" Icon="@Icons.Material.Filled.TrendingUp" Expanded="false">
-                <MudNavLink Href="/idp/my-plans" Icon="@Icons.Material.Filled.Person">@L.Translate("NavIdpMyPlans")</MudNavLink>
-                <MudNavLink Href="/idp/team" Icon="@Icons.Material.Filled.Group">@L.Translate("NavIdpTeam")</MudNavLink>
-                <MudNavLink Href="/idp/hr-overview" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavIdpHrOverview")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("IDP_ACCESS", "IDP_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavIdp")" Icon="@Icons.Material.Filled.TrendingUp" Expanded="false">
+                    @if (Has("IDP_ACCESS"))
+                    {
+                        <MudNavLink Href="/idp/my-plans" Icon="@Icons.Material.Filled.Person">@L.Translate("NavIdpMyPlans")</MudNavLink>
+                        <MudNavLink Href="/idp/team" Icon="@Icons.Material.Filled.Group">@L.Translate("NavIdpTeam")</MudNavLink>
+                    }
+                    @if (Has("IDP_ADMIN"))
+                    {
+                        <MudNavLink Href="/idp/hr-overview" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavIdpHrOverview")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavCareer")" Icon="@Icons.Material.Filled.TrendingUp" Expanded="false">
-                <MudNavLink Href="/career/my-path" Icon="@Icons.Material.Filled.Timeline">@L.Translate("NavCareerMyPath")</MudNavLink>
-                <MudNavLink Href="/career/internal-jobs" Icon="@Icons.Material.Filled.SwapHoriz">@L.Translate("NavCareerInternalJobs")</MudNavLink>
-                <MudNavLink Href="/career/paths" Icon="@Icons.Material.Filled.EditRoad">@L.Translate("NavCareerPathsAdmin")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("CAREER_ACCESS", "CAREER_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavCareer")" Icon="@Icons.Material.Filled.TrendingUp" Expanded="false">
+                    @if (Has("CAREER_ACCESS"))
+                    {
+                        <MudNavLink Href="/career/my-path" Icon="@Icons.Material.Filled.Timeline">@L.Translate("NavCareerMyPath")</MudNavLink>
+                        <MudNavLink Href="/career/internal-jobs" Icon="@Icons.Material.Filled.SwapHoriz">@L.Translate("NavCareerInternalJobs")</MudNavLink>
+                    }
+                    @if (Has("CAREER_ADMIN"))
+                    {
+                        <MudNavLink Href="/career/paths" Icon="@Icons.Material.Filled.EditRoad">@L.Translate("NavCareerPathsAdmin")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavSuccession")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
-                <MudNavLink Href="/succession/key-positions" Icon="@Icons.Material.Filled.Shield">@L.Translate("NavSuccessionKeyPositions")</MudNavLink>
-                <MudNavLink Href="/succession/bench-strength" Icon="@Icons.Material.Filled.Insights">@L.Translate("NavSuccessionBenchStrength")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("SUCC_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavSuccession")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
+                    <MudNavLink Href="/succession/key-positions" Icon="@Icons.Material.Filled.Shield">@L.Translate("NavSuccessionKeyPositions")</MudNavLink>
+                    <MudNavLink Href="/succession/bench-strength" Icon="@Icons.Material.Filled.Insights">@L.Translate("NavSuccessionBenchStrength")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavLms")" Icon="@Icons.Material.Filled.School" Expanded="false">
-                <MudNavLink Href="/lms/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavLmsDashboard")</MudNavLink>
-                <MudNavLink Href="/lms/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavLmsCategories")</MudNavLink>
-                <MudNavLink Href="/lms/courses" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavLmsCourses")</MudNavLink>
-                <MudNavLink Href="/lms/enrollments" Icon="@Icons.Material.Filled.HowToReg">@L.Translate("NavLmsEnrollments")</MudNavLink>
-                <MudNavLink Href="/lms/training-needs" Icon="@Icons.Material.Filled.Assignment">@L.Translate("NavLmsTrainingNeeds")</MudNavLink>
-                <MudNavLink Href="/lms/training-budget" Icon="@Icons.Material.Filled.AccountBalanceWallet">@L.Translate("NavLmsTrainingBudget")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("LMS_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavLms")" Icon="@Icons.Material.Filled.School" Expanded="false">
+                    <MudNavLink Href="/lms/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavLmsDashboard")</MudNavLink>
+                    <MudNavLink Href="/lms/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavLmsCategories")</MudNavLink>
+                    <MudNavLink Href="/lms/courses" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavLmsCourses")</MudNavLink>
+                    <MudNavLink Href="/lms/enrollments" Icon="@Icons.Material.Filled.HowToReg">@L.Translate("NavLmsEnrollments")</MudNavLink>
+                    <MudNavLink Href="/lms/training-needs" Icon="@Icons.Material.Filled.Assignment">@L.Translate("NavLmsTrainingNeeds")</MudNavLink>
+                    <MudNavLink Href="/lms/training-budget" Icon="@Icons.Material.Filled.AccountBalanceWallet">@L.Translate("NavLmsTrainingBudget")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavKm")" Icon="@Icons.Material.Filled.MenuBook" Expanded="false">
-                <MudNavLink Href="/km/articles-list" Icon="@Icons.Material.Filled.LibraryBooks">@L.Translate("NavKmArticlesList")</MudNavLink>
-                <MudNavLink Href="/km/experts" Icon="@Icons.Material.Filled.Person">@L.Translate("NavKmExperts")</MudNavLink>
-                <MudNavLink Href="/km/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavKmCategories")</MudNavLink>
-                <MudNavLink Href="/km/articles" Icon="@Icons.Material.Filled.Edit">@L.Translate("NavKmArticlesAdmin")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("KM_ACCESS", "KM_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavKm")" Icon="@Icons.Material.Filled.MenuBook" Expanded="false">
+                    @if (Has("KM_ACCESS"))
+                    {
+                        <MudNavLink Href="/km/articles-list" Icon="@Icons.Material.Filled.LibraryBooks">@L.Translate("NavKmArticlesList")</MudNavLink>
+                        <MudNavLink Href="/km/experts" Icon="@Icons.Material.Filled.Person">@L.Translate("NavKmExperts")</MudNavLink>
+                    }
+                    @if (Has("KM_ADMIN"))
+                    {
+                        <MudNavLink Href="/km/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavKmCategories")</MudNavLink>
+                        <MudNavLink Href="/km/articles" Icon="@Icons.Material.Filled.Edit">@L.Translate("NavKmArticlesAdmin")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavEmployeeRelations")" Icon="@Icons.Material.Filled.Balance" Expanded="false">
-                <MudNavLink Href="/hr/disciplinary" Icon="@Icons.Material.Filled.Gavel">@L.Translate("NavHrDisciplinary")</MudNavLink>
-                <MudNavLink Href="/hr/grievances" Icon="@Icons.Material.Filled.ReportProblem">@L.Translate("NavHrGrievances")</MudNavLink>
-                <MudNavLink Href="/hr/reward" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavHrReward")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("HR_DISCIPLINE_ADMIN", "HR_GRIEVANCE_ADMIN", "HR_REWARD_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavEmployeeRelations")" Icon="@Icons.Material.Filled.Balance" Expanded="false">
+                    @if (Has("HR_DISCIPLINE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/disciplinary" Icon="@Icons.Material.Filled.Gavel">@L.Translate("NavHrDisciplinary")</MudNavLink>
+                    }
+                    @if (Has("HR_GRIEVANCE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/grievances" Icon="@Icons.Material.Filled.ReportProblem">@L.Translate("NavHrGrievances")</MudNavLink>
+                    }
+                    @if (Has("HR_REWARD_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/reward" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavHrReward")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavEngagement")" Icon="@Icons.Material.Filled.Favorite" Expanded="false">
-                <MudNavLink Href="/eng/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavEngDashboard")</MudNavLink>
-                <MudNavLink Href="/eng/campaigns" Icon="@Icons.Material.Filled.Poll">@L.Translate("NavEngCampaigns")</MudNavLink>
-                <MudNavLink Href="/eng/question-bank" Icon="@Icons.Material.Filled.QuestionAnswer">@L.Translate("NavEngQuestionBank")</MudNavLink>
-                <MudNavLink Href="/eng/action-plans" Icon="@Icons.Material.Filled.Checklist">@L.Translate("NavEngActionPlans")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("ENG_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavEngagement")" Icon="@Icons.Material.Filled.Favorite" Expanded="false">
+                    <MudNavLink Href="/eng/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavEngDashboard")</MudNavLink>
+                    <MudNavLink Href="/eng/campaigns" Icon="@Icons.Material.Filled.Poll">@L.Translate("NavEngCampaigns")</MudNavLink>
+                    <MudNavLink Href="/eng/question-bank" Icon="@Icons.Material.Filled.QuestionAnswer">@L.Translate("NavEngQuestionBank")</MudNavLink>
+                    <MudNavLink Href="/eng/action-plans" Icon="@Icons.Material.Filled.Checklist">@L.Translate("NavEngActionPlans")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavExpenseClaims")" Icon="@Icons.Material.Filled.ReceiptLong" Expanded="false">
-                <MudNavLink Href="/exp/admin/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavExpCategories")</MudNavLink>
-                <MudNavLink Href="/exp/admin/claims" Icon="@Icons.Material.Filled.FactCheck">@L.Translate("NavExpAllClaims")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("EXP_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavExpenseClaims")" Icon="@Icons.Material.Filled.ReceiptLong" Expanded="false">
+                    <MudNavLink Href="/exp/admin/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavExpCategories")</MudNavLink>
+                    <MudNavLink Href="/exp/admin/claims" Icon="@Icons.Material.Filled.FactCheck">@L.Translate("NavExpAllClaims")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavAnnouncements")" Icon="@Icons.Material.Filled.Campaign" Expanded="false">
-                <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Article">@L.Translate("NavAnnouncePublic")</MudNavLink>
-                <MudNavLink Href="/hr/announcements/admin" Icon="@Icons.Material.Filled.EditNote">@L.Translate("NavAnnounceAdmin")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("HR_ANNOUNCE_ACCESS", "HR_ANNOUNCE_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavAnnouncements")" Icon="@Icons.Material.Filled.Campaign" Expanded="false">
+                    @if (Has("HR_ANNOUNCE_ACCESS"))
+                    {
+                        <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Article">@L.Translate("NavAnnouncePublic")</MudNavLink>
+                    }
+                    @if (Has("HR_ANNOUNCE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/announcements/admin" Icon="@Icons.Material.Filled.EditNote">@L.Translate("NavAnnounceAdmin")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavOrgDevelopment")" Icon="@Icons.Material.Filled.Business" Expanded="false">
-                <MudNavLink Href="/orgdev/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavOrgDevDashboard")</MudNavLink>
-                <MudNavLink Href="/orgdev/workforce-plan" Icon="@Icons.Material.Filled.People">@L.Translate("NavOrgDevWorkforcePlan")</MudNavLink>
-                <MudNavLink Href="/orgdev/leadership-development" Icon="@Icons.Material.Filled.School">@L.Translate("NavOrgDevLeadership")</MudNavLink>
-                <MudNavLink Href="/orgdev/change-initiatives" Icon="@Icons.Material.Filled.Autorenew">@L.Translate("NavOrgDevChangeInitiatives")</MudNavLink>
-                <MudNavLink Href="/orgdev/culture-assessment" Icon="@Icons.Material.Filled.Favorite">@L.Translate("NavOrgDevCultureAssessment")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("ORGDEV_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavOrgDevelopment")" Icon="@Icons.Material.Filled.Business" Expanded="false">
+                    <MudNavLink Href="/orgdev/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavOrgDevDashboard")</MudNavLink>
+                    <MudNavLink Href="/orgdev/workforce-plan" Icon="@Icons.Material.Filled.People">@L.Translate("NavOrgDevWorkforcePlan")</MudNavLink>
+                    <MudNavLink Href="/orgdev/leadership-development" Icon="@Icons.Material.Filled.School">@L.Translate("NavOrgDevLeadership")</MudNavLink>
+                    <MudNavLink Href="/orgdev/change-initiatives" Icon="@Icons.Material.Filled.Autorenew">@L.Translate("NavOrgDevChangeInitiatives")</MudNavLink>
+                    <MudNavLink Href="/orgdev/culture-assessment" Icon="@Icons.Material.Filled.Favorite">@L.Translate("NavOrgDevCultureAssessment")</MudNavLink>
+                </MudNavGroup>
+            }
 
             <MudNavGroup Title="@L.Translate("NavWorkflowEngine")" Icon="@Icons.Material.Filled.Rule" Expanded="false">
-                <MudNavLink Href="/wf/canvas" Icon="@Icons.Material.Filled.ViewKanban">@L.Translate("NavWfCanvas")</MudNavLink>
-                <MudNavLink Href="/wf/workflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflows")</MudNavLink>
+                @if (Has("WF_WORKFLOW_ADMIN"))
+                {
+                    <MudNavLink Href="/wf/canvas" Icon="@Icons.Material.Filled.ViewKanban">@L.Translate("NavWfCanvas")</MudNavLink>
+                    <MudNavLink Href="/wf/workflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflows")</MudNavLink>
+                }
+                @* No [Authorize] on the raw wf_workflow CRUD scaffold or the inbox — left ungated, same as their current unrestricted behavior. *@
                 <MudNavLink Href="/wfworkflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflowsCrud")</MudNavLink>
 
-                <MudNavLink Href="/wf/sub-workflow-levels" Icon="@Icons.Material.Filled.Layers">@L.Translate("NavWfSubLevels")</MudNavLink>
-                <MudNavLink Href="/wf/custom-users" Icon="@Icons.Material.Filled.Person">@L.Translate("NavWfCustomUsers")</MudNavLink>
-                <MudNavLink Href="/wf/custom-roles" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavWfCustomRoles")</MudNavLink>
-                <MudNavLink Href="/wf/loa" Icon="@Icons.Material.Filled.Payments">@L.Translate("NavWfLoa")</MudNavLink>
-                <MudNavLink Href="/wf/loa-users" Icon="@Icons.Material.Filled.PersonPin">@L.Translate("NavWfLoaUsers")</MudNavLink>
-                <MudNavLink Href="/wf/adhoc-users" Icon="@Icons.Material.Filled.PersonAdd">@L.Translate("NavWfAdhocUsers")</MudNavLink>
+                @if (Has("WF_WORKFLOW_ADMIN"))
+                {
+                    <MudNavLink Href="/wf/sub-workflow-levels" Icon="@Icons.Material.Filled.Layers">@L.Translate("NavWfSubLevels")</MudNavLink>
+                    <MudNavLink Href="/wf/custom-users" Icon="@Icons.Material.Filled.Person">@L.Translate("NavWfCustomUsers")</MudNavLink>
+                    <MudNavLink Href="/wf/custom-roles" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavWfCustomRoles")</MudNavLink>
+                    <MudNavLink Href="/wf/loa" Icon="@Icons.Material.Filled.Payments">@L.Translate("NavWfLoa")</MudNavLink>
+                    <MudNavLink Href="/wf/loa-users" Icon="@Icons.Material.Filled.PersonPin">@L.Translate("NavWfLoaUsers")</MudNavLink>
+                    <MudNavLink Href="/wf/adhoc-users" Icon="@Icons.Material.Filled.PersonAdd">@L.Translate("NavWfAdhocUsers")</MudNavLink>
+                }
                 <MudNavLink Href="/wf/my-inbox" Icon="@Icons.Material.Filled.Inbox">@L.Translate("NavWfMyInbox")</MudNavLink>
-                <MudNavLink Href="/wf/vacant-approvals" Icon="@Icons.Material.Filled.PersonSearch">@L.Translate("NavWfVacant")</MudNavLink>
-                <MudNavLink Href="/ot-requests" Icon="@Icons.Material.Filled.MoreTime">@L.Translate("NavOtRequests")</MudNavLink>
-                <MudNavLink Href="/leave-requests" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavLeaveRequests")</MudNavLink>
-                <MudNavLink Href="/leave-requests/policy" Icon="@Icons.Material.Filled.Rule">@L.Translate("NavLeavePolicy")</MudNavLink>
-                <MudNavLink Href="/leave-requests/holidays" Icon="@Icons.Material.Filled.CalendarMonth">@L.Translate("NavCompanyHolidays")</MudNavLink>
+                @if (Has("WF_WORKFLOW_ADMIN"))
+                {
+                    <MudNavLink Href="/wf/vacant-approvals" Icon="@Icons.Material.Filled.PersonSearch">@L.Translate("NavWfVacant")</MudNavLink>
+                    <MudNavLink Href="/ot-requests" Icon="@Icons.Material.Filled.MoreTime">@L.Translate("NavOtRequests")</MudNavLink>
+                    <MudNavLink Href="/leave-requests" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavLeaveRequests")</MudNavLink>
+                    <MudNavLink Href="/leave-requests/policy" Icon="@Icons.Material.Filled.Rule">@L.Translate("NavLeavePolicy")</MudNavLink>
+                    <MudNavLink Href="/leave-requests/holidays" Icon="@Icons.Material.Filled.CalendarMonth">@L.Translate("NavCompanyHolidays")</MudNavLink>
+                }
             </MudNavGroup>
 
-            <MudNavGroup Title="@L.Translate("NavWorkflowCrudScaffold")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
-                <MudNavLink Href="/wf/employees" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavWfScaffoldEmployees")</MudNavLink>
-                <MudNavLink Href="/wf/org-types" Icon="@Icons.Material.Filled.Business">@L.Translate("NavWfScaffoldOrgTypes")</MudNavLink>
-            </MudNavGroup>
+            @if (HasAny("WF_EMPLOYEE_ADMIN", "WF_ORG_TYPE_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavWorkflowCrudScaffold")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
+                    @if (Has("WF_EMPLOYEE_ADMIN"))
+                    {
+                        <MudNavLink Href="/wf/employees" Icon="@Icons.Material.Filled.Badge">@L.Translate("NavWfScaffoldEmployees")</MudNavLink>
+                    }
+                    @if (Has("WF_ORG_TYPE_ADMIN"))
+                    {
+                        <MudNavLink Href="/wf/org-types" Icon="@Icons.Material.Filled.Business">@L.Translate("NavWfScaffoldOrgTypes")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavHrAnalytics")" Icon="@Icons.Material.Filled.QueryStats" Expanded="false">
-                <MudNavLink Href="/hr/reports/turnover" Icon="@Icons.Material.Filled.TrendingDown">@L.Translate("NavHrTurnover")</MudNavLink>
-                <MudNavLink Href="/hr/reports/absenteeism" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavHrAbsenteeism")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("HR_ANALYTICS"))
+            {
+                <MudNavGroup Title="@L.Translate("NavHrAnalytics")" Icon="@Icons.Material.Filled.QueryStats" Expanded="false">
+                    <MudNavLink Href="/hr/reports/turnover" Icon="@Icons.Material.Filled.TrendingDown">@L.Translate("NavHrTurnover")</MudNavLink>
+                    <MudNavLink Href="/hr/reports/absenteeism" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavHrAbsenteeism")</MudNavLink>
+                </MudNavGroup>
+            }
 
-            <MudNavGroup Title="@L.Translate("NavSystemAdmin")" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
-                <MudNavLink Href="/admin/system/companies" Icon="@Icons.Material.Filled.Apartment">@L.Translate("NavSysCompanies")</MudNavLink>
-                <MudNavLink Href="/admin/system/menus" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavSysMenus")</MudNavLink>
-                <MudNavLink Href="/admin/system/roles" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavSysRoles")</MudNavLink>
-                <MudNavLink Href="/admin/system/users" Icon="@Icons.Material.Filled.ManageAccounts">@L.Translate("NavSysUsers")</MudNavLink>
-                <MudNavLink Href="/admin/system/permissions" Icon="@Icons.Material.Filled.Security">@L.Translate("NavSysPermissions")</MudNavLink>
-                <MudNavLink Href="/admin/system/document-types" Icon="@Icons.Material.Filled.Description">@L.Translate("NavSysDocTypes")</MudNavLink>
-                <MudNavLink Href="/admin/system/languages" Icon="@Icons.Material.Filled.Language">@L.Translate("NavSysLanguages")</MudNavLink>
-                <MudNavLink Href="/admin/workflow-design" Icon="@Icons.Material.Filled.DesignServices">@L.Translate("NavSysWorkflowDesign")</MudNavLink>
-            </MudNavGroup>
+            @if (Has("SYS_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavSystemAdmin")" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
+                    <MudNavLink Href="/admin/system/companies" Icon="@Icons.Material.Filled.Apartment">@L.Translate("NavSysCompanies")</MudNavLink>
+                    <MudNavLink Href="/admin/system/menus" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavSysMenus")</MudNavLink>
+                    <MudNavLink Href="/admin/system/roles" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavSysRoles")</MudNavLink>
+                    <MudNavLink Href="/admin/system/users" Icon="@Icons.Material.Filled.ManageAccounts">@L.Translate("NavSysUsers")</MudNavLink>
+                    <MudNavLink Href="/admin/system/permissions" Icon="@Icons.Material.Filled.Security">@L.Translate("NavSysPermissions")</MudNavLink>
+                    <MudNavLink Href="/admin/system/document-types" Icon="@Icons.Material.Filled.Description">@L.Translate("NavSysDocTypes")</MudNavLink>
+                    <MudNavLink Href="/admin/system/languages" Icon="@Icons.Material.Filled.Language">@L.Translate("NavSysLanguages")</MudNavLink>
+                    <MudNavLink Href="/admin/workflow-design" Icon="@Icons.Material.Filled.DesignServices">@L.Translate("NavSysWorkflowDesign")</MudNavLink>
+                </MudNavGroup>
+            }
 
             <MudNavGroup Title="@L.Translate("NavLegacy")" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+                @* Everything in this group is either unauthorized-by-design (no [Authorize] on the target page) or a dead route (target page no longer exists) — left ungated to match current behavior; flagged separately as its own gap. *@
                 <MudNavLink Href="/income" Icon="@Icons.Material.Filled.AttachMoney">@L.Translate("NavLegacyIncome")</MudNavLink>
                 <MudNavLink Href="/masterdata" Icon="@Icons.Material.Filled.Storage">@L.Translate("NavLegacyMasterData")</MudNavLink>
                 <MudNavLink Href="/ot" Icon="@Icons.Material.Filled.MoreTime">@L.Translate("NavLegacyOt")</MudNavLink>
                 <MudNavLink Href="/sc_users" Icon="@Icons.Material.Filled.ManageAccounts">@L.Translate("NavLegacyUserMng")</MudNavLink>
                 <MudNavLink Href="/onlinereport" Icon="@Icons.Material.Filled.Description">@L.Translate("NavLegacyReport")</MudNavLink>
                 <MudNavLink Href="/hrpayrolls" Icon="@Icons.Material.Filled.Folder">@L.Translate("NavLegacyHrPayrolls")</MudNavLink>
-                <MudNavLink Href="/admin/audit-log" Icon="@Icons.Material.Filled.History">@L.Translate("NavLegacyAuditLog")</MudNavLink>
+                @if (Has("SYS_AUDIT_LOG"))
+                {
+                    <MudNavLink Href="/admin/audit-log" Icon="@Icons.Material.Filled.History">@L.Translate("NavLegacyAuditLog")</MudNavLink>
+                }
             </MudNavGroup>
         </MudNavMenu>
     </MudDrawer>
@@ -315,6 +479,16 @@
     private bool _isAuthenticated;
     private bool _hasEssAccess;
     private string _userName = "";
+    private HashSet<string> _allowedMenuCodes = new();
+
+    // Menucodes come from the "menu" claims ScUserClaimsPrincipalFactory
+    // attaches at sign-in (sc_user_role -> sc_role_menu -> sc_menu, refreshed
+    // fresh from the DB every login) — the same claim [Authorize(Policy =
+    // "Menu:XXX")] checks on every page. Gating each nav link against the
+    // identical claim set means the sidebar never shows a link the click
+    // itself would then block.
+    private bool Has(string menuCode) => _allowedMenuCodes.Contains(menuCode);
+    private bool HasAny(params string[] menuCodes) => menuCodes.Any(_allowedMenuCodes.Contains);
 
     // MainLayout can't inherit LocalizedComponentBase (already inherits
     // LayoutComponentBase — C# allows only one base class), so it wires the
@@ -340,5 +514,6 @@
         if (string.IsNullOrWhiteSpace(_userName))
             _userName = user.Identity?.Name ?? "";
         _hasEssAccess = user.HasClaim("menu", "ESS_ACCESS");
+        _allowedMenuCodes = user.FindAll("menu").Select(c => c.Value).ToHashSet();
     }
 }

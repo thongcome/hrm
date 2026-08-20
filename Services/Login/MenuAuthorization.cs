@@ -12,8 +12,8 @@ using Microsoft.AspNetCore.Authorization;
 // time a new page is added. The actual permission data (which role sees
 // which menucode) still lives entirely in sc_menu/sc_role_menu, managed
 // through the existing sc_role_menu admin pages; this only enforces what's
-// already stored there against the "menu" claims both login paths
-// (CustomAuthStateProvider and ScUserClaimsPrincipalFactory) already attach.
+// already stored there against the "menu" claims ScUserClaimsPrincipalFactory
+// attaches at sign-in.
 public class MenuRequirement : IAuthorizationRequirement
 {
     public string MenuCode { get; }

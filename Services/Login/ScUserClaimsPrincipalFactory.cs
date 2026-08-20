@@ -9,10 +9,9 @@ using Microsoft.Extensions.Options;
 
 // Bridges Microsoft.AspNetCore.Identity sign-in to the SC_* permission model.
 // ApplicationUser.userid (added via AddApplicationUserIdentityFields
-// migration) links 1:1 to sc_user.userid — the same PK the legacy
-// /login-handler + CustomAuthStateProvider path already uses for role/menu
-// claims. sc_user.empid (never populated before this) optionally links on to
-// Hremployee.EmpNo for employee-scoped (ESS) accounts.
+// migration) links 1:1 to sc_user.userid — the same PK role/menu claims are
+// resolved against. sc_user.empid (never populated before this) optionally
+// links on to Hremployee.EmpNo for employee-scoped (ESS) accounts.
 //
 // Deliberately does NOT touch ClaimTypes.NameIdentifier — Identity's own
 // UserManager/SignInManager/Manage-account pages resolve the current user

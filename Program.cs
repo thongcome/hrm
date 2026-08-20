@@ -136,9 +136,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
 // Identity.Application's own cookie — this is now the app's ONLY sign-in
 // cookie (see removed second AddAuthentication(...) block further down,
 // which used to make "Cookies" the real default scheme and cause every
-// Blazor page's CustomAuthStateProvider to see Identity-signed-in users as
-// anonymous). LoginPath/LogoutPath point at our own pages, not Identity's
-// scaffolded /Account/Login.
+// Blazor page's pre-Identity custom auth-state provider to see
+// Identity-signed-in users as anonymous). LoginPath/LogoutPath point at our
+// own pages, not Identity's scaffolded /Account/Login.
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/login";
@@ -182,7 +182,6 @@ builder.Services.AddSingleton<IEmailSender, EmailSender>();
 builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 
 builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
 
 // Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
 // resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
@@ -220,8 +219,6 @@ builder.Services.AddAuthorizationCore(options =>
     });
 });
 builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.ExternalApiCallerHandler>();
-
-builder.Services.AddScoped<MenuStateService>();// �红�����ʶҹ�����
 
 // Add Company services to the container.
 // Program.cs
