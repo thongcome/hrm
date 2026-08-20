@@ -11,6 +11,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject IPasswordHasher<sc_user> PasswordHasher
 @inject UserManager<ApplicationUser> UserManager
+@inject HRM.Services.Login.UserProvisioningService UserProvisioning
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -291,6 +292,17 @@
             await context.SaveChangesAsync();
             userId = _editing.userid;
             _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านเริ่มต้นคือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+
+            // Without this, the account exists and looks complete here (roles
+            // shown, "ใช้งานได้" chip green) but can't actually sign in —
+            // LoginEndpoints.cs requires a linked ApplicationUser and falls
+            // through to a generic "wrong password" error otherwise, with
+            // nothing pointing an admin at the real cause.
+            var provisionResult = await UserProvisioning.EnsureIdentityLinkedAsync(_editing, DefaultPassword, _editing.email);
+            if (!provisionResult.Succeeded)
+            {
+                _editInfo += $" — แต่ผูกบัญชี Identity ไม่สำเร็จ ({provisionResult.Error}) กรุณาไปผูกที่หน้า \"ผูกบัญชี Identity\" ด้วยตนเอง";
+            }
         }
         else
         {

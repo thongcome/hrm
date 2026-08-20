@@ -193,6 +193,7 @@ builder.Services.AddSingleton<IEmailSender, EmailSender>();
 builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<HRM.Services.Login.UserProvisioningService>();
 
 // Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
 // resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
