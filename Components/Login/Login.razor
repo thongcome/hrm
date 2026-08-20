@@ -10,6 +10,10 @@
 {
     <div class="alert alert-danger">@L.Translate("LoginErrorMessage")</div>
 }
+@if (ResetSuccess == "1")
+{
+    <div class="alert alert-success">@L.Translate("ResetPasswordSuccessQueryMessage")</div>
+}
 
 @* Plain HTML form posted to /login-handler (a real endpoint, not a Blazor
    event handler) — see Program.cs for why the sign-in must happen there. *@
@@ -26,10 +30,15 @@
     <button type="submit" class="btn btn-primary">@L.Translate("Login")</button>
 </form>
 
+<p class="mt-3"><a href="/forgot-password">@L.Translate("ForgotPasswordLink")</a></p>
+
 @code {
     [SupplyParameterFromQuery]
     private string? Error { get; set; }
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ResetSuccess { get; set; }
 }

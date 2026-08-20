@@ -133,6 +133,17 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     // doesn't touch ClaimTypes.NameIdentifier.
     .AddClaimsPrincipalFactory<HRM.Services.Login.ScUserClaimsPrincipalFactory>();
 
+// Shortens the default DataProtectorTokenProvider lifespan (1 day) for the
+// self-service password-reset link (Endpoints/ForgotPasswordEndpoints.cs).
+// Safe to change globally: nothing else in this app currently generates a
+// token through the "Default" provider (email confirmation is never
+// triggered dynamically — every account is created with EmailConfirmed=true
+// already set).
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromHours(1);
+});
+
 // Identity.Application's own cookie — this is now the app's ONLY sign-in
 // cookie (see removed second AddAuthentication(...) block further down,
 // which used to make "Cookies" the real default scheme and cause every
@@ -388,6 +399,17 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.SegmentsPerWindow = 4;
         limiterOptions.QueueLimit = 0;
     });
+    // Forgot-password requests are an email-spam/enumeration risk more than
+    // a brute-force risk (the endpoint itself never reveals whether an
+    // account/email matched), so this is capped tighter and over a longer
+    // window than "login" rather than sharing that policy.
+    options.AddSlidingWindowLimiter("forgot-password", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 3;
+        limiterOptions.Window = TimeSpan.FromHours(1);
+        limiterOptions.SegmentsPerWindow = 4;
+        limiterOptions.QueueLimit = 0;
+    });
     options.OnRejected = async (context, ct) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -463,6 +485,7 @@ app.MapPayrollFileEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
+app.MapForgotPasswordEndpoints();
 app.MapEssFileEndpoints();
 app.MapExpenseFileEndpoints();
 app.MapWorkflowFileEndpoints();
