@@ -1,0 +1,182 @@
+@page "/contracts/currencies"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:CT_CONTRACT_ADMIN")]
+
+<PageTitle>สกุลเงิน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">จัดการสกุลเงิน (Currency)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">รายการสกุลเงินสำหรับใช้เลือกในสัญญา (วงเงินโครงการ / หลักประกันธนาคาร / กรมธรรม์ประกันภัย)</MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสกุลเงินใหม่" : $"แก้ไข: {_form.Code}")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.Code" Label="รหัสสกุลเงิน" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.Name" Label="ชื่อ (ไทย)" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_form.NameEn" Label="ชื่อ (อังกฤษ)" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่มสกุลเงิน" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_currencies" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ (ไทย)</MudTh>
+            <MudTh>ชื่อ (อังกฤษ)</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.name_en</MudTd>
+            <MudTd>@((context.isactive ?? true) ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                    @((context.isactive ?? true) ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Currency> _currencies = new();
+    private string? _error;
+    private string _searchTerm = "";
+    private long? _editingId;
+
+    private class CurrencyForm
+    {
+        public string Code { get; set; } = "";
+        public string? Name { get; set; }
+        public string? NameEn { get; set; }
+    }
+
+    private CurrencyForm _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Currencies.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Currency.code), nameof(Currency.name), nameof(Currency.name_en));
+        _currencies = await query.OrderBy(c => c.code).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Currency currency)
+    {
+        _editingId = currency.id;
+        _form = new CurrencyForm { Code = currency.code, Name = currency.name, NameEn = currency.name_en };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new CurrencyForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Code))
+        {
+            _error = "กรุณากรอกรหัสสกุลเงิน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Currencies.AnyAsync(c => c.code == _form.Code && c.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = $"รหัสสกุลเงิน \"{_form.Code}\" มีอยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Currencies.FirstOrDefaultAsync(c => c.id == id);
+            if (existing is null)
+            {
+                _error = "ไม่พบสกุลเงินนี้แล้ว";
+                return;
+            }
+            existing.code = _form.Code;
+            existing.name = _form.Name;
+            existing.name_en = _form.NameEn;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.Currencies.Add(new Currency
+            {
+                code = _form.Code,
+                name = _form.Name,
+                name_en = _form.NameEn,
+                isactive = true,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มสกุลเงินสำเร็จ" : "บันทึกการแก้ไขสำเร็จ", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Currency currency)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Currencies.FirstOrDefaultAsync(c => c.id == currency.id);
+        if (existing is null) return;
+
+        existing.isactive = !(existing.isactive ?? true);
+        existing.moddate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

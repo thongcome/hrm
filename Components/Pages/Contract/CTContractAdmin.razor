@@ -1,0 +1,453 @@
+@page "/contracts"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:CT_CONTRACT_ADMIN")]
+
+<PageTitle>สัญญา (Contracts)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <div>
+            <MudText Typo="Typo.h5">สัญญา (Contracts)</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                ทะเบียนสัญญาจ้าง/ใบสั่งซื้อกับผู้ขาย พร้อมงบประมาณโครงการ การรับประกันผลงาน หลักประกันธนาคาร และกรมธรรม์ประกันภัย
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/contracts/currencies"))">สกุลเงิน</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/contracts/warranty-types"))">ประเภทการรับประกัน</MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (!_currencies.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">
+            ยังไม่มีข้อมูลสกุลเงินในระบบ — ไปที่ "สกุลเงิน" ด้านบนเพื่อเพิ่มก่อน ถ้าต้องการระบุวงเงิน/หลักประกัน/กรมธรรม์เป็นสกุลเงินใดสกุลเงินหนึ่ง
+        </MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="StartCreate">+ เพิ่มสัญญาใหม่</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">@(_editingId is null ? "เพิ่มสัญญาใหม่" : $"แก้ไขสัญญา: {_form.PoNo}")</MudText>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">ข้อมูลสัญญา</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.PoNo" Label="เลขที่ใบสั่งซื้อ (PO No.)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.ContractNo" Label="เลขที่สัญญา" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.ProjectName" Label="ชื่อโครงการ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.VendorCode" Label="รหัสผู้ขาย/ผู้รับจ้าง" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.VendorName" Label="ชื่อผู้ขาย/ผู้รับจ้าง" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.TaxId" Label="เลขผู้เสียภาษี" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.Requester" Label="ชื่อผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.RequesterCode" Label="รหัสผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.RequesterOrg" Label="หน่วยงานผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.RequesterEmail" Label="อีเมลผู้ขอ" InputType="InputType.Email" /></MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันเริ่มสัญญา" Date="@(_form.StartDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.StartDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)" Clearable="true" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันสิ้นสุดสัญญา" Date="@(_form.ExpiredDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.ExpiredDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsNeedExtends" Label="ต้องต่ออายุสัญญา" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsContractDocumentStatusComplete" Label="เอกสารสัญญาครบถ้วน" /></MudItem>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsActive" Label="ใช้งาน" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Comment" Label="ความคิดเห็น" Lines="2" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">งบประมาณโครงการ</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_form.ProjectAmount" Label="วงเงินโครงการ" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_form.ProjectUtilization" Label="ใช้ไปแล้ว" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField @bind-Value="_form.ProjectRemaining" Label="คงเหลือ" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_form.ProjectCurrencyId" Label="สกุลเงินโครงการ">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ระบุ -</MudSelectItem>
+                    @foreach (var c in _currencies)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)c.id)">@c.code — @c.name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">การรับประกันผลงาน (Warranty)</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsWarrantyRequired" Label="ต้องมีการรับประกัน" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_form.WarrantyTypeId" Label="ประเภทการรับประกัน" Disabled="@(!_form.IsWarrantyRequired)">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ระบุ -</MudSelectItem>
+                    @foreach (var w in _warrantyTypes)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)w.id)">@w.WarrantyTypeTh</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudDatePicker Label="เริ่มรับประกัน" Date="@(_form.WarrantyStartDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.WarrantyStartDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsWarrantyRequired)" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="สิ้นสุดรับประกัน" Date="@(_form.WarrantyEndDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.WarrantyEndDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsWarrantyRequired)" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">หลักประกันธนาคาร (Bank Guarantee)</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsBankGuarantee" Label="มีหลักประกันธนาคาร" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField @bind-Value="_form.BankGuaranteeAmount" Label="วงเงินหลักประกัน" Format="N2" Disabled="@(!_form.IsBankGuarantee)" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันเริ่มมีผล" Date="@(_form.BankGuaranteeEffectiveDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.BankGuaranteeEffectiveDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsBankGuarantee)" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันหมดอายุ" Date="@(_form.BankGuaranteeExpiryDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.BankGuaranteeExpiryDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsBankGuarantee)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_form.BankGuaranteeCurrencyId" Label="สกุลเงินหลักประกัน" Disabled="@(!_form.IsBankGuarantee)">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ระบุ -</MudSelectItem>
+                    @foreach (var c in _currencies)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)c.id)">@c.code — @c.name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.BankGuaranteeRemark" Label="หมายเหตุหลักประกันธนาคาร" Disabled="@(!_form.IsBankGuarantee)" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">กรมธรรม์ประกันภัย (Insurance Policy)</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudCheckBox T="bool" @bind-Value="_form.IsInsurancePolicyRequired" Label="ต้องมีกรมธรรม์ประกันภัย" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField @bind-Value="_form.InsurancePolicyTypeCode" Label="ประเภทกรมธรรม์ (รหัส)"
+                    HelperText="ยังไม่มีตารางแม่แบบสำหรับประเภทกรมธรรม์ในระบบ — กรอกเป็นรหัสอ้างอิงไปก่อน"
+                    Disabled="@(!_form.IsInsurancePolicyRequired)" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField @bind-Value="_form.InsurancePolicyAmountCoverage" Label="วงเงินคุ้มครอง" Format="N2" Disabled="@(!_form.IsInsurancePolicyRequired)" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_form.InsurancePolicyCurrencyId" Label="สกุลเงินกรมธรรม์" Disabled="@(!_form.IsInsurancePolicyRequired)">
+                    <MudSelectItem T="long?" Value="@((long?)null)">- ไม่ระบุ -</MudSelectItem>
+                    @foreach (var c in _currencies)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)c.id)">@c.code — @c.name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันเริ่มความคุ้มครอง" Date="@(_form.InsurancePolicyEffectiveDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.InsurancePolicyEffectiveDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsInsurancePolicyRequired)" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="วันหมดความคุ้มครอง" Date="@(_form.InsurancePolicyExpiryDate?.ToDateTime(TimeOnly.MinValue))"
+                    DateChanged="@(d => _form.InsurancePolicyExpiryDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)"
+                    Clearable="true" Disabled="@(!_form.IsInsurancePolicyRequired)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_form.InsurancePolicyRemark" Label="หมายเหตุกรมธรรม์ประกันภัย" Disabled="@(!_form.IsInsurancePolicyRequired)" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? "เพิ่มสัญญา" : "บันทึกการแก้ไข")
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (เลขที่ PO / เลขที่สัญญา / ผู้ขาย / ชื่อโครงการ / ผู้ขอ)" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_contracts" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>เลขที่ PO</MudTh>
+            <MudTh>เลขที่สัญญา</MudTh>
+            <MudTh>ผู้ขาย/ผู้รับจ้าง</MudTh>
+            <MudTh>ชื่อโครงการ</MudTh>
+            <MudTh>ระยะสัญญา</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.po_no</MudTd>
+            <MudTd>@context.constract_no</MudTd>
+            <MudTd>@context.vendor_name</MudTd>
+            <MudTd>@context.ProjectName</MudTd>
+            <MudTd>@FormatPeriod(context.start_date, context.expired_date)</MudTd>
+            <MudTd>@(context.isActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีสัญญาในระบบ</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<CT_Contract> _contracts = new();
+    private List<Currency> _currencies = new();
+    private List<mas_WarranteeType> _warrantyTypes = new();
+    private string _searchTerm = "";
+    private string? _error;
+    private long? _editingId;
+    private bool _showForm;
+
+    private class ContractForm
+    {
+        public string PoNo { get; set; } = "";
+        public string? ContractNo { get; set; }
+        public string? ProjectName { get; set; }
+        public string? VendorCode { get; set; }
+        public string? VendorName { get; set; }
+        public string? TaxId { get; set; }
+        public string? Requester { get; set; }
+        public string? RequesterCode { get; set; }
+        public string? RequesterOrg { get; set; }
+        public string? RequesterEmail { get; set; }
+        public DateOnly? StartDate { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
+        public bool IsNeedExtends { get; set; }
+        public bool IsContractDocumentStatusComplete { get; set; }
+        public string? Comment { get; set; }
+        public string? Remark { get; set; }
+        public bool IsActive { get; set; } = true;
+
+        public decimal? ProjectAmount { get; set; }
+        public decimal? ProjectUtilization { get; set; }
+        public decimal? ProjectRemaining { get; set; }
+        public long? ProjectCurrencyId { get; set; }
+
+        public bool IsWarrantyRequired { get; set; }
+        public long? WarrantyTypeId { get; set; }
+        public DateOnly? WarrantyStartDate { get; set; }
+        public DateOnly? WarrantyEndDate { get; set; }
+
+        public bool IsBankGuarantee { get; set; }
+        public decimal? BankGuaranteeAmount { get; set; }
+        public DateOnly? BankGuaranteeEffectiveDate { get; set; }
+        public DateOnly? BankGuaranteeExpiryDate { get; set; }
+        public long? BankGuaranteeCurrencyId { get; set; }
+        public string? BankGuaranteeRemark { get; set; }
+
+        public bool IsInsurancePolicyRequired { get; set; }
+        public long? InsurancePolicyTypeCode { get; set; }
+        public decimal? InsurancePolicyAmountCoverage { get; set; }
+        public DateOnly? InsurancePolicyEffectiveDate { get; set; }
+        public DateOnly? InsurancePolicyExpiryDate { get; set; }
+        public long? InsurancePolicyCurrencyId { get; set; }
+        public string? InsurancePolicyRemark { get; set; }
+    }
+
+    private ContractForm _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var query = context.CT_Contracts.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+            nameof(CT_Contract.po_no), nameof(CT_Contract.constract_no), nameof(CT_Contract.vendor_code),
+            nameof(CT_Contract.vendor_name), nameof(CT_Contract.requester), nameof(CT_Contract.ProjectName));
+        _contracts = await query.OrderByDescending(c => c.id).ToListAsync();
+
+        _currencies = await context.Currencies.Where(c => c.isactive ?? true).OrderBy(c => c.code).ToListAsync();
+        _warrantyTypes = await context.mas_WarranteeTypes.OrderBy(w => w.WarrantyTypeTh).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private static string FormatPeriod(DateOnly? start, DateOnly? end)
+    {
+        if (start is null && end is null) return "-";
+        return $"{start?.ToString("dd/MM/yyyy") ?? "-"} — {end?.ToString("dd/MM/yyyy") ?? "-"}";
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new ContractForm();
+        _error = null;
+        _showForm = true;
+    }
+
+    private void StartEdit(CT_Contract c)
+    {
+        _editingId = c.id;
+        _form = new ContractForm
+        {
+            PoNo = c.po_no,
+            ContractNo = c.constract_no,
+            ProjectName = c.ProjectName,
+            VendorCode = c.vendor_code,
+            VendorName = c.vendor_name,
+            TaxId = c.tax_id,
+            Requester = c.requester,
+            RequesterCode = c.requestercode,
+            RequesterOrg = c.requesterOrg,
+            RequesterEmail = c.requester_email,
+            StartDate = c.start_date,
+            ExpiredDate = c.expired_date,
+            IsNeedExtends = c.isNeedExtends,
+            IsContractDocumentStatusComplete = c.isContractDocumentStatusComplete ?? false,
+            Comment = c.comment,
+            Remark = c.remark,
+            IsActive = c.isActive,
+
+            ProjectAmount = c.ProjectAmount,
+            ProjectUtilization = c.ProjectUtilization,
+            ProjectRemaining = c.ProjectRemaining,
+            ProjectCurrencyId = c.ProjectCurencyID,
+
+            IsWarrantyRequired = c.isWarrantyRequired ?? false,
+            WarrantyTypeId = c.WarrantyType,
+            WarrantyStartDate = c.WarrantyStartDate,
+            WarrantyEndDate = c.WarrantyEnddate,
+
+            IsBankGuarantee = c.isBankGuarantee ?? false,
+            BankGuaranteeAmount = c.BankGuaranteeAmount,
+            BankGuaranteeEffectiveDate = c.BankGuaranteeEffectiveDate,
+            BankGuaranteeExpiryDate = c.BankGuaranteeExpiryDate,
+            BankGuaranteeCurrencyId = c.BankGuaranteeCurrencyID,
+            BankGuaranteeRemark = c.BankGuaranteeRemark,
+
+            IsInsurancePolicyRequired = c.isInsurancePolicyRequired ?? false,
+            InsurancePolicyTypeCode = c.InsurancePolicyType,
+            InsurancePolicyAmountCoverage = c.InsurancePolicyAmountCoverage,
+            InsurancePolicyEffectiveDate = c.InsurancePolicyEffectiveDate,
+            InsurancePolicyExpiryDate = c.InsurancePolicyExpiryDate,
+            InsurancePolicyCurrencyId = c.InsurancePolicyCurrencyID,
+            InsurancePolicyRemark = c.InsurancePolicyRemark,
+        };
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new ContractForm();
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.PoNo))
+        {
+            _error = "กรุณากรอกเลขที่ใบสั่งซื้อ (PO No.)";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        CT_Contract entity;
+        if (_editingId is long id)
+        {
+            var existing = await context.CT_Contracts.FirstOrDefaultAsync(c => c.id == id);
+            if (existing is null)
+            {
+                _error = "ไม่พบสัญญานี้แล้ว";
+                return;
+            }
+            entity = existing;
+        }
+        else
+        {
+            entity = new CT_Contract();
+            context.CT_Contracts.Add(entity);
+        }
+
+        entity.po_no = _form.PoNo;
+        entity.constract_no = _form.ContractNo;
+        entity.ProjectName = _form.ProjectName;
+        entity.vendor_code = _form.VendorCode;
+        entity.vendor_name = _form.VendorName;
+        entity.tax_id = _form.TaxId;
+        entity.requester = _form.Requester;
+        entity.requestercode = _form.RequesterCode;
+        entity.requesterOrg = _form.RequesterOrg;
+        entity.requester_email = _form.RequesterEmail;
+        entity.start_date = _form.StartDate;
+        entity.expired_date = _form.ExpiredDate;
+        entity.isNeedExtends = _form.IsNeedExtends;
+        entity.isContractDocumentStatusComplete = _form.IsContractDocumentStatusComplete;
+        entity.comment = _form.Comment;
+        entity.remark = _form.Remark;
+        entity.isActive = _form.IsActive;
+
+        entity.ProjectAmount = _form.ProjectAmount;
+        entity.ProjectUtilization = _form.ProjectUtilization;
+        entity.ProjectRemaining = _form.ProjectRemaining;
+        entity.ProjectCurencyID = _form.ProjectCurrencyId;
+
+        entity.isWarrantyRequired = _form.IsWarrantyRequired;
+        entity.WarrantyType = _form.IsWarrantyRequired ? _form.WarrantyTypeId : null;
+        entity.WarrantyStartDate = _form.IsWarrantyRequired ? _form.WarrantyStartDate : null;
+        entity.WarrantyEnddate = _form.IsWarrantyRequired ? _form.WarrantyEndDate : null;
+
+        entity.isBankGuarantee = _form.IsBankGuarantee;
+        entity.BankGuaranteeAmount = _form.IsBankGuarantee ? _form.BankGuaranteeAmount : null;
+        entity.BankGuaranteeEffectiveDate = _form.IsBankGuarantee ? _form.BankGuaranteeEffectiveDate : null;
+        entity.BankGuaranteeExpiryDate = _form.IsBankGuarantee ? _form.BankGuaranteeExpiryDate : null;
+        entity.BankGuaranteeCurrencyID = _form.IsBankGuarantee ? _form.BankGuaranteeCurrencyId : null;
+        entity.BankGuaranteeRemark = _form.IsBankGuarantee ? _form.BankGuaranteeRemark : null;
+
+        entity.isInsurancePolicyRequired = _form.IsInsurancePolicyRequired;
+        entity.InsurancePolicyType = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyTypeCode : null;
+        entity.InsurancePolicyAmountCoverage = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyAmountCoverage : null;
+        entity.InsurancePolicyEffectiveDate = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyEffectiveDate : null;
+        entity.InsurancePolicyExpiryDate = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyExpiryDate : null;
+        entity.InsurancePolicyCurrencyID = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyCurrencyId : null;
+        entity.InsurancePolicyRemark = _form.IsInsurancePolicyRequired ? _form.InsurancePolicyRemark : null;
+
+        entity.moddate = DateTime.Now;
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มสัญญาสำเร็จ" : "บันทึกการแก้ไขสำเร็จ", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

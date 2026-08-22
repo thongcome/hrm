@@ -1,0 +1,138 @@
+@page "/contracts/warranty-types"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:CT_CONTRACT_ADMIN")]
+
+<PageTitle>ประเภทการรับประกัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">จัดการประเภทการรับประกันผลงาน (Warranty Type)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">รายการประเภทการรับประกันสำหรับใช้เลือกในสัญญา</MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทการรับประกันใหม่" : "แก้ไขประเภทการรับประกัน")</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="_form.WarrantyTypeTh" Label="ชื่อ (ไทย)" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="_form.WarrantyTypeEn" Label="ชื่อ (อังกฤษ)" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+            @(_editingId is null ? "เพิ่ม" : "บันทึกการแก้ไข")
+        </MudButton>
+        @if (_editingId is not null)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        }
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTable Items="_types" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ชื่อ (ไทย)</MudTh>
+            <MudTh>ชื่อ (อังกฤษ)</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.WarrantyTypeTh</MudTd>
+            <MudTd>@context.WarrantyTypeEn</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    // mas_WarranteeType has no active/inactive column in the legacy schema
+    // (unlike Currency), so there's nothing to soft-delete here — this page
+    // is intentionally view/add/edit only, no deactivate action.
+    private List<mas_WarranteeType> _types = new();
+    private string? _error;
+    private long? _editingId;
+
+    private class WarrantyTypeForm
+    {
+        public string WarrantyTypeTh { get; set; } = "";
+        public string? WarrantyTypeEn { get; set; }
+    }
+
+    private WarrantyTypeForm _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _types = await context.mas_WarranteeTypes.OrderBy(t => t.WarrantyTypeTh).ToListAsync();
+    }
+
+    private void StartEdit(mas_WarranteeType type)
+    {
+        _editingId = type.id;
+        _form = new WarrantyTypeForm { WarrantyTypeTh = type.WarrantyTypeTh ?? "", WarrantyTypeEn = type.WarrantyTypeEn };
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _form = new WarrantyTypeForm();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.WarrantyTypeTh))
+        {
+            _error = "กรุณากรอกชื่อ (ไทย)";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (_editingId is long id)
+        {
+            var existing = await context.mas_WarranteeTypes.FirstOrDefaultAsync(t => t.id == id);
+            if (existing is null)
+            {
+                _error = "ไม่พบประเภทการรับประกันนี้แล้ว";
+                return;
+            }
+            existing.WarrantyTypeTh = _form.WarrantyTypeTh;
+            existing.WarrantyTypeEn = _form.WarrantyTypeEn;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.mas_WarranteeTypes.Add(new mas_WarranteeType
+            {
+                WarrantyTypeTh = _form.WarrantyTypeTh,
+                WarrantyTypeEn = _form.WarrantyTypeEn,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(_editingId is null ? "เพิ่มสำเร็จ" : "บันทึกการแก้ไขสำเร็จ", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
