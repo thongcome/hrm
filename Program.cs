@@ -25,6 +25,8 @@ using HRM.Services.Payroll;
 using HRM.Services.Pay;
 using HRM.Services.Pay.Calculators;
 using System.Security.Claims;
+using OpenIddict.Abstractions;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 
 
@@ -113,6 +115,22 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
+// OpenIddict's EF Core store resolves its DbContext directly via DI
+// (services.GetRequiredService<ApplicationDbContext>()), not through
+// IDbContextFactory<T> — every other context in this app uses the factory
+// pattern exclusively, so this exists solely for OpenIddict's
+// AddCore().UseDbContext<ApplicationDbContext>() below. Deliberately NOT a
+// second plain AddDbContext(...) call — that duplicates EF's own
+// IDbContextOptionsConfiguration<T> registration alongside the factory's,
+// which trips ASP.NET Core's build-time service-provider validation
+// ("Cannot resolve scoped service ... from root provider") even though
+// nothing is actually misconfigured. Delegating to the factory that's
+// already registered avoids the duplicate options pipeline entirely — DI
+// still disposes the created context at end of scope like any other scoped
+// service, same as if AddDbContext had registered it directly.
+builder.Services.AddScoped<ApplicationDbContext>(sp =>
+    sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>().CreateDbContext());
+
 //builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 //    options.UseSqlServer(builder.Configuration.GetConnectionString("SdlAppContext") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.")));
 
@@ -161,6 +179,61 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
+
+// HRM as OIDC Identity Provider (SSO) for downstream HumanOk apps — see
+// Endpoints/OidcEndpoints.cs for the actual authorize/token/userinfo/logout
+// handlers, HRM-SSO-Handoff.md for the contract ERP (the first consumer)
+// was built against, and Sso_ClientRoleMapping for the per-client role
+// story. This is authorization-code + PKCE only (no implicit/client-creds
+// flows) — the doc's whole reason for choosing this over a bespoke token
+// scheme was to get a standard, client-library-compatible IdP for free.
+builder.Services.AddOpenIddict()
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore().UseDbContext<ApplicationDbContext>();
+    })
+    .AddServer(options =>
+    {
+        options.SetAuthorizationEndpointUris("/connect/authorize")
+            .SetTokenEndpointUris("/connect/token")
+            .SetUserInfoEndpointUris("/connect/userinfo")
+            .SetEndSessionEndpointUris("/connect/logout");
+
+        options.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange();
+
+        options.RegisterScopes(Scopes.OpenId, Scopes.Profile, Scopes.Email);
+
+        // Dev-only ephemeral certs so this works out of the box locally —
+        // production needs real, persisted signing/encryption certificates
+        // (same "dev fallback, real config required outside Development"
+        // shape as ExternalApiAuth:DevSigningKey elsewhere in this file).
+        if (builder.Environment.IsDevelopment())
+        {
+            options.AddDevelopmentEncryptionCertificate()
+                .AddDevelopmentSigningCertificate();
+        }
+
+        var aspNetCoreBuilder = options.UseAspNetCore()
+            .EnableAuthorizationEndpointPassthrough()
+            .EnableTokenEndpointPassthrough()
+            .EnableUserInfoEndpointPassthrough()
+            .EnableEndSessionEndpointPassthrough();
+
+        // ERP's OIDC client defaults to RequireHttpsMetadata=true (see
+        // handoff doc section 5.7) and this app runs plain HTTP locally, so
+        // transport security is relaxed only in Development — the real
+        // deployment target terminates TLS in front of this app anyway.
+        if (builder.Environment.IsDevelopment())
+            aspNetCoreBuilder.DisableTransportSecurityRequirement();
+    })
+    .AddValidation(options =>
+    {
+        // Validates access tokens presented to /connect/userinfo — HRM
+        // issued them itself, so it can validate them locally rather than
+        // calling out to an introspection endpoint.
+        options.UseLocalServer();
+        options.UseAspNetCore();
+    });
 
 builder.Services.AddRazorPages();  // ���������ҹ Razor Pages
                                    // bootstrap blazor
@@ -507,6 +580,58 @@ app.MapExternalApiEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapExternalApiDevEndpoints();
+}
+
+app.MapOidcEndpoints();
+
+// Idempotent client registration for the ERP OIDC client — see
+// HRM-SSO-Handoff.md section 4. Runs on every startup but only actually
+// creates anything the first time; safe to leave in place permanently
+// (matches UserProvisioningService's "ensure exists" idiom elsewhere).
+using (var oidcSeedScope = app.Services.CreateScope())
+{
+    var appManager = oidcSeedScope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+    if (await appManager.FindByClientIdAsync("erp-web") is null)
+    {
+        var redirectUri = app.Configuration["Sso:ErpClient:RedirectUri"];
+        var postLogoutRedirectUri = app.Configuration["Sso:ErpClient:PostLogoutRedirectUri"];
+
+        if (string.IsNullOrWhiteSpace(redirectUri) || string.IsNullOrWhiteSpace(postLogoutRedirectUri))
+        {
+            Log.Warning("Sso:ErpClient:RedirectUri/PostLogoutRedirectUri are not configured in appsettings.json — skipping erp-web OIDC client registration.");
+        }
+        else
+        {
+            var clientSecret = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+            await appManager.CreateAsync(new OpenIddictApplicationDescriptor
+            {
+                ClientId = "erp-web",
+                ClientSecret = clientSecret,
+                DisplayName = "ERP (Advance Digital)",
+                RedirectUris = { new Uri(redirectUri) },
+                PostLogoutRedirectUris = { new Uri(postLogoutRedirectUri) },
+                Permissions =
+                {
+                    Permissions.Endpoints.Authorization,
+                    Permissions.Endpoints.Token,
+                    Permissions.Endpoints.EndSession,
+                    Permissions.GrantTypes.AuthorizationCode,
+                    Permissions.ResponseTypes.Code,
+                    Permissions.Prefixes.Scope + Scopes.OpenId,
+                    Permissions.Prefixes.Scope + Scopes.Profile,
+                    Permissions.Prefixes.Scope + Scopes.Email,
+                },
+                Requirements = { Requirements.Features.ProofKeyForCodeExchange },
+            });
+
+            // Shown exactly once, right now — OpenIddict stores only a
+            // hash of the secret, so there is no way to retrieve it again
+            // later. Copy it and hand it to the ERP team securely per the
+            // handoff doc's section 4/6 ("<สุ่ม แล้วส่งให้ทีม ERP อย่างปลอดภัย>").
+            Log.Warning("OIDC client 'erp-web' created. ClientSecret (shown once, never logged again): {ClientSecret}", clientSecret);
+        }
+    }
 }
 
 app.Run();

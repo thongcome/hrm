@@ -1,0 +1,171 @@
+@page "/admin/system/sso-roles"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+    <MudText Typo="Typo.h5">สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดว่าผู้ใช้แต่ละคนควรได้ "role" อะไรเมื่อเข้าระบบอื่น (เช่น ERP) ผ่านการล็อกอินครั้งเดียว (SSO) —
+        HRM ส่งแค่ตัวตน+role ให้ ระบบปลายทางเป็นคนจัดการสิทธิ์ใช้งานของตัวเอง
+        ผู้ใช้ที่ไม่ได้กำหนดไว้ในนี้จะได้ role เริ่มต้นที่ปลอดภัยที่สุดของระบบปลายทางนั้น (เช่น ERP ให้เป็น "Viewer")
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">เพิ่มสิทธิ์ใหม่</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="5">
+            <MudAutocomplete T="sc_user" Label="ผู้ใช้" @bind-Value="_selectedUser"
+                SearchFunc="SearchUsersAsync"
+                ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_clientId" Label="ระบบปลายทาง (Client)" HelperText="เช่น erp-web" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_role" Label="Role" HelperText="เช่น Sales, Accountant, Inventory, Admin" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่ม</MudButton>
+    </MudStack>
+
+    <MudDivider Class="my-5" />
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_rows" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ผู้ใช้</MudTh>
+            <MudTh>ระบบปลายทาง</MudTh>
+            <MudTh>Role</MudTh>
+            <MudTh>วันที่กำหนด</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.UserLabel</MudTd>
+            <MudTd>@context.Mapping.ClientId</MudTd>
+            <MudTd>@context.Mapping.Role</MudTd>
+            <MudTd>@context.Mapping.CreatedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Mapping.Id))">ลบ</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการกำหนดสิทธิ์</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private record RowItem(Sso_ClientRoleMapping Mapping, string UserLabel);
+
+    private List<RowItem> _rows = new();
+    private string? _searchTerm;
+    private string? _error;
+    private sc_user? _selectedUser;
+    private string _clientId = "erp-web";
+    private string _role = "";
+    private long? _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _currentUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query =
+            from m in context.Sso_ClientRoleMappings
+            join u in context.sc_users on m.ScUserId equals u.userid
+            select new { m, u.loginname, u.firstname, u.lastname };
+
+        var data = await query.OrderByDescending(x => x.m.CreatedDate).ToListAsync();
+        var items = data.Select(x => new RowItem(x.m, $"{x.loginname} — {x.firstname} {x.lastname}")).AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            items = items.Where(r =>
+                r.UserLabel.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                r.Mapping.ClientId.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                r.Mapping.Role.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _rows = items.ToList();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.sc_users.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(sc_user.loginname), nameof(sc_user.firstname), nameof(sc_user.lastname));
+        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+
+        if (_selectedUser is null) { _error = "กรุณาเลือกผู้ใช้"; return; }
+        if (string.IsNullOrWhiteSpace(_clientId)) { _error = "กรุณากรอกระบบปลายทาง (Client)"; return; }
+        if (string.IsNullOrWhiteSpace(_role)) { _error = "กรุณากรอก Role"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.Sso_ClientRoleMappings.AnyAsync(m =>
+            m.ScUserId == _selectedUser.userid && m.ClientId == _clientId);
+        if (duplicate)
+        {
+            _error = "ผู้ใช้นี้มี role กำหนดไว้แล้วสำหรับระบบปลายทางนี้ — ลบอันเดิมก่อนถ้าต้องการเปลี่ยน";
+            return;
+        }
+
+        context.Sso_ClientRoleMappings.Add(new Sso_ClientRoleMapping
+        {
+            ScUserId = _selectedUser.userid,
+            ClientId = _clientId,
+            Role = _role,
+            CreatedByUserId = _currentUserId,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มสำเร็จ", Severity.Success);
+        _selectedUser = null;
+        _role = "";
+        await LoadAsync();
+    }
+
+    private async Task RemoveAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Sso_ClientRoleMappings.FirstOrDefaultAsync(m => m.Id == id);
+        if (existing is null) return;
+
+        context.Sso_ClientRoleMappings.Remove(existing);
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}

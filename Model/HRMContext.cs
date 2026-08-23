@@ -540,6 +540,12 @@ public partial class HRMContext : DbContext
     // ----- System-wide UI settings -----
     public virtual DbSet<SystemLanguageSettings> SystemLanguageSettingsList { get; set; }
     // ----- end System-wide UI settings -----
+
+    // ----- Sso_* module (OIDC role mapping for downstream clients e.g. ERP — the
+    // OpenIddict application/authorization/scope/token entities themselves live
+    // in ApplicationDbContext, not here; see Data/ApplicationDbContext.cs) -----
+    public virtual DbSet<Sso_ClientRoleMapping> Sso_ClientRoleMappings { get; set; }
+    // ----- end Sso_* module -----
     // ----- end Pay_* module -----
 
     // No hardcoded connection-string fallback here on purpose — this

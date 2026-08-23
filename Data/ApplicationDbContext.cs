@@ -42,6 +42,14 @@ namespace HRM.Data
           .WithMany(g => g.Activity)
           .HasForeignKey(a => a.TaskId);
 
+            // OpenIddict's application/authorization/scope/token entities
+            // (see Program.cs's AddOpenIddict().AddCore() wiring, which
+            // points .UseDbContext<ApplicationDbContext>() at this same
+            // context) — keeps SSO/OIDC client+token storage next to the
+            // Identity tables it authenticates against, not in the much
+            // larger legacy HRMContext.
+            modelBuilder.UseOpenIddict();
+
             base.OnModelCreating(modelBuilder);
 
         }
