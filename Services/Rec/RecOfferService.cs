@@ -165,6 +165,49 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
 
         await EmployeeEmailResolver.SetAsync(context, emp.id, candidate.Email, ct);
 
+        // Carry over whatever education/experience the candidate typed on
+        // the apply form (or HR added on CandidateDetail.razor) into the new
+        // employee's real personnel record — field-for-field copy, since
+        // Rec_CandidateEducation/Experience mirror Hrd_Education/Experience
+        // shape exactly for this purpose. Saves HR from re-typing history
+        // that's already on file.
+        var candidateEducation = await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidate.Id).ToListAsync(ct);
+        foreach (var edu in candidateEducation)
+        {
+            context.Hrd_Educations.Add(new Hrd_Education
+            {
+                HremployeeId = emp.id,
+                Level = edu.Level,
+                Degree = edu.Degree,
+                Major = edu.Major,
+                MajorSubject = edu.MajorSubject,
+                Faculty = edu.Faculty,
+                Institute = edu.Institute,
+                Country = edu.Country,
+                EntryDate = edu.EntryDate,
+                FinishedDate = edu.FinishedDate,
+                Gpa = edu.Gpa,
+                IsHonors = edu.IsHonors,
+                IsHighestDegree = edu.IsHighestDegree,
+                Remark = edu.Remark,
+            });
+        }
+
+        var candidateExperience = await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidate.Id).ToListAsync(ct);
+        foreach (var exp in candidateExperience)
+        {
+            context.Hrd_Experiences.Add(new Hrd_Experience
+            {
+                HremployeeId = emp.id,
+                StartDate = exp.StartDate,
+                EndDate = exp.EndDate,
+                Position = exp.Position,
+                Company = exp.Company,
+                Remark = exp.Remark,
+            });
+        }
+        await context.SaveChangesAsync(ct);
+
         var oldHremployeeId = slot.HremployeeId;
         slot.HremployeeId = emp.id;
         await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, ct);

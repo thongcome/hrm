@@ -28,6 +28,25 @@ public static class CareerEndpoints
             var phone = form["phone"].ToString();
             var consentGiven = form["consent"].ToString() == "on";
 
+            RecApplicationService.EducationInput? education = null;
+            var eduLevel = form["edu_level"].ToString();
+            if (!string.IsNullOrWhiteSpace(eduLevel))
+            {
+                DateOnly? eduFinished = DateOnly.TryParse(form["edu_finished"].ToString(), out var ef) ? ef : null;
+                education = new RecApplicationService.EducationInput(eduLevel, form["edu_degree"].ToString(), form["edu_major"].ToString(), form["edu_institute"].ToString(), eduFinished);
+            }
+
+            var experiences = new List<RecApplicationService.ExperienceInput>();
+            for (var i = 1; i <= 3; i++)
+            {
+                var company = form[$"exp{i}_company"].ToString();
+                var position = form[$"exp{i}_position"].ToString();
+                if (string.IsNullOrWhiteSpace(company) && string.IsNullOrWhiteSpace(position)) continue;
+                DateOnly? start = DateOnly.TryParse(form[$"exp{i}_start"].ToString(), out var s) ? s : null;
+                DateOnly? end = DateOnly.TryParse(form[$"exp{i}_end"].ToString(), out var e) ? e : null;
+                experiences.Add(new RecApplicationService.ExperienceInput(position, company, start, end));
+            }
+
             byte[]? resumeBytes = null;
             string? resumeFileName = null;
             var resumeFile = form.Files["resume"];
@@ -42,7 +61,7 @@ public static class CareerEndpoints
                 resumeFileName = resumeFile.FileName;
             }
 
-            var result = await applicationService.ApplyPublicAsync(postingId, firstName, lastName, email, phone, consentGiven, resumeFileName, resumeBytes);
+            var result = await applicationService.ApplyPublicAsync(postingId, firstName, lastName, email, phone, consentGiven, resumeFileName, resumeBytes, education, experiences);
 
             if (!result.Success)
                 return Results.LocalRedirect($"/careers/{postingId}/apply?error=" + Uri.EscapeDataString(result.Error ?? "ไม่สามารถส่งใบสมัครได้"));

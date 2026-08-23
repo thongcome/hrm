@@ -38,7 +38,54 @@ else
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1">
             @L.Translate("BusinessImpactLabel"): @ImpactLabel(_keyPosition.BusinessImpact) &nbsp;|&nbsp; @L.Translate("ReplacementDifficultyLabel"): @DifficultyLabel(_keyPosition.ReplacementDifficulty)
+            @if (_keyPosition.MinYearsExperience is int minYears)
+            {
+                <text>&nbsp;|&nbsp; ประสบการณ์ขั้นต่ำ: @minYears ปี</text>
+            }
         </MudText>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">ค้นหาผู้สืบทอดตามเกณฑ์ประสบการณ์/การศึกษา</MudText>
+        <MudText Typo="Typo.caption" Class="mb-2">ค้นหาเพิ่มเติมจากพนักงานทั้งบริษัท นอกเหนือจาก Talent Pool/ศักยภาพสูงด้านบน — ถ้าตำแหน่งนี้ตั้งประสบการณ์ขั้นต่ำไว้ จะกรองให้อัตโนมัติ</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField T="string" @bind-Value="_eligibilityKeyword" Label="คำค้นด้านการศึกษา (ระดับ/วุฒิ/สาขา/สถาบัน, ไม่บังคับ)" />
+            </MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex align-center">
+                <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="SearchEligibleAsync">ค้นหา</MudButton>
+            </MudItem>
+        </MudGrid>
+        @if (_eligibleSearched)
+        {
+            @if (_eligibleCandidates.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-2">ไม่พบพนักงานที่ตรงเกณฑ์</MudAlert>
+            }
+            else
+            {
+                <MudTable Items="_eligibleCandidates" Dense="true" Hover="true" Class="mt-2">
+                    <HeaderContent>
+                        <MudTh>พนักงาน</MudTh>
+                        <MudTh>ประสบการณ์รวม</MudTh>
+                        <MudTh>วุฒิสูงสุด</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.EmpNo — @context.Name</MudTd>
+                        <MudTd>
+                            @context.TotalYearsExperience ปี
+                            @if (context.MeetsMinExperience is true)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-1">ตรงเกณฑ์</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>@(context.HighestEducationLabel ?? "-")</MudTd>
+                        <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SelectSuggestedAsync(context.HremployeeId))">เลือกเสนอชื่อ</MudButton></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        }
     </MudPaper>
 
     @if (VisibleSuggestions.Count > 0)
@@ -94,6 +141,7 @@ else
             <HeaderContent>
                 <MudTh>@L.Translate("SuccessorColLabel")</MudTh>
                 <MudTh>@L.Translate("ReadinessColLabel")</MudTh>
+                <MudTh>ประสบการณ์รวม (ปัจจัยประกอบ)</MudTh>
                 <MudTh>@L.Translate("NominatedOnColLabel")</MudTh>
                 <MudTh>@L.Translate("ColRemark")</MudTh>
                 <MudTh></MudTh>
@@ -101,11 +149,21 @@ else
             <RowTemplate>
                 <MudTd>@context.EmpNo — @context.Name</MudTd>
                 <MudTd><MudChip T="string" Size="Size.Small" Color="@ReadinessColor(context.ReadinessLevel)">@ReadinessLabel(context.ReadinessLevel)</MudChip></MudTd>
+                <MudTd>
+                    @context.TotalYearsExperience ปี
+                    @if (context.MeetsMinExperience is bool meets)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@(meets ? Color.Success : Color.Error)" Class="ml-1">@(meets ? "ตรงเกณฑ์" : "ไม่ถึงเกณฑ์")</MudChip>
+                    }
+                </MudTd>
                 <MudTd>@context.NominatedDate.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@(context.Note ?? "-")</MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleGapAsync(context))">
                         @(_gapNominationId == context.Id ? L.Translate("HideGapAnalysisButton") : L.Translate("ViewGapAnalysisButton"))
+                    </MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleBackgroundAsync(context))">
+                        @(_backgroundNominationId == context.Id ? "ซ่อนประวัติ" : "ดูประวัติการศึกษา/ประสบการณ์")
                     </MudButton>
                     <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
                 </MudTd>
@@ -165,6 +223,45 @@ else
             }
         </MudPaper>
     }
+
+    @if (_backgroundNominationId is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">ประวัติการศึกษา/ประสบการณ์</MudText>
+            @if (_backgroundEducation.Count == 0 && _backgroundExperience.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">ไม่มีข้อมูลประวัติการศึกษา/ประสบการณ์บันทึกไว้</MudAlert>
+            }
+            else
+            {
+                @if (_backgroundEducation.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">การศึกษา</MudText>
+                    <MudTable Items="_backgroundEducation" Dense="true" Class="mb-3">
+                        <HeaderContent><MudTh>ระดับ</MudTh><MudTh>วุฒิ/สาขา</MudTh><MudTh>สถาบัน</MudTh><MudTh>ปีที่จบ</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Level @(context.IsHighestDegree ? "(สูงสุด)" : "")</MudTd>
+                            <MudTd>@context.Degree @context.Major</MudTd>
+                            <MudTd>@context.Institute</MudTd>
+                            <MudTd>@(context.FinishedDate?.ToString("yyyy") ?? "-")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                @if (_backgroundExperience.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">ประสบการณ์การทำงาน</MudText>
+                    <MudTable Items="_backgroundExperience" Dense="true">
+                        <HeaderContent><MudTh>ตำแหน่ง</MudTh><MudTh>บริษัท</MudTh><MudTh>ช่วงเวลา</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Position</MudTd>
+                            <MudTd>@context.Company</MudTd>
+                            <MudTd>@context.StartDate?.ToString("MM/yyyy") - @(context.EndDate?.ToString("MM/yyyy") ?? "ปัจจุบัน")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        </MudPaper>
+    }
 }
 
 @code {
@@ -183,6 +280,14 @@ else
     private long? _gapNominationId;
     private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
     private List<SuccessionService.SuggestedCandidateRow> _suggestedCandidates = new();
+
+    private long? _backgroundNominationId;
+    private List<Hrd_Education> _backgroundEducation = new();
+    private List<Hrd_Experience> _backgroundExperience = new();
+
+    private string? _eligibilityKeyword;
+    private bool _eligibleSearched;
+    private List<SuccessionService.EligibleCandidateRow> _eligibleCandidates = new();
 
     private List<SuccessionService.SuggestedCandidateRow> VisibleSuggestions =>
         _suggestedCandidates.Where(s => !_nominations.Any(n => n.HremployeeId == s.HremployeeId)).ToList();
@@ -275,6 +380,25 @@ else
 
         _gapNominationId = nomination.Id;
         _gapRows = await IdpService.GetGapAnalysisForTargetPositionAsync(nomination.HremployeeId, _keyPosition!.PosExecTypeId);
+    }
+
+    private async Task ToggleBackgroundAsync(SuccessionService.NominationRow nomination)
+    {
+        if (_backgroundNominationId == nomination.Id)
+        {
+            _backgroundNominationId = null;
+            return;
+        }
+
+        _backgroundNominationId = nomination.Id;
+        (_backgroundEducation, _backgroundExperience) = await SuccService.GetEducationExperienceAsync(nomination.HremployeeId);
+    }
+
+    private async Task SearchEligibleAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _eligibleCandidates = await SuccService.SearchEligibleCandidatesAsync(_companyId, Id, _eligibilityKeyword);
+        _eligibleSearched = true;
     }
 
     // Closes the loop from "we found a gap" to "there's an actual development

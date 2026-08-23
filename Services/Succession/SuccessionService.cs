@@ -16,16 +16,27 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
     public record KeyPositionRow(
         long Id, long PosExecTypeId, string PosExecTypeName,
         BusinessImpactLevel BusinessImpact, ReplacementDifficultyLevel ReplacementDifficulty,
-        string? Note, int SuccessorCount);
+        string? Note, int SuccessorCount, int? MinYearsExperience);
 
+    // MeetsMinExperience is informational input for HR, never used to set
+    // ReadinessLevel automatically — readiness stays a human judgment call
+    // (same stance as every other approval/rating flow in this codebase:
+    // computed signals get shown, not silently applied).
     public record NominationRow(
         long Id, long HremployeeId, string EmpNo, string Name,
-        ReadinessLevel ReadinessLevel, string? Note, DateTime NominatedDate);
+        ReadinessLevel ReadinessLevel, string? Note, DateTime NominatedDate,
+        decimal TotalYearsExperience, bool? MeetsMinExperience);
 
     public record BenchStrengthRow(
         long KeyPositionId, string PosExecTypeName,
         BusinessImpactLevel BusinessImpact, ReplacementDifficultyLevel ReplacementDifficulty,
-        int ReadyNowCount, int TotalSuccessorCount, bool IsSinglePointOfFailure);
+        int ReadyNowCount, int TotalSuccessorCount, bool IsSinglePointOfFailure,
+        int? MinYearsExperience, int MeetsMinExperienceCount);
+
+    public record EligibleCandidateRow(
+        long HremployeeId, string EmpNo, string Name,
+        decimal TotalYearsExperience, bool? MeetsMinExperience,
+        string? HighestEducationLabel, bool EducationKeywordMatched);
 
     public record SuggestedCandidateRow(long HremployeeId, string EmpNo, string Name, string SourceLabel);
 
@@ -100,10 +111,11 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
             k.Id, k.PosExecTypeId,
             posExecTypeNames.TryGetValue(k.PosExecTypeId, out var name) ? name : $"#{k.PosExecTypeId}",
             k.BusinessImpact, k.ReplacementDifficulty, k.Note,
-            successorCounts.TryGetValue(k.Id, out var count) ? count : 0)).ToList();
+            successorCounts.TryGetValue(k.Id, out var count) ? count : 0,
+            k.MinYearsExperience)).ToList();
     }
 
-    public async Task<long> AddKeyPositionAsync(string companyId, long posExecTypeId, BusinessImpactLevel impact, ReplacementDifficultyLevel difficulty, string? note, long actorUserId, CancellationToken ct = default)
+    public async Task<long> AddKeyPositionAsync(string companyId, long posExecTypeId, BusinessImpactLevel impact, ReplacementDifficultyLevel difficulty, string? note, long actorUserId, int? minYearsExperience = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
@@ -119,13 +131,14 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
             ReplacementDifficulty = difficulty,
             Note = note,
             AddedByUserId = actorUserId,
+            MinYearsExperience = minYearsExperience,
         };
         context.Succ_KeyPositions.Add(keyPosition);
         await context.SaveChangesAsync(ct);
         return keyPosition.Id;
     }
 
-    public async Task UpdateKeyPositionAsync(long id, BusinessImpactLevel impact, ReplacementDifficultyLevel difficulty, string? note, CancellationToken ct = default)
+    public async Task UpdateKeyPositionAsync(long id, BusinessImpactLevel impact, ReplacementDifficultyLevel difficulty, string? note, int? minYearsExperience = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == id, ct)
@@ -134,6 +147,7 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
         keyPosition.BusinessImpact = impact;
         keyPosition.ReplacementDifficulty = difficulty;
         keyPosition.Note = note;
+        keyPosition.MinYearsExperience = minYearsExperience;
         await context.SaveChangesAsync(ct);
     }
 
@@ -152,6 +166,8 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
+        var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == keyPositionId, ct);
+
         var nominations = await context.Succ_SuccessorNominations
             .Where(n => n.KeyPositionId == keyPositionId && n.IsActive)
             .OrderBy(n => n.ReadinessLevel)
@@ -161,12 +177,40 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
 
         var employeeIds = nominations.Select(n => n.HremployeeId).Distinct().ToList();
         var employees = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToListAsync(ct);
+        var experiences = await context.Hrd_Experiences.Where(e => employeeIds.Contains(e.HremployeeId)).ToListAsync(ct);
 
         return nominations.Select(n =>
         {
             var emp = employees.FirstOrDefault(e => e.id == n.HremployeeId);
-            return new NominationRow(n.Id, n.HremployeeId, emp?.EmpNo ?? "?", emp is null ? $"#{n.HremployeeId}" : $"{emp.EmpName} {emp.EmpSurname}", n.ReadinessLevel, n.Note, n.NominatedDate);
+            var years = CalculateTotalYearsExperience(emp, experiences.Where(e => e.HremployeeId == n.HremployeeId).ToList());
+            bool? meetsMin = keyPosition?.MinYearsExperience is int min ? years >= min : null;
+            return new NominationRow(n.Id, n.HremployeeId, emp?.EmpNo ?? "?", emp is null ? $"#{n.HremployeeId}" : $"{emp.EmpName} {emp.EmpSurname}", n.ReadinessLevel, n.Note, n.NominatedDate, years, meetsMin);
         }).ToList();
+    }
+
+    // Sums external Hrd_Experience durations (StartDate -> EndDate, or ->
+    // today if still ongoing) plus internal tenure (Hremployee.WorkDate ->
+    // today). Not persisted anywhere — recomputed on every read, same stance
+    // as Okr_Objective progress% elsewhere in this codebase.
+    private static decimal CalculateTotalYearsExperience(Hremployee? emp, List<Hrd_Experience> experiences)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        var externalDays = experiences.Sum(e =>
+        {
+            if (e.StartDate is not DateOnly start) return 0;
+            var end = e.EndDate ?? today;
+            return end > start ? end.DayNumber - start.DayNumber : 0;
+        });
+
+        var internalDays = 0;
+        if (emp?.WorkDate is DateTime workDate)
+        {
+            var start = DateOnly.FromDateTime(workDate);
+            if (today > start) internalDays = today.DayNumber - start.DayNumber;
+        }
+
+        return Math.Round((externalDays + internalDays) / 365m, 1);
     }
 
     public async Task<long> NominateAsync(long keyPositionId, long hremployeeId, ReadinessLevel readinessLevel, long actorUserId, string? note, CancellationToken ct = default)
@@ -233,14 +277,98 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
             .Where(n => keyPositionIds.Contains(n.KeyPositionId) && n.IsActive)
             .ToListAsync(ct);
 
+        var employeeIds = nominations.Select(n => n.HremployeeId).Distinct().ToList();
+        var employees = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToListAsync(ct);
+        var experiences = await context.Hrd_Experiences.Where(e => employeeIds.Contains(e.HremployeeId)).ToListAsync(ct);
+
         return keyPositions.Select(k =>
         {
             var forThisPosition = nominations.Where(n => n.KeyPositionId == k.Id).ToList();
             var readyNow = forThisPosition.Count(n => n.ReadinessLevel == ReadinessLevel.ReadyNow);
+            var meetsMinCount = k.MinYearsExperience is int min
+                ? forThisPosition.Count(n =>
+                    CalculateTotalYearsExperience(
+                        employees.FirstOrDefault(e => e.id == n.HremployeeId),
+                        experiences.Where(e => e.HremployeeId == n.HremployeeId).ToList()) >= min)
+                : 0;
             return new BenchStrengthRow(
                 k.Id, posExecTypeNames.TryGetValue(k.PosExecTypeId, out var name) ? name : $"#{k.PosExecTypeId}",
                 k.BusinessImpact, k.ReplacementDifficulty,
-                readyNow, forThisPosition.Count, forThisPosition.Count == 0);
+                readyNow, forThisPosition.Count, forThisPosition.Count == 0,
+                k.MinYearsExperience, meetsMinCount);
         }).ToList();
+    }
+
+    // Read-only reference panel for KeyPositionDetail.razor's nomination
+    // expand toggle — sits next to the existing competency gap analysis.
+    public async Task<(List<Hrd_Education> Education, List<Hrd_Experience> Experience)> GetEducationExperienceAsync(long hremployeeId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var education = await context.Hrd_Educations.Where(e => e.HremployeeId == hremployeeId).OrderByDescending(e => e.IsHighestDegree).ThenByDescending(e => e.FinishedDate).ToListAsync(ct);
+        var experience = await context.Hrd_Experiences.Where(e => e.HremployeeId == hremployeeId).OrderByDescending(e => e.StartDate).ToListAsync(ct);
+        return (education, experience);
+    }
+
+    // Additive discovery path alongside GetSuggestedCandidatesAsync's
+    // Talent-Pool/High-Potential suggestions — searches every active
+    // employee in the company by computed years of experience and an
+    // optional education keyword (Hrd_Education.Level/Degree/Major/Institute
+    // is free text, so this is a LIKE match, not a ranked-degree
+    // comparison — matching this codebase's EntitySearchHelper convention
+    // rather than inventing a fragile degree-ranking scheme).
+    public async Task<List<EligibleCandidateRow>> SearchEligibleCandidatesAsync(string companyId, long keyPositionId, string? educationKeyword = null, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == keyPositionId, ct)
+            ?? throw new InvalidOperationException("ไม่พบตำแหน่งสำคัญนี้");
+
+        var alreadyNominated = await context.Succ_SuccessorNominations
+            .Where(n => n.KeyPositionId == keyPositionId && n.IsActive)
+            .Select(n => n.HremployeeId)
+            .ToListAsync(ct);
+
+        var employees = await context.Hremployee
+            .Where(e => e.companyid == companyId && e.ResignDate == null && !alreadyNominated.Contains(e.id))
+            .ToListAsync(ct);
+        if (employees.Count == 0)
+            return new();
+
+        var employeeIds = employees.Select(e => e.id).ToList();
+        var allExperience = await context.Hrd_Experiences.Where(e => employeeIds.Contains(e.HremployeeId)).ToListAsync(ct);
+        var allEducation = await context.Hrd_Educations.Where(e => employeeIds.Contains(e.HremployeeId)).ToListAsync(ct);
+
+        var trimmedKeyword = educationKeyword?.Trim();
+        var hasKeyword = !string.IsNullOrWhiteSpace(trimmedKeyword);
+
+        var rows = employees.Select(e =>
+        {
+            var years = CalculateTotalYearsExperience(e, allExperience.Where(x => x.HremployeeId == e.id).ToList());
+            var eduRows = allEducation.Where(x => x.HremployeeId == e.id).ToList();
+            var highest = eduRows.FirstOrDefault(x => x.IsHighestDegree) ?? eduRows.OrderByDescending(x => x.FinishedDate).FirstOrDefault();
+            var highestLabel = highest is null ? null : $"{highest.Level} {highest.Degree} {highest.Major}".Trim();
+
+            var matched = hasKeyword && eduRows.Any(x =>
+                (x.Level?.Contains(trimmedKeyword!, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.Degree?.Contains(trimmedKeyword!, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.Major?.Contains(trimmedKeyword!, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.Institute?.Contains(trimmedKeyword!, StringComparison.OrdinalIgnoreCase) ?? false));
+
+            bool? meetsMin = keyPosition.MinYearsExperience is int min ? years >= min : null;
+
+            return new EligibleCandidateRow(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}", years, meetsMin, highestLabel, matched);
+        });
+
+        // Meeting the experience floor (if one is set) is a hard filter —
+        // it's the config threshold HR chose for this position. The
+        // education keyword is a soft filter to help HR narrow the list,
+        // not a requirement (many valid successors won't match an exact
+        // keyword against free-text degree data).
+        if (keyPosition.MinYearsExperience is not null)
+            rows = rows.Where(r => r.MeetsMinExperience == true);
+        if (hasKeyword)
+            rows = rows.Where(r => r.EducationKeywordMatched);
+
+        return rows.OrderByDescending(r => r.TotalYearsExperience).ToList();
     }
 }

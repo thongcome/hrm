@@ -36,6 +36,63 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการศึกษา</MudText>
+        <MudTable Items="_education" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ระดับ</MudTh><MudTh>วุฒิ/สาขา</MudTh><MudTh>สถาบัน</MudTh><MudTh>ปีที่จบ</MudTh><MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Level @(context.IsHighestDegree ? "(สูงสุด)" : "")</MudTd>
+                <MudTd>@context.Degree @context.Major</MudTd>
+                <MudTd>@context.Institute</MudTd>
+                <MudTd>@(context.FinishedDate?.ToString("yyyy") ?? "-")</MudTd>
+                <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveEducationAsync(context.Id))" /></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีข้อมูลการศึกษา</MudText></NoRecordsContent>
+        </MudTable>
+        <MudExpansionPanels Class="mt-2">
+            <MudExpansionPanel Text="เพิ่มประวัติการศึกษา">
+                <MudGrid>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newEdu.Level" Label="ระดับ" /></MudItem>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newEdu.Degree" Label="วุฒิ" /></MudItem>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newEdu.Major" Label="วิชาเอก" /></MudItem>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newEdu.Institute" Label="สถาบัน" /></MudItem>
+                    <MudItem xs="6"><MudDatePicker @bind-Date="_newEduFinished" Label="ปีที่จบ" /></MudItem>
+                    <MudItem xs="6"><MudCheckBox @bind-Value="_newEdu.IsHighestDegree" Label="วุฒิสูงสุด" /></MudItem>
+                    <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddEducationAsync">เพิ่ม</MudButton></MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประสบการณ์การทำงาน</MudText>
+        <MudTable Items="_experience" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ตำแหน่ง</MudTh><MudTh>บริษัท</MudTh><MudTh>ช่วงเวลา</MudTh><MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Position</MudTd>
+                <MudTd>@context.Company</MudTd>
+                <MudTd>@context.StartDate?.ToString("MM/yyyy") - @(context.EndDate?.ToString("MM/yyyy") ?? "ปัจจุบัน")</MudTd>
+                <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => RemoveExperienceAsync(context.Id))" /></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีข้อมูลประสบการณ์</MudText></NoRecordsContent>
+        </MudTable>
+        <MudExpansionPanels Class="mt-2">
+            <MudExpansionPanel Text="เพิ่มประสบการณ์การทำงาน">
+                <MudGrid>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newExp.Position" Label="ตำแหน่ง" /></MudItem>
+                    <MudItem xs="6"><MudTextField @bind-Value="_newExp.Company" Label="บริษัท" /></MudItem>
+                    <MudItem xs="6"><MudDatePicker @bind-Date="_newExpStart" Label="วันที่เริ่ม" /></MudItem>
+                    <MudItem xs="6"><MudDatePicker @bind-Date="_newExpEnd" Label="วันที่สิ้นสุด (เว้นว่างถ้ายังทำอยู่)" /></MudItem>
+                    <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddExperienceAsync">เพิ่ม</MudButton></MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">ประวัติการสมัครทั้งหมด</MudText>
         <MudTable Items="_applications" Dense="true" Hover="true" Class="mt-2">
             <HeaderContent>
@@ -59,6 +116,13 @@ else
     private Rec_Candidate? _candidate;
     private List<Rec_Application> _applications = new();
     private Dictionary<long, string> _postingTitles = new();
+    private List<Rec_CandidateEducation> _education = new();
+    private List<Rec_CandidateExperience> _experience = new();
+    private Rec_CandidateEducation _newEdu = new();
+    private DateTime? _newEduFinished;
+    private Rec_CandidateExperience _newExp = new();
+    private DateTime? _newExpStart;
+    private DateTime? _newExpEnd;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -68,6 +132,8 @@ else
         await AuditLogger.LogAccessAsync("Rec_Candidate", Id.ToString(), isSensitive: true, note: "candidate detail view");
 
         _applications = await ApplicationService.GetApplicationHistoryForCandidateAsync(Id);
+        _education = await ApplicationService.GetCandidateEducationAsync(Id);
+        _experience = await ApplicationService.GetCandidateExperienceAsync(Id);
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var postingIds = _applications.Select(a => a.JobPostingId).Distinct().ToList();
@@ -75,4 +141,40 @@ else
     }
 
     private string PostingTitle(long id) => _postingTitles.TryGetValue(id, out var t) ? t : $"#{id}";
+
+    private async Task AddEducationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newEdu.Level)) return;
+        _newEdu.CandidateId = Id;
+        _newEdu.FinishedDate = _newEduFinished is null ? null : DateOnly.FromDateTime(_newEduFinished.Value);
+        await ApplicationService.AddCandidateEducationAsync(_newEdu);
+        _newEdu = new();
+        _newEduFinished = null;
+        _education = await ApplicationService.GetCandidateEducationAsync(Id);
+    }
+
+    private async Task RemoveEducationAsync(long id)
+    {
+        await ApplicationService.RemoveCandidateEducationAsync(id);
+        _education = await ApplicationService.GetCandidateEducationAsync(Id);
+    }
+
+    private async Task AddExperienceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newExp.Company) && string.IsNullOrWhiteSpace(_newExp.Position)) return;
+        _newExp.CandidateId = Id;
+        _newExp.StartDate = _newExpStart is null ? null : DateOnly.FromDateTime(_newExpStart.Value);
+        _newExp.EndDate = _newExpEnd is null ? null : DateOnly.FromDateTime(_newExpEnd.Value);
+        await ApplicationService.AddCandidateExperienceAsync(_newExp);
+        _newExp = new();
+        _newExpStart = null;
+        _newExpEnd = null;
+        _experience = await ApplicationService.GetCandidateExperienceAsync(Id);
+    }
+
+    private async Task RemoveExperienceAsync(long id)
+    {
+        await ApplicationService.RemoveCandidateExperienceAsync(id);
+        _experience = await ApplicationService.GetCandidateExperienceAsync(Id);
+    }
 }

@@ -16,9 +16,19 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
 
     public record ApplyResult(bool Success, string? Error, long? ApplicationId);
 
+    // Optional education/experience the candidate types on the public apply
+    // form. The form is a plain static HTML <form> (see CareerEndpoints.cs
+    // for why), so it offers a fixed number of slots rather than a dynamic
+    // add-row UI: one "highest degree" education entry and up to 3 recent
+    // jobs. Unlimited rows are only editable by HR afterwards, on
+    // CandidateDetail.razor (a real interactive Blazor page).
+    public record EducationInput(string? Level, string? Degree, string? Major, string? Institute, DateOnly? FinishedDate);
+    public record ExperienceInput(string? Position, string? Company, DateOnly? StartDate, DateOnly? EndDate);
+
     public async Task<ApplyResult> ApplyPublicAsync(
         long jobPostingId, string firstName, string lastName, string email, string? phone,
-        bool consentGiven, string? resumeOriginalFileName, byte[]? resumeBytes, CancellationToken ct = default)
+        bool consentGiven, string? resumeOriginalFileName, byte[]? resumeBytes,
+        EducationInput? education = null, List<ExperienceInput>? experiences = null, CancellationToken ct = default)
     {
         if (!consentGiven)
             return new(false, "กรุณายืนยันความยินยอมให้เก็บและใช้ข้อมูลส่วนบุคคลก่อนส่งใบสมัคร", null);
@@ -65,6 +75,41 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
             candidate.ConsentGiven = true;
             candidate.ConsentDate = DateTime.Now;
         }
+
+        // Repeat applicants who already have education/experience on file
+        // aren't re-asked to fill the form in — we just don't duplicate rows
+        // for a candidate who already has at least one on record.
+        var hasEducation = await context.Rec_CandidateEducations.AnyAsync(e => e.CandidateId == candidate.Id, ct);
+        if (!hasEducation && education is not null && !string.IsNullOrWhiteSpace(education.Level))
+        {
+            context.Rec_CandidateEducations.Add(new Rec_CandidateEducation
+            {
+                CandidateId = candidate.Id,
+                Level = education.Level,
+                Degree = education.Degree,
+                Major = education.Major,
+                Institute = education.Institute,
+                FinishedDate = education.FinishedDate,
+                IsHighestDegree = true,
+            });
+        }
+
+        var hasExperience = await context.Rec_CandidateExperiences.AnyAsync(e => e.CandidateId == candidate.Id, ct);
+        if (!hasExperience && experiences is { Count: > 0 })
+        {
+            foreach (var exp in experiences.Where(e => !string.IsNullOrWhiteSpace(e.Company) || !string.IsNullOrWhiteSpace(e.Position)))
+            {
+                context.Rec_CandidateExperiences.Add(new Rec_CandidateExperience
+                {
+                    CandidateId = candidate.Id,
+                    Position = exp.Position,
+                    Company = exp.Company,
+                    StartDate = exp.StartDate,
+                    EndDate = exp.EndDate,
+                });
+            }
+        }
+        await context.SaveChangesAsync(ct);
 
         if (resumeBytes is not null && resumeExt is not null)
         {
@@ -202,5 +247,58 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         app.RejectedDate = DateTime.Now;
         app.LastUpdatedByUserId = actorUserId;
         await context.SaveChangesAsync(ct);
+    }
+
+    // Unlimited add/remove for HR on CandidateDetail.razor — fills the gap
+    // for candidates who skipped the apply-form's fixed education/experience
+    // slots, or were entered manually by HR in the first place.
+    public async Task<List<Rec_CandidateEducation>> GetCandidateEducationAsync(long candidateId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        return await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidateId).OrderByDescending(e => e.IsHighestDegree).ThenByDescending(e => e.FinishedDate).ToListAsync(ct);
+    }
+
+    public async Task AddCandidateEducationAsync(Rec_CandidateEducation entry, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        entry.Id = 0;
+        context.Rec_CandidateEducations.Add(entry);
+        await context.SaveChangesAsync(ct);
+    }
+
+    public async Task RemoveCandidateEducationAsync(long id, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var entry = await context.Rec_CandidateEducations.FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (entry is not null)
+        {
+            context.Rec_CandidateEducations.Remove(entry);
+            await context.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task<List<Rec_CandidateExperience>> GetCandidateExperienceAsync(long candidateId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        return await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidateId).OrderByDescending(e => e.StartDate).ToListAsync(ct);
+    }
+
+    public async Task AddCandidateExperienceAsync(Rec_CandidateExperience entry, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        entry.Id = 0;
+        context.Rec_CandidateExperiences.Add(entry);
+        await context.SaveChangesAsync(ct);
+    }
+
+    public async Task RemoveCandidateExperienceAsync(long id, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var entry = await context.Rec_CandidateExperiences.FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (entry is not null)
+        {
+            context.Rec_CandidateExperiences.Remove(entry);
+            await context.SaveChangesAsync(ct);
+        }
     }
 }

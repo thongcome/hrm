@@ -24,6 +24,14 @@ public class Succ_KeyPosition
     public BusinessImpactLevel BusinessImpact { get; set; }
     public ReplacementDifficultyLevel ReplacementDifficulty { get; set; }
 
+    // Optional eligibility config, config-first per house convention (this
+    // legitimately differs per business/position, so it's a data field HR
+    // sets, not a hardcoded threshold). Null = no experience floor applied.
+    // Total years is computed at read time from Hrd_Experience + tenure —
+    // never persisted per employee (same "don't persist a derived %" stance
+    // as Okr_Objective progress elsewhere in this codebase).
+    public int? MinYearsExperience { get; set; }
+
     [StringLength(1000)]
     public string? Note { get; set; }
 

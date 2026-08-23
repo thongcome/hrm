@@ -438,6 +438,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Rec_Requisition> Rec_Requisitions { get; set; }
     public virtual DbSet<Rec_JobPosting> Rec_JobPostings { get; set; }
     public virtual DbSet<Rec_Candidate> Rec_Candidates { get; set; }
+    public virtual DbSet<Rec_CandidateEducation> Rec_CandidateEducations { get; set; }
+    public virtual DbSet<Rec_CandidateExperience> Rec_CandidateExperiences { get; set; }
     public virtual DbSet<Rec_Application> Rec_Applications { get; set; }
     public virtual DbSet<Rec_Interview> Rec_Interviews { get; set; }
     public virtual DbSet<Rec_InterviewPanelist> Rec_InterviewPanelists { get; set; }

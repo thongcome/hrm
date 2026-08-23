@@ -33,7 +33,7 @@ else
         </MudText>
 
         <MudGrid>
-            <MudItem xs="12" sm="5">
+            <MudItem xs="12" sm="4">
                 <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("JobFieldLabel")" @bind-Value="_selectedExecType"
                     SearchFunc="SearchExecTypesAsync"
                     ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
@@ -55,7 +55,10 @@ else
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="3">
+            <MudItem xs="6" sm="2">
+                <MudNumericField T="int?" @bind-Value="_minYearsExperience" Label="ประสบการณ์ขั้นต่ำ (ปี, ไม่บังคับ)" Min="0" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
                 <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
             </MudItem>
         </MudGrid>
@@ -76,6 +79,7 @@ else
                 <MudTh>@L.Translate("ReplacementDifficultyLabel")</MudTh>
                 <MudTh>@L.Translate("ColNominatedSuccessors")</MudTh>
                 <MudTh>@L.Translate("ColRemark")</MudTh>
+                <MudTh>ประสบการณ์ขั้นต่ำ</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -93,6 +97,7 @@ else
                     }
                 </MudTd>
                 <MudTd>@(context.Note ?? "-")</MudTd>
+                <MudTd>@(context.MinYearsExperience is int min ? $"{min} ปี" : "-")</MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/succession/key-positions/{context.Id}"))">@L.Translate("ManageSuccessorsButton")</MudButton>
                     <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
@@ -111,6 +116,7 @@ else
     private Pos_ExecType? _selectedExecType;
     private BusinessImpactLevel _impact = BusinessImpactLevel.Medium;
     private ReplacementDifficultyLevel _difficulty = ReplacementDifficultyLevel.Medium;
+    private int? _minYearsExperience;
     private string? _note;
     private string? _error;
 
@@ -147,11 +153,12 @@ else
 
         try
         {
-            await SuccService.AddKeyPositionAsync(_companyId, _selectedExecType.Id, _impact, _difficulty, _note, userId);
+            await SuccService.AddKeyPositionAsync(_companyId, _selectedExecType.Id, _impact, _difficulty, _note, userId, _minYearsExperience);
             Snackbar.Add(L.Translate("KeyPositionAddedSuccess"), Severity.Success);
             _selectedExecType = null;
             _impact = BusinessImpactLevel.Medium;
             _difficulty = ReplacementDifficultyLevel.Medium;
+            _minYearsExperience = null;
             _note = null;
             await LoadAsync();
         }
