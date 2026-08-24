@@ -7,13 +7,19 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
-@using System.Security.Claims
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
-@inject ISnackbar Snackbar
-@inject NavigationManager Nav
 @inject OrgChangeRequestService ChangeRequestService
 @attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+@* Pure list page — CRUD skill rule 9 (landing state is always List/View,
+   never a Create/Edit form). This page used to have its add/edit form
+   ABOVE the list, which meant opening it landed users on an empty form
+   with the actual data scrolled out of view below a divider. Create/Edit
+   now live on their own dedicated routes (OrgUnitCreate.razor,
+   OrgUnitEdit.razor — reachable at /org/organizations/new and
+   /org/organizations/{id}/edit) and View is still the existing
+   /org/organizations/{id} route (OrganizationDetail.razor). *@
 
 <PageTitle>ข้อมูลสังกัด</PageTitle>
 
@@ -21,16 +27,13 @@
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h5">ข้อมูลสังกัด (Organization)</MudText>
         <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/org/organizations/new">เพิ่มหน่วยงานใหม่</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/section-types">ข้อมูลประเภทสังกัด</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/subsection-types">ลักษณะของหน่วยงาน</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/set-boss">แสดงกำหนดหัวหน้า</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/change-history">ประวัติการปรับผังองค์กร</MudButton>
         </MudStack>
     </MudStack>
-    <MudText Typo="Typo.body2" Class="mt-1">
-        เมื่อสร้างหน่วยงานลูกใหม่ ระบบจะกรอกรหัสศูนย์ต้นทุน (Cost Center) ให้เหมือนหน่วยงานแม่โดยอัตโนมัติ — แก้ไขได้ถ้าจริงไม่เหมือนกัน
-        (คำนวณครั้งเดียวตอนกรอก ไม่ผูก logic ตอนใช้งาน)
-    </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -38,160 +41,66 @@
         return;
     }
 
-    <MudDivider Class="my-4" />
-
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูลสังกัด" : "แก้ไขข้อมูลสังกัด")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6">
-            <MudSelect T="long?" Value="_sectionTypeId" ValueChanged="OnSectionTypeSelected" Label="ประเภทสังกัด" Clearable="true">
-                @foreach (var st in _sectionTypes)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)st.Id)">@st.Name</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudAutocomplete T="com_organization" Label="อยู่ภายใต้สังกัด (Parent)" Value="_selectedParent" ValueChanged="OnParentSelected"
-                SearchFunc="SearchOrganizationsAsync"
-                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" Disabled="_isTop" />
-        </MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_code" Label="รหัสสังกัด" Required="true" /></MudItem>
-        <MudItem xs="12" sm="6">
-            <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสสังกัด (การเงิน) / Cost Center" Value="_selectedCostCenter" ValueChanged="v => _selectedCostCenter = v"
-                SearchFunc="SearchCostCentersAsync"
-                ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อสังกัด" Required="true" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbrEn" Label="Abb. Name (English)" /></MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="long?" @bind-Value="_subSectionTypeId" Label="ลักษณะของหน่วยงาน" Clearable="true">
-                @foreach (var sst in _subSectionTypes)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)sst.Id)">@sst.Name</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6" />
-
-        <MudItem xs="12" sm="4">
-            <MudText Typo="Typo.body2" Class="mb-1">สถานะ</MudText>
-            <MudRadioGroup T="bool" @bind-Value="_isActive">
-                <MudRadio T="bool" Value="true" Color="Color.Primary">ใช้งาน</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช้งาน</MudRadio>
-            </MudRadioGroup>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudText Typo="Typo.body2" Class="mb-1">เงื่อนไขอัตรากำลัง</MudText>
-            <MudRadioGroup T="bool" @bind-Value="_isManPowerCount">
-                <MudRadio T="bool" Value="true" Color="Color.Primary">นับอัตรากำลัง</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่นับอัตรากำลัง</MudRadio>
-            </MudRadioGroup>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudText Typo="Typo.body2" Class="mb-1">สังกัดสูงสุด</MudText>
-            <MudRadioGroup T="bool" Value="_isTop" ValueChanged="OnIsTopChanged">
-                <MudRadio T="bool" Value="true" Color="Color.Primary">สูงสุด</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่สูงสุด</MudRadio>
-            </MudRadioGroup>
-        </MudItem>
-
-        <MudItem xs="12" sm="6">
-            <MudText Typo="Typo.body2" Class="mb-1">ประเภทหน่วยงาน</MudText>
-            <MudStack Row="true">
-                <MudCheckBox T="bool" @bind-Value="_isCompany" Label="เป็นบริษัท (Company)" Color="Color.Primary" />
-                <MudCheckBox T="bool" @bind-Value="_isBranch" Label="เป็นสาขา (Branch)" Color="Color.Primary" />
-            </MudStack>
-        </MudItem>
-        <MudItem xs="12" sm="6" />
-
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="3" /></MudItem>
-    </MudGrid>
-
-    @if (_editingId is null || ParentWillChange())
-    {
-        <MudAlert Severity="Severity.Info" Class="mt-3">
-            @(_editingId is null
-                ? "การสร้างหน่วยงานใหม่ต้องผ่านการอนุมัติ — ระบุวันที่ต้องการให้มีผลจริง"
-                : "การย้ายสังกัดต้องผ่านการอนุมัติ — ระบุวันที่ต้องการให้มีผลจริง (ฟิลด์อื่นที่แก้ไขพร้อมกันจะถูกบันทึกทันที)")
-        </MudAlert>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6">
-                <MudDatePicker Label="วันที่มีผล" @bind-Date="_pendingEffectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" Required="true" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_pendingRequestNote" Label="เหตุผล/หมายเหตุคำขอ (ถ้ามี)" />
-            </MudItem>
-        </MudGrid>
-    }
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
+    @* Search is explicit-trigger only — this table can grow large, so the
+       page must not pull every row on every visit. Typing + Enter, or the
+       "ค้นหา" button, both call SearchAsync(); nothing loads on page load. *@
+    <MudStack Row="true" Spacing="2" Class="mt-3 mb-3" AlignItems="AlignItems.Center">
+        <MudTextField T="string" @bind-Value="_searchTerm" Label="ค้นหาข้อมูลสังกัด (รหัส / ชื่อ / ชื่อย่อ)"
+            AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start"
+            @onkeydown="OnSearchKeyDown" Class="flex-grow-1" />
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SearchAsync">ค้นหา</MudButton>
     </MudStack>
 
-    <MudDivider Class="my-5" />
-
-    <MudTextField T="string" Value="_searchTerm" Label="ค้นหาข้อมูลสังกัด (รหัส / ชื่อ / ชื่อย่อ)" Immediate="true"
-        DebounceInterval="300" ValueChanged="OnSearchChanged"
-        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
-
-    <MudTable Items="_organizations" Dense="true" Hover="true">
-        <HeaderContent>
-            <MudTh>ประเภทสังกัด</MudTh>
-            <MudTh>รหัสสังกัด</MudTh>
-            <MudTh>ชื่อสังกัด (ไทย)</MudTh>
-            <MudTh>ชื่อย่อ</MudTh>
-            <MudTh>รหัสการเงิน</MudTh>
-            <MudTh>ลักษณะของหน่วยงาน</MudTh>
-            <MudTh>ประเภท</MudTh>
-            <MudTh>สถานะ</MudTh>
-            <MudTh></MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd>@SectionTypeName(context.SectionTypeCode)</MudTd>
-            <MudTd>@context.code</MudTd>
-            <MudTd><MudLink Href="@($"/org/organizations/{context.id}")">@context.name</MudLink></MudTd>
-            <MudTd>@context.abbr</MudTd>
-            <MudTd>@context.CostCenterCode</MudTd>
-            <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
-            <MudTd>
-                @if (context.isCompany)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="mr-1">บริษัท</MudChip>
-                }
-                @if (context.isBranch)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">สาขา</MudChip>
-                }
-            </MudTd>
-            <MudTd>
-                <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
-                    @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
-                </MudChip>
-            </MudTd>
-            <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}")">ดู</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
-            </MudTd>
-        </RowTemplate>
-        <NoRecordsContent>
-            <MudText Typo="Typo.body2">ยังไม่มีข้อมูลสังกัด</MudText>
-        </NoRecordsContent>
-    </MudTable>
+    @if (!_hasSearched)
+    {
+        <MudAlert Severity="Severity.Info">กรอกคำค้น (เว้นว่างได้ถ้าต้องการดูทั้งหมด) แล้วกด "ค้นหา" เพื่อแสดงรายการ</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_organizations" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ประเภทสังกัด</MudTh>
+                <MudTh>รหัสสังกัด</MudTh>
+                <MudTh>ชื่อสังกัด (ไทย)</MudTh>
+                <MudTh>ชื่อย่อ</MudTh>
+                <MudTh>รหัสการเงิน</MudTh>
+                <MudTh>ลักษณะของหน่วยงาน</MudTh>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@SectionTypeName(context.SectionTypeCode)</MudTd>
+                <MudTd>@context.code</MudTd>
+                <MudTd><MudLink Href="@($"/org/organizations/{context.id}")">@context.name</MudLink></MudTd>
+                <MudTd>@context.abbr</MudTd>
+                <MudTd>@context.CostCenterCode</MudTd>
+                <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
+                <MudTd>
+                    @if (context.isCompany)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="mr-1">บริษัท</MudChip>
+                    }
+                    @if (context.isBranch)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary">สาขา</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                        @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}")">ดู</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}/edit")">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ไม่พบข้อมูลสังกัดที่ตรงกับคำค้น</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
 </MudPaper>
 
 @code {
@@ -200,31 +109,7 @@
     private List<Com_SectionType> _sectionTypes = new();
     private List<Com_SubSectionType> _subSectionTypes = new();
     private string? _searchTerm;
-    private string? _error;
-    private long? _editingId;
-
-    private string _code = "";
-    private string _name = "";
-    private string? _nameEn;
-    private string? _abbr;
-    private string? _abbrEn;
-    private bool _isTop;
-    private bool _isActive = true;
-    private bool _isManPowerCount = true;
-    private bool _isCompany;
-    private bool _isBranch;
-    private long? _sectionTypeId;
-    private long? _subSectionTypeId;
-    private DateTime? _startDate;
-    private DateTime? _endDate;
-    private string? _remark;
-    private com_organization? _selectedParent;
-    private Com_ChartOfAccount? _selectedCostCenter;
-    private string? _editingOriginalParentCode;
-    private DateTime? _pendingEffectiveFrom = DateTime.Today.AddDays(1);
-    private string? _pendingRequestNote;
-    private long _actorUserId;
-    private string? _actorEmpId;
+    private bool _hasSearched;
 
     protected override async Task OnInitializedAsync()
     {
@@ -232,30 +117,22 @@
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
-        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
-        _actorEmpId = state.User.FindFirstValue("empno");
-
         await ChangeRequestService.ApplyDueChangesAsync();
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
         _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
 
-        await LoadAsync();
-    }
-
-    private bool ParentWillChange()
-    {
-        if (_editingId is null) return false;
-        var newParentCode = _isTop ? null : _selectedParent?.code;
-        return newParentCode != _editingOriginalParentCode;
+        // Deliberately no initial load here — see the page-level comment on
+        // why this list waits for an explicit search.
     }
 
     private string SectionTypeName(string? code) => string.IsNullOrEmpty(code) ? "" : (_sectionTypes.FirstOrDefault(t => t.Code == code)?.Name ?? code);
     private string SubSectionTypeName(long? id) => id is null ? "" : (_subSectionTypes.FirstOrDefault(t => t.Id == id)?.Name ?? "");
 
-    private async Task LoadAsync()
+    private async Task SearchAsync()
     {
+        _hasSearched = true;
         await using var context = await DbFactory.CreateDbContextAsync();
         // com_organization has no reliable company-scoping field (companyid/comp_code
         // don't line up with the payroll_company claim used elsewhere) — matches the
@@ -267,258 +144,8 @@
         _organizations = await query.OrderBy(o => o.orgcodefull).ToListAsync();
     }
 
-    private async Task OnSearchChanged(string term)
+    private async Task OnSearchKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
-        _searchTerm = term;
-        await LoadAsync();
-    }
-
-    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.com_organizations.Where(o => o.isActive);
-        if (_editingId is long editingId)
-            query = query.Where(o => o.id != editingId); // can't be its own parent
-        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
-        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
-    }
-
-    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId && a.IsCostCenter && a.IsActive);
-        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
-        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
-    }
-
-    private void OnIsTopChanged(bool value)
-    {
-        _isTop = value;
-        if (value) _selectedParent = null;
-    }
-
-    private async Task OnParentSelected(com_organization? parent)
-    {
-        _selectedParent = parent;
-        // Default the cost center from the parent — only when nothing has been
-        // picked yet, so this never silently overwrites a value the user already
-        // chose (create flow only, per user decision 2026-08-02: "คิดครั้งเดียวตอนใส่").
-        if (_selectedCostCenter is null && parent is not null && !string.IsNullOrWhiteSpace(parent.CostCenterCode))
-        {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            _selectedCostCenter = await context.Com_ChartOfAccounts
-                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == parent.CostCenterCode);
-        }
-        // Same one-time-copy behavior for section type / sub-section type.
-        if (_sectionTypeId is null && parent is not null && !string.IsNullOrWhiteSpace(parent.SectionTypeCode))
-        {
-            var st = _sectionTypes.FirstOrDefault(t => t.Code == parent.SectionTypeCode);
-            if (st is not null) _sectionTypeId = st.Id;
-        }
-        if (_subSectionTypeId is null && parent?.SubSectionTypeId is not null)
-        {
-            _subSectionTypeId = parent.SubSectionTypeId;
-        }
-    }
-
-    private void OnSectionTypeSelected(long? id) => _sectionTypeId = id;
-
-    private void StartEdit(com_organization org)
-    {
-        _editingId = org.id;
-        _code = org.code ?? "";
-        _name = org.name ?? "";
-        _nameEn = org.name_en;
-        _abbr = org.abbr;
-        _abbrEn = org.abbr_en;
-        _isTop = org.istop;
-        _isActive = org.isActive;
-        _isManPowerCount = org.isManPowerCount;
-        _isCompany = org.isCompany;
-        _isBranch = org.isBranch;
-        _sectionTypeId = _sectionTypes.FirstOrDefault(t => t.Code == org.SectionTypeCode)?.Id;
-        _subSectionTypeId = org.SubSectionTypeId;
-        _startDate = org.startdate;
-        _endDate = org.enddate;
-        _remark = org.remark;
-        _selectedParent = null;
-        _selectedCostCenter = null;
-        _editingOriginalParentCode = org.parent_code;
-        _pendingEffectiveFrom = DateTime.Today.AddDays(1);
-        _pendingRequestNote = null;
-        _error = null;
-        _ = LoadEditContextAsync(org);
-    }
-
-    private async Task LoadEditContextAsync(com_organization org)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync();
-        if (!string.IsNullOrWhiteSpace(org.parent_code))
-        {
-            _selectedParent = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code);
-        }
-        if (!string.IsNullOrWhiteSpace(org.CostCenterCode))
-        {
-            _selectedCostCenter = await context.Com_ChartOfAccounts.FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == org.CostCenterCode);
-        }
-        StateHasChanged();
-    }
-
-    private void CancelEdit()
-    {
-        _editingId = null;
-        _code = "";
-        _name = "";
-        _nameEn = null;
-        _abbr = null;
-        _abbrEn = null;
-        _isTop = false;
-        _isActive = true;
-        _isManPowerCount = true;
-        _isCompany = false;
-        _isBranch = false;
-        _sectionTypeId = null;
-        _subSectionTypeId = null;
-        _startDate = null;
-        _endDate = null;
-        _remark = null;
-        _selectedParent = null;
-        _selectedCostCenter = null;
-        _editingOriginalParentCode = null;
-        _pendingEffectiveFrom = DateTime.Today.AddDays(1);
-        _pendingRequestNote = null;
-        _error = null;
-    }
-
-    private async Task SaveAsync()
-    {
-        _error = null;
-
-        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
-        {
-            _error = "กรุณาระบุรหัสและชื่อสังกัด";
-            return;
-        }
-        if (!_isTop && _selectedParent is null)
-        {
-            _error = "กรุณาเลือกสังกัดที่อยู่ภายใต้ หรือติ๊กว่าเป็นสังกัดสูงสุด";
-            return;
-        }
-
-        var newParentCode = _isTop ? null : _selectedParent?.code;
-        var newCostCenterCode = _selectedCostCenter?.Code;
-        var newSectionTypeCode = _sectionTypeId is null ? null : _sectionTypes.FirstOrDefault(t => t.Id == _sectionTypeId)?.Code;
-        var startDateTime = _startDate;
-        var endDateTime = _endDate;
-
-        try
-        {
-            if (_editingId is long id)
-            {
-                await using var context = await DbFactory.CreateDbContextAsync();
-
-                var duplicate = await context.com_organizations.AnyAsync(o => o.code == _code && o.id != id);
-                if (duplicate)
-                {
-                    _error = "มีรหัสสังกัดนี้อยู่แล้ว";
-                    return;
-                }
-
-                var existing = await context.com_organizations.FirstOrDefaultAsync(o => o.id == id);
-                if (existing is null)
-                {
-                    _error = "ไม่พบข้อมูลสังกัดที่ต้องการแก้ไข";
-                    return;
-                }
-
-                var parentChanged = existing.parent_code != newParentCode;
-
-                // Minor fields save directly, same as before this feature — parent_code,
-                // istop, and orgcodefull are deliberately never touched here, only via
-                // the gated ChangeParent request below (istop is a derivative of
-                // parent_code, so it travels with it, not with the direct-save fields).
-                existing.code = _code;
-                existing.name = _name;
-                existing.name_en = _nameEn;
-                existing.abbr = _abbr;
-                existing.abbr_en = _abbrEn;
-                existing.isActive = _isActive;
-                existing.isManPowerCount = _isManPowerCount;
-                existing.isCompany = _isCompany;
-                existing.isBranch = _isBranch;
-                existing.SectionTypeCode = newSectionTypeCode;
-                existing.SubSectionTypeId = _subSectionTypeId;
-                existing.CostCenterCode = newCostCenterCode;
-                existing.startdate = startDateTime;
-                existing.enddate = endDateTime;
-                existing.remark = _remark;
-                await context.SaveChangesAsync();
-
-                if (parentChanged)
-                {
-                    if (_pendingEffectiveFrom is null)
-                    {
-                        _error = "กรุณาระบุวันที่มีผลสำหรับการย้ายสังกัด";
-                        return;
-                    }
-                    var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
-                    {
-                        ChangeType = OrgOrganizationChangeType.ChangeParent,
-                        TargetOrganizationId = id,
-                        TargetOrganizationCode = existing.code,
-                        OldParentCode = existing.parent_code,
-                        NewParentCode = newParentCode,
-                        NewIsTop = _isTop,
-                        EffectiveFrom = DateOnly.FromDateTime(_pendingEffectiveFrom.Value),
-                        RequestNote = _pendingRequestNote,
-                    }, _actorUserId, _actorEmpId);
-                    Snackbar.Add($"บันทึกข้อมูลอื่นเรียบร้อย และส่งคำขอย้ายสังกัดเข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะมีผลวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
-                }
-                else
-                {
-                    Snackbar.Add("บันทึกการแก้ไขเรียบร้อย", Severity.Success);
-                }
-            }
-            else
-            {
-                if (_pendingEffectiveFrom is null)
-                {
-                    _error = "กรุณาระบุวันที่มีผลสำหรับการสร้างหน่วยงานใหม่";
-                    return;
-                }
-                var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
-                {
-                    ChangeType = OrgOrganizationChangeType.NewOrganization,
-                    NewCode = _code,
-                    NewName = _name,
-                    NewNameEn = _nameEn,
-                    NewAbbr = _abbr,
-                    NewAbbrEn = _abbrEn,
-                    NewIsTop = _isTop,
-                    NewIsActive = _isActive,
-                    NewIsManPowerCount = _isManPowerCount,
-                    NewIsCompany = _isCompany,
-                    NewIsBranch = _isBranch,
-                    NewSectionTypeCode = newSectionTypeCode,
-                    NewSubSectionTypeId = _subSectionTypeId,
-                    NewParentCode = newParentCode,
-                    NewCostCenterCode = newCostCenterCode,
-                    NewStartDate = startDateTime,
-                    NewEndDate = endDateTime,
-                    NewRemark = _remark,
-                    EffectiveFrom = DateOnly.FromDateTime(_pendingEffectiveFrom.Value),
-                    RequestNote = _pendingRequestNote,
-                }, _actorUserId, _actorEmpId);
-                Snackbar.Add($"ส่งคำขอสร้างหน่วยงานใหม่เข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะสร้างจริงวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
-            }
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-            return;
-        }
-
-        CancelEdit();
-        await LoadAsync();
+        if (e.Key == "Enter") await SearchAsync();
     }
 }

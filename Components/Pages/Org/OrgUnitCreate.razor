@@ -1,4 +1,4 @@
-@page "/org/units/new"
+@page "/org/organizations/new"
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Shared
@@ -17,8 +17,12 @@
 <PageTitle>เพิ่มหน่วยงานใหม่</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudButton Class="mb-2" Variant="Variant.Text" Href="/org/units">← กลับไปหน้ารายการ</MudButton>
+    <MudButton Class="mb-2" Variant="Variant.Text" Href="/org/organizations">← กลับไปหน้ารายการ</MudButton>
     <MudText Typo="Typo.h5">เพิ่มหน่วยงานใหม่</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เมื่อเลือกหน่วยงานแม่ ระบบจะกรอกรหัสศูนย์ต้นทุน (Cost Center) ให้เหมือนหน่วยงานแม่โดยอัตโนมัติ — แก้ไขได้ถ้าจริงไม่เหมือนกัน
+        (คำนวณครั้งเดียวตอนกรอก ไม่ผูก logic ตอนใช้งาน)
+    </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -117,7 +121,7 @@
 
     <MudStack Row="true" Spacing="2" Class="mt-3">
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">ส่งคำขอสร้างหน่วยงาน</MudButton>
-        <MudButton Variant="Variant.Text" Href="/org/units">ยกเลิก</MudButton>
+        <MudButton Variant="Variant.Text" Href="/org/organizations">ยกเลิก</MudButton>
     </MudStack>
 </MudPaper>
 
@@ -257,7 +261,7 @@
             }, _actorUserId, _actorEmpId);
 
             Snackbar.Add($"ส่งคำขอสร้างหน่วยงานใหม่เข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะสร้างจริงวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
-            Nav.NavigateTo("/org/units");
+            Nav.NavigateTo("/org/organizations");
         }
         catch (Exception ex)
         {

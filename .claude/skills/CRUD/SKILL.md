@@ -35,6 +35,8 @@ This helper is standalone — it doesn't depend on `CrudScaffold.razor` — so i
 
 Note: bind with `Value`/`ValueChanged`, not `@bind-Value`, when you also need an explicit `ValueChanged` handler — combining `@bind-Value` with an explicit `ValueChanged` on the same component throws a Razor compile error (RZ10010) because `@bind-Value` already generates one.
 
+**Don't auto-load the full list on page entry for a table that can grow large.** The debounced live-search above is fine for a small, bounded lookup table (a handful to a few dozen rows — e.g. a status/category list) where loading everything up front costs nothing. For anything that can realistically grow into the hundreds or thousands of rows (most real business entities — organizations, employees, transactions), the page must start empty with a prompt ("กรอกคำค้น... แล้วกด \"ค้นหา\" เพื่อแสดงรายการ") and only query once the user explicitly searches — a "ค้นหา" button (plus Enter-to-search on the text field is fine as a convenience) rather than a query firing on `OnInitializedAsync`. See `Components/Pages/Org/OrganizationAdmin.razor` for the reference shape: `_hasSearched` gates whether the table or the prompt renders, and `SearchAsync()` is only ever called from the button/Enter-key handler, never from `OnInitializedAsync`.
+
 ## 3. PDPA badge + access log on pages showing personal data
 
 If a page shows anything PDPA-sensitive — national ID, salary, bank account, address, health info, and the like — do two things:
@@ -88,3 +90,13 @@ Never put a raw numeric ID in a text box or unlabeled `MudNumericField` for a fo
 Never display a bare `EmployeeId`/`XxxId` column in a list view either — join/project to the display name in the query, or resolve it via a dictionary built once per page load.
 
 **Don't add a shortcut button/link on the referencing page to manage the reference data.** If a picker's source table (`Currency`, a status lookup, whatever) already has its own CRUD page, that page is where it gets managed — don't put a "จัดการสกุลเงิน" / "+ เพิ่ม..." button or nav link on the page that merely *references* it. It's redundant (the reference data's own CRUD page is already reachable from the main nav) and it clutters a page that should stay focused on its own entity. If the picker list is empty, an inline hint is fine ("ยังไม่มีข้อมูล — ไปที่หน้า [X] เพื่อเพิ่มก่อน") but it should be text, not a button/link that turns the page into a hub for managing other tables.
+
+## 9. Landing state is always List or View — never a Create/Edit form
+
+The first thing a user sees when they open a CRUD page's main route must be the **list** (or, for a detail route, a **read-only view**). Never a Create/Edit form. The user's own words on why: "เข้าไปถึง ให้แก้ ให้เพิ่มเลย คนจะงง บางทีเข้าไปดู แล้วทำไม ไม่เจอข้อมูล ไปเจอหน้าแก้" — landing on an edit form instead of data reads as "where did my data go," even when the data is right there, one scroll away.
+
+This rules out the earlier version of Shape A where the create/edit form sat *above* the list on the same page (`OrganizationAdmin.razor` did exactly this before it was fixed — the "เพิ่มข้อมูลสังกัด" form was the first thing rendered, with the actual list of organizations below a divider, out of the initial viewport). If Shape A's form and list share one page, the **list comes first**; a form only appears after the user takes an explicit action (clicking "เพิ่ม" or a row's "แก้ไข"), and should be dismissible back to the list, not something they land in.
+
+Prefer splitting Create and Edit into their own routes entirely (mirrors Shape B) once the form has enough fields or business logic that it would otherwise dominate the list page — see `Components/Pages/Org/OrgUnitList.razor` + `OrgUnitCreate.razor` + `OrgUnitEdit.razor` for the reference shape: a pure list page (search, table, a "เพิ่ม..." button that navigates to a dedicated create route), a dedicated create route, and a dedicated edit route — none of which is what a user lands on by default.
+
+**Workflow/approval context belongs on the View or Edit/Create page, not on the list.** If saving a record requires approval (e.g. "การย้ายสังกัดต้องผ่านการอนุมัติ — ระบุวันที่มีผล"), that alert and its accompanying fields (effective date, request note) belong inside the Create/Edit form where they're relevant to the action being taken — never bolted onto the list page a user sees by default.
