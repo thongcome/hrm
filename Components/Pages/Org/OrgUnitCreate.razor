@@ -1,0 +1,267 @@
+@page "/org/units/new"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using HRM.Services.Org
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject OrgChangeRequestService ChangeRequestService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>เพิ่มหน่วยงานใหม่</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudButton Class="mb-2" Variant="Variant.Text" Href="/org/units">← กลับไปหน้ารายการ</MudButton>
+    <MudText Typo="Typo.h5">เพิ่มหน่วยงานใหม่</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" Value="_sectionTypeId" ValueChanged="v => _sectionTypeId = v" Label="ประเภทสังกัด" Clearable="true">
+                @foreach (var st in _sectionTypes)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)st.Id)">@st.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="com_organization" Label="อยู่ภายใต้สังกัด (Parent)" Value="_selectedParent" ValueChanged="OnParentSelected"
+                SearchFunc="SearchOrganizationsAsync"
+                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" Disabled="_isTop" />
+        </MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_code" Label="รหัสสังกัด" Required="true" /></MudItem>
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="Com_ChartOfAccount" Label="รหัสสังกัด (การเงิน) / Cost Center" Value="_selectedCostCenter" ValueChanged="v => _selectedCostCenter = v"
+                SearchFunc="SearchCostCentersAsync"
+                ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}{(string.IsNullOrWhiteSpace(a.NameEn) ? "" : $" ({a.NameEn})")}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อสังกัด" Required="true" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbrEn" Label="Abb. Name (English)" /></MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" @bind-Value="_subSectionTypeId" Label="ลักษณะของหน่วยงาน" Clearable="true">
+                @foreach (var sst in _subSectionTypes)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)sst.Id)">@sst.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" />
+
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.body2" Class="mb-1">สถานะ</MudText>
+            <MudRadioGroup T="bool" @bind-Value="_isActive">
+                <MudRadio T="bool" Value="true" Color="Color.Primary">ใช้งาน</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช้งาน</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.body2" Class="mb-1">เงื่อนไขอัตรากำลัง</MudText>
+            <MudRadioGroup T="bool" @bind-Value="_isManPowerCount">
+                <MudRadio T="bool" Value="true" Color="Color.Primary">นับอัตรากำลัง</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่นับอัตรากำลัง</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.body2" Class="mb-1">สังกัดสูงสุด</MudText>
+            <MudRadioGroup T="bool" Value="_isTop" ValueChanged="OnIsTopChanged">
+                <MudRadio T="bool" Value="true" Color="Color.Primary">สูงสุด</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่สูงสุด</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.body2" Class="mb-1">ประเภทหน่วยงาน</MudText>
+            <MudStack Row="true">
+                <MudCheckBox T="bool" @bind-Value="_isCompany" Label="เป็นบริษัท (Company)" Color="Color.Primary" />
+                <MudCheckBox T="bool" @bind-Value="_isBranch" Label="เป็นสาขา (Branch)" Color="Color.Primary" />
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12" sm="6" />
+
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="3" /></MudItem>
+    </MudGrid>
+
+    <MudAlert Severity="Severity.Info" Class="mt-3">
+        การสร้างหน่วยงานใหม่ต้องผ่านการอนุมัติ — ระบุวันที่ต้องการให้มีผลจริง
+    </MudAlert>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="6">
+            <MudDatePicker Label="วันที่มีผล" @bind-Date="_pendingEffectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="_pendingRequestNote" Label="เหตุผล/หมายเหตุคำขอ (ถ้ามี)" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">ส่งคำขอสร้างหน่วยงาน</MudButton>
+        <MudButton Variant="Variant.Text" Href="/org/units">ยกเลิก</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<Com_SectionType> _sectionTypes = new();
+    private List<Com_SubSectionType> _subSectionTypes = new();
+    private string? _error;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _nameEn;
+    private string? _abbr;
+    private string? _abbrEn;
+    private bool _isTop;
+    private bool _isActive = true;
+    private bool _isManPowerCount = true;
+    private bool _isCompany;
+    private bool _isBranch;
+    private long? _sectionTypeId;
+    private long? _subSectionTypeId;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private string? _remark;
+    private com_organization? _selectedParent;
+    private Com_ChartOfAccount? _selectedCostCenter;
+    private DateTime? _pendingEffectiveFrom = DateTime.Today.AddDays(1);
+    private string? _pendingRequestNote;
+    private long _actorUserId;
+    private string? _actorEmpId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        _actorEmpId = state.User.FindFirstValue("empno");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
+        _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Com_ChartOfAccounts.Where(a => a.CompanyId == _companyId && a.IsCostCenter && a.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh), nameof(Com_ChartOfAccount.NameEn));
+        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
+    }
+
+    private void OnIsTopChanged(bool value)
+    {
+        _isTop = value;
+        if (value) _selectedParent = null;
+    }
+
+    private async Task OnParentSelected(com_organization? parent)
+    {
+        _selectedParent = parent;
+        // Default the cost center / section type / sub-section type from the
+        // parent, one-time-copy only (never overwrites a value already
+        // picked) — mirrors OrganizationAdmin.razor's create-flow behavior.
+        if (_selectedCostCenter is null && parent is not null && !string.IsNullOrWhiteSpace(parent.CostCenterCode))
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _selectedCostCenter = await context.Com_ChartOfAccounts
+                .FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == parent.CostCenterCode);
+        }
+        if (_sectionTypeId is null && parent is not null && !string.IsNullOrWhiteSpace(parent.SectionTypeCode))
+        {
+            var st = _sectionTypes.FirstOrDefault(t => t.Code == parent.SectionTypeCode);
+            if (st is not null) _sectionTypeId = st.Id;
+        }
+        if (_subSectionTypeId is null && parent?.SubSectionTypeId is not null)
+        {
+            _subSectionTypeId = parent.SubSectionTypeId;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อสังกัด";
+            return;
+        }
+        if (!_isTop && _selectedParent is null)
+        {
+            _error = "กรุณาเลือกสังกัดที่อยู่ภายใต้ หรือติ๊กว่าเป็นสังกัดสูงสุด";
+            return;
+        }
+        if (_pendingEffectiveFrom is null)
+        {
+            _error = "กรุณาระบุวันที่มีผลสำหรับการสร้างหน่วยงานใหม่";
+            return;
+        }
+
+        var newSectionTypeCode = _sectionTypeId is null ? null : _sectionTypes.FirstOrDefault(t => t.Id == _sectionTypeId)?.Code;
+
+        try
+        {
+            var reqId = await ChangeRequestService.SubmitAsync(new Org_OrganizationChangeRequest
+            {
+                ChangeType = OrgOrganizationChangeType.NewOrganization,
+                NewCode = _code,
+                NewName = _name,
+                NewNameEn = _nameEn,
+                NewAbbr = _abbr,
+                NewAbbrEn = _abbrEn,
+                NewIsTop = _isTop,
+                NewIsActive = _isActive,
+                NewIsManPowerCount = _isManPowerCount,
+                NewIsCompany = _isCompany,
+                NewIsBranch = _isBranch,
+                NewSectionTypeCode = newSectionTypeCode,
+                NewSubSectionTypeId = _subSectionTypeId,
+                NewParentCode = _isTop ? null : _selectedParent?.code,
+                NewCostCenterCode = _selectedCostCenter?.Code,
+                NewStartDate = _startDate,
+                NewEndDate = _endDate,
+                NewRemark = _remark,
+                EffectiveFrom = DateOnly.FromDateTime(_pendingEffectiveFrom.Value),
+                RequestNote = _pendingRequestNote,
+            }, _actorUserId, _actorEmpId);
+
+            Snackbar.Add($"ส่งคำขอสร้างหน่วยงานใหม่เข้าสู่การอนุมัติแล้ว (คำขอ #{reqId}) — จะสร้างจริงวันที่ {_pendingEffectiveFrom:dd/MM/yyyy} หลังได้รับอนุมัติ", Severity.Info);
+            Nav.NavigateTo("/org/units");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
