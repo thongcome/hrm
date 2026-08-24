@@ -1,4 +1,5 @@
 using HRM.Models;
+using HRM.Services.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Services.Shared;
@@ -17,10 +18,19 @@ public static class EmployeePositionSync
     // oldHremployeeId must be captured by the caller from the tracked entity
     // BEFORE overwriting slot.HremployeeId with the new value — for a
     // brand-new slot (create branch), pass null (no prior occupant).
+    // actorScope: pass the acting user's RoleScopeSnapshot (Advance Security
+    // slice 1) to enforce "you can only assign an employee into an org
+    // within your own data scope." Read-side scoping (the EF query filter
+    // on Hremployee) can't catch this on its own — a brand-new assignment
+    // has no existing row to filter, so this is the one explicit
+    // write-time check for that slice. Omit (default null) to skip the
+    // check entirely — every existing caller that hasn't been updated to
+    // pass it keeps behaving exactly as before.
     public static async Task SyncAsync(
         HRMContext context,
         Pos_PositionSlot slot,
         long? oldHremployeeId,
+        RoleScopeSnapshot? actorScope = null,
         CancellationToken ct = default)
     {
         var newHremployeeId = slot.HremployeeId;
@@ -74,6 +84,10 @@ public static class EmployeePositionSync
                 if (slot.IsActive && slot.OrganizationId is long orgId)
                 {
                     var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == orgId, ct);
+
+                    if (actorScope is not null && !actorScope.AllowsEmployee(slot.CompanyId, org?.orgcodefull, org?.CostCenterCode))
+                        throw new InvalidOperationException($"คุณไม่มีสิทธิ์มอบหมายพนักงานเข้าหน่วยงาน \"{org?.name ?? slot.CompanyId}\" เพราะอยู่นอกขอบเขตข้อมูล (data scope) ของคุณ");
+
                     curEmp.OrganizationId = org?.id;
                     curEmp.orgcode = org?.code;
                     curEmp.orgcodefull = org?.orgcodefull;

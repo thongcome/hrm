@@ -145,9 +145,25 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                     var parent = string.IsNullOrEmpty(req.NewParentCode)
                         ? null
                         : await context.com_organizations.FirstOrDefaultAsync(o => o.code == req.NewParentCode, ct);
+
+                    var oldFull = existing.orgcodefull;
                     existing.parent_code = req.NewParentCode;
                     existing.istop = req.NewIsTop ?? existing.istop;
                     existing.orgcodefull = await OrgCodeFullHelper.ComputeNextOrgCodeFullAsync(context, parent?.orgcodefull);
+
+                    // Advance Security slice 1 requirement: a move must
+                    // cascade-rebuild every descendant's orgcodefull too, not
+                    // just the moved node's own — otherwise the sc_role_scope
+                    // ORG/BRANCH prefix check (and anything else reading
+                    // orgcodefull) goes stale for the whole moved subtree the
+                    // instant this apply runs. Previously a known, documented
+                    // gap (OrganizationAdmin.razor never touched descendants);
+                    // closing it here is in scope for this slice specifically
+                    // because the scope feature depends on orgcodefull being
+                    // correct.
+                    if (!string.IsNullOrEmpty(oldFull) && oldFull != existing.orgcodefull)
+                        await RebuildDescendantOrgCodesAsync(context, existing.id, oldFull, existing.orgcodefull!, ct);
+
                     break;
                 }
                 case OrgOrganizationChangeType.ChangeApprover:
@@ -194,5 +210,41 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
             }
         }
         return applied;
+    }
+
+    // Rewrites orgcodefull for every descendant of a node that just moved,
+    // by replacing the moved node's own old prefix with its new one — a
+    // single string-replace pass works because orgcodefull is a fixed
+    // 2-digit-per-level concatenation, so only the ancestor portion up to
+    // and including the moved node itself changes; each descendant's own
+    // suffix (the part identifying its position under the moved node) is
+    // unaffected. Also refreshes Hremployee.orgcodefull for every employee
+    // snapshotted against the moved node or any of its descendants — that
+    // snapshot (EmployeePositionSync) is what sc_role_scope's ORG/BRANCH
+    // check actually reads, so it must stay in sync with the move.
+    private static async Task RebuildDescendantOrgCodesAsync(
+        HRMContext context, long movedOrgId, string oldFull, string newFull, CancellationToken ct)
+    {
+        var descendants = await context.com_organizations
+            .Where(o => o.id != movedOrgId && o.orgcodefull != null && o.orgcodefull.StartsWith(oldFull))
+            .ToListAsync(ct);
+
+        var affectedOrgIds = new List<long> { movedOrgId };
+        foreach (var descendant in descendants)
+        {
+            descendant.orgcodefull = newFull + descendant.orgcodefull![oldFull.Length..];
+            affectedOrgIds.Add(descendant.id);
+        }
+
+        var affectedEmployees = await context.Hremployee
+            .Where(e => e.OrganizationId != null && affectedOrgIds.Contains(e.OrganizationId!.Value))
+            .ToListAsync(ct);
+        var orgFullById = descendants.ToDictionary(o => o.id, o => o.orgcodefull!);
+        orgFullById[movedOrgId] = newFull;
+        foreach (var emp in affectedEmployees)
+        {
+            if (emp.OrganizationId is long orgId && orgFullById.TryGetValue(orgId, out var full))
+                emp.orgcodefull = full;
+        }
     }
 }

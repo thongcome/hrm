@@ -1,0 +1,239 @@
+@page "/admin/system/role-scopes"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>ขอบเขตข้อมูล (Data Scope)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ขอบเขตข้อมูล (Data Scope)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดว่ากลุ่มผู้ใช้ (Role) นี้เห็น "แถวข้อมูล" ของใครบ้าง — คนละมิติกับหน้า
+        <MudLink Href="/admin/system/permissions">จัดการสิทธิ์การใช้ระบบ</MudLink> ที่กำหนดว่าเข้าจอไหน/แก้ไขได้ไหม
+        <b>Role ที่ไม่มีรายการขอบเขตเลย = ไม่ถูกจำกัด (เห็นทุกอย่างเหมือนวันนี้)</b> — ตอนนี้บังคับใช้จริงแล้วที่หน้า
+        รายชื่อพนักงาน (<MudLink Href="/pay/employees">/pay/employees</MudLink>) และตอนมอบหมายพนักงานเข้าเลขที่อัตรา
+        (<MudLink Href="/pos/position-slots">/pos/position-slots</MudLink>) หน้าอื่นจะทยอยเปิดใช้ต่อไป
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="long?" @bind-Value="_selectedRoleId" Label="กลุ่มผู้ใช้ (Role)" @bind-Value:after="LoadScopesAsync">
+                @foreach (var r in _roles)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)r.roleid)">@r.abbr - @r.name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    @if (_selectedRoleId is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">กรุณาเลือกกลุ่มผู้ใช้ก่อน</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">เพิ่มขอบเขตใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="RoleScopeType" @bind-Value="_newScopeType" Label="ประเภทขอบเขต" @bind-Value:after="ResetPickers">
+                    <MudSelectItem Value="RoleScopeType.Company">บริษัท (Company)</MudSelectItem>
+                    <MudSelectItem Value="RoleScopeType.Org">หน่วยงาน (Org)</MudSelectItem>
+                    <MudSelectItem Value="RoleScopeType.Branch">สาขา (Branch)</MudSelectItem>
+                    <MudSelectItem Value="RoleScopeType.CostCenter">ศูนย์ต้นทุน (Cost Center)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                @if (_newScopeType == RoleScopeType.Company)
+                {
+                    <MudSelect T="string" @bind-Value="_selectedCompanyId" Label="บริษัท">
+                        @foreach (var c in _companyIds)
+                        {
+                            <MudSelectItem Value="@c">@c</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else if (_newScopeType is RoleScopeType.Org or RoleScopeType.Branch)
+                {
+                    <MudAutocomplete T="com_organization" Label="@(_newScopeType == RoleScopeType.Branch ? "สาขา" : "หน่วยงาน")"
+                        @bind-Value="_selectedOrg" SearchFunc="SearchOrganizationsAsync"
+                        ToStringFunc="@(o => o == null ? null : $"{o.orgcodefull} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                }
+                else
+                {
+                    <MudAutocomplete T="Com_ChartOfAccount" Label="ศูนย์ต้นทุน" @bind-Value="_selectedCostCenter"
+                        SearchFunc="SearchCostCentersAsync"
+                        ToStringFunc="@(a => a == null ? null : $"{a.Code} — {a.NameTh}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                }
+            </MudItem>
+            <MudItem xs="12" sm="2"><MudDatePicker Label="เริ่ม" @bind-Date="_newStartDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="2"><MudDatePicker Label="สิ้นสุด" @bind-Date="_newEndDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        </MudGrid>
+        <MudButton Class="mt-2" Color="Color.Primary" Variant="Variant.Filled" OnClick="AddScopeAsync">เพิ่ม</MudButton>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudTable Items="_scopes" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>ค่า</MudTh>
+                <MudTh>ช่วงวันที่</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@TypeLabel(context.scopetype)</MudTd>
+                <MudTd>@context.scopevalue</MudTd>
+                <MudTd>@(context.startdate?.ToString("dd/MM/yyyy") ?? "-") — @(context.enddate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.isactive ? Color.Success : Color.Default)">
+                        @(context.isactive ? "ใช้งาน" : "ปิดใช้งาน")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveScopeAsync(context.scopeid))">ลบ</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">Role นี้ยังไม่มีขอบเขต — เห็นข้อมูลทั้งหมด (ไม่ถูกจำกัด)</MudText></NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private long? _selectedRoleId;
+    private List<sc_role> _roles = new();
+    private List<sc_role_scope> _scopes = new();
+    private List<string> _companyIds = new();
+    private string? _error;
+    private string _actor = "admin";
+
+    private RoleScopeType _newScopeType = RoleScopeType.Org;
+    private string? _selectedCompanyId;
+    private com_organization? _selectedOrg;
+    private Com_ChartOfAccount? _selectedCostCenter;
+    private DateTime? _newStartDate;
+    private DateTime? _newEndDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+        _companyIds = await context.Hremployee.Select(e => e.companyid).Distinct().OrderBy(c => c).ToListAsync();
+    }
+
+    private async Task LoadScopesAsync()
+    {
+        _error = null;
+        _scopes = new();
+        if (_selectedRoleId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _scopes = await context.sc_role_scopes
+            .Where(s => s.roleid == _selectedRoleId)
+            .OrderBy(s => s.scopetype).ThenBy(s => s.scopevalue)
+            .ToListAsync();
+    }
+
+    private void ResetPickers()
+    {
+        _selectedCompanyId = null;
+        _selectedOrg = null;
+        _selectedCostCenter = null;
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        if (_newScopeType == RoleScopeType.Branch)
+            query = query.Where(o => o.isBranch);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<Com_ChartOfAccount>> SearchCostCentersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Com_ChartOfAccounts.Where(a => a.IsCostCenter && a.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Com_ChartOfAccount.Code), nameof(Com_ChartOfAccount.NameTh));
+        return await query.OrderBy(a => a.Code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddScopeAsync()
+    {
+        _error = null;
+        if (_selectedRoleId is null) return;
+
+        string? scopevalue = _newScopeType switch
+        {
+            RoleScopeType.Company => _selectedCompanyId,
+            RoleScopeType.Org or RoleScopeType.Branch => _selectedOrg?.orgcodefull,
+            RoleScopeType.CostCenter => _selectedCostCenter?.Code,
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(scopevalue))
+        {
+            _error = "กรุณาเลือกค่าขอบเขตก่อน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.sc_role_scopes.Add(new sc_role_scope
+        {
+            roleid = _selectedRoleId.Value,
+            scopetype = _newScopeType,
+            scopevalue = scopevalue,
+            startdate = _newStartDate is null ? null : DateOnly.FromDateTime(_newStartDate.Value),
+            enddate = _newEndDate is null ? null : DateOnly.FromDateTime(_newEndDate.Value),
+            isactive = true,
+            moddate = DateTime.Now,
+            modby = _actor,
+        });
+        await context.SaveChangesAsync();
+
+        ResetPickers();
+        _newStartDate = null;
+        _newEndDate = null;
+        Snackbar.Add("เพิ่มขอบเขตเรียบร้อย — มีผลตั้งแต่การ login ครั้งถัดไป", Severity.Success);
+        await LoadScopesAsync();
+    }
+
+    private async Task RemoveScopeAsync(long scopeId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var scope = await context.sc_role_scopes.FirstOrDefaultAsync(s => s.scopeid == scopeId);
+        if (scope is null) return;
+
+        scope.isactive = false;
+        scope.moddate = DateTime.Now;
+        scope.modby = _actor;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("ลบขอบเขตเรียบร้อย", Severity.Success);
+        await LoadScopesAsync();
+    }
+
+    private static string TypeLabel(RoleScopeType t) => t switch
+    {
+        RoleScopeType.Company => "บริษัท",
+        RoleScopeType.Org => "หน่วยงาน",
+        RoleScopeType.Branch => "สาขา",
+        RoleScopeType.CostCenter => "ศูนย์ต้นทุน",
+        _ => t.ToString(),
+    };
+}

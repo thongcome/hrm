@@ -210,7 +210,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
 
         var oldHremployeeId = slot.HremployeeId;
         slot.HremployeeId = emp.id;
-        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, ct);
+        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, ct: ct);
         await context.SaveChangesAsync(ct);
 
         offer.HiredHremployeeId = emp.id;

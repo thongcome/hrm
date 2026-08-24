@@ -3,6 +3,7 @@
 @using HRM.Data
 @using HRM.Models
 @using HRM.Services.Pay
+@using HRM.Services.Security
 @using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -246,7 +247,13 @@
 
     private async Task LoadAsync()
     {
-        await using var context = await DbFactory.CreateDbContextAsync();
+        // Advance Security slice 1 pilot — narrows this list further by the
+        // signed-in user's sc_role_scope (org/cost-center), on top of the
+        // company filter already here. See
+        // Services/Security/ScopedDbContextExtensions.cs for why this is an
+        // explicit per-page opt-in rather than automatic everywhere.
+        var actorState = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateScopedDbContextAsync(actorState.User);
         _employees = await context.Hremployee
             .Where(e => e.companyid == _companyId)
             .OrderBy(e => e.EmpNo)

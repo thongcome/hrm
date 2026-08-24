@@ -39,6 +39,7 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
         await using var context = await _hrmDbFactory.CreateDbContextAsync();
         var scUser = await context.sc_users
             .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_menus).ThenInclude(rm => rm.menu)
+            .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_scopes)
             .FirstOrDefaultAsync(u => u.userid == user.userid);
 
         // No linked sc_user (or it's disabled) — Identity login still
@@ -86,6 +87,47 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             // edit rights via PermissionAdmin.razor's "แก้ไขได้" toggle.
             if (grant.canedit)
                 identity.AddClaim(new Claim("menu_edit", grant.menu.menucode!));
+        }
+
+        // sc_role_scope (Advance Security slice 1) — data-scope claims, read
+        // by RoleScopeSnapshot.FromClaims. Union semantics across roles: a
+        // user holding a role with NO sc_role_scope rows configured (that
+        // role imposes no restriction — matches every role's behavior
+        // today, before this table has any data) must end up unrestricted
+        // overall even if another of their roles IS scoped, since RBAC
+        // access is additive. That can't be represented by "absence of any
+        // scope_* claim" alone (indistinguishable from "every role happens
+        // to have zero total scope values"), so each unrestricted role
+        // emits an explicit "scope_unrestricted" marker claim instead —
+        // RoleScopeSnapshot.FromClaims short-circuits to Unrestricted the
+        // moment it sees one.
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        foreach (var ur in scUser.sc_user_roles.Where(r => r.isactive && r.role is not null))
+        {
+            var activeScopes = ur.role!.sc_role_scopes
+                .Where(rs => rs.isactive
+                    && (rs.startdate is null || rs.startdate <= today)
+                    && (rs.enddate is null || rs.enddate >= today))
+                .ToList();
+
+            if (activeScopes.Count == 0)
+            {
+                identity.AddClaim(new Claim("scope_unrestricted", "1"));
+                continue;
+            }
+
+            foreach (var scope in activeScopes)
+            {
+                var claimType = scope.scopetype switch
+                {
+                    RoleScopeType.Company => "scope_company",
+                    RoleScopeType.Org or RoleScopeType.Branch => "scope_org",
+                    RoleScopeType.CostCenter => "scope_costcenter",
+                    _ => null,
+                };
+                if (claimType is not null)
+                    identity.AddClaim(new Claim(claimType, scope.scopevalue));
+            }
         }
 
         return principal;

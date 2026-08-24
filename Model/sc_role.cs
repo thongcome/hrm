@@ -62,6 +62,9 @@ public partial class sc_role
     public virtual ICollection<sc_role_menu> sc_role_menus { get; set; } = new List<sc_role_menu>();
 
     [InverseProperty("role")]
+    public virtual ICollection<sc_role_scope> sc_role_scopes { get; set; } = new List<sc_role_scope>();
+
+    [InverseProperty("role")]
     public virtual ICollection<sc_role_program> sc_role_programs { get; set; } = new List<sc_role_program>();
 
     [InverseProperty("role")]

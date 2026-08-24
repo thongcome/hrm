@@ -9,6 +9,7 @@
 @using MudBlazor
 @using HRM.Services.Pos
 @using HRM.Services.Pay
+@using HRM.Services.Security
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
@@ -345,7 +346,12 @@
     {
         _error = null;
 
-        await using var context = await DbFactory.CreateDbContextAsync();
+        // Advance Security slice 1 pilot — see
+        // Services/Security/ScopedDbContextExtensions.cs for why this is an
+        // explicit opt-in per page rather than automatic for the whole app.
+        var actorState = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateScopedDbContextAsync(actorState.User);
+        var actorScope = RoleScopeSnapshot.FromClaims(actorState.User);
 
         var startDate = _startDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_startDate.Value);
         var expireDate = _expireDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_expireDate.Value);
@@ -442,7 +448,15 @@
         // Keep Hremployee.OrganizationId/orgcode/orgcodefull in sync with
         // this slot's occupant — see EmployeePositionSync for why this runs
         // before SaveChangesAsync rather than as a second round-trip.
-        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId);
+        try
+        {
+            await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, actorScope);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
 
         await context.SaveChangesAsync();
         Snackbar.Add(_budgetWarning is null ? "บันทึกเรียบร้อย" : "บันทึกเรียบร้อย (เกินงบประมาณที่ตั้งไว้ ดูคำเตือนด้านบน)",
