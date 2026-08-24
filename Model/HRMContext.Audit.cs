@@ -29,6 +29,11 @@ public partial class HRMContext
     // single tracked change produced two AuditLog rows instead of one; base
     // .SaveChanges() → virtual dispatch back into this class's
     // SaveChanges(bool) override → forwards again).
+    // Deliberately does NOT bump permversion (see the async override below
+    // for that) — the only real caller of sync SaveChanges anywhere in this
+    // app (Services/ActivityService.cs) never touches sc_user_role/
+    // sc_role_menu/sc_role_scope, and permversion bumping needs an async DB
+    // round-trip to expand a changed role into its members.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         var pending = CapturePendingAudits();
@@ -44,10 +49,19 @@ public partial class HRMContext
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var pending = CapturePendingAudits();
+        // Advance Security slice 2 — see HRMContext.PermVersion.cs. Must be
+        // collected here too (before the real save), same reason as
+        // CapturePendingAudits above.
+        var directlyAffectedUserIds = CollectDirectlyAffectedUserIds();
         var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         if (pending.Count > 0)
         {
             AppendAuditRows(pending);
+            await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        if (directlyAffectedUserIds.Count > 0 || _pendingAffectedRoleIds is { Count: > 0 })
+        {
+            await BumpAffectedPermVersionsAsync(directlyAffectedUserIds, cancellationToken);
             await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
         return result;

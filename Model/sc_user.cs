@@ -161,8 +161,21 @@ public partial class sc_user
 
     public string? Companycode { get; set; }
 
+    // Advance Security slice 2: bumped by HRMContext (see
+    // Model/HRMContext.PermVersion.cs) whenever this user's sc_user_role,
+    // or any sc_role_menu/sc_role_scope on a role they hold, changes.
+    // Baked into a claim at sign-in (ScUserClaimsPrincipalFactory) and
+    // compared against the live value on each revalidation
+    // (IdentityRevalidatingAuthenticationStateProvider) — a mismatch means
+    // this session's permissions are stale and forces a re-sign-in.
+    [Required]
+    public int permversion { get; set; } = 0;
+
     [InverseProperty("user")]
     public virtual ICollection<emp_checkin> emp_checkins { get; set; } = new List<emp_checkin>();
+
+    [InverseProperty("user")]
+    public virtual ICollection<sc_user_session> sc_user_sessions { get; set; } = new List<sc_user_session>();
 
     [InverseProperty("user")]
     public virtual ICollection<job_user_list> job_user_lists { get; set; } = new List<job_user_list>();

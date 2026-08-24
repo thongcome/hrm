@@ -1,0 +1,119 @@
+@page "/admin/system/user-sessions"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+<PageTitle>เซสชันการเข้าใช้งาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เซสชันการเข้าใช้งาน (Sessions)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการเซสชัน login ของผู้ใช้แต่ละคน — ยกเลิก (revoke) เซสชันใดเซสชันหนึ่งได้ทันที (บังคับ logout ภายใน 5 นาที
+        ตามรอบตรวจสอบของระบบ) โดยไม่กระทบเซสชันอื่นของผู้ใช้คนเดียวกัน
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="sc_user" Label="ค้นหาผู้ใช้" @bind-Value="_selectedUser" @bind-Value:after="LoadSessionsAsync"
+                SearchFunc="SearchUsersAsync"
+                ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+    </MudGrid>
+
+    @if (_selectedUser is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">กรุณาเลือกผู้ใช้ก่อน</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_sessions" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>สร้างเมื่อ</MudTh>
+                <MudTh>ใช้งานล่าสุด</MudTh>
+                <MudTh>IP</MudTh>
+                <MudTh>อุปกรณ์/เบราว์เซอร์</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.createddate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@(context.lastseendate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudTd>
+                <MudTd>@(context.ipaddress ?? "-")</MudTd>
+                <MudTd Style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(context.useragent ?? "-")</MudTd>
+                <MudTd>
+                    @if (context.isrevoked)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">ยกเลิกแล้ว</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">ใช้งานอยู่</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (!context.isrevoked)
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RevokeAsync(context.sessionid))">ยกเลิกเซสชัน</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ผู้ใช้นี้ยังไม่มีประวัติ login</MudText></NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private sc_user? _selectedUser;
+    private List<sc_user_session> _sessions = new();
+    private string _actor = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+    }
+
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.sc_users.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(sc_user.loginname), nameof(sc_user.firstname), nameof(sc_user.lastname));
+        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        _sessions = new();
+        if (_selectedUser is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _sessions = await context.sc_user_sessions
+            .Where(s => s.userid == _selectedUser.userid)
+            .OrderByDescending(s => s.createddate)
+            .ToListAsync();
+    }
+
+    private async Task RevokeAsync(long sessionId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var session = await context.sc_user_sessions.FirstOrDefaultAsync(s => s.sessionid == sessionId);
+        if (session is null) return;
+
+        session.isrevoked = true;
+        session.revokeddate = DateTime.Now;
+        session.revokedby = _actor;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("ยกเลิกเซสชันเรียบร้อย — เซสชันนี้จะถูกบังคับ logout ภายใน 5 นาที", Severity.Success);
+        await LoadSessionsAsync();
+    }
+}

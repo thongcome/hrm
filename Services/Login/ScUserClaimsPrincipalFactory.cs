@@ -21,14 +21,17 @@ using Microsoft.Extensions.Options;
 public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<ApplicationUser>
 {
     private readonly IDbContextFactory<HRMContext> _hrmDbFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public ScUserClaimsPrincipalFactory(
         UserManager<ApplicationUser> userManager,
         IOptions<IdentityOptions> optionsAccessor,
-        IDbContextFactory<HRMContext> hrmDbFactory)
+        IDbContextFactory<HRMContext> hrmDbFactory,
+        IHttpContextAccessor httpContextAccessor)
         : base(userManager, optionsAccessor)
     {
         _hrmDbFactory = hrmDbFactory;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public override async Task<ClaimsPrincipal> CreateAsync(ApplicationUser user)
@@ -49,6 +52,30 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             return principal;
 
         identity.AddClaim(new Claim("sc_userid", scUser.userid.ToString()));
+        identity.AddClaim(new Claim("permversion", scUser.permversion.ToString()));
+
+        // Advance Security slice 2 (sc_user_session) — a fresh session row
+        // + opaque sessiontoken claim every time this runs, so an admin can
+        // revoke it later (see UserSessionAdmin.razor) and
+        // IdentityRevalidatingAuthenticationStateProvider can force a
+        // sign-out once it sees isrevoked=true. This method can run more
+        // than once for the same real browser session (e.g.
+        // SignInManager.RefreshSignInAsync) — an occasional extra row per
+        // user is a minor admin-list clutter, not a correctness problem,
+        // since revoking any one sessiontoken still works independently of
+        // the others.
+        var httpContext = _httpContextAccessor.HttpContext;
+        var rawUserAgent = httpContext?.Request.Headers.UserAgent.ToString();
+        var session = new sc_user_session
+        {
+            userid = scUser.userid,
+            sessiontoken = Guid.NewGuid().ToString("N"),
+            ipaddress = httpContext?.Connection.RemoteIpAddress?.ToString(),
+            useragent = string.IsNullOrEmpty(rawUserAgent) ? null : rawUserAgent[..Math.Min(rawUserAgent.Length, 500)],
+        };
+        context.sc_user_sessions.Add(session);
+        await context.SaveChangesAsync();
+        identity.AddClaim(new Claim("sessionid", session.sessiontoken));
 
         // Displayed in MainLayout's top bar instead of the login/email —
         // ClaimTypes.Name there is the ApplicationUser's UserName (often a
