@@ -1,6 +1,7 @@
 namespace HRM.Services.Succession;
 
 using HRM.Models;
+using HRM.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
 
 // Succession Planning: Key Position (a Job/Pos_ExecType flagged as
@@ -11,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 // read models, upsert-by-explicit-method rather than a generic CRUD helper,
 // soft-delete via IsActive) since this module sits right next to Talent
 // Management in the HRD roadmap and reuses the same conventions.
-public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
+public class SuccessionService(IDbContextFactory<HRMContext> dbFactory, WorkflowEngineService engine)
 {
     public record KeyPositionRow(
         long Id, long PosExecTypeId, string PosExecTypeName,
@@ -25,7 +26,8 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
     public record NominationRow(
         long Id, long HremployeeId, string EmpNo, string Name,
         ReadinessLevel ReadinessLevel, string? Note, DateTime NominatedDate,
-        decimal TotalYearsExperience, bool? MeetsMinExperience);
+        decimal TotalYearsExperience, bool? MeetsMinExperience,
+        SuccessionNominationStatus Status);
 
     public record BenchStrengthRow(
         long KeyPositionId, string PosExecTypeName,
@@ -164,6 +166,33 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
 
     public async Task<List<NominationRow>> GetNominationsAsync(long keyPositionId, CancellationToken ct = default)
     {
+        await using (var syncContext = await dbFactory.CreateDbContextAsync(ct))
+        {
+            // Lazy apply-on-read for every nomination still pending under this
+            // key position — batched into one context/query rather than
+            // calling SyncStatusFromJobAsync (which opens its own context) in
+            // a loop, since a key position can carry several pending
+            // nominations at once.
+            var pending = await syncContext.Succ_SuccessorNominations
+                .Where(n => n.KeyPositionId == keyPositionId && n.IsActive
+                    && n.Status == SuccessionNominationStatus.PendingApproval && n.JobMasterId != null)
+                .ToListAsync(ct);
+            if (pending.Count > 0)
+            {
+                var jobIds = pending.Select(n => n.JobMasterId!.Value).ToList();
+                var jobs = await syncContext.job_masters.Where(j => jobIds.Contains(j.jobmasterid)).ToListAsync(ct);
+                foreach (var nomination in pending)
+                {
+                    var job = jobs.FirstOrDefault(j => j.jobmasterid == nomination.JobMasterId);
+                    if (job is null || job.isJobClosed != true) continue;
+                    nomination.Status = job.status == WorkflowEngineService.StatusCompleted
+                        ? SuccessionNominationStatus.Approved
+                        : SuccessionNominationStatus.Rejected;
+                }
+                await syncContext.SaveChangesAsync(ct);
+            }
+        }
+
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
         var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == keyPositionId, ct);
@@ -184,7 +213,7 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
             var emp = employees.FirstOrDefault(e => e.id == n.HremployeeId);
             var years = CalculateTotalYearsExperience(emp, experiences.Where(e => e.HremployeeId == n.HremployeeId).ToList());
             bool? meetsMin = keyPosition?.MinYearsExperience is int min ? years >= min : null;
-            return new NominationRow(n.Id, n.HremployeeId, emp?.EmpNo ?? "?", emp is null ? $"#{n.HremployeeId}" : $"{emp.EmpName} {emp.EmpSurname}", n.ReadinessLevel, n.Note, n.NominatedDate, years, meetsMin);
+            return new NominationRow(n.Id, n.HremployeeId, emp?.EmpNo ?? "?", emp is null ? $"#{n.HremployeeId}" : $"{emp.EmpName} {emp.EmpSurname}", n.ReadinessLevel, n.Note, n.NominatedDate, years, meetsMin, n.Status);
         }).ToList();
     }
 
@@ -213,13 +242,23 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
         return Math.Round((externalDays + internalDays) / 365m, 1);
     }
 
-    public async Task<long> NominateAsync(long keyPositionId, long hremployeeId, ReadinessLevel readinessLevel, long actorUserId, string? note, CancellationToken ct = default)
+    public async Task<long> NominateAsync(long keyPositionId, long hremployeeId, ReadinessLevel readinessLevel, long actorUserId, string? note, string? actorEmpId = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
         var alreadyActive = await context.Succ_SuccessorNominations.AnyAsync(n => n.KeyPositionId == keyPositionId && n.HremployeeId == hremployeeId && n.IsActive, ct);
         if (alreadyActive)
             throw new InvalidOperationException("พนักงานคนนี้ถูกเสนอชื่อสำหรับตำแหน่งนี้ไปแล้ว");
+
+        var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == "SUCCESSION_NOMINATION_APPROVAL", ct)
+            ?? throw new InvalidOperationException("ไม่พบ workflow 'SUCCESSION_NOMINATION_APPROVAL' — ติดต่อแอดมินให้ตั้งค่าก่อน");
+        if (workflow.isactive != true)
+            throw new InvalidOperationException($"workflow '{workflow.wname}' ปิดใช้งานอยู่ ไม่สามารถส่งอนุมัติได้");
+
+        var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == keyPositionId, ct)
+            ?? throw new InvalidOperationException("ไม่พบตำแหน่งสำคัญนี้");
+        var posExecType = await context.Pos_ExecTypes.FirstOrDefaultAsync(p => p.Id == keyPosition.PosExecTypeId, ct);
+        var candidate = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct);
 
         var nomination = new Succ_SuccessorNomination
         {
@@ -231,7 +270,36 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
         };
         context.Succ_SuccessorNominations.Add(nomination);
         await context.SaveChangesAsync(ct);
+
+        var subject = $"เสนอชื่อผู้สืบทอดตำแหน่ง {posExecType?.Name}: {candidate?.EmpName} {candidate?.EmpSurname}";
+        var jobId = await engine.StartJobAsync(workflow.workflowid, "Succ_SuccessorNomination", nomination.Id.ToString(),
+            actorUserId, actorEmpId, subject, amount: null, ct);
+
+        nomination.JobMasterId = jobId;
+        await context.SaveChangesAsync(ct);
+
         return nomination.Id;
+    }
+
+    // Lazy apply-on-read for a single nomination — used by pages that only
+    // need to refresh one row rather than a whole key position's list (see
+    // GetNominationsAsync for the batched version).
+    public async Task SyncStatusFromJobAsync(long nominationId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var nomination = await context.Succ_SuccessorNominations.FirstOrDefaultAsync(n => n.Id == nominationId, ct);
+        if (nomination is null || nomination.Status != SuccessionNominationStatus.PendingApproval || nomination.JobMasterId is null)
+            return;
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == nomination.JobMasterId, ct);
+        if (job is null || job.isJobClosed != true)
+            return;
+
+        nomination.Status = job.status == WorkflowEngineService.StatusCompleted
+            ? SuccessionNominationStatus.Approved
+            : SuccessionNominationStatus.Rejected;
+        await context.SaveChangesAsync(ct);
     }
 
     public async Task UpdateNominationAsync(long nominationId, ReadinessLevel readinessLevel, string? note, CancellationToken ct = default)
@@ -251,6 +319,8 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
         var nomination = await context.Succ_SuccessorNominations.FirstOrDefaultAsync(n => n.Id == nominationId, ct);
         if (nomination is null)
             return;
+        if (nomination.Status == SuccessionNominationStatus.PendingApproval)
+            throw new InvalidOperationException("ไม่สามารถถอดรายชื่อที่กำลังรออนุมัติได้ — กรุณารออนุมัติ/ปฏิเสธให้เสร็จก่อน");
 
         nomination.IsActive = false;
         await context.SaveChangesAsync(ct);
@@ -273,8 +343,33 @@ public class SuccessionService(IDbContextFactory<HRMContext> dbFactory)
             .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
 
         var keyPositionIds = keyPositions.Select(k => k.Id).ToList();
+
+        // Bench strength / single-point-of-failure only means something if
+        // the nominations it counts have actually cleared governance — a
+        // nomination still pending sign-off (or rejected) is not a real
+        // successor yet. Sync first so a job that closed since the last read
+        // is reflected before we filter.
+        var pending = await context.Succ_SuccessorNominations
+            .Where(n => keyPositionIds.Contains(n.KeyPositionId) && n.IsActive
+                && n.Status == SuccessionNominationStatus.PendingApproval && n.JobMasterId != null)
+            .ToListAsync(ct);
+        if (pending.Count > 0)
+        {
+            var jobIds = pending.Select(n => n.JobMasterId!.Value).ToList();
+            var jobs = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid)).ToListAsync(ct);
+            foreach (var nomination in pending)
+            {
+                var job = jobs.FirstOrDefault(j => j.jobmasterid == nomination.JobMasterId);
+                if (job is null || job.isJobClosed != true) continue;
+                nomination.Status = job.status == WorkflowEngineService.StatusCompleted
+                    ? SuccessionNominationStatus.Approved
+                    : SuccessionNominationStatus.Rejected;
+            }
+            await context.SaveChangesAsync(ct);
+        }
+
         var nominations = await context.Succ_SuccessorNominations
-            .Where(n => keyPositionIds.Contains(n.KeyPositionId) && n.IsActive)
+            .Where(n => keyPositionIds.Contains(n.KeyPositionId) && n.IsActive && n.Status == SuccessionNominationStatus.Approved)
             .ToListAsync(ct);
 
         var employeeIds = nominations.Select(n => n.HremployeeId).Distinct().ToList();

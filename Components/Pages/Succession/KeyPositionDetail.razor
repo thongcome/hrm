@@ -136,12 +136,20 @@ else
         }
     </MudPaper>
 
+    @if (_nominations.Any(n => n.Status == SuccessionNominationStatus.PendingApproval))
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            @L.Translate("NominationPendingApprovalInfo") <MudLink Href="/wf/my-inbox">@L.Translate("ApprovalInboxLinkText")</MudLink>
+        </MudAlert>
+    }
+
     <MudPaper Class="pa-4 mb-4">
         <MudTable Items="_nominations" Dense="true" Hover="true">
             <HeaderContent>
                 <MudTh>@L.Translate("SuccessorColLabel")</MudTh>
                 <MudTh>@L.Translate("ReadinessColLabel")</MudTh>
                 <MudTh>ประสบการณ์รวม (ปัจจัยประกอบ)</MudTh>
+                <MudTh>@L.Translate("NominationStatusColLabel")</MudTh>
                 <MudTh>@L.Translate("NominatedOnColLabel")</MudTh>
                 <MudTh>@L.Translate("ColRemark")</MudTh>
                 <MudTh></MudTh>
@@ -156,6 +164,7 @@ else
                         <MudChip T="string" Size="Size.Small" Color="@(meets ? Color.Success : Color.Error)" Class="ml-1">@(meets ? "ตรงเกณฑ์" : "ไม่ถึงเกณฑ์")</MudChip>
                     }
                 </MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@NominationStatusColor(context.Status)">@NominationStatusLabel(context.Status)</MudChip></MudTd>
                 <MudTd>@context.NominatedDate.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@(context.Note ?? "-")</MudTd>
                 <MudTd>
@@ -165,7 +174,7 @@ else
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleBackgroundAsync(context))">
                         @(_backgroundNominationId == context.Id ? "ซ่อนประวัติ" : "ดูประวัติการศึกษา/ประสบการณ์")
                     </MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" Disabled="@(context.Status == SuccessionNominationStatus.PendingApproval)" OnClick="@(() => RemoveAsync(context.Id))">@L.Translate("RemoveButton")</MudButton>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoNominationsYetMessage")</MudText></NoRecordsContent>
@@ -345,10 +354,11 @@ else
 
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var empId = state.User.FindFirst("empno")?.Value;
 
         try
         {
-            await SuccService.NominateAsync(Id, _selectedEmployee.id, _readiness, userId, _note);
+            await SuccService.NominateAsync(Id, _selectedEmployee.id, _readiness, userId, _note, empId);
             Snackbar.Add(L.Translate("SuccessorNominatedSuccess"), Severity.Success);
             _selectedEmployee = null;
             _readiness = ReadinessLevel.DevelopmentNeeded;
@@ -363,12 +373,35 @@ else
 
     private async Task RemoveAsync(long nominationId)
     {
-        await SuccService.RemoveNominationAsync(nominationId);
-        Snackbar.Add(L.Translate("SuccessorRemovedSuccess"), Severity.Success);
-        if (_gapNominationId == nominationId)
-            _gapNominationId = null;
-        await LoadNominationsAsync();
+        try
+        {
+            await SuccService.RemoveNominationAsync(nominationId);
+            Snackbar.Add(L.Translate("SuccessorRemovedSuccess"), Severity.Success);
+            if (_gapNominationId == nominationId)
+                _gapNominationId = null;
+            await LoadNominationsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Warning);
+        }
     }
+
+    private string NominationStatusLabel(SuccessionNominationStatus v) => v switch
+    {
+        SuccessionNominationStatus.PendingApproval => L.Translate("NominationStatusPendingApproval"),
+        SuccessionNominationStatus.Approved => L.Translate("NominationStatusApproved"),
+        SuccessionNominationStatus.Rejected => L.Translate("NominationStatusRejected"),
+        _ => v.ToString(),
+    };
+
+    private static Color NominationStatusColor(SuccessionNominationStatus v) => v switch
+    {
+        SuccessionNominationStatus.PendingApproval => Color.Warning,
+        SuccessionNominationStatus.Approved => Color.Success,
+        SuccessionNominationStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
 
     private async Task ToggleGapAsync(SuccessionService.NominationRow nomination)
     {

@@ -1,0 +1,438 @@
+@page "/employee/personnel-profile"
+@page "/employee/personnel-profile/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Pay
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject PrivateFileStorage FileStorage
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+@* Additional employee master-record screen — mirrors the layout of the legacy
+   "ข้อมูลบุคลากร" (Personnel Information) screen (header bar + horizontal
+   tabs covering general info / family / education / experience / evaluation /
+   position history / committee history / file upload) requested alongside a
+   reference screenshot. Deliberately additive: does not replace or remove
+   /employee, /employee/{id}/*, or /pay/employees — those keep working exactly
+   as before. Everywhere a tab's data already has a home in this codebase
+   (Hrd_Family/Hrd_Education/Hrd_Experience/Hrd_ContactPerson/address/
+   Pay_PositionSalaryHistory/Perf_EvaluationInstance/doc_center) this page
+   reads that same table rather than inventing a parallel copy — the one
+   exception is "ประวัติทำงานในคณะทำงาน" (committee/task-force history), which
+   has no backing table anywhere in this system yet, so that tab says so
+   plainly instead of showing fabricated rows. *@
+
+<PageTitle>ข้อมูลบุคลากร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5" Class="mb-2">ข้อมูลบุคลากร</MudText>
+    <MudAutocomplete T="Hremployee" Label="ค้นหา (รหัสพนักงาน / ชื่อ / นามสกุล / ชื่อเล่น / เลขบัตรประชาชน / รหัสตำแหน่ง / รหัสกลุ่มงาน)"
+        Value="_selected" ValueChanged="OnPickedAsync"
+        SearchFunc="SearchAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="1"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" />
+</MudPaper>
+
+@if (Id == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="ma-4">พิมพ์คำค้นด้านบนแล้วเลือกพนักงานเพื่อดูข้อมูล — ค้นได้จากรหัสพนักงาน ชื่อ นามสกุล ชื่อเล่น เลขบัตรประชาชน หรือรหัสตำแหน่ง/กลุ่มงาน ทีเดียวพร้อมกัน</MudAlert>
+}
+else if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else if (_emp is null)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudText Typo="Typo.h6">@_emp.PrenameCode @_emp.EmpName @_emp.EmpSurname</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudGrid>
+            <MudItem xs="6" sm="3"><MudTextField Value="@_emp.EmpNo" Label="รหัสพนักงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_orgName ?? "-")" Label="กลุ่มงาน/สังกัด" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_currentSlot?.Name ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")" Label="ตำแหน่ง" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_emp.EmptypeCode ?? "-")" Label="ประเภทบุคลากร" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(SexLabel(_emp.Sex))" Label="เพศ" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_emp.Nation ?? "-")" Label="เชื้อชาติ" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@TenureText()" Label="อายุงาน" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_emp.IdCard ?? "-")" Label="เลขบัตรประชาชน" ReadOnly="true" /></MudItem>
+            <MudItem xs="6" sm="3"><MudTextField Value="@(_emp.ContractNo ?? "-")" Label="เลขที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
+            <MudTabPanel Text="ข้อมูลทั่วไป">
+                <MudGrid Class="pa-2">
+                    <MudItem xs="12" md="8">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">ข้อมูลทั่วไป</MudText>
+                        <MudGrid>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.EmpEname ?? "-")" Label="ชื่อ (Eng)" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.EmpEsurname ?? "-")" Label="นามสกุล (Eng)" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.EmpNickname ?? "-")" Label="ชื่อเล่น" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.BirthDate?.ToString("dd/MM/yyyy") ?? "-")" Label="วันเกิด" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.Nation ?? "-")" Label="สัญชาติ" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.Religion ?? "-")" Label="ศาสนา" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.BloodtypeCode ?? "-")" Label="กรุ๊ปเลือด" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.Weight?.ToString("0.#") ?? "-")" Label="น้ำหนัก (กก.)" ReadOnly="true" /></MudItem>
+                            <MudItem xs="6"><MudTextField Value="@(_emp.Height?.ToString("0.#") ?? "-")" Label="ส่วนสูง (ซม.)" ReadOnly="true" /></MudItem>
+                            <MudItem xs="12"><MudTextField Value="@(_emp.EmpSpecial ?? "-")" Label="ความสามารถพิเศษ" ReadOnly="true" Lines="2" /></MudItem>
+                        </MudGrid>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex justify-center align-start">
+                        @if (!string.IsNullOrEmpty(_emp.PhotoStoragePath))
+                        {
+                            <MudImage Src="@($"/org/files/employee-photo/{_emp.id}")" Width="180" Class="rounded" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Style="font-size:120px;" />
+                        }
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle1" Class="mb-2">ที่อยู่ปัจจุบัน</MudText>
+                @if (_currentAddress is null)
+                {
+                    <MudText Typo="Typo.body2">ยังไม่มีข้อมูลที่อยู่ปัจจุบัน</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">@AddressText(_currentAddress)</MudText>
+                    <MudText Typo="Typo.body2">โทรศัพท์: @(_currentAddress.tel ?? _currentAddress.mobileno ?? "-") &nbsp; E-mail: @(_currentAddress.email ?? "-")</MudText>
+                }
+
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle1" Class="mb-2">ที่อยู่ตามทะเบียนบ้าน</MudText>
+                @if (_registeredAddress is null)
+                {
+                    <MudText Typo="Typo.body2">ยังไม่มีข้อมูลที่อยู่ตามทะเบียนบ้าน</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">@AddressText(_registeredAddress)</MudText>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="ข้อมูลเพิ่มเติม">
+                <MudGrid Class="pa-2">
+                    <MudItem xs="6"><MudTextField Value="@(_emp.ContractNo ?? "-")" Label="เลขที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
+                    <MudItem xs="6"><MudTextField Value="@(_emp.ContractDate?.ToString("dd/MM/yyyy") ?? "-")" Label="วันที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
+                    <MudItem xs="6"><MudTextField Value="@(_emp.LevelCode ?? "-")" Label="ระดับ" ReadOnly="true" /></MudItem>
+                    <MudItem xs="6"><MudTextField Value="@(_emp.LeaveBf?.ToString("0.#") ?? "-")" Label="วันลายกมาสะสม" ReadOnly="true" /></MudItem>
+                </MudGrid>
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle1" Class="mb-2">บุคคลติดต่อในยามฉุกเฉิน</MudText>
+                <MudTable Items="_contactPersons" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ชื่อ</MudTh><MudTh>ความสัมพันธ์</MudTh><MudTh>โทรศัพท์</MudTh><MudTh>ที่อยู่</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd><MudTd>@context.Relation</MudTd><MudTd>@context.Phone</MudTd><MudTd>@context.Address</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{Id}/contact-person")">บุคคลติดต่อในยามฉุกเฉิน</MudLink></MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประวัติครอบครัว">
+                <MudTable Items="_family" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ความสัมพันธ์</MudTh><MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>อาชีพ</MudTh><MudTh>สถานะ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.FamilyType</MudTd>
+                        <MudTd>@context.PrenameCode @context.FirstName @context.LastName</MudTd>
+                        <MudTd>@(context.BirthDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                        <MudTd>@(context.Career ?? "-")</MudTd>
+                        <MudTd>@(context.IsAlive ? "มีชีวิตอยู่" : "เสียชีวิต")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{Id}/family")">บุคคลในครอบครัว</MudLink></MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ข้อมูลบุตร">
+                <MudTable Items="_children" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>กำลังศึกษา</MudTh><MudTh>ใช้สิทธิลดหย่อน</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PrenameCode @context.FirstName @context.LastName</MudTd>
+                        <MudTd>@(context.BirthDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                        <MudTd>@(context.ChildStudying ? "กำลังศึกษา" : "-")</MudTd>
+                        <MudTd>@(context.ChildDeductionEligible ? "ใช้สิทธิ" : "-")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูลบุตร — จัดการที่ <MudLink Href="@($"/employee/{Id}/family")">บุคคลในครอบครัว</MudLink></MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประวัติการทำงาน">
+                <MudText Typo="Typo.body2" Class="mb-2">เหตุการณ์สำคัญของการจ้างงาน (จากข้อมูลพนักงานโดยตรง)</MudText>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr><td>วันที่เริ่มงาน</td><td>@(_emp.WorkDate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                        <tr><td>วันที่ผ่านทดลองงาน</td><td>@(_emp.ProbationConfirmedDate?.ToString("dd/MM/yyyy") ?? "ยังไม่ผ่าน/ไม่มีข้อมูล")</td></tr>
+                        <tr><td>วันที่บรรจุ</td><td>@(_emp.ContainDate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                        @if (_emp.ResignDate is not null)
+                        {
+                            <tr><td>วันที่ลาออก/สิ้นสุดสัญญา</td><td>@_emp.ResignDate?.ToString("dd/MM/yyyy")</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประวัติวุฒิการศึกษา">
+                <MudTable Items="_education" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ระดับ</MudTh><MudTh>วุฒิ/สาขา</MudTh><MudTh>สถาบัน</MudTh><MudTh>ปีที่จบ</MudTh><MudTh>เกรดเฉลี่ย</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Level @(context.IsHighestDegree ? "(สูงสุด)" : "")</MudTd>
+                        <MudTd>@context.Degree @context.Major</MudTd>
+                        <MudTd>@context.Institute</MudTd>
+                        <MudTd>@(context.FinishedDate?.ToString("yyyy") ?? "-")</MudTd>
+                        <MudTd>@(context.Gpa?.ToString("0.00") ?? "-")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{Id}/education")">ประวัติการศึกษา</MudLink></MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประสบการณ์ทำงาน">
+                <MudTable Items="_experience" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ตำแหน่ง</MudTh><MudTh>บริษัท</MudTh><MudTh>ช่วงเวลา</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Position</MudTd>
+                        <MudTd>@context.Company</MudTd>
+                        <MudTd>@context.StartDate?.ToString("MM/yyyy") - @(context.EndDate?.ToString("MM/yyyy") ?? "ปัจจุบัน")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{Id}/experience")">ประสบการณ์ก่อนเข้าทำงาน</MudLink></MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประเมินการทำงาน">
+                <MudTable Items="_evaluations" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>รอบประเมิน</MudTh><MudTh>คะแนนรวม</MudTh><MudTh>เกรด</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.EvaluationPeriod?.Name</MudTd>
+                        <MudTd>@(context.FinalScorePercent?.ToString("0.##") + "%" ?? "-")</MudTd>
+                        <MudTd>@(context.FinalGrade ?? "-")</MudTd>
+                        <MudTd>@context.Status</MudTd>
+                        <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/perf/instances/{context.Id}")">ดูรายละเอียด</MudButton></MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีผลการประเมิน</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประวัติการโยกย้ายตำแหน่ง">
+                <MudTable Items="_positionHistory" Dense="true">
+                    <HeaderContent>
+                        <MudTh>วันที่</MudTh><MudTh>ประเภท</MudTh><MudTh>ตำแหน่งเดิม</MudTh><MudTh>ตำแหน่งใหม่</MudTh><MudTh>เงินเดือนเดิม</MudTh><MudTh>เงินเดือนใหม่</MudTh><MudTh>เหตุผล</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.ChangedDate.ToString("dd/MM/yyyy")</MudTd>
+                        <MudTd>@ChangeTypeLabel(context.ChangeType)</MudTd>
+                        <MudTd>@(context.OldPositionName ?? "-")</MudTd>
+                        <MudTd>@(context.NewPositionName ?? "-")</MudTd>
+                        <MudTd>@(context.OldSalary?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd>@(context.NewSalary?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd>@(context.Reason ?? "-")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประวัติการโยกย้ายตำแหน่ง/ปรับเงินเดือน</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ประวัติทำงานในคณะทำงาน">
+                <MudAlert Severity="Severity.Info">ระบบยังไม่มีการเก็บข้อมูลประวัติการทำงานในคณะทำงาน/คณะกรรมการเป็นตารางเฉพาะ — แท็บนี้เตรียมไว้สำหรับอนาคต</MudAlert>
+            </MudTabPanel>
+
+            <MudTabPanel Text="FILE UPLOAD">
+                <MudFileUpload T="IBrowserFile" FilesChanged="UploadDocAsync">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">แนบไฟล์</MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                <MudTable Items="_documents" Dense="true" Class="mt-3">
+                    <HeaderContent>
+                        <MudTh>ไฟล์</MudTh><MudTh>วันที่แนบ</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.files</MudTd>
+                        <MudTd>@(context.moddate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudTd>
+                        <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/employee/files/doc/{context.id}")" Target="_blank">ดาวน์โหลด</MudButton></MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีไฟล์แนบ</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private bool _notFound;
+    private Hremployee? _selected;
+
+    private Pos_PositionSlot? _currentSlot;
+    private string? _orgName;
+    private address? _currentAddress;
+    private address? _registeredAddress;
+    private List<Hrd_Family> _family = new();
+    private List<Hrd_Family> _children = new();
+    private List<Hrd_Education> _education = new();
+    private List<Hrd_Experience> _experience = new();
+    private List<Hrd_ContactPerson> _contactPersons = new();
+    private List<Perf_EvaluationInstance> _evaluations = new();
+    private List<Pay_PositionSalaryHistory> _positionHistory = new();
+    private List<doc_center> _documents = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id == 0) { _emp = null; _selected = null; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) { _notFound = true; return; }
+        _notFound = false;
+        _selected = _emp;
+
+        _currentSlot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.HremployeeId == Id && s.IsActive);
+        if (_currentSlot?.OrganizationId is not null)
+        {
+            var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == _currentSlot.OrganizationId);
+            _orgName = org is null ? null : $"{org.code} — {org.name}";
+        }
+        else
+        {
+            _orgName = null;
+        }
+
+        var addresses = await context.addresses.Include(a => a.address_typeNavigation)
+            .Where(a => a.hremployeeid == Id && a.isactive).ToListAsync();
+        _currentAddress = addresses.FirstOrDefault(a => a.address_typeNavigation?.code == "CUR");
+        _registeredAddress = addresses.FirstOrDefault(a => a.address_typeNavigation?.code == "REG");
+
+        var allFamily = await context.Hrd_Families.Where(f => f.HremployeeId == Id).ToListAsync();
+        _family = allFamily.Where(f => !f.IsChild).ToList();
+        _children = allFamily.Where(f => f.IsChild).ToList();
+
+        _education = await context.Hrd_Educations.Where(e => e.HremployeeId == Id)
+            .OrderByDescending(e => e.IsHighestDegree).ThenByDescending(e => e.FinishedDate).ToListAsync();
+        _experience = await context.Hrd_Experiences.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.StartDate).ToListAsync();
+        _contactPersons = await context.Hrd_ContactPersons.Where(c => c.HremployeeId == Id).ToListAsync();
+
+        _evaluations = await context.Perf_EvaluationInstances.Include(p => p.EvaluationPeriod)
+            .Where(p => p.HremployeeId == Id).OrderByDescending(p => p.Id).ToListAsync();
+
+        _positionHistory = await context.Pay_PositionSalaryHistories.Where(h => h.HremployeeId == Id)
+            .OrderByDescending(h => h.ChangedDate).ToListAsync();
+
+        _documents = await context.doc_centers
+            .Where(d => d.doctypecode == "EMPLOYEE_PROFILE_DOC" && d.refid == Id && d.isActive == true)
+            .OrderByDescending(d => d.moddate).ToListAsync();
+
+        await AuditLogger.LogAccessAsync("Hremployee", Id.ToString(), isSensitive: true, note: "personnel profile view");
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = EntitySearchHelper.ApplyTextSearch(context.Hremployee.AsQueryable(), search,
+            nameof(Hremployee.EmpNo), nameof(Hremployee.EmpName), nameof(Hremployee.EmpSurname),
+            nameof(Hremployee.EmpNickname), nameof(Hremployee.EmpEname), nameof(Hremployee.EmpEsurname),
+            nameof(Hremployee.IdCard), nameof(Hremployee.DeptgrpCode), nameof(Hremployee.PosCode));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private Task OnPickedAsync(Hremployee? emp)
+    {
+        if (emp is not null) Nav.NavigateTo($"/employee/personnel-profile/{emp.id}");
+        return Task.CompletedTask;
+    }
+
+    private async Task UploadDocAsync(IBrowserFile file)
+    {
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024; // 10 MB
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var storedFileName = $"{Id}_{Guid.NewGuid():N}_{file.Name}";
+            var (relativePath, _) = await FileStorage.SaveAsync("employee-profile-docs", storedFileName, bytes);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            context.doc_centers.Add(new doc_center
+            {
+                refid = Id,
+                doctypecode = "EMPLOYEE_PROFILE_DOC",
+                files = file.Name,
+                path = relativePath,
+                isActive = true,
+                moddate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+
+            Snackbar.Add($"แนบไฟล์ '{file.Name}' สำเร็จ", Severity.Success);
+            _documents = await context.doc_centers
+                .Where(d => d.doctypecode == "EMPLOYEE_PROFILE_DOC" && d.refid == Id && d.isActive == true)
+                .OrderByDescending(d => d.moddate).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("แนบไฟล์ไม่สำเร็จ: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private string TenureText()
+    {
+        if (_emp?.WorkDate is null) return "-";
+        var span = DateTime.Today - _emp.WorkDate.Value;
+        var years = span.Days / 365;
+        var months = (span.Days % 365) / 30;
+        return $"{years} ปี {months} เดือน";
+    }
+
+    private static string SexLabel(string? sex) => sex switch
+    {
+        "M" => "ชาย",
+        "F" => "หญิง",
+        _ => sex ?? "-",
+    };
+
+    private static string AddressText(address a)
+    {
+        var parts = new[] { a.no, a.moo is null ? null : $"หมู่ {a.moo}", a.soi is null ? null : $"ซอย{a.soi}", a.road is null ? null : $"ถนน{a.road}", a.subdistrict, a.districtid, a.province, a.postcode };
+        var text = string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+        return string.IsNullOrWhiteSpace(text) ? "-" : text;
+    }
+
+    private static string ChangeTypeLabel(string? changeType) => changeType switch
+    {
+        "P" => "เลื่อนตำแหน่ง",
+        "D" => "ลดตำแหน่ง",
+        "T" => "โยกย้าย",
+        "S" => "ปรับเงินเดือน",
+        "O" => "อื่นๆ",
+        _ => changeType ?? "-",
+    };
+}

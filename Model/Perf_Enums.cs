@@ -70,3 +70,24 @@ public enum PerfGoalStatus
     AtRisk = 3,
     Completed = 4,
 }
+
+// Performance Improvement Plan — a standard HRD building block this codebase
+// was missing entirely (per 2026-08-25 gap analysis). Deliberately its own
+// workflow-gated document (unlike Eng_ActionPlan/OrgDev_ChangeInitiative)
+// because a PIP outcome can be grounds for termination — it needs the same
+// sign-off rigor as IDP/LMS approval, not a free-form tracker.
+public enum PipStatus
+{
+    Draft = 1,           // ตั้งเป้าหมายอยู่ ยังไม่ส่งอนุมัติ
+    PendingApproval = 2,
+    Active = 3,           // อนุมัติแล้ว กำลังติดตามผลตามระยะเวลาที่กำหนด
+    Rejected = 4,
+    Passed = 5,            // ผ่าน PIP — พ้นสถานะ
+    Extended = 6,           // ไม่ผ่านครบตามเกณฑ์แต่เห็นพัฒนาการ ขยายเวลาต่อ (สร้าง PIP รอบใหม่ผูก PreviousPlanId)
+    Failed = 7,              // ไม่ผ่าน — ส่งต่อกระบวนการทางวินัย/เลิกจ้างนอกระบบนี้
+    Cancelled = 8,
+}
+
+public enum PipGoalStatus { NotStarted = 1, InProgress = 2, Achieved = 3, NotAchieved = 4 }
+
+public enum PipCheckInRating { OnTrack = 1, AtRisk = 2, OffTrack = 3 }

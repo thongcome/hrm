@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Ess
+@using HRM.Services.Idp
 @using HRM.Services.Lms
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -10,6 +11,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject LmsEnrollmentService EnrollmentService
+@inject IdpPlanService IdpPlan
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
 
@@ -27,6 +29,14 @@ else
 {
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">รอบอบรมที่เปิดรับสมัคร</MudText>
+
+        @if (_sourceAction is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                กำลังเลือกหลักสูตรเพื่อปิดรายการพัฒนา (IDP): <b>@_sourceAction.Title</b> —
+                ลงทะเบียนรอบอบรมใดก็ได้ด้านล่าง ระบบจะบันทึกว่าเกี่ยวข้องกับรายการนี้และปรับสถานะเป็น "กำลังทำ" ให้อัตโนมัติ
+            </MudAlert>
+        }
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -58,12 +68,16 @@ else
 @code {
     private record Row(Lms_Course Course, Lms_CourseSession Session, int TakenSeats);
 
+    [SupplyParameterFromQuery(Name = "actionId")]
+    public long? ActionId { get; set; }
+
     private Hremployee? _employee;
     private bool _notFound;
     private List<Row> _rows = new();
     private string? _error;
     private long _actorUserId;
     private string? _actorEmpId;
+    private Idp_DevelopmentAction? _sourceAction;
 
     protected override async Task OnInitializedAsync()
     {
@@ -74,6 +88,16 @@ else
 
         _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
         _actorEmpId = state.User.FindFirst("empno")?.Value;
+
+        // Only trust actionId if it actually belongs to this employee's own
+        // development plan — never let a query string enroll on someone
+        // else's behalf or mark someone else's action in-progress.
+        if (ActionId is long actionId)
+        {
+            var action = await context.Idp_DevelopmentActions.Include(a => a.Plan)
+                .FirstOrDefaultAsync(a => a.Id == actionId && a.Plan.HremployeeId == _employee.id);
+            _sourceAction = action;
+        }
 
         await LoadAsync();
     }
@@ -102,7 +126,9 @@ else
         _error = null;
         try
         {
-            await EnrollmentService.EnrollAsync(sessionId, _employee!.id, _actorUserId, _actorEmpId, null);
+            await EnrollmentService.EnrollAsync(sessionId, _employee!.id, _actorUserId, _actorEmpId, _sourceAction?.Id);
+            if (_sourceAction is not null && _sourceAction.Status == IdpActionStatus.NotStarted)
+                await IdpPlan.UpdateActionStatusAsync(_sourceAction.Id, IdpActionStatus.InProgress, _sourceAction.Note);
             Snackbar.Add("ลงทะเบียนเรียบร้อย", Severity.Success);
             await LoadAsync();
         }

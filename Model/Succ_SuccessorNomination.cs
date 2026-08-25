@@ -7,6 +7,14 @@ namespace HRM.Models;
 // counting these). Removed via soft-delete (IsActive=false) — same
 // convention as Talent_PoolEntry — so nomination history survives even after
 // someone is taken off the slate.
+//
+// Gated by the generic Workflow Engine (JobMasterId) — standard succession
+// governance expects leadership sign-off before someone is formally on a
+// slate, unlike Eng_ActionPlan/OrgDev_ChangeInitiative which are deliberately
+// un-gated tracking tools. Status is only synced from the job lazily, on
+// read (SuccessionService.SyncStatusFromJobAsync), mirroring
+// IdpPlanService/LmsEnrollmentService exactly (no scheduler exists anywhere
+// in this codebase).
 public class Succ_SuccessorNomination
 {
     [Key]
@@ -24,4 +32,7 @@ public class Succ_SuccessorNomination
     public string? Note { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public SuccessionNominationStatus Status { get; set; } = SuccessionNominationStatus.PendingApproval;
+    public long? JobMasterId { get; set; }
 }

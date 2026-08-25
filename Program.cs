@@ -394,6 +394,7 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfMeritService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfGoalService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
 // ----- Okr_* module (OKR v2) -----
@@ -571,6 +572,7 @@ app.MapLmsFileEndpoints();
 app.MapKmFileEndpoints();
 app.MapOrgChartFileEndpoints();
 app.MapCompanyFileEndpoints();
+app.MapEmployeeProfileFileEndpoints();
 
 // Resource-server surface for the ecosystem-wide central AI chatbot — see
 // Endpoints/ExternalApiEndpoints.cs. The dev token-minting route is only

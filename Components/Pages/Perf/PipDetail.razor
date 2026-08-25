@@ -1,0 +1,374 @@
+@page "/perf/pip/{Id:long}"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Perf
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfImprovementPlanService PipService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>PIP — @(_employee?.EmpName) @(_employee?.EmpSurname)</PageTitle>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบ PIP นี้</MudAlert>
+}
+else if (_plan is null)
+{
+    <MudText Class="ma-4">กำลังโหลด...</MudText>
+}
+else
+{
+    <MudButton Class="mb-2" Variant="Variant.Text" Href="/perf/pip">← กลับไปหน้ารายการ</MudButton>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">PIP — @_employee?.EmpName @_employee?.EmpSurname</MudText>
+            <MudChip T="string" Size="Size.Small" Color="StatusColor(_plan.Status)">@StatusLabel(_plan.Status)</MudChip>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1">ช่วงเวลา: @_plan.StartDate.ToString("dd/MM/yyyy") - @_plan.EndDate.ToString("dd/MM/yyyy")</MudText>
+        <MudText Typo="Typo.body2">เหตุผล: @_plan.Reason</MudText>
+        @if (_plan.PreviousPlanId is long prevId)
+        {
+            <MudText Typo="Typo.body2">ต่อจาก PIP รอบก่อน: <MudLink Href="@($"/perf/pip/{prevId}")">#@prevId</MudLink></MudText>
+        }
+
+        @if (_plan.Status == PipStatus.PendingApproval)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                อยู่ระหว่างรออนุมัติ — ไปที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ</MudLink> เพื่อดำเนินการ
+            </MudAlert>
+        }
+
+        @if (_plan.OutcomeDate is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">ปิดผลเมื่อ: @_plan.OutcomeDate.Value.ToString("dd/MM/yyyy HH:mm")</MudText>
+            @if (!string.IsNullOrEmpty(_plan.OutcomeNote))
+            {
+                <MudText Typo="Typo.body2">หมายเหตุผลลัพธ์: @_plan.OutcomeNote</MudText>
+            }
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            @if (_plan.Status == PipStatus.Draft)
+            {
+                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="SubmitAsync">ส่งอนุมัติ</MudButton>
+                <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="CancelAsync">ยกเลิก</MudButton>
+            }
+            else if (_plan.Status == PipStatus.PendingApproval)
+            {
+                <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="CancelAsync">ยกเลิกคำขอ</MudButton>
+            }
+            else if (_plan.Status == PipStatus.Extended && !_hasExtension)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showExtendForm = true)">สร้าง PIP รอบถัดไป</MudButton>
+            }
+        </MudStack>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
+    </MudPaper>
+
+    @if (_showExtendForm)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">สร้าง PIP รอบถัดไป</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่เริ่ม" @bind-Date="_extendStartDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_extendEndDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_extendReason" Label="เหตุผล/สิ่งที่ต้องปรับปรุงต่อ" /></MudItem>
+                <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateExtensionAsync">สร้าง</MudButton></MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">เป้าหมายการปรับปรุง</MudText>
+        <MudTable Items="_goals" Dense="true">
+            <HeaderContent>
+                <MudTh>เป้าหมาย</MudTh>
+                <MudTh>เกณฑ์ความสำเร็จ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>@(context.SuccessCriteria ?? "-")</MudTd>
+                <MudTd>
+                    @if (_plan.Status == PipStatus.Active)
+                    {
+                        <MudSelect T="PipGoalStatus" Value="context.Status" ValueChanged="@(v => UpdateGoalStatusAsync(context.Id, v))" Dense="true">
+                            @foreach (PipGoalStatus s in Enum.GetValues<PipGoalStatus>())
+                            {
+                                <MudSelectItem T="PipGoalStatus" Value="s">@GoalStatusLabel(s)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        @GoalStatusLabel(context.Status)
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (_plan.Status == PipStatus.Draft)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveGoalAsync(context.Id))" />
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีเป้าหมาย</MudText></NoRecordsContent>
+        </MudTable>
+
+        @if (_plan.Status == PipStatus.Draft)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newGoalTitle" Label="เป้าหมาย" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newGoalCriteria" Label="เกณฑ์ความสำเร็จ (SMART)" /></MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-center"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddGoalAsync">เพิ่ม</MudButton></MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการติดตามความคืบหน้า</MudText>
+        <MudTable Items="_checkIns" Dense="true">
+            <HeaderContent>
+                <MudTh>วันที่</MudTh>
+                <MudTh>สถานะโดยรวม</MudTh>
+                <MudTh>บันทึก</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.CheckInDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@CheckInColor(context.Rating)">@CheckInLabel(context.Rating)</MudChip></MudTd>
+                <MudTd>@context.Note</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการบันทึกความคืบหน้า</MudText></NoRecordsContent>
+        </MudTable>
+
+        @if (_plan.Status == PipStatus.Active)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่" @bind-Date="_newCheckInDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="PipCheckInRating" @bind-Value="_newCheckInRating" Label="สถานะโดยรวม">
+                        @foreach (PipCheckInRating r in Enum.GetValues<PipCheckInRating>())
+                        {
+                            <MudSelectItem T="PipCheckInRating" Value="r">@CheckInLabel(r)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newCheckInNote" Label="บันทึก" /></MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-center"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddCheckInAsync">บันทึก</MudButton></MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">ปิดผล PIP</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="@(() => CloseOutcomeAsync(PipStatus.Passed))">ผ่าน</MudButton>
+                <MudButton Color="Color.Warning" Variant="Variant.Filled" OnClick="@(() => CloseOutcomeAsync(PipStatus.Extended))">ขยายเวลา</MudButton>
+                <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="@(() => CloseOutcomeAsync(PipStatus.Failed))">ไม่ผ่าน</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _notFound;
+    private Perf_ImprovementPlan? _plan;
+    private Hremployee? _employee;
+    private List<Perf_ImprovementGoal> _goals = new();
+    private List<Perf_ImprovementCheckIn> _checkIns = new();
+    private bool _hasExtension;
+    private string? _error;
+
+    private string? _newGoalTitle;
+    private string? _newGoalCriteria;
+
+    private DateTime? _newCheckInDate = DateTime.Today;
+    private PipCheckInRating _newCheckInRating = PipCheckInRating.OnTrack;
+    private string? _newCheckInNote;
+
+    private bool _showExtendForm;
+    private DateTime? _extendStartDate = DateTime.Today;
+    private DateTime? _extendEndDate = DateTime.Today.AddDays(60);
+    private string? _extendReason;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await PipService.SyncStatusFromJobAsync(Id);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var detail = await PipService.GetPlanDetailAsync(Id);
+        if (detail is null) { _notFound = true; return; }
+
+        _plan = detail.Value.Plan;
+        _goals = detail.Value.Goals;
+        _checkIns = detail.Value.CheckIns;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _plan.HremployeeId);
+        _hasExtension = await context.Perf_ImprovementPlans.AnyAsync(p => p.PreviousPlanId == Id);
+    }
+
+    private async Task<(long UserId, string? EmpId)> GetActorAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var empId = state.User.FindFirst("empno")?.Value;
+        return (userId, empId);
+    }
+
+    private async Task AddGoalAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newGoalTitle)) { _error = "กรุณาระบุเป้าหมาย"; return; }
+        try
+        {
+            await PipService.AddGoalAsync(Id, _newGoalTitle, _newGoalCriteria);
+            _newGoalTitle = null;
+            _newGoalCriteria = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task RemoveGoalAsync(long goalId)
+    {
+        try { await PipService.RemoveGoalAsync(goalId); await LoadAsync(); }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task UpdateGoalStatusAsync(long goalId, PipGoalStatus status)
+    {
+        await PipService.UpdateGoalStatusAsync(goalId, status);
+        await LoadAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        try
+        {
+            var (userId, empId) = await GetActorAsync();
+            await PipService.SubmitForApprovalAsync(Id, userId, empId);
+            Snackbar.Add("ส่งอนุมัติแล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task CancelAsync()
+    {
+        try
+        {
+            await PipService.CancelAsync(Id);
+            Snackbar.Add("ยกเลิก PIP แล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task AddCheckInAsync()
+    {
+        _error = null;
+        if (_newCheckInDate is null || string.IsNullOrWhiteSpace(_newCheckInNote)) { _error = "กรุณาระบุวันที่และบันทึก"; return; }
+        try
+        {
+            var (userId, _) = await GetActorAsync();
+            await PipService.RecordCheckInAsync(Id, DateOnly.FromDateTime(_newCheckInDate.Value), _newCheckInRating, _newCheckInNote, userId);
+            _newCheckInNote = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task CloseOutcomeAsync(PipStatus outcome)
+    {
+        try
+        {
+            var (userId, _) = await GetActorAsync();
+            await PipService.CloseOutcomeAsync(Id, outcome, _plan?.OutcomeNote, userId);
+            Snackbar.Add("ปิดผล PIP แล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task CreateExtensionAsync()
+    {
+        _error = null;
+        if (_extendStartDate is null || _extendEndDate is null || string.IsNullOrWhiteSpace(_extendReason)) { _error = "กรุณากรอกข้อมูลให้ครบ"; return; }
+        try
+        {
+            var (userId, _) = await GetActorAsync();
+            var newPlanId = await PipService.CreateExtensionAsync(Id, DateOnly.FromDateTime(_extendStartDate.Value), DateOnly.FromDateTime(_extendEndDate.Value), _extendReason, userId);
+            Nav.NavigateTo($"/perf/pip/{newPlanId}");
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private static string StatusLabel(PipStatus status) => status switch
+    {
+        PipStatus.Draft => "ฉบับร่าง",
+        PipStatus.PendingApproval => "รออนุมัติ",
+        PipStatus.Active => "กำลังดำเนินการ",
+        PipStatus.Rejected => "ไม่อนุมัติ",
+        PipStatus.Passed => "ผ่าน",
+        PipStatus.Extended => "ขยายเวลา",
+        PipStatus.Failed => "ไม่ผ่าน",
+        PipStatus.Cancelled => "ยกเลิก",
+        _ => status.ToString(),
+    };
+
+    private static Color StatusColor(PipStatus status) => status switch
+    {
+        PipStatus.Draft => Color.Default,
+        PipStatus.PendingApproval => Color.Warning,
+        PipStatus.Active => Color.Info,
+        PipStatus.Rejected => Color.Error,
+        PipStatus.Passed => Color.Success,
+        PipStatus.Extended => Color.Warning,
+        PipStatus.Failed => Color.Error,
+        PipStatus.Cancelled => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string GoalStatusLabel(PipGoalStatus status) => status switch
+    {
+        PipGoalStatus.NotStarted => "ยังไม่เริ่ม",
+        PipGoalStatus.InProgress => "กำลังทำ",
+        PipGoalStatus.Achieved => "สำเร็จ",
+        PipGoalStatus.NotAchieved => "ไม่สำเร็จ",
+        _ => status.ToString(),
+    };
+
+    private static string CheckInLabel(PipCheckInRating rating) => rating switch
+    {
+        PipCheckInRating.OnTrack => "เป็นไปตามแผน",
+        PipCheckInRating.AtRisk => "มีความเสี่ยง",
+        PipCheckInRating.OffTrack => "หลุดจากแผน",
+        _ => rating.ToString(),
+    };
+
+    private static Color CheckInColor(PipCheckInRating rating) => rating switch
+    {
+        PipCheckInRating.OnTrack => Color.Success,
+        PipCheckInRating.AtRisk => Color.Warning,
+        PipCheckInRating.OffTrack => Color.Error,
+        _ => Color.Default,
+    };
+}

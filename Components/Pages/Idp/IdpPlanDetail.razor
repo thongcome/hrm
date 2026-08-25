@@ -1,10 +1,14 @@
 @page "/idp/plans/{Id:long}"
+@using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Ess
 @using HRM.Services.Idp
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 @inject IdpPlanService PlanService
 @inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Policy = "Menu:IDP_ACCESS")]
 
@@ -75,12 +79,21 @@ else
                 <MudTh>สมรรถนะที่เกี่ยวข้อง</MudTh>
                 <MudTh>กำหนดเสร็จ</MudTh>
                 <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.Title</MudTd>
                 <MudTd>@(context.Competency?.Name ?? "-")</MudTd>
                 <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
                 <MudTd>@ActionStatusLabel(context.Status)</MudTd>
+                <MudTd>
+                    @if (_isOwnPlan && _plan.Status == IdpPlanStatus.Approved
+                        && context.Status != IdpActionStatus.Completed && context.Status != IdpActionStatus.Cancelled)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                            Href="@($"/ess/lms/catalog?actionId={context.Id}")">ค้นหาหลักสูตรที่เกี่ยวข้อง</MudButton>
+                    }
+                </MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีรายการพัฒนา</MudText></NoRecordsContent>
         </MudTable>
@@ -95,6 +108,7 @@ else
     private List<Idp_DevelopmentAction> _actions = new();
     private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
     private bool _notFound;
+    private bool _isOwnPlan;
 
     [Inject] private IdpAssessmentService AssessmentService { get; set; } = null!;
 
@@ -114,6 +128,13 @@ else
         _employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _plan.HremployeeId);
 
         _gapRows = await AssessmentService.GetGapAnalysisAsync(_plan.HremployeeId);
+
+        // Only the plan's own employee gets an "enroll in training" shortcut —
+        // a manager/HR viewing someone else's plan must not be routed into
+        // enrolling *themselves* via the ESS catalog under someone else's name.
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var viewer = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        _isOwnPlan = viewer is not null && viewer.id == _plan.HremployeeId;
     }
 
     private static Color StatusColor(IdpPlanStatus status) => status switch
