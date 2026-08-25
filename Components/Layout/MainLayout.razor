@@ -90,6 +90,8 @@
                 </MudNavGroup>
             }
 
+            <MudText Typo="Typo.overline" Class="px-4 mt-3 mb-1" Style="opacity:.6;">@L.Translate("ModuleHubCategoryHrm")</MudText>
+
             @if (Has("REC_ADMIN"))
             {
                 <MudNavGroup Title="@L.Translate("NavRecruitment")" Icon="@Icons.Material.Filled.PersonSearch" Expanded="false">
@@ -138,16 +140,6 @@
                     <MudNavLink Href="/pos/exec-types" Icon="@Icons.Material.Filled.WorkOutline">@L.Translate("NavPosExecTypes")</MudNavLink>
                     <MudNavLink Href="/pos/position-slots" Icon="@Icons.Material.Filled.EventSeat">@L.Translate("NavPosSlots")</MudNavLink>
                     <MudNavLink Href="/pos/headcount-budget" Icon="@Icons.Material.Filled.PieChart">@L.Translate("NavPosHeadcountBudget")</MudNavLink>
-                </MudNavGroup>
-            }
-
-            @if (Has("JOBCOMP_ADMIN"))
-            {
-                <MudNavGroup Title="@L.Translate("NavJobCompetency")" Icon="@Icons.Material.Filled.EmojiObjects" Expanded="false">
-                    <MudNavLink Href="/job/families" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavJobFamilies")</MudNavLink>
-                    <MudNavLink Href="/job/levels" Icon="@Icons.Material.Filled.Stairs">@L.Translate("NavJobLevels")</MudNavLink>
-                    <MudNavLink Href="/competency/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavCompetencyCategories")</MudNavLink>
-                    <MudNavLink Href="/competency/library" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavCompetencyLibrary")</MudNavLink>
                 </MudNavGroup>
             }
 
@@ -213,6 +205,67 @@
                     <MudNavLink Href="/pay/dashboard" Icon="@Icons.Material.Filled.Dashboard">@L.Translate("NavPayDashboard")</MudNavLink>
                 }
             </MudNavGroup>
+
+            @if (Has("CT_CONTRACT_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavContracts")" Icon="@Icons.Material.Filled.Assignment" Expanded="false">
+                    <MudNavLink Href="/contracts" Icon="@Icons.Material.Filled.Description">@L.Translate("NavContractsList")</MudNavLink>
+                    <MudNavLink Href="/contracts/currencies" Icon="@Icons.Material.Filled.AttachMoney">@L.Translate("NavContractsCurrencies")</MudNavLink>
+                    <MudNavLink Href="/contracts/warranty-types" Icon="@Icons.Material.Filled.VerifiedUser">@L.Translate("NavContractsWarrantyTypes")</MudNavLink>
+                </MudNavGroup>
+            }
+
+            @if (HasAny("HR_ANNOUNCE_ACCESS", "HR_ANNOUNCE_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavAnnouncements")" Icon="@Icons.Material.Filled.Campaign" Expanded="false">
+                    @if (Has("HR_ANNOUNCE_ACCESS"))
+                    {
+                        <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Article">@L.Translate("NavAnnouncePublic")</MudNavLink>
+                    }
+                    @if (Has("HR_ANNOUNCE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/announcements/admin" Icon="@Icons.Material.Filled.EditNote">@L.Translate("NavAnnounceAdmin")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
+
+            @if (HasAny("HR_DISCIPLINE_ADMIN", "HR_GRIEVANCE_ADMIN", "HR_REWARD_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavEmployeeRelations")" Icon="@Icons.Material.Filled.Balance" Expanded="false">
+                    @if (Has("HR_DISCIPLINE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/disciplinary" Icon="@Icons.Material.Filled.Gavel">@L.Translate("NavHrDisciplinary")</MudNavLink>
+                    }
+                    @if (Has("HR_GRIEVANCE_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/grievances" Icon="@Icons.Material.Filled.ReportProblem">@L.Translate("NavHrGrievances")</MudNavLink>
+                    }
+                    @if (Has("HR_REWARD_ADMIN"))
+                    {
+                        <MudNavLink Href="/hr/reward" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavHrReward")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
+
+            @if (Has("EXP_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavExpenseClaims")" Icon="@Icons.Material.Filled.ReceiptLong" Expanded="false">
+                    <MudNavLink Href="/exp/admin/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavExpCategories")</MudNavLink>
+                    <MudNavLink Href="/exp/admin/claims" Icon="@Icons.Material.Filled.FactCheck">@L.Translate("NavExpAllClaims")</MudNavLink>
+                </MudNavGroup>
+            }
+
+            <MudText Typo="Typo.overline" Class="px-4 mt-3 mb-1" Style="opacity:.6;">@L.Translate("ModuleHubCategoryHrd")</MudText>
+
+            @if (Has("JOBCOMP_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavJobCompetency")" Icon="@Icons.Material.Filled.EmojiObjects" Expanded="false">
+                    <MudNavLink Href="/job/families" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavJobFamilies")</MudNavLink>
+                    <MudNavLink Href="/job/levels" Icon="@Icons.Material.Filled.Stairs">@L.Translate("NavJobLevels")</MudNavLink>
+                    <MudNavLink Href="/competency/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavCompetencyCategories")</MudNavLink>
+                    <MudNavLink Href="/competency/library" Icon="@Icons.Material.Filled.MenuBook">@L.Translate("NavCompetencyLibrary")</MudNavLink>
+                </MudNavGroup>
+            }
 
             @if (HasAny("PERF_ADMIN", "PERF_ACCESS"))
             {
@@ -326,24 +379,6 @@
                 </MudNavGroup>
             }
 
-            @if (HasAny("HR_DISCIPLINE_ADMIN", "HR_GRIEVANCE_ADMIN", "HR_REWARD_ADMIN"))
-            {
-                <MudNavGroup Title="@L.Translate("NavEmployeeRelations")" Icon="@Icons.Material.Filled.Balance" Expanded="false">
-                    @if (Has("HR_DISCIPLINE_ADMIN"))
-                    {
-                        <MudNavLink Href="/hr/disciplinary" Icon="@Icons.Material.Filled.Gavel">@L.Translate("NavHrDisciplinary")</MudNavLink>
-                    }
-                    @if (Has("HR_GRIEVANCE_ADMIN"))
-                    {
-                        <MudNavLink Href="/hr/grievances" Icon="@Icons.Material.Filled.ReportProblem">@L.Translate("NavHrGrievances")</MudNavLink>
-                    }
-                    @if (Has("HR_REWARD_ADMIN"))
-                    {
-                        <MudNavLink Href="/hr/reward" Icon="@Icons.Material.Filled.EmojiEvents">@L.Translate("NavHrReward")</MudNavLink>
-                    }
-                </MudNavGroup>
-            }
-
             @if (Has("ENG_ADMIN"))
             {
                 <MudNavGroup Title="@L.Translate("NavEngagement")" Icon="@Icons.Material.Filled.Favorite" Expanded="false">
@@ -351,28 +386,6 @@
                     <MudNavLink Href="/eng/campaigns" Icon="@Icons.Material.Filled.Poll">@L.Translate("NavEngCampaigns")</MudNavLink>
                     <MudNavLink Href="/eng/question-bank" Icon="@Icons.Material.Filled.QuestionAnswer">@L.Translate("NavEngQuestionBank")</MudNavLink>
                     <MudNavLink Href="/eng/action-plans" Icon="@Icons.Material.Filled.Checklist">@L.Translate("NavEngActionPlans")</MudNavLink>
-                </MudNavGroup>
-            }
-
-            @if (Has("EXP_ADMIN"))
-            {
-                <MudNavGroup Title="@L.Translate("NavExpenseClaims")" Icon="@Icons.Material.Filled.ReceiptLong" Expanded="false">
-                    <MudNavLink Href="/exp/admin/categories" Icon="@Icons.Material.Filled.Category">@L.Translate("NavExpCategories")</MudNavLink>
-                    <MudNavLink Href="/exp/admin/claims" Icon="@Icons.Material.Filled.FactCheck">@L.Translate("NavExpAllClaims")</MudNavLink>
-                </MudNavGroup>
-            }
-
-            @if (HasAny("HR_ANNOUNCE_ACCESS", "HR_ANNOUNCE_ADMIN"))
-            {
-                <MudNavGroup Title="@L.Translate("NavAnnouncements")" Icon="@Icons.Material.Filled.Campaign" Expanded="false">
-                    @if (Has("HR_ANNOUNCE_ACCESS"))
-                    {
-                        <MudNavLink Href="/hr/announcements" Icon="@Icons.Material.Filled.Article">@L.Translate("NavAnnouncePublic")</MudNavLink>
-                    }
-                    @if (Has("HR_ANNOUNCE_ADMIN"))
-                    {
-                        <MudNavLink Href="/hr/announcements/admin" Icon="@Icons.Material.Filled.EditNote">@L.Translate("NavAnnounceAdmin")</MudNavLink>
-                    }
                 </MudNavGroup>
             }
 
@@ -427,15 +440,6 @@
                     {
                         <MudNavLink Href="/wf/org-types" Icon="@Icons.Material.Filled.Business">@L.Translate("NavWfScaffoldOrgTypes")</MudNavLink>
                     }
-                </MudNavGroup>
-            }
-
-            @if (Has("CT_CONTRACT_ADMIN"))
-            {
-                <MudNavGroup Title="@L.Translate("NavContracts")" Icon="@Icons.Material.Filled.Assignment" Expanded="false">
-                    <MudNavLink Href="/contracts" Icon="@Icons.Material.Filled.Description">@L.Translate("NavContractsList")</MudNavLink>
-                    <MudNavLink Href="/contracts/currencies" Icon="@Icons.Material.Filled.AttachMoney">@L.Translate("NavContractsCurrencies")</MudNavLink>
-                    <MudNavLink Href="/contracts/warranty-types" Icon="@Icons.Material.Filled.VerifiedUser">@L.Translate("NavContractsWarrantyTypes")</MudNavLink>
                 </MudNavGroup>
             }
 
