@@ -1,0 +1,217 @@
+@page "/modules"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthStateProvider
+@inject JsonLocalizationService L
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* Additive landing/directory screen — mirrors the "one colored icon tile per
+   module" look the user asked for (reference: a legacy cooperative-core
+   system's module launcher), grouping this app's ~25 top-level nav groups
+   from MainLayout.razor into the same categories used for module gating
+   throughout the app (visibility mirrors the sidebar exactly, same
+   Has()/HasAny() claim checks). Does not replace Home.razor or the sidebar —
+   this is an additional entry point, reachable via its own nav link.
+   LinkCount is the module's total screen count (static, from MainLayout's
+   own link list) — not filtered to what this particular user can reach,
+   since that would need per-link gate tracking for no real benefit; it's
+   shown purely as "how big is this module", which stays true regardless of
+   who's looking. *@
+
+<PageTitle>@L.Translate("ModuleHubPageTitle")</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">@L.Translate("ModuleHubPageTitle")</MudText>
+<MudText Typo="Typo.body1" Class="mb-6" Style="opacity:.75;">@L.Translate("ModuleHubPageSubtitle")</MudText>
+
+@if (_categories.All(c => c.Modules.Count == 0))
+{
+    <MudAlert Severity="Severity.Info">@L.Translate("ModuleHubNoAccess")</MudAlert>
+}
+else
+{
+    @foreach (var category in _categories.Where(c => c.Modules.Count > 0))
+    {
+        <MudText Typo="Typo.h6" Class="mt-6 mb-3">@L.Translate(category.TitleKey)</MudText>
+        <MudGrid Spacing="3" Class="mb-2">
+            @foreach (var tile in category.Modules)
+            {
+                <MudItem xs="6" sm="4" md="3" lg="2">
+                    <MudPaper Class="pa-4 module-tile" Elevation="2" @onclick="@(() => Nav.NavigateTo(tile.Route))" Style="cursor:pointer; height:100%;">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <div class="module-tile-icon" style="@($"background:{tile.Color};")">
+                                <MudIcon Icon="@tile.Icon" Color="Color.Inherit" Style="font-size:2rem; color:#fff;" />
+                            </div>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Style="font-weight:600; line-height:1.3;">@L.Translate(tile.TitleKey)</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity:.65;">@string.Format(L.Translate("ModuleHubPageCountTemplate"), tile.LinkCount)</MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+<style>
+    .module-tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,.15); transform: translateY(-2px); transition: all .15s ease; }
+    .module-tile-icon {
+        width: 64px; height: 64px; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    }
+</style>
+
+@code {
+    private record ModuleTile(string TitleKey, string Icon, string Route, int LinkCount, string Color);
+    private record Category(string TitleKey, List<ModuleTile> Modules);
+
+    private List<Category> _categories = new();
+
+    // Cycled across every visible tile in render order so adjacent modules
+    // read as visually distinct, matching the reference screenshot's varied
+    // flat-icon palette.
+    private static readonly string[] Palette =
+    {
+        "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4",
+        "#EC4899", "#84CC16", "#6366F1", "#F97316", "#14B8A6", "#A855F7",
+    };
+    private int _colorIndex;
+    private string NextColor() => Palette[_colorIndex++ % Palette.Length];
+
+    private bool _hasEssAccess;
+    private HashSet<string> _menu = new();
+    private bool Has(string code) => _menu.Contains(code);
+    private bool HasAny(params string[] codes) => codes.Any(_menu.Contains);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = state.User;
+        _hasEssAccess = user.HasClaim("menu", "ESS_ACCESS");
+        _menu = user.FindAll("menu").Select(c => c.Value).ToHashSet();
+
+        BuildCategories();
+    }
+
+    // Picks the first route in priority order whose gate is satisfied (null
+    // gate = always available once the tile itself is visible). Returns null
+    // if somehow none qualify, in which case the tile is dropped — a module
+    // tile must always lead somewhere real.
+    private string? FirstAccessible(params (string? Gate, string Route)[] links)
+        => links.Where(l => l.Gate is null || Has(l.Gate)).Select(l => l.Route).FirstOrDefault();
+
+    private void BuildCategories()
+    {
+        var ess = new List<ModuleTile>();
+        if (_hasEssAccess)
+            ess.Add(new("NavEss", Icons.Material.Filled.Person, "/ess", 15, NextColor()));
+
+        var hrm = new List<ModuleTile>();
+        if (Has("REC_ADMIN"))
+            hrm.Add(new("NavRecruitment", Icons.Material.Filled.PersonSearch, "/rec/dashboard", 4, NextColor()));
+        if (Has("PAY_ADMIN"))
+            hrm.Add(new("NavEmployee", Icons.Material.Filled.Person, "/employee/personnel-profile", 2, NextColor()));
+        if (HasAny("ORG_ADMIN", "POS_ADMIN"))
+        {
+            var route = FirstAccessible(("ORG_ADMIN", "/org/organizations"), ("POS_ADMIN", "/org/headcount"));
+            if (route is not null)
+                hrm.Add(new("NavOrganization", Icons.Material.Filled.AccountTree, route, 7, NextColor()));
+        }
+        if (Has("POS_ADMIN"))
+            hrm.Add(new("NavPosition", Icons.Material.Filled.Badge, "/pos/position-slots", 4, NextColor()));
+        if (Has("ATT_ADMIN"))
+            hrm.Add(new("NavAttendance", Icons.Material.Filled.AccessTime, "/att/report", 7, NextColor()));
+        {
+            var payrollRoute = FirstAccessible(
+                ("PAY_REPORTS", "/pay/dashboard"), ("PAY_RUNS", "/pay/runs"), ("PAY_ADMIN", "/pay/employees"),
+                (null, "/hrpayrolldasboard"));
+            if (payrollRoute is not null)
+                hrm.Add(new("NavPayroll", Icons.Material.Filled.Payments, payrollRoute, 21, NextColor()));
+        }
+        if (Has("CT_CONTRACT_ADMIN"))
+            hrm.Add(new("NavContracts", Icons.Material.Filled.Assignment, "/contracts", 3, NextColor()));
+        if (HasAny("HR_ANNOUNCE_ACCESS", "HR_ANNOUNCE_ADMIN"))
+        {
+            var route = FirstAccessible(("HR_ANNOUNCE_ADMIN", "/hr/announcements/admin"), ("HR_ANNOUNCE_ACCESS", "/hr/announcements"));
+            if (route is not null)
+                hrm.Add(new("NavAnnouncements", Icons.Material.Filled.Campaign, route, 2, NextColor()));
+        }
+        if (HasAny("HR_DISCIPLINE_ADMIN", "HR_GRIEVANCE_ADMIN", "HR_REWARD_ADMIN"))
+        {
+            var route = FirstAccessible(
+                ("HR_DISCIPLINE_ADMIN", "/hr/disciplinary"), ("HR_GRIEVANCE_ADMIN", "/hr/grievances"), ("HR_REWARD_ADMIN", "/hr/reward"));
+            if (route is not null)
+                hrm.Add(new("NavEmployeeRelations", Icons.Material.Filled.Balance, route, 3, NextColor()));
+        }
+        if (Has("EXP_ADMIN"))
+            hrm.Add(new("NavExpenseClaims", Icons.Material.Filled.ReceiptLong, "/exp/admin/claims", 2, NextColor()));
+
+        var hrd = new List<ModuleTile>();
+        if (Has("JOBCOMP_ADMIN"))
+            hrd.Add(new("NavJobCompetency", Icons.Material.Filled.EmojiObjects, "/job/families", 4, NextColor()));
+        if (HasAny("PERF_ADMIN", "PERF_ACCESS"))
+        {
+            var route = FirstAccessible(("PERF_ADMIN", "/perf/hr-dashboard"), ("PERF_ACCESS", "/perf/my-evaluations"));
+            if (route is not null)
+                hrd.Add(new("NavPerformance", Icons.Material.Filled.Assessment, route, 9, NextColor()));
+        }
+        if (Has("OKR_ADMIN"))
+            hrd.Add(new("NavOkr", Icons.Material.Filled.TrackChanges, "/okr/dashboard", 4, NextColor()));
+        if (HasAny("TALENT_ADMIN", "TALENT_ACCESS"))
+        {
+            var route = FirstAccessible(("TALENT_ADMIN", "/talent/nine-box"), ("TALENT_ACCESS", "/talent/team-rating"));
+            if (route is not null)
+                hrd.Add(new("NavTalent", Icons.Material.Filled.GridView, route, 3, NextColor()));
+        }
+        if (HasAny("IDP_ACCESS", "IDP_ADMIN"))
+        {
+            var route = FirstAccessible(("IDP_ADMIN", "/idp/hr-overview"), ("IDP_ACCESS", "/idp/my-plans"));
+            if (route is not null)
+                hrd.Add(new("NavIdp", Icons.Material.Filled.TrendingUp, route, 3, NextColor()));
+        }
+        if (HasAny("CAREER_ACCESS", "CAREER_ADMIN"))
+        {
+            var route = FirstAccessible(("CAREER_ADMIN", "/career/paths"), ("CAREER_ACCESS", "/career/my-path"));
+            if (route is not null)
+                hrd.Add(new("NavCareer", Icons.Material.Filled.TrendingUp, route, 3, NextColor()));
+        }
+        if (Has("SUCC_ADMIN"))
+            hrd.Add(new("NavSuccession", Icons.Material.Filled.AccountTree, "/succession/key-positions", 2, NextColor()));
+        if (Has("LMS_ADMIN"))
+            hrd.Add(new("NavLms", Icons.Material.Filled.School, "/lms/dashboard", 6, NextColor()));
+        if (HasAny("KM_ACCESS", "KM_ADMIN"))
+        {
+            var route = FirstAccessible(("KM_ACCESS", "/km/articles-list"), ("KM_ADMIN", "/km/categories"));
+            if (route is not null)
+                hrd.Add(new("NavKm", Icons.Material.Filled.MenuBook, route, 4, NextColor()));
+        }
+        if (Has("ORGDEV_ADMIN"))
+            hrd.Add(new("NavOrgDevelopment", Icons.Material.Filled.Business, "/orgdev/dashboard", 5, NextColor()));
+        if (Has("ENG_ADMIN"))
+            hrd.Add(new("NavEngagement", Icons.Material.Filled.Favorite, "/eng/dashboard", 4, NextColor()));
+
+        var platform = new List<ModuleTile>();
+        {
+            var wfRoute = FirstAccessible(("WF_WORKFLOW_ADMIN", "/wf/canvas"), (null, "/wf/my-inbox"));
+            if (wfRoute is not null)
+                platform.Add(new("NavWorkflowEngine", Icons.Material.Filled.Rule, wfRoute, 13, NextColor()));
+        }
+        if (Has("HR_ANALYTICS"))
+            platform.Add(new("NavHrAnalytics", Icons.Material.Filled.QueryStats, "/hr/reports/turnover", 2, NextColor()));
+
+        var admin = new List<ModuleTile>();
+        if (Has("SYS_ADMIN"))
+            admin.Add(new("NavSystemAdmin", Icons.Material.Filled.AdminPanelSettings, "/admin/system/users", 11, NextColor()));
+
+        _categories = new()
+        {
+            new("ModuleHubCategoryEss", ess),
+            new("ModuleHubCategoryHrm", hrm),
+            new("ModuleHubCategoryHrd", hrd),
+            new("ModuleHubCategoryPlatform", platform),
+            new("ModuleHubCategoryAdmin", admin),
+        };
+    }
+}
