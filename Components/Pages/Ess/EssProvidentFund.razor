@@ -11,6 +11,7 @@
 @inject IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
+@inject HRM.Services.Pay.ProvidentFundRateChangeRequestService RateChangeRequestService
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
 <PageTitle>@L.Translate("ProvidentFund")</PageTitle>
@@ -43,25 +44,51 @@
 
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.h6">@L.Translate("PfChangeRateTitle")</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1">
-            @string.Format(L.Translate("PfChangeRateDescTemplate"), _activePolicy?.MinEmployeeRate.ToString("0.0"), _activePolicy?.MaxEmployeeRate.ToString("0.0"))
-        </MudText>
-        <MudGrid Class="mt-2">
-            <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_newEmployeeRate" Label="@L.Translate("FieldNewEmployeeRate")" Format="0.00" Min="0" Max="100" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudDatePicker Date="_newEffectiveFrom" DateChanged="@(d => _newEffectiveFrom = d)" Label="@L.Translate("FieldEffectiveFrom")" Editable="true" DateFormat="dd/MM/yyyy" />
-            </MudItem>
-        </MudGrid>
+        <MudText Typo="Typo.h6">ขอเปลี่ยนอัตราเงินสะสม</MudText>
 
-        @if (!string.IsNullOrEmpty(_rateError))
+        @if (_openWindow is null)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_rateError</MudAlert>
+            <MudAlert Severity="Severity.Info" Class="mt-3">ขณะนี้ไม่อยู่ในช่วงเวลาที่เปิดให้ยื่นคำขอเปลี่ยนอัตรา — ติดต่อฝ่ายบุคคลถ้ามีความจำเป็นเร่งด่วน</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">
+                เปิดรับคำขอถึงตามรอบ "@_openWindow.Name" — ถ้าอนุมัติ จะมีผลวันที่ @ResolveWindowEffectiveDate(_openWindow).ToString("dd/MM/yyyy")
+                (ช่วงเงินสะสม @_activePolicy?.MinEmployeeRate.ToString("0.0")-@_activePolicy?.MaxEmployeeRate.ToString("0.0")%)
+            </MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_newEmployeeRate" Label="อัตราเงินสะสมที่ต้องการ (%)" Format="0.00" Min="0" Max="100" /></MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_rateError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_rateError</MudAlert>
+            }
+
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitRateChangeRequestAsync" Disabled="_saving">
+                ยื่นคำขอ (ต้องผ่านการอนุมัติจากฝ่ายบุคคล)
+            </MudButton>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="ChangeRateAsync" Disabled="_saving">
-            @L.Translate("PfConfirmRateButton")
-        </MudButton>
+        @if (_requests.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติคำขอเปลี่ยนอัตรา</MudText>
+            <MudSimpleTable Dense="true" Class="mt-1">
+                <thead><tr><th>วันที่ยื่น</th><th>ขอสะสม</th><th>อัตราสมทบที่เสนอ</th><th>มีผล</th><th>สถานะ</th></tr></thead>
+                <tbody>
+                    @foreach (var r in _requests)
+                    {
+                        <tr>
+                            <td>@r.RequestedDate.ToString("dd/MM/yyyy")</td>
+                            <td>@r.RequestedEmployeeRate.ToString("0.00")%</td>
+                            <td>@r.RequestedCompanyRate.ToString("0.00")%</td>
+                            <td>@r.RequestedEffectiveFrom.ToString("dd/MM/yyyy")</td>
+                            <td>@RequestStatusLabel(r.Status)</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
 
         <MudDivider Class="my-4" />
 
@@ -98,8 +125,9 @@
     private List<Pay_ProvidentFundInvestmentPolicy> _investmentPolicies = new();
 
     private decimal _newEmployeeRate;
-    private DateTime? _newEffectiveFrom = DateTime.Today;
     private string? _rateError;
+    private Pay_ProvidentFundRateChangeWindow? _openWindow;
+    private List<Pay_ProvidentFundRateChangeRequest> _requests = new();
 
     private long? _newInvestmentPolicyId;
     private string? _invError;
@@ -145,77 +173,52 @@
             _newEmployeeRate = _currentElection.EmployeeContributionRate;
             _newInvestmentPolicyId = _currentElection.InvestmentPolicyId;
         }
+
+        if (_activePolicy is not null)
+        {
+            _openWindow = await RateChangeRequestService.GetOpenWindowAsync(_activePolicy.Id);
+        }
+        _requests = await RateChangeRequestService.GetRequestsForEmployeeAsync(_employee.id);
     }
 
-    private async Task ChangeRateAsync()
+    private static DateOnly ResolveWindowEffectiveDate(Pay_ProvidentFundRateChangeWindow w)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var effective = new DateOnly(today.Year, w.EffectiveMonth, w.EffectiveDay);
+        return effective < today ? effective.AddYears(1) : effective;
+    }
+
+    private static string RequestStatusLabel(ProvidentFundRequestStatus status) => status switch
+    {
+        ProvidentFundRequestStatus.PendingApproval => "รออนุมัติ",
+        ProvidentFundRequestStatus.Approved => "อนุมัติแล้ว",
+        ProvidentFundRequestStatus.Rejected => "ไม่อนุมัติ",
+        _ => status.ToString(),
+    };
+
+    // Submits a request to the Workflow Approval Engine instead of writing
+    // Pay_ProvidentFundElection directly — HR must approve before the new
+    // rate ever takes effect (see ProvidentFundRateChangeRequestService).
+    private async Task SubmitRateChangeRequestAsync()
     {
         _rateError = null;
-        if (_employee is null || _currentElection is null) return;
-
-        if (_newEffectiveFrom is null)
-        {
-            _rateError = L.Translate("PfEffectiveFromRequiredError");
-            return;
-        }
-        if (_activePolicy is not null && (_newEmployeeRate < _activePolicy.MinEmployeeRate || _newEmployeeRate > _activePolicy.MaxEmployeeRate))
-        {
-            _rateError = string.Format(L.Translate("PfRateRangeErrorTemplate"), _activePolicy.MinEmployeeRate.ToString("0.0"), _activePolicy.MaxEmployeeRate.ToString("0.0"));
-            return;
-        }
-        if (_newEmployeeRate > _currentElection.CompanyContributionRate)
-        {
-            _rateError = L.Translate("PfRateExceedsCompanyError");
-            return;
-        }
-        if (_activePolicy?.RateChangeLimitPerYear is int limit)
-        {
-            await using var checkContext = await DbFactory.CreateDbContextAsync();
-            var thisYear = DateTime.Today.Year;
-            var changesThisYear = await checkContext.Pay_ProvidentFundElections
-                .CountAsync(e => e.HremployeeId == _employee.id && e.ElectedDate.Year == thisYear);
-            if (changesThisYear >= limit)
-            {
-                _rateError = string.Format(L.Translate("PfRateChangeLimitErrorTemplate"), limit);
-                return;
-            }
-        }
+        if (_employee is null || _openWindow is null) return;
 
         _saving = true;
         try
         {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var newEffectiveFrom = DateOnly.FromDateTime(_newEffectiveFrom.Value);
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+            var empNo = state.User.FindFirst("empno")?.Value;
 
-            var existing = await context.Pay_ProvidentFundElections
-                .Where(e => e.HremployeeId == _employee.id && e.IsActive)
-                .ToListAsync();
-            foreach (var old in existing)
-            {
-                old.IsActive = false;
-                old.EffectiveTo = newEffectiveFrom.AddDays(-1);
-            }
+            await RateChangeRequestService.SubmitAsync(_employee.id, _newEmployeeRate, userId, empNo, isEmployeeInitiated: true);
 
-            var newElection = new Pay_ProvidentFundElection
-            {
-                HremployeeId = _employee.id,
-                EmployeeContributionRate = _newEmployeeRate,
-                CompanyContributionRate = _currentElection.CompanyContributionRate,
-                InvestmentPolicyId = _currentElection.InvestmentPolicyId,
-                EffectiveFrom = newEffectiveFrom,
-                IsActive = true,
-                ElectedByUserId = long.TryParse((await AuthProvider.GetAuthenticationStateAsync()).User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0,
-                ElectedDate = DateTime.Now,
-            };
-            context.Pay_ProvidentFundElections.Add(newElection);
-
-            await context.SaveChangesAsync();
-            await AuditLogger.LogChangeAsync(AuditActionType.Update, "Pay_ProvidentFundElection", _employee.id.ToString(),
-                oldValues: new { _currentElection.EmployeeContributionRate },
-                newValues: new { _newEmployeeRate },
-                isSensitive: true);
-
-            Snackbar.Add(L.Translate("PfRateChangeSuccess"), Severity.Success);
+            Snackbar.Add("ยื่นคำขอเรียบร้อยแล้ว รอฝ่ายบุคคลอนุมัติ", Severity.Success);
             await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _rateError = ex.Message;
         }
         finally
         {

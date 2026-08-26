@@ -388,6 +388,13 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
     public virtual DbSet<Pay_ProvidentFundVestingTier> Pay_ProvidentFundVestingTiers { get; set; }
     public virtual DbSet<Pay_ProvidentFundInvestmentPolicy> Pay_ProvidentFundInvestmentPolicies { get; set; }
+    public virtual DbSet<Pay_ProvidentFundRateChangeWindow> Pay_ProvidentFundRateChangeWindows { get; set; }
+    public virtual DbSet<Pay_ProvidentFundRateMatrixRule> Pay_ProvidentFundRateMatrixRules { get; set; }
+    public virtual DbSet<Pay_ProvidentFundExitReasonRule> Pay_ProvidentFundExitReasonRules { get; set; }
+    public virtual DbSet<Pay_ProvidentFundMembershipPeriod> Pay_ProvidentFundMembershipPeriods { get; set; }
+    public virtual DbSet<Pay_ProvidentFundRateChangeRequest> Pay_ProvidentFundRateChangeRequests { get; set; }
+    public virtual DbSet<Pay_ProvidentFundExitCase> Pay_ProvidentFundExitCases { get; set; }
+    public virtual DbSet<Pay_ProvidentFundCalculationDetail> Pay_ProvidentFundCalculationDetails { get; set; }
 
     public virtual DbSet<Com_ChartOfAccount> Com_ChartOfAccounts { get; set; }
 
@@ -1498,6 +1505,45 @@ public partial class HRMContext : DbContext
                 .WithMany(p => p.VestingTiers)
                 .HasForeignKey(d => d.PolicyId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundRateChangeWindow>(entity =>
+        {
+            entity.HasOne(d => d.Policy).WithMany().HasForeignKey(d => d.PolicyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundRateMatrixRule>(entity =>
+        {
+            entity.HasOne(d => d.Policy).WithMany().HasForeignKey(d => d.PolicyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundExitReasonRule>(entity =>
+        {
+            entity.HasOne(d => d.Policy).WithMany().HasForeignKey(d => d.PolicyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundMembershipPeriod>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee).WithMany().HasForeignKey(d => d.HremployeeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundRateChangeRequest>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee).WithMany().HasForeignKey(d => d.HremployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(d => d.Policy).WithMany().HasForeignKey(d => d.PolicyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundExitCase>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee).WithMany().HasForeignKey(d => d.HremployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(d => d.Policy).WithMany().HasForeignKey(d => d.PolicyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(d => d.ExitReasonRule).WithMany().HasForeignKey(d => d.ExitReasonRuleId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_ProvidentFundCalculationDetail>(entity =>
+        {
+            entity.HasOne(d => d.RateChangeRequest).WithMany().HasForeignKey(d => d.RateChangeRequestId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(d => d.ExitCase).WithMany().HasForeignKey(d => d.ExitCaseId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Pay_PayrollAuditLog>(entity =>

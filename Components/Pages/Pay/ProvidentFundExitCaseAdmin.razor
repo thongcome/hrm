@@ -1,0 +1,247 @@
+@page "/pay/admin/provident-fund-exit-cases"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject HRM.Services.Pay.ProvidentFundExitCaseService ExitCaseService
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ปิดสมาชิกภาพกองทุนสำรองเลี้ยงชีพ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudText Typo="Typo.h5">ปิดสมาชิกภาพกองทุนสำรองเลี้ยงชีพ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.75;">
+        เลือกเหตุผลการสิ้นสุดสมาชิกภาพ ระบบจะคำนวณสิทธิ์เงินสมทบให้อัตโนมัติหลังอนุมัติที่ <MudLink Href="/wf/my-inbox">งานรออนุมัติของฉัน</MudLink> —
+        จำนวนเงินจริงต้องกรอกเองจากยอดที่ผู้จัดการกองทุนแจ้ง เพราะระบบนี้ไม่ได้เก็บยอดสะสม/ผลตอบแทนการลงทุน
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6">เปิดเคสใหม่</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="5">
+            <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_selectedEmployee"
+                SearchFunc="SearchEmployeesAsync"
+                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="long?" @bind-Value="_selectedReasonId" Label="เหตุผลการสิ้นสุดสมาชิกภาพ">
+                @foreach (var r in _exitReasons)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)r.Id)">@r.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_exitDate" DateChanged="@(d => _exitDate = d)" Label="วันที่สิ้นสุดสมาชิกภาพ" Editable="true" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="หมายเหตุ" Lines="2" /></MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitAsync" Disabled="_saving">ยื่นเคส</MudButton>
+
+    <MudDivider Class="my-5" />
+
+    <MudText Typo="Typo.h6">ประวัติเคสทั้งหมด</MudText>
+    <MudTable Items="_cases" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>เหตุผล</MudTh>
+            <MudTh>วันที่สิ้นสุด</MudTh>
+            <MudTh>% เงินสมทบที่ได้</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@EmployeeName(context.HremployeeId)</MudTd>
+            <MudTd>@context.ExitReasonRule?.Name</MudTd>
+            <MudTd>@context.ExitDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@(context.ComputedVestingPercent?.ToString("0.00") + "%" ?? "-")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenCaseDetailAsync(context))">รายละเอียด</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีเคส</MudText></NoRecordsContent>
+    </MudTable>
+
+    @if (_detailCase is not null)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1">รายละเอียดเคส #@_detailCase.Id — @EmployeeName(_detailCase.HremployeeId)</MudText>
+
+        @foreach (var d in _calcDetails)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                @d.InputsSummary — @d.MatchedRuleDescription — ผลลัพธ์: @d.ResultValue.ToString("0.00")%
+                <MudText Typo="Typo.caption" Class="d-block">คำนวณเมื่อ @d.CalculatedDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+            </MudAlert>
+        }
+
+        @if (_detailCase.Status == ProvidentFundRequestStatus.Approved)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-3">กรอกยอดเงินจริง (จากผู้จัดการกองทุน)</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_amtEmployee" Label="เงินสะสมพนักงาน (บาท)" Format="N2" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_amtCompanyToEmployee" Label="เงินสมทบที่จ่ายพนักงาน (บาท)" Format="N2" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_amtCompanyReturned" Label="เงินสมทบที่ริบคืนนายจ้าง (บาท)" Format="N2" /></MudItem>
+            </MudGrid>
+            <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-2" OnClick="SaveAmountsAsync">บันทึกยอดเงิน</MudButton>
+        }
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private Hremployee? _selectedEmployee;
+    private long? _selectedReasonId;
+    private DateTime? _exitDate = DateTime.Today;
+    private string? _note;
+    private string? _error;
+    private bool _saving;
+
+    private List<Pay_ProvidentFundExitReasonRule> _exitReasons = new();
+    private List<Pay_ProvidentFundExitCase> _cases = new();
+    private Dictionary<long, string> _employeeNames = new();
+
+    private Pay_ProvidentFundExitCase? _detailCase;
+    private List<Pay_ProvidentFundCalculationDetail> _calcDetails = new();
+    private decimal? _amtEmployee;
+    private decimal? _amtCompanyToEmployee;
+    private decimal? _amtCompanyReturned;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var policyId = await context.Pay_ProvidentFundPolicies
+            .Where(p => p.CompanyId == _companyId && p.IsEnabled)
+            .OrderByDescending(p => p.EffectiveFrom)
+            .Select(p => (long?)p.Id)
+            .FirstOrDefaultAsync();
+
+        _exitReasons = policyId is null
+            ? new()
+            : await context.Pay_ProvidentFundExitReasonRules.Where(r => r.PolicyId == policyId && r.IsActive).OrderBy(r => r.SortOrder).ToListAsync();
+
+        var empIds = await context.Hremployee.Where(e => e.companyid == _companyId).Select(e => e.id).ToListAsync();
+
+        var pendingIds = await context.Pay_ProvidentFundExitCases
+            .Where(c => empIds.Contains(c.HremployeeId) && c.Status == ProvidentFundRequestStatus.PendingApproval)
+            .Select(c => c.Id).ToListAsync();
+        foreach (var id in pendingIds) await ExitCaseService.SyncStatusFromJobAsync(id);
+
+        _cases = await context.Pay_ProvidentFundExitCases
+            .Include(c => c.ExitReasonRule)
+            .Where(c => empIds.Contains(c.HremployeeId))
+            .OrderByDescending(c => c.RequestedDate)
+            .ToListAsync();
+
+        _employeeNames = await context.Hremployee
+            .Where(e => empIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}".Trim());
+    }
+
+    private string EmployeeName(long id) => _employeeNames.GetValueOrDefault(id, id.ToString());
+
+    private static string StatusLabel(ProvidentFundRequestStatus s) => s switch
+    {
+        ProvidentFundRequestStatus.PendingApproval => "รออนุมัติ",
+        ProvidentFundRequestStatus.Approved => "อนุมัติแล้ว",
+        ProvidentFundRequestStatus.Rejected => "ไม่อนุมัติ",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(ProvidentFundRequestStatus s) => s switch
+    {
+        ProvidentFundRequestStatus.Approved => Color.Success,
+        ProvidentFundRequestStatus.Rejected => Color.Error,
+        _ => Color.Warning,
+    };
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        }
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (_selectedEmployee is null || _selectedReasonId is null || _exitDate is null)
+        {
+            _error = "กรุณาเลือกพนักงาน เหตุผล และวันที่ให้ครบ";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+
+            await ExitCaseService.SubmitAsync(_selectedEmployee.id, _selectedReasonId.Value, DateOnly.FromDateTime(_exitDate.Value), userId, _selectedEmployee.EmpNo, _note);
+            Snackbar.Add("ยื่นเคสเรียบร้อยแล้ว", Severity.Success);
+            _selectedEmployee = null; _selectedReasonId = null; _note = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task OpenCaseDetailAsync(Pay_ProvidentFundExitCase exitCase)
+    {
+        _detailCase = exitCase;
+        _calcDetails = await ExitCaseService.GetCalculationDetailsAsync(exitCase.Id);
+        _amtEmployee = exitCase.EmployeeContributionAmount;
+        _amtCompanyToEmployee = exitCase.CompanyAmountToEmployee;
+        _amtCompanyReturned = exitCase.CompanyAmountReturnedToEmployer;
+    }
+
+    private async Task SaveAmountsAsync()
+    {
+        if (_detailCase is null) return;
+        await ExitCaseService.SaveActualAmountsAsync(_detailCase.Id, _amtEmployee, _amtCompanyToEmployee, _amtCompanyReturned);
+        Snackbar.Add("บันทึกยอดเงินแล้ว", Severity.Success);
+        await LoadAsync();
+    }
+}

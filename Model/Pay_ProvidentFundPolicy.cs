@@ -46,5 +46,12 @@ public class Pay_ProvidentFundPolicy
     [StringLength(1000)]
     public string? Note { get; set; }
 
+    // Optional per company — when true, vesting/exit calculations use
+    // Pay_ProvidentFundMembershipPeriod (fund-membership tenure, which
+    // resets on rejoin) instead of Hremployee.WorkDate (employment tenure).
+    // Defaults false so companies that don't need this distinction see no
+    // behavior change at all.
+    public bool UseFundMembershipYearsForVesting { get; set; }
+
     public virtual ICollection<Pay_ProvidentFundVestingTier> VestingTiers { get; set; } = new List<Pay_ProvidentFundVestingTier>();
 }
