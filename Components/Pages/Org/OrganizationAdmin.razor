@@ -41,66 +41,96 @@
         return;
     }
 
-    @* Search is explicit-trigger only — this table can grow large, so the
-       page must not pull every row on every visit. Typing + Enter, or the
-       "ค้นหา" button, both call SearchAsync(); nothing loads on page load. *@
-    <MudStack Row="true" Spacing="2" Class="mt-3 mb-3" AlignItems="AlignItems.Center">
-        <MudTextField T="string" @bind-Value="_searchTerm" Label="ค้นหาข้อมูลสังกัด (รหัส / ชื่อ / ชื่อย่อ)"
-            AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start"
-            @onkeydown="OnSearchKeyDown" Class="flex-grow-1" />
-        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SearchAsync">ค้นหา</MudButton>
-    </MudStack>
+    <MudTabs Class="mt-3" Elevation="0" Rounded="true" PanelClass="pt-4">
+        <MudTabPanel Text="รายการ">
+            @* Search is explicit-trigger only — this table can grow large, so the
+               page must not pull every row on every visit. Typing + Enter, or the
+               "ค้นหา" button, both call SearchAsync(); nothing loads on page load. *@
+            <MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
+                <MudTextField T="string" @bind-Value="_searchTerm" Label="ค้นหาข้อมูลสังกัด (รหัส / ชื่อ / ชื่อย่อ)"
+                    AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start"
+                    @onkeydown="OnSearchKeyDown" Class="flex-grow-1" />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SearchAsync">ค้นหา</MudButton>
+            </MudStack>
 
-    @if (!_hasSearched)
-    {
-        <MudAlert Severity="Severity.Info">กรอกคำค้น (เว้นว่างได้ถ้าต้องการดูทั้งหมด) แล้วกด "ค้นหา" เพื่อแสดงรายการ</MudAlert>
-    }
-    else
-    {
-        <MudTable Items="_organizations" Dense="true" Hover="true">
-            <HeaderContent>
-                <MudTh>ประเภทสังกัด</MudTh>
-                <MudTh>รหัสสังกัด</MudTh>
-                <MudTh>ชื่อสังกัด (ไทย)</MudTh>
-                <MudTh>ชื่อย่อ</MudTh>
-                <MudTh>รหัสการเงิน</MudTh>
-                <MudTh>ลักษณะของหน่วยงาน</MudTh>
-                <MudTh>ประเภท</MudTh>
-                <MudTh>สถานะ</MudTh>
-                <MudTh></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@SectionTypeName(context.SectionTypeCode)</MudTd>
-                <MudTd>@context.code</MudTd>
-                <MudTd><MudLink Href="@($"/org/organizations/{context.id}")">@context.name</MudLink></MudTd>
-                <MudTd>@context.abbr</MudTd>
-                <MudTd>@context.CostCenterCode</MudTd>
-                <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
-                <MudTd>
-                    @if (context.isCompany)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="mr-1">บริษัท</MudChip>
-                    }
-                    @if (context.isBranch)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary">สาขา</MudChip>
-                    }
-                </MudTd>
-                <MudTd>
-                    <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
-                        @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
-                    </MudChip>
-                </MudTd>
-                <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}")">ดู</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}/edit")">แก้ไข</MudButton>
-                </MudTd>
-            </RowTemplate>
-            <NoRecordsContent>
-                <MudText Typo="Typo.body2">ไม่พบข้อมูลสังกัดที่ตรงกับคำค้น</MudText>
-            </NoRecordsContent>
-        </MudTable>
-    }
+            @if (!_hasSearched)
+            {
+                <MudAlert Severity="Severity.Info">กรอกคำค้น (เว้นว่างได้ถ้าต้องการดูทั้งหมด) แล้วกด "ค้นหา" เพื่อแสดงรายการ</MudAlert>
+            }
+            else
+            {
+                <MudTable Items="_organizations" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>ประเภทสังกัด</MudTh>
+                        <MudTh>รหัสสังกัด</MudTh>
+                        <MudTh>ชื่อสังกัด (ไทย)</MudTh>
+                        <MudTh>ชื่อย่อ</MudTh>
+                        <MudTh>รหัสการเงิน</MudTh>
+                        <MudTh>ลักษณะของหน่วยงาน</MudTh>
+                        <MudTh>ประเภท</MudTh>
+                        <MudTh>สถานะ</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@SectionTypeName(context.SectionTypeCode)</MudTd>
+                        <MudTd>@context.code</MudTd>
+                        <MudTd><MudLink Href="@($"/org/organizations/{context.id}")">@context.name</MudLink></MudTd>
+                        <MudTd>@context.abbr</MudTd>
+                        <MudTd>@context.CostCenterCode</MudTd>
+                        <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
+                        <MudTd>
+                            @if (context.isCompany)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="mr-1">บริษัท</MudChip>
+                            }
+                            @if (context.isBranch)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary">สาขา</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                                @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}")">ดู</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/organizations/{context.id}/edit")">แก้ไข</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.body2">ไม่พบข้อมูลสังกัดที่ตรงกับคำค้น</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="ผังต้นไม้">
+            @* Same recursive render pattern as OrgHeadcountTree.razor (roots =
+               istop||no parent_code, children matched by parent_code==node.code,
+               ordered by orgcodefull) — minus the headcount/position-slot data,
+               since that's a different page's concern. Loaded eagerly (not
+               search-gated) because com_organization is a small table (a few
+               dozen rows in practice) and a tree is naturally browsable/collapsed
+               by default, unlike the flat list above which can genuinely grow large. *@
+            <MudStack Row="true" Spacing="2" Class="mb-3">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllTreeExpanded(false))">ย่อทั้งหมด</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllTreeExpanded(true))">ขยายทั้งหมด</MudButton>
+            </MudStack>
+
+            @if (_treeRoots.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">ไม่พบข้อมูลผังองค์กร</MudAlert>
+            }
+            else
+            {
+                @foreach (var root in _treeRoots)
+                {
+                    @RenderTreeNode(root, 0)
+                }
+            }
+        </MudTabPanel>
+    </MudTabs>
 </MudPaper>
 
 @code {
@@ -110,6 +140,12 @@
     private List<Com_SubSectionType> _subSectionTypes = new();
     private string? _searchTerm;
     private bool _hasSearched;
+
+    // Tree tab state — mirrors OrgHeadcountTree.razor's _allOrgs/_roots/_expanded
+    // fields exactly, just without the position-slot/headcount join.
+    private List<com_organization> _allOrgsForTree = new();
+    private List<com_organization> _treeRoots = new();
+    private HashSet<long> _expandedTreeNodes = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -125,7 +161,69 @@
 
         // Deliberately no initial load here — see the page-level comment on
         // why this list waits for an explicit search.
+
+        // Tree tab loads eagerly and unconditionally — com_organization has no
+        // reliable company-scoping field (same reason SearchAsync() below
+        // queries it without a company filter), and the table is small enough
+        // that loading everything up front (then collapsing all but the roots)
+        // is cheap, matching OrgHeadcountTree.razor's own approach.
+        _allOrgsForTree = await context.com_organizations.ToListAsync();
+        _treeRoots = _allOrgsForTree.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
+        foreach (var root in _treeRoots) _expandedTreeNodes.Add(root.id);
     }
+
+    private void SetAllTreeExpanded(bool expand)
+    {
+        _expandedTreeNodes = expand ? _allOrgsForTree.Select(o => o.id).ToHashSet() : _treeRoots.Select(o => o.id).ToHashSet();
+    }
+
+    private void ToggleTreeExpand(long id)
+    {
+        if (!_expandedTreeNodes.Add(id)) _expandedTreeNodes.Remove(id);
+    }
+
+    private RenderFragment RenderTreeNode(com_organization node, int depth) => builder =>
+    {
+        var children = _allOrgsForTree.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var isExpanded = _expandedTreeNodes.Contains(node.id);
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0;");
+
+        if (children.Count > 0)
+        {
+            builder.OpenElement(2, "a");
+            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
+            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => ToggleTreeExpand(node.id)));
+            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(6, "a");
+        builder.AddAttribute(7, "href", $"/org/organizations/{node.id}");
+        builder.AddContent(8, $"{node.orgcodefull} - {node.name} ({node.abbr})");
+        builder.CloseElement();
+
+        if (!node.isActive)
+        {
+            builder.OpenComponent<MudChip<string>>(9);
+            builder.AddAttribute(10, "Color", Color.Default);
+            builder.AddAttribute(11, "Size", Size.Small);
+            builder.AddAttribute(12, "Class", "ml-2");
+            builder.AddAttribute(13, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, "ไม่ใช้งาน")));
+            builder.CloseComponent();
+        }
+
+        builder.CloseElement();
+
+        if (isExpanded)
+        {
+            foreach (var child in children)
+            {
+                builder.AddContent(14, RenderTreeNode(child, depth + 1));
+            }
+        }
+    };
 
     private string SectionTypeName(string? code) => string.IsNullOrEmpty(code) ? "" : (_sectionTypes.FirstOrDefault(t => t.Code == code)?.Name ?? code);
     private string SubSectionTypeName(long? id) => id is null ? "" : (_subSectionTypes.FirstOrDefault(t => t.Id == id)?.Name ?? "");
