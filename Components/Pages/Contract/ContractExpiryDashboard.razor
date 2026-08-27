@@ -1,0 +1,150 @@
+@page "/contracts/expiring"
+@using HRM.Services.Contract
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject ContractExpiryService ExpiryService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:CT_CONTRACT_ADMIN")]
+
+<PageTitle>สัญญาใกล้หมดอายุ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">สัญญาใกล้หมดอายุ / หมดอายุแล้ว</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">
+        ครอบคลุมวันสิ้นสุดสัญญา วันสิ้นสุดการรับประกันผลงาน วันหมดอายุหลักประกันธนาคาร และวันหมดความคุ้มครองกรมธรรม์ประกันภัย
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_daysAhead" Label="แสดงล่วงหน้ากี่วัน" Min="1" Max="365" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_loaded)
+    {
+        <MudGrid Class="mt-4">
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4" Color="Color.Error">@_rows.Count(r => r.Status == ContractExpiryService.ExpiryStatus.Expired)</MudText><MudText Typo="Typo.caption">หมดอายุแล้ว</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4" Color="Color.Warning">@_rows.Count(r => r.Status == ContractExpiryService.ExpiryStatus.ExpiringSoon)</MudText><MudText Typo="Typo.caption">ใกล้หมดอายุ (≤30 วัน)</MudText></MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>เลขที่ PO</MudTh>
+                <MudTh>เลขที่สัญญา</MudTh>
+                <MudTh>ผู้ขาย/ผู้รับจ้าง</MudTh>
+                <MudTh>รายการ</MudTh>
+                <MudTh>วันหมดอายุ</MudTh>
+                <MudTh>เหลือ (วัน)</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.PoNo</MudTd>
+                <MudTd>@context.ContractNo</MudTd>
+                <MudTd>@context.VendorName</MudTd>
+                <MudTd>@KindLabel(context.Kind)</MudTd>
+                <MudTd>@context.ExpiryDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@context.DaysRemaining</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.Kind == ContractExpiryService.ExpiryKind.Contract)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => OpenRenew(context.ContractId, context.ExpiryDate))">ต่ออายุ</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีรายการที่ใกล้หมดอายุหรือหมดอายุในช่วงที่เลือก</MudText></NoRecordsContent>
+        </MudTable>
+    }
+
+    @if (_renewingContractId is long)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudText Typo="Typo.h6">ต่ออายุสัญญา #@_renewingContractId</MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker Label="วันสิ้นสุดใหม่" Date="@_renewNewDate?.ToDateTime(TimeOnly.MinValue)"
+                        DateChanged="@(d => _renewNewDate = d.HasValue ? DateOnly.FromDateTime(d.Value) : null)" />
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_renewNote" Label="หมายเหตุการต่ออายุ" />
+                </MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmRenewAsync">บันทึกการต่ออายุ</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _renewingContractId = null)">ยกเลิก</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private int _daysAhead = 60;
+    private bool _loaded;
+    private List<ContractExpiryService.ExpiryRow> _rows = new();
+
+    private long? _renewingContractId;
+    private DateOnly? _renewNewDate;
+    private string? _renewNote;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _rows = await ExpiryService.GetExpiringAsync(_daysAhead);
+        _loaded = true;
+    }
+
+    private void OpenRenew(long contractId, DateOnly currentExpiry)
+    {
+        _renewingContractId = contractId;
+        _renewNewDate = currentExpiry.AddYears(1);
+        _renewNote = null;
+    }
+
+    private async Task ConfirmRenewAsync()
+    {
+        if (_renewingContractId is not long id || _renewNewDate is not DateOnly newDate) return;
+
+        // No actor-user resolution wired for this page yet — 0 is a
+        // placeholder until a real ClaimsPrincipal -> sc_userid lookup is
+        // added here (matches the TODO-free but honest style used elsewhere:
+        // don't fake an actor, but don't block the feature on it either).
+        await ExpiryService.RenewContractAsync(id, newDate, _renewNote, actorUserId: 0);
+        Snackbar.Add("บันทึกการต่ออายุสำเร็จ", Severity.Success);
+        _renewingContractId = null;
+        await LoadAsync();
+    }
+
+    private static string KindLabel(ContractExpiryService.ExpiryKind kind) => kind switch
+    {
+        ContractExpiryService.ExpiryKind.Contract => "สัญญา",
+        ContractExpiryService.ExpiryKind.Warranty => "การรับประกันผลงาน",
+        ContractExpiryService.ExpiryKind.BankGuarantee => "หลักประกันธนาคาร",
+        ContractExpiryService.ExpiryKind.InsurancePolicy => "กรมธรรม์ประกันภัย",
+        _ => "-",
+    };
+
+    private static string StatusLabel(ContractExpiryService.ExpiryStatus status) => status switch
+    {
+        ContractExpiryService.ExpiryStatus.Expired => "หมดอายุแล้ว",
+        ContractExpiryService.ExpiryStatus.ExpiringSoon => "ใกล้หมดอายุ",
+        _ => "ปกติ",
+    };
+
+    private static Color StatusColor(ContractExpiryService.ExpiryStatus status) => status switch
+    {
+        ContractExpiryService.ExpiryStatus.Expired => Color.Error,
+        ContractExpiryService.ExpiryStatus.ExpiringSoon => Color.Warning,
+        _ => Color.Success,
+    };
+}

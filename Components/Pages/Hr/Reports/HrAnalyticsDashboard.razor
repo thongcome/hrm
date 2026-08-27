@@ -1,0 +1,246 @@
+@page "/hr/analytics"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Att
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AbsenteeismReportService AbsenteeismReportService
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:HR_ANALYTICS")]
+
+<PageTitle>ภาพรวม HR Analytics</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ภาพรวม HR Analytics</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">สรุปตัวชี้วัดหลักข้ามโมดูล — คลิกที่การ์ดเพื่อดูรายละเอียด</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    @if (!_loaded)
+    {
+        <MudText Typo="Typo.body2" Class="mt-4">กำลังโหลดข้อมูล...</MudText>
+    }
+    else
+    {
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/hr/reports/headcount"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">อัตรากำลัง</MudText>
+                    <MudText Typo="Typo.h3">@_headcount</MudText>
+                    <MudText Typo="Typo.body2">พนักงานปัจจุบัน (Active)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/hr/reports/turnover"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">อัตราลาออก (12 เดือนล่าสุด)</MudText>
+                    <MudText Typo="Typo.h3">@_turnoverRate12Mo.ToString("N1")%</MudText>
+                    <MudText Typo="Typo.body2">@_resignedLast12Mo คน จาก @_avgHeadcount12Mo.ToString("N0") คนเฉลี่ย</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/hr/reports/absenteeism"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">อัตราขาดงาน (เดือนนี้)</MudText>
+                    @if (_absenteeismRateThisMonth is not null)
+                    {
+                        <MudText Typo="Typo.h3">@_absenteeismRateThisMonth.Value.ToString("N1")%</MudText>
+                        <MudText Typo="Typo.body2">ตั้งแต่วันที่ 1 ของเดือนถึงวันนี้</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">ยังไม่เปิดใช้งาน</MudText>
+                        <MudText Typo="Typo.body2">บริษัทยังไม่ได้เปิดระบบบันทึกเวลาเข้างาน</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/rec/dashboard"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">เวลาเฉลี่ยในการสรรหา (6 เดือนล่าสุด)</MudText>
+                    @if (_avgTimeToFillDays is not null)
+                    {
+                        <MudText Typo="Typo.h3">@_avgTimeToFillDays.Value.ToString("N0") วัน</MudText>
+                        <MudText Typo="Typo.body2">จากคำขออัตรากำลังที่บรรจุครบแล้ว @_filledRequisitionsCount รายการ</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">ไม่มีข้อมูล</MudText>
+                        <MudText Typo="Typo.body2">ยังไม่มีคำขออัตรากำลังที่บรรจุครบในช่วงนี้</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/rec/dashboard"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">อัตราตอบรับข้อเสนองาน</MudText>
+                    @if (_offerAcceptanceRate is not null)
+                    {
+                        <MudText Typo="Typo.h3">@_offerAcceptanceRate.Value.ToString("N1")%</MudText>
+                        <MudText Typo="Typo.body2">@_offersAccepted ตอบรับ / @(_offersAccepted + _offersDeclined) ที่ตอบกลับแล้ว</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">ไม่มีข้อมูล</MudText>
+                        <MudText Typo="Typo.body2">ยังไม่มีข้อเสนองานที่ตอบกลับ</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-4" Outlined="true" @onclick="@(() => Nav.NavigateTo("/perf/hr-dashboard"))" Style="cursor:pointer;">
+                    <MudText Typo="Typo.overline">คะแนนประเมินเฉลี่ย (รอบล่าสุดที่อนุมัติแล้ว)</MudText>
+                    @if (_avgPerfScore is not null)
+                    {
+                        <MudText Typo="Typo.h3">@_avgPerfScore.Value.ToString("N1")%</MudText>
+                        <MudText Typo="Typo.body2">จาก @_perfInstanceCount คนที่มีผลอนุมัติแล้ว</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">ไม่มีข้อมูล</MudText>
+                        <MudText Typo="Typo.body2">ยังไม่มีผลประเมินที่อนุมัติแล้วในระบบ</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private bool _loaded;
+
+    private int _headcount;
+
+    private double _turnoverRate12Mo;
+    private int _resignedLast12Mo;
+    private double _avgHeadcount12Mo;
+
+    private double? _absenteeismRateThisMonth;
+
+    private double? _avgTimeToFillDays;
+    private int _filledRequisitionsCount;
+
+    private double? _offerAcceptanceRate;
+    private int _offersAccepted;
+    private int _offersDeclined;
+
+    private double? _avgPerfScore;
+    private int _perfInstanceCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        // Headcount + turnover — same "as-of date" logic as WorkforceReport/TurnoverReport.
+        var employees = await context.Hremployee
+            .Where(e => e.companyid == _companyId)
+            .Select(e => new { e.WorkDate, e.ResignDate })
+            .ToListAsync();
+
+        int HeadcountAt(DateOnly asOf) => employees.Count(e => e.WorkDate.HasValue
+            && DateOnly.FromDateTime(e.WorkDate.Value) <= asOf
+            && (!e.ResignDate.HasValue || DateOnly.FromDateTime(e.ResignDate.Value) > asOf));
+
+        _headcount = HeadcountAt(today);
+
+        var yearAgo = today.AddYears(-1);
+        var headStart = HeadcountAt(yearAgo);
+        var headEnd = _headcount;
+        _avgHeadcount12Mo = (headStart + headEnd) / 2.0;
+        _resignedLast12Mo = employees.Count(e => e.ResignDate.HasValue
+            && DateOnly.FromDateTime(e.ResignDate.Value) > yearAgo
+            && DateOnly.FromDateTime(e.ResignDate.Value) <= today);
+        _turnoverRate12Mo = _avgHeadcount12Mo > 0 ? Math.Round(_resignedLast12Mo / _avgHeadcount12Mo * 100, 2) : 0;
+
+        // Absenteeism — reuse the same service the Absenteeism report uses; null means Attendance isn't enabled for this company.
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        var absSummary = await AbsenteeismReportService.GetSummaryAsync(_companyId, monthStart, today);
+        _absenteeismRateThisMonth = absSummary?.AbsenteeismRatePercent;
+
+        // Time-to-fill — same definition as RecruitmentDashboard.razor (RequestedDate -> latest offer response/send date), scoped to the last 6 months.
+        var sixMonthsAgo = today.AddMonths(-6);
+        var requisitions = await context.Rec_Requisitions
+            .Where(r => r.CompanyId == _companyId && r.Status == RequisitionStatus.Filled)
+            .ToListAsync();
+        var reqIds = requisitions.Select(r => r.Id).ToList();
+        var postingRows = reqIds.Count == 0
+            ? new List<(long Id, long RequisitionId)>()
+            : (await context.Rec_JobPostings.Where(p => reqIds.Contains(p.RequisitionId)).Select(p => new { p.Id, p.RequisitionId }).ToListAsync())
+                .Select(p => (p.Id, p.RequisitionId)).ToList();
+        var postingIds = postingRows.Select(p => p.Id).ToList();
+        var postingToRequisition = postingRows.ToDictionary(p => p.Id, p => p.RequisitionId);
+
+        var hiredOfferRows = postingIds.Count == 0
+            ? new List<(long JobPostingId, DateTime? RespondedDate, DateTime? SentDate, DateTime CreatedDate)>()
+            : (await context.Rec_Offers
+                .Where(o => o.HiredHremployeeId != null)
+                .Join(context.Rec_Applications, o => o.ApplicationId, a => a.Id, (o, a) => new { a.JobPostingId, o.RespondedDate, o.SentDate, o.CreatedDate })
+                .Where(x => postingIds.Contains(x.JobPostingId))
+                .ToListAsync())
+                .Select(x => (x.JobPostingId, x.RespondedDate, x.SentDate, x.CreatedDate)).ToList();
+
+        // Map posting -> requisition, then take the latest hire date per requisition.
+        var latestHireByRequisition = new Dictionary<long, DateTime>();
+        foreach (var row in hiredOfferRows)
+        {
+            if (!postingToRequisition.TryGetValue(row.JobPostingId, out var reqId)) continue;
+            var hireDate = row.RespondedDate ?? row.SentDate ?? row.CreatedDate;
+            if (!latestHireByRequisition.TryGetValue(reqId, out var existing) || hireDate > existing)
+                latestHireByRequisition[reqId] = hireDate;
+        }
+        var recentRequisitions = requisitions.Where(r => latestHireByRequisition.ContainsKey(r.Id)
+            && DateOnly.FromDateTime(latestHireByRequisition[r.Id]) >= sixMonthsAgo).ToList();
+        var days = recentRequisitions.Select(r => (latestHireByRequisition[r.Id] - r.RequestedDate).Days).ToList();
+        _filledRequisitionsCount = days.Count;
+        _avgTimeToFillDays = days.Count > 0 ? days.Average() : null;
+
+        // Offer acceptance rate — company-scoped via posting -> requisition.
+        var allPostingIds = await context.Rec_JobPostings
+            .Join(context.Rec_Requisitions.Where(r => r.CompanyId == _companyId), p => p.RequisitionId, r => r.Id, (p, r) => p.Id)
+            .ToListAsync();
+        var respondedOffers = allPostingIds.Count == 0 ? new List<OfferStatus>() : await context.Rec_Offers
+            .Join(context.Rec_Applications, o => o.ApplicationId, a => a.Id, (o, a) => new { o.Status, a.JobPostingId })
+            .Where(x => allPostingIds.Contains(x.JobPostingId) && (x.Status == OfferStatus.Accepted || x.Status == OfferStatus.Declined))
+            .Select(x => x.Status)
+            .ToListAsync();
+        _offersAccepted = respondedOffers.Count(s => s == OfferStatus.Accepted);
+        _offersDeclined = respondedOffers.Count(s => s == OfferStatus.Declined);
+        var totalResponded = _offersAccepted + _offersDeclined;
+        _offerAcceptanceRate = totalResponded > 0 ? Math.Round(_offersAccepted * 100.0 / totalResponded, 2) : null;
+
+        // Average performance score — latest approved evaluation period only, to avoid mixing periods with different grading scales.
+        var latestApprovedPeriodId = await context.Perf_EvaluationInstances
+            .Where(i => i.Status == PerfInstanceStatus.Approved && i.FinalScorePercent != null)
+            .Join(context.Perf_EvaluationPeriods.Where(p => p.CompanyId == _companyId), i => i.EvaluationPeriodId, p => p.Id, (i, p) => new { i, p.Id })
+            .OrderByDescending(x => x.Id)
+            .Select(x => (long?)x.Id)
+            .FirstOrDefaultAsync();
+        if (latestApprovedPeriodId is not null)
+        {
+            var scores = await context.Perf_EvaluationInstances
+                .Where(i => i.EvaluationPeriodId == latestApprovedPeriodId && i.Status == PerfInstanceStatus.Approved && i.FinalScorePercent != null)
+                .Select(i => i.FinalScorePercent!.Value)
+                .ToListAsync();
+            _perfInstanceCount = scores.Count;
+            _avgPerfScore = scores.Count > 0 ? (double)scores.Average() : null;
+        }
+
+        _loaded = true;
+    }
+}

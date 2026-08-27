@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HRM.Models;
 
-// Self-declared expertise only in this round — no endorsement/rating by
-// others (see plan's "จงใจไม่ทำในรอบนี้"). CompetencyId is a soft-link to
+// The claim itself is still self-declared, but Km_ExpertEndorsement now lets
+// colleagues vouch for it — see that file. CompetencyId is a soft-link to
 // Comp_Competency.Id, same convention as Job_CompetencyRequirement.
 [Table("Km_ExpertProfile")]
 public class Km_ExpertProfile

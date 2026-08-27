@@ -48,6 +48,28 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">อัตราตอบรับข้อเสนองาน (Offer Acceptance Rate)</MudText>
+        @if (_offersAccepted + _offersDeclined > 0)
+        {
+            <MudGrid Class="mt-2">
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@(_offerAcceptanceRate.ToString("N1"))%</MudText><MudText Typo="Typo.caption">อัตราตอบรับ</MudText></MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4" Color="Color.Success">@_offersAccepted</MudText><MudText Typo="Typo.caption">ตอบรับ</MudText></MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4" Color="Color.Error">@_offersDeclined</MudText><MudText Typo="Typo.caption">ปฏิเสธ</MudText></MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ยังไม่มีข้อเสนองานที่ผู้สมัครตอบกลับ (ตอบรับ/ปฏิเสธ)</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">Time-to-fill (คำขอที่บรรจุครบแล้ว)</MudText>
         <MudTable Items="_timeToFillRows" Dense="true" Hover="true" Class="mt-2">
             <HeaderContent>
@@ -75,6 +97,9 @@ else
     private List<(string Label, int Count, Color Color)> _requisitionTiles = new();
     private List<FunnelRow> _funnelRows = new();
     private List<TimeToFillRow> _timeToFillRows = new();
+    private int _offersAccepted;
+    private int _offersDeclined;
+    private double _offerAcceptanceRate;
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,6 +132,17 @@ else
             new("เสนองาน (Offer)", applications.Count(a => a.Stage >= ApplicationStage.Offer)),
             new("จ้างแล้ว (Hired)", applications.Count(a => a.Stage == ApplicationStage.Hired)),
         };
+
+        var applicationIds = applications.Select(a => a.Id).ToList();
+        var respondedOfferStatuses = applicationIds.Count == 0
+            ? new List<OfferStatus>()
+            : await context.Rec_Offers
+                .Where(o => applicationIds.Contains(o.ApplicationId) && (o.Status == OfferStatus.Accepted || o.Status == OfferStatus.Declined))
+                .Select(o => o.Status)
+                .ToListAsync();
+        _offersAccepted = respondedOfferStatuses.Count(s => s == OfferStatus.Accepted);
+        _offersDeclined = respondedOfferStatuses.Count(s => s == OfferStatus.Declined);
+        _offerAcceptanceRate = _offersAccepted + _offersDeclined > 0 ? Math.Round(_offersAccepted * 100.0 / (_offersAccepted + _offersDeclined), 2) : 0;
 
         var filledRequisitions = requisitions.Where(r => r.Status == RequisitionStatus.Filled).ToList();
         var rows = new List<TimeToFillRow>();

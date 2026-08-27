@@ -59,6 +59,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<AspNetUserToken> AspNetUserTokens { get; set; }
 
     public virtual DbSet<CT_Contract> CT_Contracts { get; set; }
+    public virtual DbSet<CT_ContractRenewal> CT_ContractRenewals { get; set; }
 
     public virtual DbSet<ConsentHistory> ConsentHistories { get; set; }
 
@@ -547,6 +548,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Km_Article> Km_Articles { get; set; }
     public virtual DbSet<Km_ArticleComment> Km_ArticleComments { get; set; }
     public virtual DbSet<Km_ExpertProfile> Km_ExpertProfiles { get; set; }
+    public virtual DbSet<Km_ExpertEndorsement> Km_ExpertEndorsements { get; set; }
     // ----- end Km_* module -----
 
     // ----- System-wide UI settings -----

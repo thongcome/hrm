@@ -13,7 +13,7 @@ public class KmArticleService
         _dbFactory = dbFactory;
     }
 
-    public async Task<List<Km_Article>> SearchAsync(string companyId, string? term, long? categoryId, bool lessonsLearnedOnly, CancellationToken ct = default)
+    public async Task<List<Km_Article>> SearchAsync(string companyId, string? term, long? categoryId, bool lessonsLearnedOnly, bool sortByMostViewed = false, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var query = context.Km_Articles
@@ -26,7 +26,11 @@ public class KmArticleService
 
         query = EntitySearchHelper.ApplyTextSearch(query, term, nameof(Km_Article.Title), nameof(Km_Article.Content), nameof(Km_Article.Tags));
 
-        return await query.OrderByDescending(a => a.CreatedDate).ToListAsync(ct);
+        query = sortByMostViewed
+            ? query.OrderByDescending(a => a.ViewCount).ThenByDescending(a => a.CreatedDate)
+            : query.OrderByDescending(a => a.CreatedDate);
+
+        return await query.ToListAsync(ct);
     }
 
     public async Task<List<Km_Article>> GetAllForAdminAsync(string companyId, string? term, CancellationToken ct = default)

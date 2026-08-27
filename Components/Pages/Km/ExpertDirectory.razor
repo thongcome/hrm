@@ -29,11 +29,28 @@
             <MudTh>พนักงาน</MudTh>
             <MudTh>สมรรถนะ</MudTh>
             <MudTh>รายละเอียด</MudTh>
+            <MudTh>รับรองโดยเพื่อนร่วมงาน</MudTh>
+            <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@GetEmployeeName(context.HremployeeId)</MudTd>
             <MudTd>@GetCompetencyName(context.CompetencyId)</MudTd>
             <MudTd>@context.ProficiencyNote</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(GetEndorsementCount(context.Id) > 0 ? Color.Success : Color.Default)">
+                    @GetEndorsementCount(context.Id) คน
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                @if (_employee is not null && _employee.id != context.HremployeeId)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                        Disabled="@HasEndorsed(context.Id)"
+                        OnClick="@(() => EndorseAsync(context.Id))">
+                        @(HasEndorsed(context.Id) ? "รับรองแล้ว" : "รับรองความเชี่ยวชาญ")
+                    </MudButton>
+                }
+            </MudTd>
         </RowTemplate>
         <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูลผู้เชี่ยวชาญ</MudText></NoRecordsContent>
     </MudTable>
@@ -78,6 +95,8 @@
     private List<Km_ExpertProfile> _experts = new();
     private List<Km_ExpertProfile> _myExpertise = new();
     private Dictionary<long, string> _employeeNames = new();
+    private Dictionary<long, int> _endorsementCounts = new();
+    private HashSet<long> _myEndorsements = new();
     private long? _filterCompetencyId;
     private long? _newCompetencyId;
     private string? _newNote;
@@ -106,11 +125,53 @@
         var query = context.Km_ExpertProfiles.Where(e => e.IsActive);
         if (_filterCompetencyId is long cid)
             query = query.Where(e => e.CompetencyId == cid);
-        _experts = await query.ToListAsync();
+        var experts = await query.ToListAsync();
 
-        var employeeIds = _experts.Select(e => e.HremployeeId).Distinct().ToList();
+        var profileIds = experts.Select(e => e.Id).ToList();
+        var endorsements = profileIds.Count == 0
+            ? new List<Km_ExpertEndorsement>()
+            : await context.Km_ExpertEndorsements.Where(x => profileIds.Contains(x.ExpertProfileId)).ToListAsync();
+        _endorsementCounts = endorsements.GroupBy(x => x.ExpertProfileId).ToDictionary(g => g.Key, g => g.Count());
+        _myEndorsements = _employee is null
+            ? new HashSet<long>()
+            : endorsements.Where(x => x.EndorsedByHremployeeId == _employee.id).Select(x => x.ExpertProfileId).ToHashSet();
+
+        // Most-endorsed first — social proof over alphabetical order.
+        _experts = experts.OrderByDescending(e => _endorsementCounts.GetValueOrDefault(e.Id)).ToList();
+
+        var employeeIds = experts.Select(e => e.HremployeeId).Distinct().ToList();
         var names = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}");
         foreach (var kv in names) _employeeNames[kv.Key] = kv.Value;
+    }
+
+    private int GetEndorsementCount(long expertProfileId) => _endorsementCounts.GetValueOrDefault(expertProfileId);
+    private bool HasEndorsed(long expertProfileId) => _myEndorsements.Contains(expertProfileId);
+
+    private async Task EndorseAsync(long expertProfileId)
+    {
+        if (_employee is null || HasEndorsed(expertProfileId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Re-check against the DB, not just the in-memory set, in case two
+        // tabs raced — same duplicate-guard pattern used everywhere else in
+        // this codebase instead of a DB unique constraint.
+        var alreadyEndorsed = await context.Km_ExpertEndorsements.AnyAsync(x => x.ExpertProfileId == expertProfileId && x.EndorsedByHremployeeId == _employee.id);
+        if (alreadyEndorsed)
+        {
+            await LoadExpertsAsync();
+            return;
+        }
+
+        context.Km_ExpertEndorsements.Add(new Km_ExpertEndorsement
+        {
+            ExpertProfileId = expertProfileId,
+            EndorsedByHremployeeId = _employee.id,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("รับรองความเชี่ยวชาญเรียบร้อย", Severity.Success);
+        await LoadExpertsAsync();
     }
 
     private async Task LoadMineAsync()

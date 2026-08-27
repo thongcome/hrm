@@ -1,10 +1,12 @@
 @page "/contracts"
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Contract
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
+@inject ContractExpiryService ExpiryService
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:CT_CONTRACT_ADMIN")]
 
@@ -165,6 +167,25 @@
             </MudItem>
         </MudGrid>
 
+        @if (_editingId is not null && _renewalHistory.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">ประวัติการต่ออายุ</MudText>
+            <MudSimpleTable Dense="true">
+                <thead><tr><th>วันที่ต่ออายุ</th><th>วันสิ้นสุดเดิม</th><th>วันสิ้นสุดใหม่</th><th>หมายเหตุ</th></tr></thead>
+                <tbody>
+                    @foreach (var h in _renewalHistory)
+                    {
+                        <tr>
+                            <td>@h.RenewedDate.ToString("dd/MM/yyyy")</td>
+                            <td>@(h.OldExpiredDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@h.NewExpiredDate.ToString("dd/MM/yyyy")</td>
+                            <td>@(h.Note ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+
         @if (!string.IsNullOrEmpty(_error))
         {
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
@@ -200,7 +221,25 @@
             <MudTd>@context.vendor_name</MudTd>
             <MudTd>@context.ProjectName</MudTd>
             <MudTd>@FormatPeriod(context.start_date, context.expired_date)</MudTd>
-            <MudTd>@(context.isActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                @{ var (expiryStatus, _) = ContractExpiryService.ClassifyContractExpiry(context.expired_date); }
+                @if (!context.isActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">ปิดใช้งาน</MudChip>
+                }
+                else if (expiryStatus == ContractExpiryService.ExpiryStatus.Expired)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">หมดอายุแล้ว</MudChip>
+                }
+                else if (expiryStatus == ContractExpiryService.ExpiryStatus.ExpiringSoon)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">ใกล้หมดอายุ</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">ใช้งาน</MudChip>
+                }
+            </MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
             </MudTd>
@@ -217,6 +256,7 @@
     private string? _error;
     private long? _editingId;
     private bool _showForm;
+    private List<CT_ContractRenewal> _renewalHistory = new();
 
     private class ContractForm
     {
@@ -298,13 +338,15 @@
     {
         _editingId = null;
         _form = new ContractForm();
+        _renewalHistory = new();
         _error = null;
         _showForm = true;
     }
 
-    private void StartEdit(CT_Contract c)
+    private async Task StartEdit(CT_Contract c)
     {
         _editingId = c.id;
+        _renewalHistory = await ExpiryService.GetRenewalHistoryAsync(c.id);
         _form = new ContractForm
         {
             PoNo = c.po_no,
@@ -358,6 +400,7 @@
     {
         _editingId = null;
         _form = new ContractForm();
+        _renewalHistory = new();
         _error = null;
         _showForm = false;
     }

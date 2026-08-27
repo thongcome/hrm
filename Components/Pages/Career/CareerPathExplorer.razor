@@ -1,0 +1,103 @@
+@page "/career/explorer"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Career
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject CareerPathService PathService
+@inject JsonLocalizationService L
+@attribute [Authorize(Policy = "Menu:CAREER_ACCESS")]
+
+<PageTitle>@L.Translate("CareerExplorerPageTitle")</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">@L.Translate("CompanyNotLinkedShortError")</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">@L.Translate("CareerExplorerHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.7;">@L.Translate("CareerExplorerDesc")</MudText>
+    </MudPaper>
+
+    @if (!_loaded)
+    {
+        <MudText Class="ma-4">@L.Translate("LoadingText")</MudText>
+    }
+    else if (_familyPaths.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-4">@L.Translate("NoCareerPathsInCompanyMessage")</MudAlert>
+    }
+    else
+    {
+        @foreach (var (family, steps) in _familyPaths)
+        {
+            <MudPaper Class="pa-4 mb-3" Outlined="true">
+                <MudText Typo="Typo.h6">@family.Name</MudText>
+                <MudStack Row="true" Spacing="2" Class="flex-wrap mt-2" AlignItems="AlignItems.Center">
+                    @for (var i = 0; i < steps.Count; i++)
+                    {
+                        var step = steps[i];
+                        var isMine = _myPosExecTypeId == step.PosExecTypeId;
+                        <MudPaper Class="pa-3" Outlined="true" Style="@(isMine ? "border-color:var(--mud-palette-primary);border-width:2px" : "")">
+                            <MudText Typo="Typo.body2">@step.PosExecTypeName</MudText>
+                            @if (isMine)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@L.Translate("CurrentPositionChip")</MudChip>
+                            }
+                        </MudPaper>
+                        @if (i < steps.Count - 1)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Color="Color.Default" />
+                        }
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    private string? _companyId;
+    private bool _loaded;
+    private List<(Job_Family Family, List<CareerPathService.StepRow> Steps)> _familyPaths = new();
+    private long? _myPosExecTypeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        var empno = state.User.FindFirstValue("empno");
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        if (!string.IsNullOrWhiteSpace(empno))
+        {
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == empno);
+            if (emp is not null)
+            {
+                var slot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.HremployeeId == emp.id && s.IsActive);
+                _myPosExecTypeId = slot?.PosExecTypeId;
+            }
+        }
+
+        var families = await context.Job_Families.Where(f => f.CompanyId == _companyId && f.IsActive).OrderBy(f => f.Name).ToListAsync();
+
+        var pairs = new List<(Job_Family, List<CareerPathService.StepRow>)>();
+        foreach (var family in families)
+        {
+            var steps = await PathService.GetStepsAsync(_companyId, family.Id);
+            if (steps.Count > 0)
+                pairs.Add((family, steps));
+        }
+        _familyPaths = pairs;
+
+        _loaded = true;
+    }
+}

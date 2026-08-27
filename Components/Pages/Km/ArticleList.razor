@@ -35,6 +35,11 @@
         </MudItem>
     </MudGrid>
 
+    <MudButtonGroup Class="mt-3" Color="Color.Primary" Variant="Variant.Outlined">
+        <MudButton OnClick="@(() => OnSortChanged(false))" Variant="@(_sortByMostViewed ? Variant.Outlined : Variant.Filled)">ล่าสุด</MudButton>
+        <MudButton OnClick="@(() => OnSortChanged(true))" Variant="@(_sortByMostViewed ? Variant.Filled : Variant.Outlined)">ยอดนิยม</MudButton>
+    </MudButtonGroup>
+
     <MudTable Items="_articles" Dense="true" Hover="true" Class="mt-3">
         <HeaderContent>
             <MudTh>ชื่อบทความ</MudTh>
@@ -61,6 +66,7 @@
     private string _searchTerm = "";
     private long? _categoryId;
     private bool _lessonsLearnedOnly;
+    private bool _sortByMostViewed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -76,10 +82,11 @@
     private async Task LoadAsync()
     {
         if (string.IsNullOrWhiteSpace(_companyId)) return;
-        _articles = await ArticleService.SearchAsync(_companyId, _searchTerm, _categoryId, _lessonsLearnedOnly);
+        _articles = await ArticleService.SearchAsync(_companyId, _searchTerm, _categoryId, _lessonsLearnedOnly, _sortByMostViewed);
     }
 
     private async Task OnSearchChanged(string term) { _searchTerm = term; await LoadAsync(); }
     private async Task OnCategoryChanged(long? categoryId) { _categoryId = categoryId; await LoadAsync(); }
     private async Task OnLessonsLearnedChanged(bool value) { _lessonsLearnedOnly = value; await LoadAsync(); }
+    private async Task OnSortChanged(bool mostViewed) { _sortByMostViewed = mostViewed; await LoadAsync(); }
 }

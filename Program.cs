@@ -385,6 +385,10 @@ builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
 builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 
+// ----- CT_* module (Contracts) -----
+builder.Services.AddScoped<HRM.Services.Contract.ContractExpiryService>();
+// ----- end CT_* module -----
+
 // ----- Pos_* module (Position / Headcount Budget) -----
 builder.Services.AddScoped<HRM.Services.Pos.HeadcountBudgetService>();
 // ----- end Pos_* module -----

@@ -1,0 +1,268 @@
+@page "/hr/reports/headcount"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:HR_ANALYTICS")]
+
+<PageTitle>อัตรากำลัง (Headcount &amp; Workforce Composition)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">อัตรากำลัง (Headcount &amp; Workforce Composition)</MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ — ติดต่อแอดมินให้ตั้งค่า empid ก่อน</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField @bind-Value="_periodMonths" Label="ย้อนหลังกี่เดือน" Min="1" Max="36" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="LoadAsync" Class="mt-2">โหลดข้อมูล</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_loaded && _currentHeadcount == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีข้อมูลพนักงานสำหรับบริษัทนี้</MudAlert>
+    }
+    else if (_loaded)
+    {
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_currentHeadcount</MudText><MudText Typo="Typo.caption">พนักงานปัจจุบัน (Active)</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_newHiresInPeriod</MudText><MudText Typo="Typo.caption">เข้าใหม่ในช่วงที่เลือก</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@(_avgAgeYears?.ToString("N1") ?? "-")</MudText><MudText Typo="Typo.caption">อายุเฉลี่ย (ปี)</MudText></MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@(_avgTenureYears?.ToString("N1") ?? "-")</MudText><MudText Typo="Typo.caption">อายุงานเฉลี่ย (ปี)</MudText></MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-6">แนวโน้มอัตรากำลังรายเดือน</MudText>
+        <MudChart ChartType="ChartType.Line" ChartSeries="@_trendSeries" XAxisLabels="@_trendLabels" Width="100%" Height="300px" Class="mt-2" />
+
+        <MudGrid Class="mt-6">
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.h6">แยกตามเพศ</MudText>
+                @if (_byGender.Count > 0)
+                {
+                    <MudChart ChartType="ChartType.Donut" InputData="@_genderData" InputLabels="@_genderLabels" Width="100%" Height="240px" Class="mt-2" />
+                    <MudSimpleTable Dense="true" Class="mt-2">
+                        <thead><tr><th>เพศ</th><th>จำนวน</th></tr></thead>
+                        <tbody>
+                            @foreach (var g in _byGender)
+                            {
+                                <tr><td>@g.Label</td><td>@g.Count</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.h6">แยกตามช่วงอายุ</MudText>
+                @if (_byAgeBand.Count > 0)
+                {
+                    <MudChart ChartType="ChartType.Bar" ChartSeries="@_ageBandSeries" XAxisLabels="@_ageBandLabels" Width="100%" Height="240px" Class="mt-2" />
+                }
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.h6">แยกตามประเภทการจ้าง</MudText>
+                @if (_byEmpType.Count > 0)
+                {
+                    <MudChart ChartType="ChartType.Donut" InputData="@_empTypeData" InputLabels="@_empTypeLabels" Width="100%" Height="240px" Class="mt-2" />
+                    <MudSimpleTable Dense="true" Class="mt-2">
+                        <thead><tr><th>ประเภท</th><th>จำนวน</th></tr></thead>
+                        <tbody>
+                            @foreach (var e in _byEmpType)
+                            {
+                                <tr><td>@e.Label</td><td>@e.Count</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-6">แยกตามหน่วยงาน</MudText>
+        @if (_byDepartment.Count > 0)
+        {
+            <MudSimpleTable Dense="true" Class="mt-2">
+                <thead><tr><th>หน่วยงาน</th><th>จำนวน</th><th>สัดส่วน</th></tr></thead>
+                <tbody>
+                    @foreach (var d in _byDepartment)
+                    {
+                        <tr>
+                            <td>@d.Label</td>
+                            <td>@d.Count</td>
+                            <td>@(_currentHeadcount > 0 ? (d.Count * 100.0 / _currentHeadcount).ToString("N1") + "%" : "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ไม่มีข้อมูลหน่วยงาน</MudText>
+        }
+    }
+</MudPaper>
+
+@code {
+    private record LabelCount(string Label, int Count);
+    private record EmpRow(long Id, DateTime? WorkDate, DateTime? ResignDate, long? OrganizationId, string? Sex, DateTime? BirthDate, string? EmptypeCode);
+
+    private string? _companyId;
+    private int _periodMonths = 12;
+    private bool _loaded;
+
+    private int _currentHeadcount;
+    private int _newHiresInPeriod;
+    private double? _avgAgeYears;
+    private double? _avgTenureYears;
+
+    private List<ChartSeries> _trendSeries = new();
+    private string[] _trendLabels = Array.Empty<string>();
+
+    private List<LabelCount> _byGender = new();
+    private double[] _genderData = Array.Empty<double>();
+    private string[] _genderLabels = Array.Empty<string>();
+
+    private List<LabelCount> _byAgeBand = new();
+    private List<ChartSeries> _ageBandSeries = new();
+    private string[] _ageBandLabels = Array.Empty<string>();
+
+    private List<LabelCount> _byEmpType = new();
+    private double[] _empTypeData = Array.Empty<double>();
+    private string[] _empTypeLabels = Array.Empty<string>();
+
+    private List<LabelCount> _byDepartment = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var employees = await context.Hremployee
+            .Where(e => e.companyid == _companyId)
+            .Select(e => new EmpRow(e.id, e.WorkDate, e.ResignDate, e.OrganizationId, e.Sex, e.BirthDate, e.EmptypeCode))
+            .ToListAsync();
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        bool IsActiveAt(DateOnly asOf, EmpRow e) =>
+            e.WorkDate.HasValue && DateOnly.FromDateTime(e.WorkDate.Value) <= asOf
+            && (!e.ResignDate.HasValue || DateOnly.FromDateTime(e.ResignDate.Value) > asOf);
+
+        var active = employees.Where(e => IsActiveAt(today, e)).ToList();
+        _currentHeadcount = active.Count;
+
+        var rangeStart = new DateOnly(today.Year, today.Month, 1).AddMonths(-(_periodMonths - 1));
+        _newHiresInPeriod = employees.Count(e => e.WorkDate.HasValue
+            && DateOnly.FromDateTime(e.WorkDate.Value) >= rangeStart
+            && DateOnly.FromDateTime(e.WorkDate.Value) <= today);
+
+        _avgAgeYears = active.Any(e => e.BirthDate.HasValue)
+            ? active.Where(e => e.BirthDate.HasValue).Average(e => (today.DayNumber - DateOnly.FromDateTime(e.BirthDate!.Value).DayNumber) / 365.25)
+            : null;
+        _avgTenureYears = active.Any(e => e.WorkDate.HasValue)
+            ? active.Where(e => e.WorkDate.HasValue).Average(e => (today.DayNumber - DateOnly.FromDateTime(e.WorkDate!.Value).DayNumber) / 365.25)
+            : null;
+
+        // Monthly headcount trend, same "as-of month end" approach as the Turnover report.
+        var trend = new List<(string Period, int Headcount)>();
+        for (var i = 0; i < _periodMonths; i++)
+        {
+            var monthStart = rangeStart.AddMonths(i);
+            if (monthStart > today) break;
+            var monthEndCandidate = monthStart.AddMonths(1).AddDays(-1);
+            var monthEnd = monthEndCandidate < today ? monthEndCandidate : today;
+            var count = employees.Count(e => IsActiveAt(monthEnd, e));
+            trend.Add(($"{monthStart.Year:D4}-{monthStart.Month:D2}", count));
+        }
+        _trendLabels = trend.Select(t => t.Period).ToArray();
+        _trendSeries = new List<ChartSeries> { new ChartSeries { Name = "อัตรากำลัง", Data = trend.Select(t => (double)t.Headcount).ToArray() } };
+
+        _byGender = active
+            .GroupBy(e => GenderLabel(e.Sex))
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+        _genderData = _byGender.Select(g => (double)g.Count).ToArray();
+        _genderLabels = _byGender.Select(g => g.Label).ToArray();
+
+        _byAgeBand = active
+            .Where(e => e.BirthDate.HasValue)
+            .GroupBy(e => AgeBand((today.DayNumber - DateOnly.FromDateTime(e.BirthDate!.Value).DayNumber) / 365.25))
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderBy(g => g.Label)
+            .ToList();
+        _ageBandLabels = _byAgeBand.Select(g => g.Label).ToArray();
+        _ageBandSeries = new List<ChartSeries> { new ChartSeries { Name = "จำนวนคน", Data = _byAgeBand.Select(g => (double)g.Count).ToArray() } };
+
+        _byEmpType = active
+            .GroupBy(e => EmpTypeLabel(e.EmptypeCode))
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+        _empTypeData = _byEmpType.Select(e => (double)e.Count).ToArray();
+        _empTypeLabels = _byEmpType.Select(e => e.Label).ToArray();
+
+        var orgIds = active.Where(e => e.OrganizationId.HasValue).Select(e => e.OrganizationId!.Value).Distinct().ToList();
+        var orgNames = orgIds.Count == 0
+            ? new Dictionary<long, string>()
+            : await context.com_organizations.Where(o => orgIds.Contains(o.id)).ToDictionaryAsync(o => o.id, o => o.name ?? $"#{o.id}");
+
+        _byDepartment = active
+            .GroupBy(e => e.OrganizationId.HasValue && orgNames.TryGetValue(e.OrganizationId.Value, out var n) ? n : "ไม่ระบุหน่วยงาน")
+            .Select(g => new LabelCount(g.Key, g.Count()))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+
+        _loaded = true;
+    }
+
+    private static string GenderLabel(string? sex) => sex switch
+    {
+        "M" => "ชาย",
+        "F" => "หญิง",
+        _ => "ไม่ระบุ",
+    };
+
+    private static string EmpTypeLabel(string? code) => code switch
+    {
+        "01" => "พนักงานประจำ",
+        "02" => "พนักงานชั่วคราว",
+        _ => "ไม่ระบุ",
+    };
+
+    private static string AgeBand(double ageYears) => ageYears switch
+    {
+        < 25 => "< 25 ปี",
+        < 35 => "25-34 ปี",
+        < 45 => "35-44 ปี",
+        < 55 => "45-54 ปี",
+        _ => "55+ ปี",
+    };
+}
