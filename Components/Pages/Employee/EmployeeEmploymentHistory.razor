@@ -1,0 +1,313 @@
+@page "/employee/{Id:long}/employment-history"
+@layout EmployeeHubLayout
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติการทำงานของพนักงาน</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="1000px">
+        <MudText Typo="Typo.h5">ประวัติการทำงานของพนักงาน (คำสั่งแต่งตั้ง/โยกย้าย) — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            บันทึกคำสั่งแต่งตั้ง/โยกย้ายอย่างเป็นทางการ — ไม่แสดงเงินเดือน (ดูเงินเดือนได้ที่โมดูลเงินเดือนเท่านั้น)
+        </MudText>
+        <MudDivider Class="my-4" />
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">+ เพิ่มคำสั่ง</MudButton>
+        </MudStack>
+
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มคำสั่งแต่งตั้ง/โยกย้าย" : "แก้ไข")</MudText>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">ข้อมูลคำสั่ง</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_orderType" Label="ประเภทคำสั่ง" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_orderNo" Label="เลขที่คำสั่ง" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_sortNo" Label="ลำดับ" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="ลงวันที่" @bind-Date="_orderDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่มีผล" @bind-Date="_effectiveDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันสิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_positionStatus" Label="สถานะการดำรงตำแหน่ง" /></MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.body2" Class="mb-1">ตำแหน่งล่าสุด</MudText>
+                    <MudRadioGroup T="bool" @bind-Value="_isLatestPosition">
+                        <MudRadio T="bool" Value="true" Color="Color.Primary">ใช่</MudRadio>
+                        <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.body2" Class="mb-1">เปลี่ยนตำแหน่งหรือไม่</MudText>
+                    <MudRadioGroup T="bool" @bind-Value="_isPositionChanged">
+                        <MudRadio T="bool" Value="true" Color="Color.Primary">ใช่</MudRadio>
+                        <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">ตำแหน่ง/สังกัดใหม่</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง" Value="_newExecType" ValueChanged="v => _newExecType = v"
+                        SearchFunc="SearchExecTypesAsync"
+                        ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="com_organization" Label="สังกัด" Value="_newOrg" ValueChanged="v => _newOrg = v"
+                        SearchFunc="SearchOrganizationsAsync"
+                        ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">ตำแหน่ง/สังกัดเดิม</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่งเดิม" Value="_oldExecType" ValueChanged="v => _oldExecType = v"
+                        SearchFunc="SearchExecTypesAsync"
+                        ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="com_organization" Label="สังกัดเดิม" Value="_oldOrg" ValueChanged="v => _oldOrg = v"
+                        SearchFunc="SearchOrganizationsAsync"
+                        ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+            </MudGrid>
+
+            <MudGrid Class="mt-2">
+                <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล/หมายเหตุ" Lines="2" /></MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-5" />
+        }
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ลงวันที่</MudTh>
+                <MudTh>ประเภทคำสั่ง</MudTh>
+                <MudTh>เลขที่คำสั่ง</MudTh>
+                <MudTh>ตำแหน่งเดิม</MudTh>
+                <MudTh>ตำแหน่งใหม่</MudTh>
+                <MudTh>สังกัดใหม่</MudTh>
+                <MudTh>ตำแหน่งล่าสุด</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(context.OrderDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd>@context.OrderType</MudTd>
+                <MudTd>@context.OrderNo</MudTd>
+                <MudTd>@(context.OldPositionName ?? "-")</MudTd>
+                <MudTd>@(context.NewPositionName ?? "-")</MudTd>
+                <MudTd>@(context.NewOrganizationName ?? "-")</MudTd>
+                <MudTd>
+                    @if (context.IsLatestPosition)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">ล่าสุด</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_EmploymentHistory> _items = new();
+    private long? _editingId;
+    private bool _showForm;
+    private string? _error;
+    private string? _companyId;
+
+    private string? _orderType;
+    private string? _orderNo;
+    private int? _sortNo;
+    private DateTime? _orderDate;
+    private DateTime? _effectiveDate;
+    private DateTime? _endDate;
+    private string? _positionStatus;
+    private bool _isLatestPosition;
+    private bool _isPositionChanged;
+    private Pos_ExecType? _newExecType;
+    private com_organization? _newOrg;
+    private Pos_ExecType? _oldExecType;
+    private com_organization? _oldOrg;
+    private string? _reason;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+        _companyId = _emp.companyid;
+
+        await AuditLogger.LogAccessAsync("Hrd_EmploymentHistory", Id.ToString(), isSensitive: true, note: "employee employment history view");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_EmploymentHistories.Where(e => e.HremployeeId == Id)
+            .OrderByDescending(e => e.OrderDate).ThenByDescending(e => e.Id).ToListAsync();
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchExecTypesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(t => t.CompanyId == _companyId && t.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(Pos_ExecType.Code), nameof(Pos_ExecType.Name));
+        return await query.OrderBy(t => t.Code).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<IEnumerable<com_organization>> SearchOrganizationsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(Hrd_EmploymentHistory item)
+    {
+        _editingId = item.Id;
+        _orderType = item.OrderType;
+        _orderNo = item.OrderNo;
+        _sortNo = item.SortNo;
+        _orderDate = item.OrderDate?.ToDateTime(TimeOnly.MinValue);
+        _effectiveDate = item.EffectiveDate?.ToDateTime(TimeOnly.MinValue);
+        _endDate = item.EndDate?.ToDateTime(TimeOnly.MinValue);
+        _positionStatus = item.PositionStatus;
+        _isLatestPosition = item.IsLatestPosition;
+        _isPositionChanged = item.IsPositionChanged;
+        _reason = item.Reason;
+        _error = null;
+        _showForm = true;
+
+        // Fire-and-forget resolve of FK display objects for the pickers —
+        // awaited inline via a nested task since StartEdit itself isn't async
+        // (mirrors OrgUnitEdit.razor's OnParametersSetAsync pattern, just
+        // triggered from a click handler instead of page load).
+        _ = ResolvePickerDisplaysAsync(item);
+    }
+
+    private async Task ResolvePickerDisplaysAsync(Hrd_EmploymentHistory item)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _newExecType = item.NewPosExecTypeId is long netId ? await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == netId) : null;
+        _newOrg = item.NewOrganizationId is long noId ? await context.com_organizations.FirstOrDefaultAsync(o => o.id == noId) : null;
+        _oldExecType = item.OldPosExecTypeId is long oetId ? await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == oetId) : null;
+        _oldOrg = item.OldOrganizationId is long ooId ? await context.com_organizations.FirstOrDefaultAsync(o => o.id == ooId) : null;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _orderType = null; _orderNo = null; _sortNo = null;
+        _orderDate = null; _effectiveDate = null; _endDate = null;
+        _positionStatus = null;
+        _isLatestPosition = false; _isPositionChanged = false;
+        _newExecType = null; _newOrg = null; _oldExecType = null; _oldOrg = null;
+        _reason = null;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        // If this row is marked "latest", clear that flag on every other row
+        // for this employee first, so only one row is ever the current one —
+        // same discipline as Hrd_BankAccount's IsActive handling.
+        if (_isLatestPosition)
+        {
+            var others = await context.Hrd_EmploymentHistories
+                .Where(e => e.HremployeeId == Id && e.IsLatestPosition && e.Id != (_editingId ?? 0)).ToListAsync();
+            foreach (var o in others) o.IsLatestPosition = false;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_EmploymentHistories.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            ApplyFormTo(existing);
+        }
+        else
+        {
+            var entity = new Hrd_EmploymentHistory { HremployeeId = Id };
+            ApplyFormTo(entity);
+            context.Hrd_EmploymentHistories.Add(entity);
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+
+    private void ApplyFormTo(Hrd_EmploymentHistory entity)
+    {
+        entity.OrderType = _orderType;
+        entity.OrderNo = _orderNo;
+        entity.SortNo = _sortNo;
+        entity.OrderDate = _orderDate is null ? null : DateOnly.FromDateTime(_orderDate.Value);
+        entity.EffectiveDate = _effectiveDate is null ? null : DateOnly.FromDateTime(_effectiveDate.Value);
+        entity.EndDate = _endDate is null ? null : DateOnly.FromDateTime(_endDate.Value);
+        entity.PositionStatus = _positionStatus;
+        entity.IsLatestPosition = _isLatestPosition;
+        entity.IsPositionChanged = _isPositionChanged;
+        entity.NewPosExecTypeId = _newExecType?.Id;
+        entity.NewPositionName = _newExecType?.Name;
+        entity.NewOrganizationId = _newOrg?.id;
+        entity.NewOrganizationName = _newOrg?.name;
+        entity.OldPosExecTypeId = _oldExecType?.Id;
+        entity.OldPositionName = _oldExecType?.Name;
+        entity.OldOrganizationId = _oldOrg?.id;
+        entity.OldOrganizationName = _oldOrg?.name;
+        entity.Reason = _reason;
+    }
+}

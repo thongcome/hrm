@@ -477,6 +477,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Hrd_NameChangeHistory> Hrd_NameChangeHistories { get; set; }
     public virtual DbSet<Hrd_ContactPerson> Hrd_ContactPersons { get; set; }
     public virtual DbSet<Hrd_BankAccount> Hrd_BankAccounts { get; set; }
+    public virtual DbSet<Hrd_EmploymentHistory> Hrd_EmploymentHistories { get; set; }
     public virtual DbSet<Com_Bank> Com_Banks { get; set; }
     public virtual DbSet<Hrd_LifecycleTaskTemplate> Hrd_LifecycleTaskTemplates { get; set; }
     public virtual DbSet<Hrd_LifecycleTaskInstance> Hrd_LifecycleTaskInstances { get; set; }
