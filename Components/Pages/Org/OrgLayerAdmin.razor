@@ -1,0 +1,228 @@
+@page "/org/layers"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>ระดับชั้นหน่วยงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ระดับชั้นหน่วยงาน (Org Layer)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        นิยามชั้นของผังองค์กร (เช่น ชั้น 1 = บริษัท, ชั้น 2 = ฝ่าย, ชั้น 3 = แผนก) — ใช้ระบุ "รหัสระดับชั้น" ของแต่ละสังกัดในหน้าจัดการสังกัด
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มข้อมูล</MudButton>
+        <MudDivider Class="my-5" />
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_layerCode" Label="รหัสระดับชั้น" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_layer" Label="ลำดับชั้น (ตัวเลข)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อระดับชั้น" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_groupLayer" Label="กลุ่มระดับชั้น" Clearable="true">
+                    @foreach (var g in _groups)
+                    {
+                        <MudSelectItem T="string" Value="@g.code">@g.name (@g.code)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัสระดับชั้น</MudTh>
+            <MudTh>ชื่อระดับชั้น</MudTh>
+            <MudTh>ลำดับชั้น</MudTh>
+            <MudTh>กลุ่มระดับชั้น</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.layercode</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.layer</MudTd>
+            <MudTd>@ResolveGroupName(context.group_layer)</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                    @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<com_organize_layer> _items = new();
+    private List<com_org_layer_group> _groups = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+    private bool _showForm;
+
+    private string _layerCode = "";
+    private string _name = "";
+    private string? _nameEn;
+    private string? _abbr;
+    private int? _layer;
+    private string? _groupLayer;
+    private bool _isActive = true;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _groups = await context.com_org_layer_groups.Where(g => g.isActive == true).OrderBy(g => g.name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private string ResolveGroupName(string? code)
+        => string.IsNullOrWhiteSpace(code) ? "" : (_groups.FirstOrDefault(g => g.code == code)?.name ?? code);
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.com_organize_layers.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(com_organize_layer.layercode), nameof(com_organize_layer.name), nameof(com_organize_layer.name_en));
+        _items = await query.OrderBy(t => t.layer).ThenBy(t => t.name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(com_organize_layer item)
+    {
+        _editingId = item.id;
+        _layerCode = item.layercode ?? "";
+        _name = item.name;
+        _nameEn = item.name_en;
+        _abbr = item.abbr;
+        _layer = item.layer;
+        _groupLayer = item.group_layer;
+        _isActive = item.isActive;
+        _remark = item.remark;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _layerCode = "";
+        _name = "";
+        _nameEn = null;
+        _abbr = null;
+        _layer = null;
+        _groupLayer = null;
+        _isActive = true;
+        _remark = null;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_layerCode) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสระดับชั้นและชื่อระดับชั้น";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.com_organize_layers.AnyAsync(t => t.layercode == _layerCode && t.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสระดับชั้นนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.com_organize_layers.FirstOrDefaultAsync(t => t.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.layercode = _layerCode;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.abbr = _abbr;
+            existing.layer = _layer;
+            existing.group_layer = _groupLayer;
+            existing.isActive = _isActive;
+            existing.remark = _remark;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.com_organize_layers.Add(new com_organize_layer
+            {
+                layercode = _layerCode,
+                name = _name,
+                name_en = _nameEn,
+                abbr = _abbr,
+                layer = _layer,
+                group_layer = _groupLayer,
+                isActive = _isActive,
+                remark = _remark,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

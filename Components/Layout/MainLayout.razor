@@ -123,14 +123,37 @@
                 </MudNavGroup>
             }
 
-            @if (HasAny("ORG_ADMIN", "POS_ADMIN"))
+            @if (HasAny("ORG_ADMIN", "SYS_ADMIN", "POS_ADMIN", "PAY_ADMIN"))
             {
-                <MudNavGroup Title="@L.Translate("NavOrganization")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
+                <MudNavGroup Title="โครงสร้างองค์กร (Organization Structure)" Icon="@Icons.Material.Filled.AccountBalance" Expanded="false">
+                    @if (Has("SYS_ADMIN"))
+                    {
+                        <MudNavLink Href="/admin/system/companies" Icon="@Icons.Material.Filled.Apartment">@L.Translate("NavSysCompanies")</MudNavLink>
+                    }
                     @if (Has("ORG_ADMIN"))
                     {
                         <MudNavLink Href="/org/organizations" Icon="@Icons.Material.Filled.Business">@L.Translate("NavOrgUnits")</MudNavLink>
                         <MudNavLink Href="/org/section-types" Icon="@Icons.Material.Filled.Layers">@L.Translate("NavOrgUnitTypes")</MudNavLink>
                         <MudNavLink Href="/org/subsection-types" Icon="@Icons.Material.Filled.Category">@L.Translate("NavOrgSubTypes")</MudNavLink>
+                        <MudNavLink Href="/org/layers" Icon="@Icons.Material.Filled.Layers">ระดับชั้นหน่วยงาน (Org Layer)</MudNavLink>
+                        <MudNavLink Href="/org/layer-groups" Icon="@Icons.Material.Filled.Domain">กลุ่มระดับชั้นหน่วยงาน</MudNavLink>
+                    }
+                    @if (Has("POS_ADMIN"))
+                    {
+                        <MudNavLink Href="/pos/position-master" Icon="@Icons.Material.Filled.Badge">ทำเนียบตำแหน่ง (Legacy)</MudNavLink>
+                    }
+                    @if (Has("PAY_ADMIN"))
+                    {
+                        <MudNavLink Href="/pay/admin/chart-of-accounts" Icon="@Icons.Material.Filled.AccountBalance">@L.Translate("NavPayChartOfAccounts")</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
+
+            @if (HasAny("ORG_ADMIN", "POS_ADMIN"))
+            {
+                <MudNavGroup Title="@L.Translate("NavOrganization")" Icon="@Icons.Material.Filled.AccountTree" Expanded="false">
+                    @if (Has("ORG_ADMIN"))
+                    {
                         <MudNavLink Href="/org/set-boss" Icon="@Icons.Material.Filled.SupervisorAccount">@L.Translate("NavOrgSetBoss")</MudNavLink>
                         <MudNavLink Href="/org/change-history" Icon="@Icons.Material.Filled.History">@L.Translate("NavOrgChangeHistory")</MudNavLink>
                     }
@@ -201,7 +224,6 @@
                     <MudNavLink Href="/pay/admin/provident-fund-policy" Icon="@Icons.Material.Filled.Savings">@L.Translate("NavPayProvidentFund")</MudNavLink>
                     <MudNavLink Href="/pay/admin/provident-fund-rate-requests" Icon="@Icons.Material.Filled.SwapHoriz">คำขอเปลี่ยนอัตรากองทุนสำรอง</MudNavLink>
                     <MudNavLink Href="/pay/admin/provident-fund-exit-cases" Icon="@Icons.Material.Filled.ExitToApp">ปิดสมาชิกภาพกองทุนสำรอง</MudNavLink>
-                    <MudNavLink Href="/pay/admin/chart-of-accounts" Icon="@Icons.Material.Filled.AccountBalance">@L.Translate("NavPayChartOfAccounts")</MudNavLink>
                     <MudNavLink Href="/pay/admin/document-expiry" Icon="@Icons.Material.Filled.EventBusy">@L.Translate("NavPayDocExpiry")</MudNavLink>
                 }
                 @if (Has("PAY_REPORTS"))
@@ -473,7 +495,6 @@
             @if (Has("SYS_ADMIN"))
             {
                 <MudNavGroup Title="@L.Translate("NavSystemAdmin")" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
-                    <MudNavLink Href="/admin/system/companies" Icon="@Icons.Material.Filled.Apartment">@L.Translate("NavSysCompanies")</MudNavLink>
                     <MudNavLink Href="/admin/system/menus" Icon="@Icons.Material.Filled.AccountTree">@L.Translate("NavSysMenus")</MudNavLink>
                     <MudNavLink Href="/admin/system/roles" Icon="@Icons.Material.Filled.Groups">@L.Translate("NavSysRoles")</MudNavLink>
                     <MudNavLink Href="/admin/system/users" Icon="@Icons.Material.Filled.ManageAccounts">@L.Translate("NavSysUsers")</MudNavLink>

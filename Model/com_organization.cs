@@ -178,4 +178,14 @@ public partial class com_organization
 
     [StringLength(50)]
     public string? abbr_en { get; set; }
+
+    // Guards against two admins silently overwriting each other's edits —
+    // this is the entity most frequently hand-edited in the Organization
+    // module (OrgUnitEdit.razor) and previously had no concurrency
+    // protection at all, unlike Org_OrganizationChangeRequest which already
+    // carries one. EF bumps this automatically on every UPDATE; a save
+    // whose in-memory value doesn't match the row's current value throws
+    // DbUpdateConcurrencyException instead of blindly overwriting.
+    [Timestamp]
+    public byte[]? RowVersion { get; set; }
 }

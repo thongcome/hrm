@@ -50,7 +50,16 @@
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.wlevel</MudTd>
-                    <MudTd>@context.userid</MudTd>
+                    <MudTd>
+                        @if (context.userid is long uid && _approverEmployeeIds.TryGetValue(uid, out var empIdAndName))
+                        {
+                            <MudLink Href="@($"/employee/{empIdAndName.Id}")">@empIdAndName.Name</MudLink>
+                        }
+                        else
+                        {
+                            @context.userid
+                        }
+                    </MudTd>
                     <MudTd>@context.jobstatus</MudTd>
                     <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
                     <MudTd>@context.comment</MudTd>
@@ -73,6 +82,7 @@
     private job_master? _job;
     private string _requesterName = "";
     private bool _notFound;
+    private Dictionary<long, (long Id, string Name)> _approverEmployeeIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -99,6 +109,23 @@
             _job = await context.job_masters
                 .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
                 .FirstOrDefaultAsync(j => j.jobmasterid == _request.JobMasterId);
+
+            if (_job is not null)
+            {
+                // Drill-down: resolve each approver row's userid -> sc_user.empid
+                // -> Hremployee, so the table links to the employee record
+                // instead of showing a raw internal userid.
+                var userIds = _job.job_user_lists.Where(a => a.userid != null).Select(a => a.userid!.Value).Distinct().ToList();
+                var scUsers = await context.sc_users.Where(u => userIds.Contains(u.userid) && u.empid != null).ToListAsync();
+                var empNos = scUsers.Select(u => u.empid!).Distinct().ToList();
+                var employees = await context.Hremployee.Where(e => empNos.Contains(e.EmpNo)).ToListAsync();
+                foreach (var su in scUsers)
+                {
+                    var emp = employees.FirstOrDefault(e => e.EmpNo == su.empid);
+                    if (emp is not null)
+                        _approverEmployeeIds[su.userid] = (emp.id, $"{emp.EmpName} {emp.EmpSurname}");
+                }
+            }
         }
     }
 

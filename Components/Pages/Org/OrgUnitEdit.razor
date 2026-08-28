@@ -157,6 +157,7 @@ else
     private com_organization? _selectedParent;
     private Com_ChartOfAccount? _selectedCostCenter;
     private string? _originalParentCode;
+    private byte[]? _originalRowVersion;
     private DateTime? _pendingEffectiveFrom = DateTime.Today.AddDays(1);
     private string? _pendingRequestNote;
     private long _actorUserId;
@@ -197,6 +198,7 @@ else
         _endDate = org.enddate;
         _remark = org.remark;
         _originalParentCode = org.parent_code;
+        _originalRowVersion = org.RowVersion;
 
         if (!string.IsNullOrWhiteSpace(org.parent_code))
             _selectedParent = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code);
@@ -291,6 +293,16 @@ else
             existing.startdate = _startDate;
             existing.enddate = _endDate;
             existing.remark = _remark;
+
+            // Concurrency guard: tell EF this UPDATE should only succeed if
+            // the row's RowVersion still matches what THIS form loaded (not
+            // whatever `existing` just got fetched with above, which would
+            // always match itself and never detect a conflict). If someone
+            // else saved this org in between, RowVersion in the DB has
+            // already moved on, the UPDATE affects 0 rows, and EF throws
+            // DbUpdateConcurrencyException instead of silently overwriting.
+            context.Entry(existing).Property(e => e.RowVersion).OriginalValue = _originalRowVersion;
+
             await context.SaveChangesAsync();
 
             if (parentChanged)
@@ -319,6 +331,10 @@ else
             }
 
             Nav.NavigateTo($"/org/organizations/{Id}");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _error = "ข้อมูลนี้ถูกแก้ไขโดยผู้อื่นไปแล้วระหว่างที่คุณกำลังแก้ไข — กรุณาโหลดหน้านี้ใหม่แล้วลองอีกครั้ง เพื่อไม่ให้เขียนทับการแก้ไขของอีกฝ่าย";
         }
         catch (Exception ex)
         {

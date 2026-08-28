@@ -60,7 +60,7 @@
         <RowTemplate>
             <MudTd>@(_organizations.IndexOf(context) + 1)</MudTd>
             <MudTd>@context.code</MudTd>
-            <MudTd>@context.name</MudTd>
+            <MudTd><MudLink Href="@($"/org/organizations/{context.id}")">@context.name</MudLink></MudTd>
             <MudTd>@(context.approver_name ?? "— ยังไม่ได้กำหนด —")</MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartAssign(context))">กำหนดหัวหน้า</MudButton>
@@ -69,6 +69,9 @@
         <NoRecordsContent>
             <MudText Typo="Typo.body2">ไม่พบข้อมูล</MudText>
         </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
     </MudTable>
 </MudPaper>
 

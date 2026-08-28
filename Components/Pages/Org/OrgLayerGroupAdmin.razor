@@ -1,0 +1,192 @@
+@page "/org/layer-groups"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+<PageTitle>กลุ่มระดับชั้นหน่วยงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">กลุ่มระดับชั้นหน่วยงาน (Org Layer Group)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ใช้จัดกลุ่ม "ระดับชั้นหน่วยงาน" (com_organize_layer) เผื่อบริษัท/สายธุรกิจต่างกันใช้โครงสร้างชั้นไม่เหมือนกัน
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มข้อมูล</MudButton>
+        <MudDivider Class="my-5" />
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_name" Label="ชื่อกลุ่ม" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbr" Label="ชื่อย่อ" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อกลุ่ม</MudTh>
+            <MudTh>ชื่อย่อ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.abbr</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@((context.isActive ?? false) ? Color.Success : Color.Default)">
+                    @((context.isActive ?? false) ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<com_org_layer_group> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+    private bool _showForm;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _nameEn;
+    private string? _abbr;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.com_org_layer_groups.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(com_org_layer_group.code), nameof(com_org_layer_group.name), nameof(com_org_layer_group.name_en));
+        _items = await query.OrderBy(t => t.name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(com_org_layer_group item)
+    {
+        _editingId = item.id;
+        _code = item.code ?? "";
+        _name = item.name ?? "";
+        _nameEn = item.name_en;
+        _abbr = item.abbr;
+        _isActive = item.isActive ?? true;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _nameEn = null;
+        _abbr = null;
+        _isActive = true;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อกลุ่ม";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.com_org_layer_groups.AnyAsync(t => t.code == _code && t.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.com_org_layer_groups.FirstOrDefaultAsync(t => t.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.code = _code;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.abbr = _abbr;
+            existing.isActive = _isActive;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.com_org_layer_groups.Add(new com_org_layer_group
+            {
+                code = _code,
+                name = _name,
+                name_en = _nameEn,
+                abbr = _abbr,
+                isActive = _isActive,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

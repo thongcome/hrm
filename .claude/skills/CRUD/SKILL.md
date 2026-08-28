@@ -35,6 +35,19 @@ This helper is standalone — it doesn't depend on `CrudScaffold.razor` — so i
 
 Note: bind with `Value`/`ValueChanged`, not `@bind-Value`, when you also need an explicit `ValueChanged` handler — combining `@bind-Value` with an explicit `ValueChanged` on the same component throws a Razor compile error (RZ10010) because `@bind-Value` already generates one.
 
+**Every list's `MudTable` gets a pager with a selectable page size, always** — not conditional on how big the table looks today, same reasoning as the search-gating rule below (row count isn't knowable in advance). Add:
+
+```razor
+<MudTable Items="_items" Dense="true" Hover="true">
+    ...
+    <PagerContent>
+        <MudTablePager />
+    </PagerContent>
+</MudTable>
+```
+
+`MudTablePager` ships with a rows-per-page dropdown out of the box (10/25/50/100) — no extra parameters needed for the "เลือกได้ว่าแสดงกี่รายการต่อหน้า" requirement. Reference: `Components/Pages/Pos/PositionSlotAdmin.razor`.
+
 **Don't auto-load the full list on page entry for a table that can grow large.** The debounced live-search above is fine for a small, bounded lookup table (a handful to a few dozen rows — e.g. a status/category list) where loading everything up front costs nothing. For anything that can realistically grow into the hundreds or thousands of rows (most real business entities — organizations, employees, transactions), the page must start empty with a prompt ("กรอกคำค้น... แล้วกด \"ค้นหา\" เพื่อแสดงรายการ") and only query once the user explicitly searches — a "ค้นหา" button (plus Enter-to-search on the text field is fine as a convenience) rather than a query firing on `OnInitializedAsync`. See `Components/Pages/Org/OrganizationAdmin.razor` for the reference shape: `_hasSearched` gates whether the table or the prompt renders, and `SearchAsync()` is only ever called from the button/Enter-key handler, never from `OnInitializedAsync`.
 
 ## 3. PDPA badge + access log on pages showing personal data

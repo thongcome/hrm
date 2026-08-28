@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260828080133_AddOrganizationRowVersion")]
+    partial class AddOrganizationRowVersion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -18419,27 +18422,9 @@ namespace HRM.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<string>("AttachmentFileName")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("AttachmentStoragePath")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<string>("Company")
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
-
-                    b.Property<string>("DelegateEmpId")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("delegateEmplD");
-
-                    b.Property<string>("DelegateName")
-                        .HasMaxLength(250)
-                        .HasColumnType("nvarchar(250)")
-                        .HasColumnName("NameTh");
 
                     b.Property<string>("DeptEn")
                         .HasMaxLength(250)
@@ -18449,9 +18434,8 @@ namespace HRM.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date")
-                        .HasColumnName("EnddateDG");
+                    b.Property<DateOnly?>("EnddateDG")
+                        .HasColumnType("date");
 
                     b.Property<string>("LineExco")
                         .HasMaxLength(250)
@@ -18461,13 +18445,9 @@ namespace HRM.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<long?>("OrganizationId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("OriginalApproverEmpId")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasColumnName("approverEmpid");
+                    b.Property<string>("NameTh")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
 
                     b.Property<string>("Position")
                         .HasMaxLength(250)
@@ -18481,9 +18461,8 @@ namespace HRM.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
-                    b.Property<DateOnly?>("StartDate")
-                        .HasColumnType("date")
-                        .HasColumnName("StartDateDG");
+                    b.Property<DateOnly?>("StartDateDG")
+                        .HasColumnType("date");
 
                     b.Property<string>("a")
                         .HasMaxLength(50)
@@ -18492,7 +18471,15 @@ namespace HRM.Migrations
                     b.Property<int?>("approvelevel")
                         .HasColumnType("int");
 
+                    b.Property<string>("approverEmpid")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("comcode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("delegateEmplD")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -18507,8 +18494,6 @@ namespace HRM.Migrations
 
                     b.HasKey("toaid")
                         .HasName("PK_TOA");
-
-                    b.HasIndex("OrganizationId");
 
                     b.ToTable("toa");
                 });
@@ -22532,15 +22517,6 @@ namespace HRM.Migrations
                         .HasConstraintName("FK_task_assign_Task_Master");
 
                     b.Navigation("task");
-                });
-
-            modelBuilder.Entity("HRM.Models.toa", b =>
-                {
-                    b.HasOne("HRM.Models.com_organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId");
-
-                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("HRM.Models.util_document", b =>

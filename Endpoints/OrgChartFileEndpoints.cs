@@ -41,5 +41,37 @@ public static class OrgChartFileEndpoints
             var contentType = path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
             return Results.File(bytes, contentType);
         });
+
+        // Supporting evidence (email/document) HR attached to a temporary
+        // approver-delegation row (Model/toa.cs) — gated behind Menu:ORG_ADMIN
+        // (organization admins only, unlike the photo route above) and
+        // audit-logged on every download, same discipline as PayrollFileEndpoints.
+        group.MapGet("/approver-delegation/{toaId:long}", async (
+            long toaId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage,
+            HRM.Services.Audit.IAuditLogger auditLogger, HttpContext httpContext) =>
+        {
+            if (!httpContext.User.HasClaim("menu", "ORG_ADMIN"))
+                return Results.Forbid();
+
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var delegation = await context.toas.FirstOrDefaultAsync(d => d.toaid == toaId);
+            if (delegation is null || string.IsNullOrWhiteSpace(delegation.AttachmentStoragePath))
+                return Results.NotFound();
+
+            byte[] bytes;
+            try
+            {
+                bytes = await storage.ReadAsync(delegation.AttachmentStoragePath);
+            }
+            catch (FileNotFoundException)
+            {
+                return Results.NotFound();
+            }
+
+            await auditLogger.LogAccessAsync("toa", toaId.ToString(), isSensitive: true,
+                note: $"downloaded approver-delegation attachment for org id={delegation.OrganizationId}");
+
+            return Results.File(bytes, "application/octet-stream", delegation.AttachmentFileName);
+        });
     }
 }

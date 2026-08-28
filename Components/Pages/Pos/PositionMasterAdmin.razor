@@ -1,0 +1,249 @@
+@page "/pos/position-master"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>ทำเนียบตำแหน่ง (Legacy)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ทำเนียบตำแหน่ง (com_position)</MudText>
+    <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
+        ตารางนี้เป็นข้อมูลชุดเดิมจากระบบ JSP (ชื่อตำแหน่ง + ช่วงเงินเดือน) ซ้อนทับกับแนวคิด "Job" ใน
+        <MudLink Href="/pos/exec-types">/pos/exec-types</MudLink> ที่โมดูล Job &amp; Competency ใช้งานอยู่จริง —
+        หน้านี้ทำไว้ให้ดู/แก้ไขข้อมูลเดิมได้ครบ แต่ยังไม่ได้ตัดสินใจว่าจะรวมกับ Pos_ExecType หรือไม่
+    </MudAlert>
+
+    <MudDivider Class="my-4" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มข้อมูล</MudButton>
+        <MudDivider Class="my-5" />
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัสตำแหน่ง" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_posType" Label="ประเภทตำแหน่ง" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_costCenterCode" Label="รหัสศูนย์ต้นทุน" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อตำแหน่ง" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_compCodeAll" Label="รหัสบริษัท (comp_code_all)" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="เงินเดือนขั้นต่ำ" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="เงินเดือนสูงสุด" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มใช้งาน" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิก" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อตำแหน่ง</MudTh>
+            <MudTh>ประเภท</MudTh>
+            <MudTh>ช่วงเงินเดือน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.pos_type</MudTd>
+            <MudTd>@FormatSalaryRange(context.min_salary, context.max_salary)</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.isActive ? Color.Success : Color.Default)">
+                    @(context.isActive ? "ใช้งาน" : "ไม่ใช้งาน")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<com_position> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private long? _editingId;
+    private bool _showForm;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _nameEn;
+    private string? _compCodeAll;
+    private string? _posType;
+    private string? _costCenterCode;
+    private bool _isActive = true;
+    private decimal? _minSalary;
+    private decimal? _maxSalary;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private string? _remark;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private static string FormatSalaryRange(decimal? min, decimal? max)
+    {
+        if (min is null && max is null) return "";
+        return $"{min?.ToString("N0") ?? "-"} - {max?.ToString("N0") ?? "-"}";
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.com_positions.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(com_position.code), nameof(com_position.name), nameof(com_position.name_en));
+        _items = await query.OrderBy(t => t.code).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(com_position item)
+    {
+        _editingId = item.id;
+        _code = item.code ?? "";
+        _name = item.name ?? "";
+        _nameEn = item.name_en;
+        _compCodeAll = item.comp_code_all;
+        _posType = item.pos_type;
+        _costCenterCode = item.costcentercode;
+        _isActive = item.isActive;
+        _minSalary = item.min_salary;
+        _maxSalary = item.max_salary;
+        _startDate = item.startdate;
+        _endDate = item.enddate;
+        _remark = item.remark;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _nameEn = null;
+        _compCodeAll = null;
+        _posType = null;
+        _costCenterCode = null;
+        _isActive = true;
+        _minSalary = null;
+        _maxSalary = null;
+        _startDate = null;
+        _endDate = null;
+        _remark = null;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อตำแหน่ง";
+            return;
+        }
+        if (_minSalary is not null && _maxSalary is not null && _minSalary > _maxSalary)
+        {
+            _error = "เงินเดือนขั้นต่ำต้องไม่มากกว่าเงินเดือนสูงสุด";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.com_positions.AnyAsync(t => t.code == _code && t.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสตำแหน่งนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.com_positions.FirstOrDefaultAsync(t => t.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.code = _code;
+            existing.name = _name;
+            existing.name_en = _nameEn;
+            existing.comp_code_all = _compCodeAll;
+            existing.pos_type = _posType;
+            existing.costcentercode = _costCenterCode;
+            existing.isActive = _isActive;
+            existing.min_salary = _minSalary;
+            existing.max_salary = _maxSalary;
+            existing.startdate = _startDate;
+            existing.enddate = _endDate;
+            existing.remark = _remark;
+            existing.moddate = DateTime.Now;
+        }
+        else
+        {
+            context.com_positions.Add(new com_position
+            {
+                code = _code,
+                name = _name,
+                name_en = _nameEn,
+                comp_code_all = _compCodeAll,
+                pos_type = _posType,
+                costcentercode = _costCenterCode,
+                isActive = _isActive,
+                min_salary = _minSalary,
+                max_salary = _maxSalary,
+                startdate = _startDate,
+                enddate = _endDate,
+                remark = _remark,
+                moddate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}

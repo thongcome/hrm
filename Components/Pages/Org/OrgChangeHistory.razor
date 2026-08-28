@@ -40,7 +40,16 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@ChangeTypeLabel(context.Request.ChangeType)</MudTd>
-                <MudTd>@(context.Request.TargetOrganizationCode ?? context.Request.NewCode)</MudTd>
+                <MudTd>
+                    @if (context.Request.TargetOrganizationId is long orgId)
+                    {
+                        <MudLink Href="@($"/org/organizations/{orgId}")">@context.Request.TargetOrganizationCode</MudLink>
+                    }
+                    else
+                    {
+                        @(context.Request.TargetOrganizationCode ?? context.Request.NewCode)
+                    }
+                </MudTd>
                 <MudTd>@OrgChangeAuditFormatter.DescribeRequest(context.Request)</MudTd>
                 <MudTd>@context.Request.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@(context.Request.RequestedByEmpId ?? context.Request.RequestedByUserId.ToString())</MudTd>
@@ -48,6 +57,9 @@
                 <MudTd><MudChip T="string" Color="@context.StatusColor" Size="Size.Small">@context.StatusText</MudChip></MudTd>
                 <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/change-requests/{context.Request.Id}")">ดู</MudButton></MudTd>
             </RowTemplate>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
         </MudTable>
     }
 
@@ -89,6 +101,9 @@
                 <MudTd>@context.Description</MudTd>
                 <MudTd>@context.ActorDisplay</MudTd>
             </RowTemplate>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
         </MudTable>
     }
 </MudPaper>

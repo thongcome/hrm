@@ -26,8 +26,11 @@ public static class OrgChangeAuditFormatter
         if (Changed(old, @new, "parent_code"))
             clauses.Add($"ย้าย {Get(@new, "name") ?? Get(old, "name")} จากสังกัด {Get(old, "parent_code") ?? "(สูงสุด)"} ไป {Get(@new, "parent_code") ?? "(สูงสุด)"}");
 
+        if (Changed(old, @new, "boss_emp_id") || Changed(old, @new, "boss_name"))
+            clauses.Add($"เปลี่ยนหัวหน้าแผนกของ {Get(@new, "name") ?? Get(old, "name")} จาก {Get(old, "boss_name") ?? "(ว่าง)"} เป็น {Get(@new, "boss_name") ?? "(ว่าง)"}");
+
         if (Changed(old, @new, "approver_empid") || Changed(old, @new, "approver_name"))
-            clauses.Add($"เปลี่ยนหัวหน้า {Get(@new, "name") ?? Get(old, "name")} จาก {Get(old, "approver_name") ?? "(ว่าง)"} เป็น {Get(@new, "approver_name") ?? "(ว่าง)"}");
+            clauses.Add($"เปลี่ยนผู้อนุมัติของ {Get(@new, "name") ?? Get(old, "name")} จาก {Get(old, "approver_name") ?? "(ว่าง)"} เป็น {Get(@new, "approver_name") ?? "(ว่าง)"}");
 
         if (Changed(old, @new, "name"))
             clauses.Add($"เปลี่ยนชื่อจาก {Get(old, "name")} เป็น {Get(@new, "name")}");

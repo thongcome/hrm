@@ -373,6 +373,7 @@
 
         Pos_PositionSlot slot;
         long? oldHremployeeId;
+        long? oldOrganizationId;
         bool wasCountedInThisScope;
 
         if (_editingId is long id)
@@ -380,6 +381,7 @@
             var existing = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == _companyId);
             if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
             oldHremployeeId = existing.HremployeeId; // captured before overwrite below
+            oldOrganizationId = existing.OrganizationId; // captured before overwrite below — IsBoss recompute needs this
             // Was this slot already counting toward the SAME budget scope
             // before this edit? If so, saving again isn't a "new" addition
             // to headcount and shouldn't trigger the budget check.
@@ -432,6 +434,7 @@
             };
             context.Pos_PositionSlots.Add(slot);
             oldHremployeeId = null; // brand-new row — no prior occupant
+            oldOrganizationId = null;
             wasCountedInThisScope = false;
         }
 
@@ -463,7 +466,7 @@
         // before SaveChangesAsync rather than as a second round-trip.
         try
         {
-            await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, actorScope);
+            await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, actorScope, oldOrganizationId);
         }
         catch (InvalidOperationException ex)
         {

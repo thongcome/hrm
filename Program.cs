@@ -388,6 +388,7 @@ builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.A
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
+builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
