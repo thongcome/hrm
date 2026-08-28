@@ -19,15 +19,45 @@
             <MudText Typo="Typo.h5">ข้อมูลทั่วไป</MudText>
             <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
         </MudStack>
-        <MudSimpleTable Dense="true" Class="mt-2">
-            <tbody>
-                <tr><td>ชื่อ-สกุล</td><td>@_emp.EmpName @_emp.EmpSurname</td><td>รหัสพนักงาน</td><td>@_emp.EmpNo</td></tr>
-                <tr><td>เลขประจำตัวประชาชน</td><td>@_emp.IdCard</td><td>วันเกิด</td><td>@(_emp.BirthDate?.ToString("dd/MM/yyyy"))</td></tr>
-                <tr><td>วันเริ่มงาน</td><td>@(_emp.WorkDate?.ToString("dd/MM/yyyy"))</td><td>อายุงาน</td><td>@TenureText()</td></tr>
-                <tr><td>ตำแหน่ง</td><td colspan="3">@(_currentSlot?.Name ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</td></tr>
-                <tr><td>สังกัด</td><td colspan="3">@_orgName</td></tr>
-            </tbody>
-        </MudSimpleTable>
+
+        @if (_editing)
+        {
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="3"><MudTextField @bind-Value="_formPrename" Label="คำนำหน้า" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_formEmpName" Label="ชื่อ" Required="true" /></MudItem>
+                <MudItem xs="12" sm="5"><MudTextField @bind-Value="_formEmpSurname" Label="นามสกุล" Required="true" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField Value="@_emp.EmpNo" Label="รหัสพนักงาน" ReadOnly="true" HelperText="แก้รหัสพนักงานไม่ได้จากหน้านี้" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_formIdCard" Label="เลขประจำตัวประชาชน" /></MudItem>
+                <MudItem xs="12" sm="6"><MudDatePicker Label="วันเกิด" @bind-Date="_formBirthDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">วันเริ่มงาน / ตำแหน่ง / สังกัด</MudText>
+                    <MudText Typo="Typo.body2">แก้ไขได้ที่ <MudLink Href="@($"/pay/employees/{Id}")">หน้าจัดการพนักงาน (Payroll)</MudLink> และ <MudLink Href="@($"/pos/position-slots?employeeId={Id}")">หน้าเลขที่อัตรา</MudLink></MudText>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEditAsync">ยกเลิก</MudButton>
+            </MudStack>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Class="mt-2">
+                <tbody>
+                    <tr><td>ชื่อ-สกุล</td><td>@_emp.PrenameCode @_emp.EmpName @_emp.EmpSurname</td><td>รหัสพนักงาน</td><td>@_emp.EmpNo</td></tr>
+                    <tr><td>เลขประจำตัวประชาชน</td><td>@_emp.IdCard</td><td>วันเกิด</td><td>@(_emp.BirthDate?.ToString("dd/MM/yyyy"))</td></tr>
+                    <tr><td>วันเริ่มงาน</td><td>@(_emp.WorkDate?.ToString("dd/MM/yyyy"))</td><td>อายุงาน</td><td>@TenureText()</td></tr>
+                    <tr><td>ตำแหน่ง</td><td colspan="3">@(_currentSlot?.Name ?? "— ไม่ได้ผูกกับเลขที่อัตราใด —")</td></tr>
+                    <tr><td>สังกัด</td><td colspan="3">@_orgName</td></tr>
+                </tbody>
+            </MudSimpleTable>
+            <MudButton Color="Color.Primary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Class="mt-3" OnClick="StartEdit">แก้ไข</MudButton>
+        }
     </MudPaper>
 }
 
@@ -37,6 +67,14 @@
     private Hremployee? _emp;
     private Pos_PositionSlot? _currentSlot;
     private string? _orgName;
+
+    private bool _editing;
+    private string? _formPrename;
+    private string? _formEmpName;
+    private string? _formEmpSurname;
+    private string? _formIdCard;
+    private DateTime? _formBirthDate;
+    private string? _error;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -58,6 +96,54 @@
         }
 
         await AuditLogger.LogAccessAsync("Hremployee", Id.ToString(), isSensitive: true, note: "employee detail view");
+    }
+
+    private void StartEdit()
+    {
+        if (_emp is null) return;
+        _formPrename = _emp.PrenameCode;
+        _formEmpName = _emp.EmpName;
+        _formEmpSurname = _emp.EmpSurname;
+        _formIdCard = _emp.IdCard;
+        _formBirthDate = _emp.BirthDate;
+        _error = null;
+        _editing = true;
+    }
+
+    private async Task CancelEditAsync()
+    {
+        _error = null;
+        _editing = false;
+        await OnParametersSetAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_formEmpName) || string.IsNullOrWhiteSpace(_formEmpSurname))
+        {
+            _error = "กรุณากรอกชื่อและนามสกุล";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (existing is null)
+        {
+            _error = "ไม่พบข้อมูลพนักงานนี้แล้ว";
+            return;
+        }
+
+        existing.PrenameCode = _formPrename;
+        existing.EmpName = _formEmpName;
+        existing.EmpSurname = _formEmpSurname;
+        existing.IdCard = _formIdCard;
+        existing.BirthDate = _formBirthDate;
+        await context.SaveChangesAsync();
+
+        _editing = false;
+        await OnParametersSetAsync();
     }
 
     private string TenureText()

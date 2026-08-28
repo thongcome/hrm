@@ -199,7 +199,7 @@
         _editingId = id;
         _form = course;
         _materials = await context.doc_centers.Where(d => d.doctypecode == "LMS_MATERIAL" && d.refid == id && d.isActive == true).ToListAsync();
-        _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == id).OrderBy(q => q.SortOrder).ToListAsync();
+        _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == id && q.IsActive).OrderBy(q => q.SortOrder).ToListAsync();
         _showForm = true;
         _error = null;
     }
@@ -279,7 +279,7 @@
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var sortOrder = await context.Lms_QuizQuestions.CountAsync(q => q.CourseId == courseId);
+        var sortOrder = await context.Lms_QuizQuestions.CountAsync(q => q.CourseId == courseId && q.IsActive);
         context.Lms_QuizQuestions.Add(new Lms_QuizQuestion
         {
             CourseId = courseId,
@@ -293,7 +293,7 @@
         });
         await context.SaveChangesAsync();
 
-        _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == courseId).OrderBy(q => q.SortOrder).ToListAsync();
+        _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == courseId && q.IsActive).OrderBy(q => q.SortOrder).ToListAsync();
         _newQ = new() { CorrectChoice = "A" };
     }
 
@@ -303,9 +303,9 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         var q = await context.Lms_QuizQuestions.FirstOrDefaultAsync(x => x.Id == questionId);
         if (q is null) return;
-        context.Lms_QuizQuestions.Remove(q);
+        q.IsActive = false;
         await context.SaveChangesAsync();
-        _questions = await context.Lms_QuizQuestions.Where(x => x.CourseId == courseId).OrderBy(x => x.SortOrder).ToListAsync();
+        _questions = await context.Lms_QuizQuestions.Where(x => x.CourseId == courseId && x.IsActive).OrderBy(x => x.SortOrder).ToListAsync();
     }
 
     private static string DeliveryLabel(CourseDeliveryType t) => t switch

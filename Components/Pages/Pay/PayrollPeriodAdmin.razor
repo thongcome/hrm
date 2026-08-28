@@ -27,40 +27,54 @@
     {
         <MudDivider Class="my-4" />
 
-        <MudGrid>
-            <MudItem xs="12" sm="4">
-                <MudNumericField @bind-Value="_newModel.Year" Label="@L.Translate("YearAdCeLabel")" Min="2020" Max="2100" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudSelect T="int" @bind-Value="_newModel.Month" Label="@L.Translate("MonthLabel")">
-                    @for (var m = 1; m <= 12; m++)
-                    {
-                        var month = m;
-                        <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudNumericField @bind-Value="_newModel.TermNo" Label="@L.Translate("TermNoLabel")" Min="1" Max="9" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudDatePicker @bind-Date="_newPeriodStart" Label="@L.Translate("PeriodStartDateLabel")" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudDatePicker @bind-Date="_newPeriodEnd" Label="@L.Translate("PeriodEndDateLabel")" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_newModel.Label" Label="@L.Translate("DisplayLabelField")"
-                    HelperText="@L.Translate("DisplayLabelHelperText")" />
-            </MudItem>
-        </MudGrid>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.h6">@L.Translate("PeriodAdminHeading")</MudText>
+            @if (!_showForm)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddPeriodButton")</MudButton>
+            }
+        </MudStack>
 
-        @if (!string.IsNullOrEmpty(_error))
+        @if (_showForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-        }
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_newModel.Year" Label="@L.Translate("YearAdCeLabel")" Min="2020" Max="2100" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="int" @bind-Value="_newModel.Month" Label="@L.Translate("MonthLabel")">
+                        @for (var m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_newModel.TermNo" Label="@L.Translate("TermNoLabel")" Min="1" Max="9" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_newPeriodStart" Label="@L.Translate("PeriodStartDateLabel")" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_newPeriodEnd" Label="@L.Translate("PeriodEndDateLabel")" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_newModel.Label" Label="@L.Translate("DisplayLabelField")"
+                        HelperText="@L.Translate("DisplayLabelHelperText")" />
+                </MudItem>
+            </MudGrid>
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="AddPeriodAsync">@L.Translate("AddPeriodButton")</MudButton>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudStack Row="true" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddPeriodAsync">@L.Translate("AddPeriodButton")</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="@(() => _showForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
 
         <MudDivider Class="my-5" />
 
@@ -95,6 +109,7 @@
     private string? _companyId;
     private List<Pay_PayrollPeriod> _periods = new();
     private string? _error;
+    private bool _showForm;
     private DateTime? _newPeriodStart;
     private DateTime? _newPeriodEnd;
 
@@ -127,6 +142,15 @@
             .Where(p => p.CompanyId == _companyId)
             .OrderByDescending(p => p.Year).ThenByDescending(p => p.Month).ThenBy(p => p.TermNo)
             .ToListAsync();
+    }
+
+    private void OpenCreate()
+    {
+        _error = null;
+        _newModel = new NewPeriodModel();
+        _newPeriodStart = new DateTime(_newModel.Year, _newModel.Month, 1);
+        _newPeriodEnd = _newPeriodStart.Value.AddMonths(1).AddDays(-1);
+        _showForm = true;
     }
 
     private async Task AddPeriodAsync()
@@ -171,6 +195,7 @@
 
         Snackbar.Add(L.Translate("PeriodAddedSuccess"), Severity.Success);
         _newModel = new NewPeriodModel();
+        _showForm = false;
         await LoadAsync();
     }
 

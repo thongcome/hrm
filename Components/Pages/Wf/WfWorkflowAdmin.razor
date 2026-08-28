@@ -7,6 +7,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
 <PageTitle>จัดการ Workflow</PageTitle>
@@ -52,6 +53,17 @@
     </text>;
 
     private RenderFragment RenderViewFields(wf_workflow e) => @<text>
+        @if (e.isactive == true)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                Workflow นี้เปิดใช้งานอยู่ — ห้ามแก้ไขทุกกรณี (ระดับการอนุมัติ/ผู้อนุมัติทุกตารางที่ผูกกับ workflow นี้ก็ล็อกด้วยเช่นกัน)
+                ถ้าต้องการเปลี่ยนแปลง ให้กด "ยกเลิกการใช้งาน" ด้านล่างก่อน แล้วสร้าง workflow ใหม่แทน
+            </MudAlert>
+            @if (_canEdit)
+            {
+                <MudButton Color="Color.Error" Variant="Variant.Outlined" Class="mb-3" OnClick="@(() => DeactivateAsync(e))">ยกเลิกการใช้งาน (Deactivate)</MudButton>
+            }
+        }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="4"><MudTextField Value="@e.workflowcode" Label="รหัส Workflow" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="8"><MudTextField Value="@e.wname" Label="ชื่อ" ReadOnly="true" /></MudItem>
@@ -91,6 +103,22 @@
         return await query.OrderBy(e => e.workflowcode).ToListAsync();
     }
 
+    private async Task DeactivateAsync(wf_workflow e)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.wf_workflows.FirstOrDefaultAsync(x => x.workflowid == e.workflowid);
+        if (existing is null)
+        {
+            Snackbar.Add("ไม่พบ workflow นี้ในระบบแล้ว", Severity.Error);
+            return;
+        }
+
+        existing.isactive = false;
+        await context.SaveChangesAsync();
+        e.isactive = false; // reflect immediately in the currently-open view panel
+        Snackbar.Add("ยกเลิกการใช้งาน workflow นี้แล้ว — สร้าง workflow ใหม่ถ้าต้องการปรับรูปแบบ", Severity.Info);
+    }
+
     private async Task<wf_workflow> SaveAsync(wf_workflow entity)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -102,6 +130,8 @@
         {
             var existing = await context.wf_workflows.FirstOrDefaultAsync(e => e.workflowid == entity.workflowid)
                 ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+            if (existing.isactive == true)
+                throw new InvalidOperationException(HRM.Services.Workflow.WorkflowLockGuard.LockedMessage);
             existing.workflowcode = entity.workflowcode;
             existing.wname = entity.wname;
             existing.wstatus = entity.wstatus;

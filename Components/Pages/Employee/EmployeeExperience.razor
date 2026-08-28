@@ -25,24 +25,28 @@ else
         </MudStack>
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประสบการณ์" : "แก้ไข")</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_company" Label="บริษัท" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_position" Label="ตำแหน่ง" /></MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มงาน" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
-        </MudGrid>
-
-        <MudStack Row="true" Spacing="2" Class="mt-3">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-            @if (_editingId is not null)
-            {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-            }
+        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">+ เพิ่มประสบการณ์</MudButton>
         </MudStack>
 
-        <MudDivider Class="my-5" />
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประสบการณ์" : "แก้ไข")</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_company" Label="บริษัท" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_position" Label="ตำแหน่ง" /></MudItem>
+                <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มงาน" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+            </MudGrid>
+
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-5" />
+        }
 
         <MudTable Items="_items" Dense="true" Hover="true">
             <HeaderContent>
@@ -72,6 +76,7 @@ else
     private Hremployee? _emp;
     private List<Hrd_Experience> _items = new();
     private long? _editingId;
+    private bool _showForm;
 
     private string? _company;
     private string? _position;
@@ -95,6 +100,12 @@ else
         _items = await context.Hrd_Experiences.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.StartDate).ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Hrd_Experience item)
     {
         _editingId = item.Id;
@@ -103,12 +114,14 @@ else
         _startDate = item.StartDate?.ToDateTime(TimeOnly.MinValue);
         _endDate = item.EndDate?.ToDateTime(TimeOnly.MinValue);
         _remark = item.Remark;
+        _showForm = true;
     }
 
     private void CancelEdit()
     {
         _editingId = null;
         _company = null; _position = null; _startDate = null; _endDate = null; _remark = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

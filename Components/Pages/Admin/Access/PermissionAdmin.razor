@@ -58,6 +58,51 @@
         </MudPaper>
 
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+
+        <MudDivider Class="my-6" />
+
+        <MudText Typo="Typo.subtitle1" Class="mb-1">สิทธิ์ปุ่ม เพิ่ม/แก้ไข/ลบ ต่อรายการ (sc_program)</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">
+            แยกจากสิทธิ์เห็นเมนูด้านบน — ควบคุมว่ากลุ่มผู้ใช้นี้เห็นปุ่ม "เพิ่ม/แก้ไข/ลบ" ในหน้าไหนได้บ้าง (เฉพาะหน้าที่ผูกกลไกนี้ไว้แล้ว — ดูวิธีผูกใน CRUD skill)
+        </MudText>
+
+        @if (_programGroups.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">ยังไม่มีหน้าใดผูกกลไกนี้ไว้</MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true">
+                <thead><tr><th>รายการ</th><th>เพิ่ม</th><th>แก้ไข</th><th>ลบ</th></tr></thead>
+                <tbody>
+                    @foreach (var group in _programGroups)
+                    {
+                        <tr>
+                            <td>@group.EntityLabel</td>
+                            <td>
+                                @if (group.CreateId is long cid)
+                                {
+                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(cid)" ValueChanged="@((bool v) => ToggleProgram(cid, v))" Dense="true" />
+                                }
+                            </td>
+                            <td>
+                                @if (group.EditId is long eid)
+                                {
+                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(eid)" ValueChanged="@((bool v) => ToggleProgram(eid, v))" Dense="true" />
+                                }
+                            </td>
+                            <td>
+                                @if (group.DeleteId is long did)
+                                {
+                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(did)" ValueChanged="@((bool v) => ToggleProgram(did, v))" Dense="true" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProgramsAsync">บันทึกสิทธิ์ปุ่ม</MudButton>
+        }
     }
 </MudPaper>
 
@@ -69,6 +114,14 @@
     private HashSet<long> _editableMenuIds = new();
     private string? _error;
     private string _actor = "admin";
+
+    // sc_program rows for the same (entity, action) triple grouped into one
+    // row — "EMPLOYEE_CREATE"/"EMPLOYEE_EDIT"/"EMPLOYEE_DELETE" collapse into
+    // one "EMPLOYEE" line with 3 checkbox columns, matching the CRUD skill's
+    // seeding convention (see .claude/skills/CRUD/SKILL.md).
+    private record ProgramGroup(string EntityLabel, long? CreateId, long? EditId, long? DeleteId);
+    private List<ProgramGroup> _programGroups = new();
+    private HashSet<long> _checkedProgramIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,6 +156,34 @@
             .ToListAsync();
         _checkedMenuIds = grants.Select(g => g.menuid).ToHashSet();
         _editableMenuIds = grants.Where(g => g.canedit).Select(g => g.menuid).ToHashSet();
+
+        // Seeding convention (see CRUD skill): progcode = "{ENTITY}_{ACTION}",
+        // progname = "{entity label} — {action label}" — split on the em-dash
+        // to recover the shared entity label for grouping.
+        var allPrograms = await context.sc_programs.Where(p => p.isactive == true).ToListAsync();
+        _programGroups = allPrograms
+            .Select(p => new { Program = p, Underscore = p.progcode.LastIndexOf('_') })
+            .Where(x => x.Underscore > 0)
+            .GroupBy(x => x.Program.progcode[..x.Underscore])
+            .Select(g =>
+            {
+                var label = g.First().Program.progname;
+                var dashIdx = label.IndexOf(" — ", StringComparison.Ordinal);
+                if (dashIdx > 0) label = label[..dashIdx];
+                return new ProgramGroup(
+                    label,
+                    g.FirstOrDefault(x => x.Program.progcode.EndsWith("_CREATE"))?.Program.progid,
+                    g.FirstOrDefault(x => x.Program.progcode.EndsWith("_EDIT"))?.Program.progid,
+                    g.FirstOrDefault(x => x.Program.progcode.EndsWith("_DELETE"))?.Program.progid);
+            })
+            .OrderBy(g => g.EntityLabel)
+            .ToList();
+
+        var programGrants = await context.sc_role_programs
+            .Where(rp => rp.roleid == _selectedRoleId && rp.isactive)
+            .Select(rp => rp.progid)
+            .ToListAsync();
+        _checkedProgramIds = programGrants.Where(id => id.HasValue).Select(id => id!.Value).ToHashSet();
     }
 
     private void Flatten(List<sc_menu> nodes, int depth, Dictionary<string, List<sc_menu>> byParent, HashSet<string> visitedCodes)
@@ -175,5 +256,51 @@
 
         await context.SaveChangesAsync();
         Snackbar.Add("บันทึกสิทธิ์เรียบร้อย — มีผลตั้งแต่การ login ครั้งถัดไป", Severity.Success);
+    }
+
+    private void ToggleProgram(long progId, bool granted)
+    {
+        if (granted) _checkedProgramIds.Add(progId);
+        else _checkedProgramIds.Remove(progId);
+    }
+
+    private async Task SaveProgramsAsync()
+    {
+        _error = null;
+        if (_selectedRoleId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existingLinks = await context.sc_role_programs.Where(rp => rp.roleid == _selectedRoleId).ToListAsync();
+        var existingByProgId = existingLinks.Where(l => l.progid.HasValue).ToDictionary(l => l.progid!.Value);
+
+        var allProgIds = _programGroups.SelectMany(g => new[] { g.CreateId, g.EditId, g.DeleteId }).Where(id => id.HasValue).Select(id => id!.Value);
+        foreach (var progId in allProgIds)
+        {
+            var desired = _checkedProgramIds.Contains(progId);
+
+            if (existingByProgId.TryGetValue(progId, out var link))
+            {
+                if (link.isactive != desired)
+                {
+                    link.isactive = desired;
+                    link.moddate = DateTime.Now;
+                    link.modby = _actor;
+                }
+            }
+            else if (desired)
+            {
+                context.sc_role_programs.Add(new sc_role_program
+                {
+                    roleid = _selectedRoleId.Value,
+                    progid = progId,
+                    isactive = true,
+                    moddate = DateTime.Now,
+                    modby = _actor,
+                });
+            }
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกสิทธิ์ปุ่มเรียบร้อย — มีผลตั้งแต่การ login ครั้งถัดไป", Severity.Success);
     }
 }

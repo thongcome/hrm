@@ -30,79 +30,86 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPlanHeading") : string.Format(L.Translate("EditPlanHeadingTemplate"), _form.PlanCode))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.PlanCode" Label="@L.Translate("PlanCodeLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.PlanName" Label="@L.Translate("PlanNameLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="Pay_InsurancePlanType" @bind-Value="_form.PlanType" Label="@L.Translate("PlanTypeFieldLabel")">
-                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Health">@L.Translate("InsuranceTypeHealth")</MudSelectItem>
-                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Life">@L.Translate("InsuranceTypeLife")</MudSelectItem>
-                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Accident">@L.Translate("InsuranceTypeAccident")</MudSelectItem>
-                <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Other">@L.Translate("InsuranceTypeOther")</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.Provider" Label="@L.Translate("ProviderLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudTextField @bind-Value="_form.GroupPolicyNumber" Label="@L.Translate("GroupPolicyNumberLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.CoverageAmount" Label="@L.Translate("CoverageAmountLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.DefaultEmployeeAmount" Label="@L.Translate("DefaultEmployeeAmountLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.DefaultCompanyAmount" Label="@L.Translate("DefaultCompanyAmountLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
-        </MudItem>
-    </MudGrid>
-
-    <MudDivider Class="my-4" />
-    <MudText Typo="Typo.subtitle1">@L.Translate("AutoEnrollEligibilityHeading")</MudText>
-    <MudText Typo="Typo.body2" Class="mb-2">@L.Translate("LeaveBlankUnlimitedNote")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12">
-            <MudText Typo="Typo.body2">@L.Translate("EmploymentTypeLabel")</MudText>
-            <MudCheckBox T="bool" @bind-Value="_form.EligibleType01" Label="@L.Translate("RegularEmployeeCheckbox")" />
-            <MudCheckBox T="bool" @bind-Value="_form.EligibleType02" Label="@L.Translate("TemporaryEmployeeCheckbox")" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MinTenureDays" Label="@L.Translate("MinTenureDaysLabel")" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MinAge" Label="@L.Translate("MinAgeLabel")" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MaxAge" Label="@L.Translate("MaxAgeLabel")" Min="0" />
-        </MudItem>
-        <MudItem xs="12">
-            <MudSwitch T="bool" @bind-Value="_form.AutoEnrollEnabled" Label="@L.Translate("AutoEnrollSwitchLabel")" Color="Color.Primary" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddPlanButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPlanHeading") : string.Format(L.Translate("EditPlanHeadingTemplate"), _form.PlanCode))</MudText>
+        @if (!_showForm)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddPlanButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.PlanCode" Label="@L.Translate("PlanCodeLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.PlanName" Label="@L.Translate("PlanNameLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="Pay_InsurancePlanType" @bind-Value="_form.PlanType" Label="@L.Translate("PlanTypeFieldLabel")">
+                    <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Health">@L.Translate("InsuranceTypeHealth")</MudSelectItem>
+                    <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Life">@L.Translate("InsuranceTypeLife")</MudSelectItem>
+                    <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Accident">@L.Translate("InsuranceTypeAccident")</MudSelectItem>
+                    <MudSelectItem T="Pay_InsurancePlanType" Value="Pay_InsurancePlanType.Other">@L.Translate("InsuranceTypeOther")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.Provider" Label="@L.Translate("ProviderLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_form.GroupPolicyNumber" Label="@L.Translate("GroupPolicyNumberLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.CoverageAmount" Label="@L.Translate("CoverageAmountLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.DefaultEmployeeAmount" Label="@L.Translate("DefaultEmployeeAmountLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.DefaultCompanyAmount" Label="@L.Translate("DefaultCompanyAmountLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1">@L.Translate("AutoEnrollEligibilityHeading")</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">@L.Translate("LeaveBlankUnlimitedNote")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12">
+                <MudText Typo="Typo.body2">@L.Translate("EmploymentTypeLabel")</MudText>
+                <MudCheckBox T="bool" @bind-Value="_form.EligibleType01" Label="@L.Translate("RegularEmployeeCheckbox")" />
+                <MudCheckBox T="bool" @bind-Value="_form.EligibleType02" Label="@L.Translate("TemporaryEmployeeCheckbox")" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MinTenureDays" Label="@L.Translate("MinTenureDaysLabel")" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MinAge" Label="@L.Translate("MinAgeLabel")" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MaxAge" Label="@L.Translate("MaxAgeLabel")" Min="0" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_form.AutoEnrollEnabled" Label="@L.Translate("AutoEnrollSwitchLabel")" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddPlanButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -144,6 +151,7 @@
     private List<Pay_InsurancePlan> _plans = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class PlanForm
     {
@@ -192,6 +200,14 @@
             .ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _form = new PlanForm();
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Pay_InsurancePlan plan)
     {
         _editingId = plan.Id;
@@ -214,6 +230,7 @@
             AutoEnrollEnabled = plan.AutoEnrollEnabled,
         };
         _error = null;
+        _showForm = true;
     }
 
     private static string? BuildEligibleTypesCsv(PlanForm form)
@@ -229,6 +246,7 @@
         _editingId = null;
         _form = new PlanForm();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

@@ -171,7 +171,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
         // Rec_CandidateEducation/Experience mirror Hrd_Education/Experience
         // shape exactly for this purpose. Saves HR from re-typing history
         // that's already on file.
-        var candidateEducation = await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidate.Id).ToListAsync(ct);
+        var candidateEducation = await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidate.Id && e.IsActive).ToListAsync(ct);
         foreach (var edu in candidateEducation)
         {
             context.Hrd_Educations.Add(new Hrd_Education
@@ -193,7 +193,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
             });
         }
 
-        var candidateExperience = await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidate.Id).ToListAsync(ct);
+        var candidateExperience = await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidate.Id && e.IsActive).ToListAsync(ct);
         foreach (var exp in candidateExperience)
         {
             context.Hrd_Experiences.Add(new Hrd_Experience

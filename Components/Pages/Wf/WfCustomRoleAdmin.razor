@@ -1,6 +1,7 @@
 @page "/wf/custom-roles"
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -58,6 +59,8 @@
 
     private string RoleLabel(long roleid) => _roles.FirstOrDefault(r => r.roleid == roleid)?.name ?? $"#{roleid}";
 
+    private bool WorkflowIsActive(long workflowid) => _workflows.FirstOrDefault(w => w.workflowid == workflowid)?.isactive == true;
+
     private wf_custom_role CreateNewRow() => new wf_custom_role { isactive = true };
 
     private RenderFragment RenderRowColumns(wf_custom_role row) => @<text>
@@ -67,6 +70,12 @@
     </text>;
 
     private RenderFragment RenderViewFields(wf_custom_role e) => @<text>
+        @if (WorkflowIsActive(e.workflowid))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                Workflow ของรายการนี้เปิดใช้งานอยู่ — ห้ามแก้ไข/เพิ่ม/ลบทุกกรณี ถ้าต้องการเปลี่ยนแปลง ให้ไปปิดใช้งาน workflow นี้ที่หน้า "จัดการ Workflow" ก่อน แล้วสร้าง workflow ใหม่แทน
+            </MudAlert>
+        }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6"><MudTextField Value="@LevelLabel(e.subworkflowid ?? 0)" Label="Workflow / ระดับ" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField Value="@RoleLabel(e.roleid)" Label="Role" ReadOnly="true" /></MudItem>
@@ -131,6 +140,12 @@
             ?? throw new InvalidOperationException("ไม่พบระดับที่เลือก");
         var role = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == entity.roleid)
             ?? throw new InvalidOperationException("ไม่พบ Role ที่เลือก");
+
+        // entity.workflowid reflects the row's current owning workflow when
+        // editing (already loaded from the DB); for a brand-new row it's
+        // still null, so fall back to the target level's workflow so a new
+        // approver can't be added under an already-active workflow.
+        await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, entity.id == 0 ? level.workflowid : entity.workflowid);
 
         if (entity.id == 0)
         {

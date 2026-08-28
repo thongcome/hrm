@@ -28,47 +28,54 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPolicyRangeHeading") : L.Translate("EditPolicyRangeHeading"))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minEmployeeRate" Label="@L.Translate("MinEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxEmployeeRate" Label="@L.Translate("MaxEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minCompanyRate" Label="@L.Translate("MinCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxCompanyRate" Label="@L.Translate("MaxCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="6"><MudNumericField T="int?" @bind-Value="_rateChangeLimitPerYear" Label="@L.Translate("RateChangeLimitLabel")" Min="1" /></MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Success" Label="@L.Translate("PfEnableSwitchLabel")" />
-        </MudItem>
-        @if (_isEnabled)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPolicyRangeHeading") : L.Translate("EditPolicyRangeHeading"))</MudText>
+        @if (!_showForm)
         {
-            <MudItem xs="12">
-                <MudAlert Severity="Severity.Warning" Dense="true">
-                    @L.Translate("PfEnabledWarningAlert")
-                </MudAlert>
-            </MudItem>
-        }
-        <MudItem xs="12">
-            <MudSwitch T="bool" @bind-Value="_useFundMembershipYears" Color="Color.Info" Label="ใช้อายุสมาชิกกองทุน (แยกจากอายุงาน) ในการคำนวณ vesting/สิ้นสุดสมาชิกภาพ" />
-            <MudText Typo="Typo.caption" Class="ml-1" Style="opacity:.7;">ถ้าไม่เปิด จะใช้อายุงานปกติเหมือนเดิม — เปิดเมื่อบริษัทนับอายุสมาชิกกองทุนใหม่ทุกครั้งที่ลาออกจากกองทุนแล้วสมัครกลับเข้าใหม่</MudText>
-        </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteLabel")" Lines="2" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddPolicyRangeButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddPolicyRangeButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minEmployeeRate" Label="@L.Translate("MinEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxEmployeeRate" Label="@L.Translate("MaxEmployeeRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_minCompanyRate" Label="@L.Translate("MinCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_maxCompanyRate" Label="@L.Translate("MaxCompanyRateLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="6"><MudNumericField T="int?" @bind-Value="_rateChangeLimitPerYear" Label="@L.Translate("RateChangeLimitLabel")" Min="1" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Success" Label="@L.Translate("PfEnableSwitchLabel")" />
+            </MudItem>
+            @if (_isEnabled)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        @L.Translate("PfEnabledWarningAlert")
+                    </MudAlert>
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_useFundMembershipYears" Color="Color.Info" Label="ใช้อายุสมาชิกกองทุน (แยกจากอายุงาน) ในการคำนวณ vesting/สิ้นสุดสมาชิกภาพ" />
+                <MudText Typo="Typo.caption" Class="ml-1" Style="opacity:.7;">ถ้าไม่เปิด จะใช้อายุงานปกติเหมือนเดิม — เปิดเมื่อบริษัทนับอายุสมาชิกกองทุนใหม่ทุกครั้งที่ลาออกจากกองทุนแล้วสมัครกลับเข้าใหม่</MudText>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteLabel")" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddPolicyRangeButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -111,13 +118,23 @@
             @L.Translate("VestingTierDesc")
         </MudText>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierMinYears" Label="@L.Translate("TierMinYearsLabel")" Min="0" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_tierMaxYears" Label="@L.Translate("TierMaxYearsLabel")" Min="0" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_tierVestingPercent" Label="@L.Translate("TierVestingPercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierSortOrder" Label="@L.Translate("ColSortOrder")" Min="0" /></MudItem>
-        </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddTierAsync">@L.Translate("AddTierButton")</MudButton>
+        @if (!_showTierForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showTierForm = true)">+ @L.Translate("AddTierButton")</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierMinYears" Label="@L.Translate("TierMinYearsLabel")" Min="0" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_tierMaxYears" Label="@L.Translate("TierMaxYearsLabel")" Min="0" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_tierVestingPercent" Label="@L.Translate("TierVestingPercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_tierSortOrder" Label="@L.Translate("ColSortOrder")" Min="0" /></MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddTierAsync">@L.Translate("AddTierButton")</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showTierForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
 
         <MudTable Items="_vestingTiers" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
@@ -145,28 +162,38 @@
         <MudText Typo="Typo.h6">ช่วงเวลาเปิดรับคำขอเปลี่ยนอัตรา</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">ตั้งได้หลายช่วงต่อปี (วน ทุกปี) — นอกช่วงที่กำหนด ปุ่มขอเปลี่ยนอัตราจะหายไปทั้งฝั่งพนักงานและ HR</MudText>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_winName" Label="ชื่อรอบ" /></MudItem>
-            <MudItem xs="12" sm="4">
-                <MudGrid>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenFromMonth" Label="เปิดรับ เดือน" Min="1" Max="12" /></MudItem>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenFromDay" Label="วัน" Min="1" Max="31" /></MudItem>
-                </MudGrid>
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudGrid>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenToMonth" Label="ถึง เดือน" Min="1" Max="12" /></MudItem>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenToDay" Label="วัน" Min="1" Max="31" /></MudItem>
-                </MudGrid>
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudGrid>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winEffectiveMonth" Label="มีผลวันที่ เดือน" Min="1" Max="12" /></MudItem>
-                    <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winEffectiveDay" Label="วัน" Min="1" Max="31" /></MudItem>
-                </MudGrid>
-            </MudItem>
-        </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddWindowAsync">เพิ่มช่วงเวลา</MudButton>
+        @if (!_showWindowForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showWindowForm = true)">+ เพิ่มช่วงเวลา</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_winName" Label="ชื่อรอบ" /></MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudGrid>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenFromMonth" Label="เปิดรับ เดือน" Min="1" Max="12" /></MudItem>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenFromDay" Label="วัน" Min="1" Max="31" /></MudItem>
+                    </MudGrid>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudGrid>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenToMonth" Label="ถึง เดือน" Min="1" Max="12" /></MudItem>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winOpenToDay" Label="วัน" Min="1" Max="31" /></MudItem>
+                    </MudGrid>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudGrid>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winEffectiveMonth" Label="มีผลวันที่ เดือน" Min="1" Max="12" /></MudItem>
+                        <MudItem xs="6"><MudNumericField T="int" @bind-Value="_winEffectiveDay" Label="วัน" Min="1" Max="31" /></MudItem>
+                    </MudGrid>
+                </MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddWindowAsync">เพิ่มช่วงเวลา</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showWindowForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
 
         <MudTable Items="_windows" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
@@ -190,23 +217,33 @@
         <MudText Typo="Typo.h6">ตารางคำนวณอัตราเงินสมทบ (แนะนำอัตโนมัติ)</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">ตามอายุงาน × อัตราเงินสะสมที่พนักงานเลือก — ใช้เป็นค่าที่เสนอในคำขอเปลี่ยนอัตราเท่านั้น HR ยังแก้ไขได้ก่อนอนุมัติ</MudText>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="6" sm="3"><MudNumericField T="int" @bind-Value="_mxMinYears" Label="อายุงานตั้งแต่ (ปี)" Min="0" /></MudItem>
-            <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_mxMaxYears" Label="ถึงก่อน (ปี, เว้นว่าง=ไม่จำกัด)" Min="0" /></MudItem>
-            <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_mxEmpRateMin" Label="เงินสะสม %ตั้งแต่" Format="0.00" Min="0" Max="100" /></MudItem>
-            <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_mxEmpRateMax" Label="เงินสะสม %ถึง" Format="0.00" Min="0" Max="100" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudSelect T="ProvidentFundMatrixResultType" @bind-Value="_mxResultType" Label="ผลลัพธ์">
-                    <MudSelectItem Value="ProvidentFundMatrixResultType.Fixed">อัตราคงที่</MudSelectItem>
-                    <MudSelectItem Value="ProvidentFundMatrixResultType.MatchEmployeeRate">เท่ากับอัตราเงินสะสม</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            @if (_mxResultType == ProvidentFundMatrixResultType.Fixed)
-            {
-                <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_mxFixedRate" Label="อัตราคงที่ %" Format="0.00" Min="0" Max="100" /></MudItem>
-            }
-        </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddMatrixRuleAsync">เพิ่มแถว</MudButton>
+        @if (!_showMatrixForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showMatrixForm = true)">+ เพิ่มแถว</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="6" sm="3"><MudNumericField T="int" @bind-Value="_mxMinYears" Label="อายุงานตั้งแต่ (ปี)" Min="0" /></MudItem>
+                <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_mxMaxYears" Label="ถึงก่อน (ปี, เว้นว่าง=ไม่จำกัด)" Min="0" /></MudItem>
+                <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_mxEmpRateMin" Label="เงินสะสม %ตั้งแต่" Format="0.00" Min="0" Max="100" /></MudItem>
+                <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_mxEmpRateMax" Label="เงินสะสม %ถึง" Format="0.00" Min="0" Max="100" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="ProvidentFundMatrixResultType" @bind-Value="_mxResultType" Label="ผลลัพธ์">
+                        <MudSelectItem Value="ProvidentFundMatrixResultType.Fixed">อัตราคงที่</MudSelectItem>
+                        <MudSelectItem Value="ProvidentFundMatrixResultType.MatchEmployeeRate">เท่ากับอัตราเงินสะสม</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                @if (_mxResultType == ProvidentFundMatrixResultType.Fixed)
+                {
+                    <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_mxFixedRate" Label="อัตราคงที่ %" Format="0.00" Min="0" Max="100" /></MudItem>
+                }
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddMatrixRuleAsync">เพิ่มแถว</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showMatrixForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
 
         <MudTable Items="_matrixRules" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
@@ -229,29 +266,39 @@
         <MudText Typo="Typo.h6">เหตุผลการสิ้นสุดสมาชิกภาพ</MudText>
         <MudText Typo="Typo.body2" Class="mt-1">แต่ละเหตุผลกำหนดผลต่อเงินสมทบนายจ้าง — ใช้เมื่อ HR เปิดเคสปิดสมาชิกภาพ</MudText>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_erCode" Label="รหัส" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_erName" Label="ชื่อเหตุผล" /></MudItem>
-            <MudItem xs="12" sm="5">
-                <MudSelect T="ProvidentFundExitVestingOverride" @bind-Value="_erOverrideType" Label="ผลต่อเงินสมทบ">
-                    <MudSelectItem Value="ProvidentFundExitVestingOverride.UseNormalTier">ใช้ตาราง vesting ปกติ</MudSelectItem>
-                    <MudSelectItem Value="ProvidentFundExitVestingOverride.ForceZero">ริบทั้งหมด (0%)</MudSelectItem>
-                    <MudSelectItem Value="ProvidentFundExitVestingOverride.ForceFull">จ่ายเต็มจำนวน (100%)</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            @if (_erOverrideType == ProvidentFundExitVestingOverride.ForceZero)
-            {
-                <MudItem xs="12">
-                    <MudSwitch T="bool" @bind-Value="_erRequiresException" Color="Color.Info" Label="มีข้อยกเว้น (อายุ + อายุสมาชิกกองทุนขั้นต่ำ) ให้จ่ายเต็มจำนวนแทน" />
+        @if (!_showExitReasonForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showExitReasonForm = true)">+ เพิ่มเหตุผล</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="3"><MudTextField @bind-Value="_erCode" Label="รหัส" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_erName" Label="ชื่อเหตุผล" /></MudItem>
+                <MudItem xs="12" sm="5">
+                    <MudSelect T="ProvidentFundExitVestingOverride" @bind-Value="_erOverrideType" Label="ผลต่อเงินสมทบ">
+                        <MudSelectItem Value="ProvidentFundExitVestingOverride.UseNormalTier">ใช้ตาราง vesting ปกติ</MudSelectItem>
+                        <MudSelectItem Value="ProvidentFundExitVestingOverride.ForceZero">ริบทั้งหมด (0%)</MudSelectItem>
+                        <MudSelectItem Value="ProvidentFundExitVestingOverride.ForceFull">จ่ายเต็มจำนวน (100%)</MudSelectItem>
+                    </MudSelect>
                 </MudItem>
-                @if (_erRequiresException)
+                @if (_erOverrideType == ProvidentFundExitVestingOverride.ForceZero)
                 {
-                    <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_erMinAge" Label="อายุขั้นต่ำ (ปี)" Min="0" /></MudItem>
-                    <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_erMinMembershipYears" Label="อายุสมาชิกขั้นต่ำ (ปี)" Min="0" /></MudItem>
+                    <MudItem xs="12">
+                        <MudSwitch T="bool" @bind-Value="_erRequiresException" Color="Color.Info" Label="มีข้อยกเว้น (อายุ + อายุสมาชิกกองทุนขั้นต่ำ) ให้จ่ายเต็มจำนวนแทน" />
+                    </MudItem>
+                    @if (_erRequiresException)
+                    {
+                        <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_erMinAge" Label="อายุขั้นต่ำ (ปี)" Min="0" /></MudItem>
+                        <MudItem xs="6" sm="3"><MudNumericField T="int?" @bind-Value="_erMinMembershipYears" Label="อายุสมาชิกขั้นต่ำ (ปี)" Min="0" /></MudItem>
+                    }
                 }
-            }
-        </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddExitReasonAsync">เพิ่มเหตุผล</MudButton>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddExitReasonAsync">เพิ่มเหตุผล</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showExitReasonForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
 
         <MudTable Items="_exitReasons" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
@@ -281,12 +328,23 @@
     <MudText Typo="Typo.body2" Class="mt-1">
         @L.Translate("InvestmentPolicyDesc")
     </MudText>
-    <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_invCode" Label="@L.Translate("ColCode")" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invName" Label="@L.Translate("InvNameLabel")" /></MudItem>
-        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_invRiskDescription" Label="@L.Translate("InvRiskDescriptionLabel")" /></MudItem>
-    </MudGrid>
-    <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddInvestmentPolicyAsync">@L.Translate("AddInvestmentPolicyButton")</MudButton>
+
+    @if (!_showInvestmentForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showInvestmentForm = true)">+ @L.Translate("AddInvestmentPolicyButton")</MudButton>
+    }
+    else
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_invCode" Label="@L.Translate("ColCode")" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_invName" Label="@L.Translate("InvNameLabel")" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_invRiskDescription" Label="@L.Translate("InvRiskDescriptionLabel")" /></MudItem>
+        </MudGrid>
+        <MudStack Row="true" Spacing="2" Class="mt-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddInvestmentPolicyAsync">@L.Translate("AddInvestmentPolicyButton")</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _showInvestmentForm = false)">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudTable Items="_investmentPolicies" Dense="true" Hover="true" Class="mt-3">
         <HeaderContent>
@@ -358,6 +416,7 @@
     private List<Pay_ProvidentFundPolicy> _policies = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private DateTime? _effectiveFrom = DateTime.Today;
     private DateTime? _effectiveTo;
@@ -371,6 +430,7 @@
     private string? _note;
 
     private long? _tierPolicyId;
+    private bool _showTierForm;
     private List<Pay_ProvidentFundVestingTier> _vestingTiers = new();
     private int _tierMinYears;
     private int? _tierMaxYears;
@@ -378,6 +438,7 @@
     private int _tierSortOrder;
 
     private long? _windowPolicyId;
+    private bool _showWindowForm;
     private List<Pay_ProvidentFundRateChangeWindow> _windows = new();
     private string? _winName;
     private int _winOpenFromMonth = 1;
@@ -388,6 +449,7 @@
     private int _winEffectiveDay = 1;
 
     private long? _matrixPolicyId;
+    private bool _showMatrixForm;
     private List<Pay_ProvidentFundRateMatrixRule> _matrixRules = new();
     private int _mxMinYears;
     private int? _mxMaxYears;
@@ -397,6 +459,7 @@
     private decimal _mxFixedRate = 3m;
 
     private long? _exitReasonPolicyId;
+    private bool _showExitReasonForm;
     private List<Pay_ProvidentFundExitReasonRule> _exitReasons = new();
     private string? _erCode;
     private string? _erName;
@@ -405,6 +468,7 @@
     private int? _erMinAge;
     private int? _erMinMembershipYears;
 
+    private bool _showInvestmentForm;
     private List<Pay_ProvidentFundInvestmentPolicy> _investmentPolicies = new();
     private string? _invCode;
     private string? _invName;
@@ -446,6 +510,12 @@
             .ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Pay_ProvidentFundPolicy policy)
     {
         _editingId = policy.Id;
@@ -460,6 +530,7 @@
         _useFundMembershipYears = policy.UseFundMembershipYearsForVesting;
         _note = policy.Note;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -476,6 +547,7 @@
         _useFundMembershipYears = false;
         _note = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()
@@ -554,6 +626,7 @@
     private async Task SelectPolicyForTiersAsync(Pay_ProvidentFundPolicy policy)
     {
         _tierPolicyId = policy.Id;
+        _showTierForm = false;
         await LoadTiersAsync();
     }
 
@@ -562,7 +635,7 @@
         if (_tierPolicyId is null) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         _vestingTiers = await context.Pay_ProvidentFundVestingTiers
-            .Where(t => t.PolicyId == _tierPolicyId)
+            .Where(t => t.PolicyId == _tierPolicyId && t.IsActive)
             .OrderBy(t => t.SortOrder)
             .ToListAsync();
     }
@@ -581,6 +654,7 @@
         });
         await context.SaveChangesAsync();
         Snackbar.Add(L.Translate("TierAddedSuccess"), Severity.Success);
+        _showTierForm = false;
         await LoadTiersAsync();
     }
 
@@ -589,7 +663,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         var tier = await context.Pay_ProvidentFundVestingTiers.FirstOrDefaultAsync(t => t.Id == tierId);
         if (tier is null) return;
-        context.Pay_ProvidentFundVestingTiers.Remove(tier);
+        tier.IsActive = false;
         await context.SaveChangesAsync();
         await LoadTiersAsync();
     }
@@ -597,6 +671,7 @@
     private async Task SelectPolicyForWindowsAsync(Pay_ProvidentFundPolicy policy)
     {
         _windowPolicyId = policy.Id;
+        _showWindowForm = false;
         await LoadWindowsAsync();
     }
 
@@ -626,6 +701,7 @@
         await context.SaveChangesAsync();
         Snackbar.Add("เพิ่มช่วงเวลาแล้ว", Severity.Success);
         _winName = null;
+        _showWindowForm = false;
         await LoadWindowsAsync();
     }
 
@@ -642,6 +718,7 @@
     private async Task SelectPolicyForMatrixAsync(Pay_ProvidentFundPolicy policy)
     {
         _matrixPolicyId = policy.Id;
+        _showMatrixForm = false;
         await LoadMatrixRulesAsync();
     }
 
@@ -649,7 +726,7 @@
     {
         if (_matrixPolicyId is null) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        _matrixRules = await context.Pay_ProvidentFundRateMatrixRules.Where(r => r.PolicyId == _matrixPolicyId).OrderBy(r => r.SortOrder).ToListAsync();
+        _matrixRules = await context.Pay_ProvidentFundRateMatrixRules.Where(r => r.PolicyId == _matrixPolicyId && r.IsActive).OrderBy(r => r.SortOrder).ToListAsync();
     }
 
     private async Task AddMatrixRuleAsync()
@@ -669,6 +746,7 @@
         });
         await context.SaveChangesAsync();
         Snackbar.Add("เพิ่มแถวแล้ว", Severity.Success);
+        _showMatrixForm = false;
         await LoadMatrixRulesAsync();
     }
 
@@ -677,7 +755,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         var rule = await context.Pay_ProvidentFundRateMatrixRules.FirstOrDefaultAsync(r => r.Id == ruleId);
         if (rule is null) return;
-        context.Pay_ProvidentFundRateMatrixRules.Remove(rule);
+        rule.IsActive = false;
         await context.SaveChangesAsync();
         await LoadMatrixRulesAsync();
     }
@@ -685,6 +763,7 @@
     private async Task SelectPolicyForExitReasonsAsync(Pay_ProvidentFundPolicy policy)
     {
         _exitReasonPolicyId = policy.Id;
+        _showExitReasonForm = false;
         await LoadExitReasonsAsync();
     }
 
@@ -714,6 +793,7 @@
         await context.SaveChangesAsync();
         Snackbar.Add("เพิ่มเหตุผลแล้ว", Severity.Success);
         _erCode = null; _erName = null; _erRequiresException = false; _erMinAge = null; _erMinMembershipYears = null;
+        _showExitReasonForm = false;
         await LoadExitReasonsAsync();
     }
 
@@ -748,6 +828,7 @@
         await context.SaveChangesAsync();
         Snackbar.Add(L.Translate("InvestmentPolicyAddedSuccess"), Severity.Success);
         _invCode = null; _invName = null; _invRiskDescription = null;
+        _showInvestmentForm = false;
         await LoadInvestmentPoliciesAsync();
     }
 
@@ -783,7 +864,7 @@
         var tiers = applicablePolicy is null
             ? new List<Pay_ProvidentFundVestingTier>()
             : await context.Pay_ProvidentFundVestingTiers
-                .Where(t => t.PolicyId == applicablePolicy.Id)
+                .Where(t => t.PolicyId == applicablePolicy.Id && t.IsActive)
                 .OrderBy(t => t.SortOrder)
                 .ToListAsync();
 

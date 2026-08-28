@@ -89,7 +89,7 @@ public class PerfCalibrationService(IDbContextFactory<HRMContext> dbFactory)
             ?? throw new InvalidOperationException("ไม่พบรายการประเมินนี้แล้ว");
 
         var gradeBands = await context.Perf_GradeBands
-            .Where(g => g.EvaluationPeriodId == instance.EvaluationPeriodId)
+            .Where(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.IsActive)
             .OrderBy(g => g.SortOrder)
             .ToListAsync(ct);
 

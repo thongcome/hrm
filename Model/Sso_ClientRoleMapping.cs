@@ -35,4 +35,6 @@ public class Sso_ClientRoleMapping
 
     public DateTime CreatedDate { get; set; } = DateTime.Now;
     public long? CreatedByUserId { get; set; }
+
+    public bool IsActive { get; set; } = true;
 }

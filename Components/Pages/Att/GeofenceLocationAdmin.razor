@@ -28,8 +28,14 @@
     {
         <MudDivider Class="my-4" />
 
-        <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchLocationNamePlaceholder")" Immediate="true" DebounceInterval="300"
-            ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchLocationNamePlaceholder")" Immediate="true" DebounceInterval="300"
+                ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="flex-grow-1 mr-4" />
+            @if (!_showForm)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">@L.Translate("AddButtonPlain")</MudButton>
+            }
+        </MudStack>
 
         <MudTable Items="_locations" Dense="true" Hover="true">
             <HeaderContent>
@@ -56,28 +62,28 @@
             <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoLocationsMessage")</MudText></NoRecordsContent>
         </MudTable>
 
-        <MudDivider Class="my-5" />
-
-        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewLocationHeading") : L.Translate("EditLocationHeading"))</MudText>
-        <MudGrid Class="mt-2">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Name" Label="@L.Translate("ColLocationName")" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_form.RadiusMeters" Label="@L.Translate("ColRadiusMeters")" Min="10" Max="5000" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Latitude" Label="@L.Translate("LatitudeFieldLabel")" Format="0.000000" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Longitude" Label="@L.Translate("LongitudeFieldLabel")" Format="0.000000" /></MudItem>
-        </MudGrid>
-
-        @if (!string.IsNullOrEmpty(_error))
+        @if (_showForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-        }
+            <MudDivider Class="my-5" />
 
-        <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? L.Translate("AddButtonPlain") : L.Translate("SaveButton"))</MudButton>
-            @if (_editingId is not null)
+            <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewLocationHeading") : L.Translate("EditLocationHeading"))</MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_form.Name" Label="@L.Translate("ColLocationName")" /></MudItem>
+                <MudItem xs="12" sm="6"><MudNumericField @bind-Value="_form.RadiusMeters" Label="@L.Translate("ColRadiusMeters")" Min="10" Max="5000" /></MudItem>
+                <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Latitude" Label="@L.Translate("LatitudeFieldLabel")" Format="0.000000" /></MudItem>
+                <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_form.Longitude" Label="@L.Translate("LongitudeFieldLabel")" Format="0.000000" /></MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
             {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
             }
-        </MudStack>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? L.Translate("AddButtonPlain") : L.Translate("SaveButton"))</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
     }
 </MudPaper>
 
@@ -87,6 +93,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class FormModel
     {
@@ -121,6 +128,14 @@
         _locations = await query.OrderBy(l => l.Name).ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _form = new FormModel();
+        _error = null;
+        _showForm = true;
+    }
+
     private void EditAsync(Att_GeofenceLocation location)
     {
         _editingId = location.Id;
@@ -131,6 +146,8 @@
             Longitude = location.Longitude,
             RadiusMeters = location.RadiusMeters,
         };
+        _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -138,6 +155,7 @@
         _editingId = null;
         _form = new FormModel();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

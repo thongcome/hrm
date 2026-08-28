@@ -31,4 +31,9 @@ public class Lms_QuizQuestion
     public string CorrectChoice { get; set; } = null!;
 
     public int SortOrder { get; set; }
+
+    // Soft-delete only — Lms_QuizAnswer rows reference QuestionId from past
+    // attempts, so hard-deleting a question would orphan historical answers
+    // and break a student's scored quiz history.
+    public bool IsActive { get; set; } = true;
 }

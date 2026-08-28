@@ -27,37 +27,42 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" /></MudItem>
-        <MudItem xs="12" sm="8"><MudTextField @bind-Value="_name" Label="ชื่อระดับ" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbNameEn" Label="Abb. Name (English)" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_levelNo" Label="ระดับ" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isTopLevel" Color="Color.Info" Label="เป็นระดับสูงสุด" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="คำอธิบาย" Lines="2" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มข้อมูล</MudButton>
+        <MudDivider Class="my-5" />
     }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_name" Label="ชื่อระดับ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbNameEn" Label="Abb. Name (English)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_levelNo" Label="ระดับ" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isTopLevel" Color="Color.Info" Label="เป็นระดับสูงสุด" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="คำอธิบาย" Lines="2" /></MudItem>
+        </MudGrid>
 
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
+        @if (!string.IsNullOrEmpty(_error))
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
-    </MudStack>
 
-    <MudDivider Class="my-5" />
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
 
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
@@ -100,6 +105,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private string _code = "";
     private string _name = "";
@@ -133,6 +139,12 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Com_SectionType item)
     {
         _editingId = item.Id;
@@ -146,6 +158,7 @@
         _isActive = item.IsActive;
         _remark = item.Remark;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -161,6 +174,7 @@
         _isActive = true;
         _remark = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

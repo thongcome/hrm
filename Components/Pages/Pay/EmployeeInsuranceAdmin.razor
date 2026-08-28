@@ -26,66 +26,78 @@ else if (_employee is null)
 else
 {
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-        <MudText Typo="Typo.h6">@L.Translate("EnrollNewPlanHeading")</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1">
-            @L.Translate("EnrollNewPlanDesc")
-        </MudText>
-
-        @if (_availablePlans.Count == 0)
-        {
-            <MudAlert Severity="Severity.Info" Class="mt-3">
-                @L.Translate("NoPlansAvailablePrefix") <MudLink Href="/pay/admin/insurance-plans">@L.Translate("NoPlansAvailableLinkText")</MudLink> @L.Translate("NoPlansAvailableSuffix")
-            </MudAlert>
-        }
-        else
-        {
-            <MudGrid Class="mt-2">
-                <MudItem xs="12" sm="6">
-                    <MudSelect T="long?" Value="_selectedPlanId" ValueChanged="OnPlanSelected" Label="@L.Translate("InsurancePlanFieldLabel")">
-                        @foreach (var plan in _availablePlans)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)plan.Id)">@plan.PlanCode — @plan.PlanName</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudDatePicker Date="_effectiveFrom" DateChanged="@(d => _effectiveFrom = d)" Label="@L.Translate("EffectiveFromLabel")"
-                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_employeeAmount" Label="@L.Translate("DefaultEmployeeAmountLabel")" Format="N2" Min="0" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_companyAmount" Label="@L.Translate("DefaultCompanyAmountLabel")" Format="N2" Min="0" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_memberCertificateNumber" Label="@L.Translate("MemberCertificateNumberLabel")" />
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudDatePicker Date="_cardIssueDate" DateChanged="@(d => _cardIssueDate = d)" Label="@L.Translate("CardIssueDateLabel")"
-                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudDatePicker Date="_cardExpiryDate" DateChanged="@(d => _cardExpiryDate = d)" Label="@L.Translate("CardExpiryDateLabel")"
-                        Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_beneficiaryName" Label="@L.Translate("BeneficiaryNameLabel")" />
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_beneficiaryRelationship" Label="@L.Translate("BeneficiaryRelationshipLabel")" />
-                </MudItem>
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_remark" Label="@L.Translate("RemarkSpecialConditionsLabel")" Lines="2" />
-                </MudItem>
-            </MudGrid>
-
-            @if (!string.IsNullOrEmpty(_error))
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">@L.Translate("EnrollNewPlanHeading")</MudText>
+            @if (!_showForm)
             {
-                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("EnrollButton")</MudButton>
             }
+        </MudStack>
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">
+                @L.Translate("EnrollNewPlanDesc")
+            </MudText>
 
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="EnrollAsync">@L.Translate("EnrollButton")</MudButton>
+            @if (_availablePlans.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3">
+                    @L.Translate("NoPlansAvailablePrefix") <MudLink Href="/pay/admin/insurance-plans">@L.Translate("NoPlansAvailableLinkText")</MudLink> @L.Translate("NoPlansAvailableSuffix")
+                </MudAlert>
+            }
+            else
+            {
+                <MudGrid Class="mt-2">
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="long?" Value="_selectedPlanId" ValueChanged="OnPlanSelected" Label="@L.Translate("InsurancePlanFieldLabel")">
+                            @foreach (var plan in _availablePlans)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)plan.Id)">@plan.PlanCode — @plan.PlanName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker Date="_effectiveFrom" DateChanged="@(d => _effectiveFrom = d)" Label="@L.Translate("EffectiveFromLabel")"
+                            Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_employeeAmount" Label="@L.Translate("DefaultEmployeeAmountLabel")" Format="N2" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_companyAmount" Label="@L.Translate("DefaultCompanyAmountLabel")" Format="N2" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_memberCertificateNumber" Label="@L.Translate("MemberCertificateNumberLabel")" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudDatePicker Date="_cardIssueDate" DateChanged="@(d => _cardIssueDate = d)" Label="@L.Translate("CardIssueDateLabel")"
+                            Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudDatePicker Date="_cardExpiryDate" DateChanged="@(d => _cardExpiryDate = d)" Label="@L.Translate("CardExpiryDateLabel")"
+                            Editable="true" DateFormat="dd/MM/yyyy" PickerVariant="PickerVariant.Dialog" Clearable="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_beneficiaryName" Label="@L.Translate("BeneficiaryNameLabel")" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_beneficiaryRelationship" Label="@L.Translate("BeneficiaryRelationshipLabel")" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_remark" Label="@L.Translate("RemarkSpecialConditionsLabel")" Lines="2" />
+                    </MudItem>
+                </MudGrid>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="EnrollAsync">@L.Translate("EnrollButton")</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">@L.Translate("CancelButton")</MudButton>
+                </MudStack>
+            }
         }
     </MudPaper>
 
@@ -159,6 +171,7 @@ else
     private string? _beneficiaryRelationship;
     private string? _remark;
     private string? _error;
+    private bool _showForm;
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,6 +204,22 @@ else
             .Where(e => e.HremployeeId == HremployeeId)
             .OrderByDescending(e => e.EffectiveFrom)
             .ToListAsync();
+    }
+
+    private void OpenCreate()
+    {
+        _selectedPlanId = null;
+        _effectiveFrom = DateTime.Today;
+        _employeeAmount = 0;
+        _companyAmount = 0;
+        _memberCertificateNumber = null;
+        _cardIssueDate = null;
+        _cardExpiryDate = null;
+        _beneficiaryName = null;
+        _beneficiaryRelationship = null;
+        _remark = null;
+        _error = null;
+        _showForm = true;
     }
 
     private void OnPlanSelected(long? planId)
@@ -262,6 +291,7 @@ else
         _beneficiaryName = null;
         _beneficiaryRelationship = null;
         _remark = null;
+        _showForm = false;
         await LoadAsync();
     }
 

@@ -46,4 +46,6 @@ public class Rec_CandidateEducation
     public string? Remark { get; set; }
 
     public DateTime CreatedDate { get; set; } = DateTime.Now;
+
+    public bool IsActive { get; set; } = true;
 }

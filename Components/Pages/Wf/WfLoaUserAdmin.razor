@@ -1,6 +1,7 @@
 @page "/wf/loa-users"
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -62,6 +63,8 @@
         return user is null ? $"#{userid}" : $"{user.firstname} {user.lastname} ({user.loginname})";
     }
 
+    private bool IsWorkflowActive(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.isactive == true;
+
     private wf_loa_user CreateNewRow() => new wf_loa_user { isactive = true };
 
     private RenderFragment RenderRowColumns(wf_loa_user row) => @<text>
@@ -71,6 +74,13 @@
     </text>;
 
     private RenderFragment RenderViewFields(wf_loa_user e) => @<text>
+        @if (IsWorkflowActive(e.workflowid))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                Workflow ของผู้อนุมัติรายนี้เปิดใช้งานอยู่ — ห้ามแก้ไข/เพิ่ม/ลบทุกกรณี
+                ถ้าต้องการเปลี่ยนแปลง ให้ปิดใช้งาน workflow นั้นก่อน แล้วสร้าง workflow ใหม่แทน
+            </MudAlert>
+        }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6"><MudTextField Value="@LoaLabel(e.loaid ?? 0)" Label="ช่วงวงเงิน (wf_loa)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField Value="@UserLabel(e.userid)" Label="ผู้อนุมัติ" ReadOnly="true" /></MudItem>
@@ -129,6 +139,11 @@
             ?? throw new InvalidOperationException("ไม่พบช่วงวงเงินที่เลือก");
         var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == entity.userid)
             ?? throw new InvalidOperationException("ไม่พบผู้ใช้ที่เลือก");
+
+        // loa.wfid is the workflow this row will end up pointing at (assigned
+        // to entity.workflowid below for both create and update) — guard on
+        // that, since a freshly-created entity has workflowid still 0.
+        await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, loa.wfid);
 
         if (entity.id == 0)
         {

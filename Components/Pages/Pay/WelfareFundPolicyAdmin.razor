@@ -28,33 +28,40 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewRateRangeHeading") : L.Translate("EditRateRangeHeading"))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_employeeRate" Label="@L.Translate("EmployeeRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_companyRate" Label="@L.Translate("CompanyRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_wageCap" Label="@L.Translate("WageCapLabel")" Format="N2" Min="0" /></MudItem>
-        <MudItem xs="12">
-            <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Warning" Label="@L.Translate("EnableSwitchLabel")" />
-        </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteSourceLabel")" Lines="2" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddRateRangeButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewRateRangeHeading") : L.Translate("EditRateRangeHeading"))</MudText>
+        @if (!_showForm)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddRateRangeButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveFromLabel")" @bind-Date="_effectiveFrom" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="@L.Translate("EffectiveToLabel")" @bind-Date="_effectiveTo" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_employeeRate" Label="@L.Translate("EmployeeRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_companyRate" Label="@L.Translate("CompanyRatePercentLabel")" Format="0.00" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_wageCap" Label="@L.Translate("WageCapLabel")" Format="N2" Min="0" /></MudItem>
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_isEnabled" Color="Color.Warning" Label="@L.Translate("EnableSwitchLabel")" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_note" Label="@L.Translate("NoteSourceLabel")" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddRateRangeButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -127,6 +134,7 @@
     private List<Pay_WelfareFundPolicy> _policies = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private DateTime? _effectiveFrom = DateTime.Today;
     private DateTime? _effectiveTo;
@@ -158,6 +166,12 @@
             .ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Pay_WelfareFundPolicy policy)
     {
         _editingId = policy.Id;
@@ -169,6 +183,7 @@
         _isEnabled = policy.IsEnabled;
         _note = policy.Note;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -182,6 +197,7 @@
         _isEnabled = false;
         _note = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

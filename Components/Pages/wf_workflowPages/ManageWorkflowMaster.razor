@@ -25,17 +25,31 @@ else
         <dd class="col-sm-10">@workflow.description</dd>
     </dl>
 
+    @if (workflow.isactive == true)
+    {
+        <div class="alert alert-warning">
+            Workflow นี้เปิดใช้งานอยู่ — ห้ามแก้ไขทุกกรณี (ทั้งข้อมูล Workflow เอง และระดับการอนุมัติ/ผู้อนุมัติทุกตารางที่ผูกกับ workflow นี้)
+            ถ้าต้องการเปลี่ยนแปลง ให้ปิดใช้งาน workflow นี้ก่อนที่หน้า <a href="/wf/workflows">จัดการ Workflow (wf/workflows)</a> แล้วสร้าง workflow ใหม่แทน
+        </div>
+    }
+
     <p>
         <a class="btn btn-sm btn-secondary" href="/wfworkflows/details/@workflow.workflowid">ดูรายละเอียดทั้งหมด</a>
-        <a class="btn btn-sm btn-secondary" href="/wfworkflows/edit/@workflow.workflowid">แก้ไข Workflow</a>
+        @if (workflow.isactive != true)
+        {
+            <a class="btn btn-sm btn-secondary" href="/wfworkflows/edit/@workflow.workflowid">แก้ไข Workflow</a>
+        }
     </p>
 
     <hr />
     <h5>ขั้นตอนการอนุมัติ (@levels.Count ระดับ)</h5>
 
-    <p>
-        <a class="btn btn-primary" href="@AddLevelUrl">เพิ่มขั้นตอนการอนุมัติ</a>
-    </p>
+    @if (workflow.isactive != true)
+    {
+        <p>
+            <a class="btn btn-primary" href="@AddLevelUrl">เพิ่มขั้นตอนการอนุมัติ</a>
+        </p>
+    }
 
     @if (levels.Count == 0)
     {
@@ -69,8 +83,11 @@ else
                         <td>@(lvl.isshow ? "Yes" : "No")</td>
                         <td>
                             <a class="btn btn-sm btn-info me-1" href="/wf_sub_workflow_masters/details?subworkflowid=@lvl.subworkflowid">ดู</a>
-                            <a class="btn btn-sm btn-secondary me-1" href="/wf_sub_workflow_masters/edit?subworkflowid=@lvl.subworkflowid">แก้ไข</a>
-                            <a class="btn btn-sm btn-danger" href="/wf_sub_workflow_masters/delete?subworkflowid=@lvl.subworkflowid">ลบ</a>
+                            @if (workflow.isactive != true)
+                            {
+                                <a class="btn btn-sm btn-secondary me-1" href="/wf_sub_workflow_masters/edit?subworkflowid=@lvl.subworkflowid">แก้ไข</a>
+                                <a class="btn btn-sm btn-danger" href="/wf_sub_workflow_masters/delete?subworkflowid=@lvl.subworkflowid">ลบ</a>
+                            }
                         </td>
                     </tr>
                 }

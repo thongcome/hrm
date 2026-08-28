@@ -33,3 +33,23 @@ public enum RewardType
     LengthOfServiceAward = 3, // รางวัลอายุงาน
     CashBonus = 4,           // เงินรางวัลพิเศษ
 }
+
+// พ.ร.บ.คุ้มครองแรงงาน มาตรา 118-119: severance is only a legal
+// entitlement for employer-initiated termination — voluntary resignation
+// carries no severance at all, and มาตรา 119 lists specific exceptions
+// (fraud, serious misconduct, etc.) where even a termination doesn't
+// require it. SeveranceService gates on this instead of just "ResignDate
+// is set".
+public enum SeparationType
+{
+    VoluntaryResignation = 1,  // ลาออกเอง — ไม่มีค่าชดเชย
+    TerminationOrdinary = 2,   // เลิกจ้าง ไม่เข้าข่ายมาตรา 119 — มีค่าชดเชยตามอายุงาน
+    TerminationSection119 = 3, // เลิกจ้างเข้าข่ายมาตรา 119 — ไม่มีค่าชดเชย
+}
+
+public enum SeparationRequestStatus
+{
+    PendingApproval = 1,
+    Approved = 2,
+    Rejected = 3,
+}

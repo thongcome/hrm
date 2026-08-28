@@ -13,7 +13,13 @@
 <PageTitle>หมวดหมู่หลักสูตร</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="800px">
-    <MudText Typo="Typo.h5">หมวดหมู่หลักสูตร (Course Category)</MudText>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">หมวดหมู่หลักสูตร (Course Category)</MudText>
+        @if (!_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showForm = true)">+ เพิ่มหมวดหมู่</MudButton>
+        }
+    </MudStack>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -21,16 +27,23 @@
         return;
     }
 
-    <MudGrid Class="mt-3">
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCode" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newName" Label="ชื่อหมวดหมู่" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newNameEn" Label="ชื่อ (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Class="mt-2">เพิ่ม</MudButton></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCode" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newName" Label="ชื่อหมวดหมู่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newNameEn" Label="ชื่อ (อังกฤษ)" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่ม</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelAdd">ยกเลิก</MudButton>
+        </MudStack>
     }
 
     <MudTable Items="_categories" Dense="true" Hover="true" Class="mt-4">
@@ -56,6 +69,7 @@
     private string? _companyId;
     private List<Lms_CourseCategory> _categories = new();
     private string? _error;
+    private bool _showForm;
     private string _newCode = "";
     private string _newName = "";
     private string? _newNameEn;
@@ -108,7 +122,15 @@
 
         Snackbar.Add("เพิ่มหมวดหมู่เรียบร้อย", Severity.Success);
         _newCode = ""; _newName = ""; _newNameEn = null;
+        _showForm = false;
         await LoadAsync();
+    }
+
+    private void CancelAdd()
+    {
+        _newCode = ""; _newName = ""; _newNameEn = null;
+        _error = null;
+        _showForm = false;
     }
 
     private async Task ToggleActiveAsync(Lms_CourseCategory category)

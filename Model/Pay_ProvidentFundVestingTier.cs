@@ -25,5 +25,7 @@ public class Pay_ProvidentFundVestingTier
 
     public int SortOrder { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public virtual Pay_ProvidentFundPolicy Policy { get; set; } = null!;
 }

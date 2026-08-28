@@ -22,7 +22,13 @@
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">คำขออัตรากำลัง (Manpower Requisition)</MudText>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h5">คำขออัตรากำลัง (Manpower Requisition)</MudText>
+            @if (!_showForm)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateForm">สร้างคำขอใหม่</MudButton>
+            }
+        </MudStack>
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -64,43 +70,49 @@ else
         </MudTable>
     </MudPaper>
 
-    <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">สร้างคำขอใหม่</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="4">
-                <MudSelect T="RequisitionType" @bind-Value="_requisitionType" Label="ประเภทคำขอ">
-                    <MudSelectItem Value="RequisitionType.Replacement">ทดแทน (Replacement)</MudSelectItem>
-                    <MudSelectItem Value="RequisitionType.NewHeadcount">อัตราใหม่ (New Headcount)</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            @if (_requisitionType == RequisitionType.Replacement)
-            {
-                <MudItem xs="12" sm="8">
-                    <MudAutocomplete T="Pos_PositionSlot" Label="เลขที่อัตราเดิมที่จะทดแทน (ต้องว่าง)" Value="_selectedSlot" ValueChanged="v => _selectedSlot = v"
-                        SearchFunc="SearchVacantSlotsAsync" ToStringFunc="@(s => s == null ? null : $"#{s.Id} — {s.Name}")"
+    @if (_showForm)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">สร้างคำขอใหม่</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="RequisitionType" @bind-Value="_requisitionType" Label="ประเภทคำขอ">
+                        <MudSelectItem Value="RequisitionType.Replacement">ทดแทน (Replacement)</MudSelectItem>
+                        <MudSelectItem Value="RequisitionType.NewHeadcount">อัตราใหม่ (New Headcount)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                @if (_requisitionType == RequisitionType.Replacement)
+                {
+                    <MudItem xs="12" sm="8">
+                        <MudAutocomplete T="Pos_PositionSlot" Label="เลขที่อัตราเดิมที่จะทดแทน (ต้องว่าง)" Value="_selectedSlot" ValueChanged="v => _selectedSlot = v"
+                            SearchFunc="SearchVacantSlotsAsync" ToStringFunc="@(s => s == null ? null : $"#{s.Id} — {s.Name}")"
+                            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
+                        SearchFunc="SearchExecTypesAsync" ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
                         ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
                 </MudItem>
-            }
-            <MudItem xs="12" sm="6">
-                <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่ง (Job)" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
-                    SearchFunc="SearchExecTypesAsync" ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
-                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
-                    SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
-                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-            </MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_openingsCount" Label="จำนวนอัตรา" Min="1" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="เงินเดือนเสนอ (ต่ำสุด)" Format="N2" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="เงินเดือนเสนอ (สูงสุด)" Format="N2" /></MudItem>
-            <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่คาดว่าจะเริ่มงาน" @bind-Date="_targetStartDate" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_justification" Label="เหตุผล/ความจำเป็น" Lines="3" /></MudItem>
-            <MudItem xs="12">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">บันทึกคำขอ (ร่าง)</MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="com_organization" Label="หน่วยงาน" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
+                        SearchFunc="SearchOrganizationsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_openingsCount" Label="จำนวนอัตรา" Min="1" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="เงินเดือนเสนอ (ต่ำสุด)" Format="N2" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="เงินเดือนเสนอ (สูงสุด)" Format="N2" /></MudItem>
+                <MudItem xs="12" sm="3"><MudDatePicker Label="วันที่คาดว่าจะเริ่มงาน" @bind-Date="_targetStartDate" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_justification" Label="เหตุผล/ความจำเป็น" Lines="3" /></MudItem>
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">บันทึกคำขอ (ร่าง)</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CancelForm">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
 }
 
 @code {
@@ -112,6 +124,7 @@ else
     private Dictionary<long, string> _orgNames = new();
     private string? _error;
     private string? _info;
+    private bool _showForm;
 
     private RequisitionType _requisitionType = RequisitionType.Replacement;
     private Pos_PositionSlot? _selectedSlot;
@@ -198,6 +211,27 @@ else
         return await query.OrderBy(s => s.Id).Take(20).ToListAsync(ct);
     }
 
+    private void OpenCreateForm()
+    {
+        _error = null;
+        _info = null;
+        _requisitionType = RequisitionType.Replacement;
+        _selectedSlot = null;
+        _selectedExecType = null;
+        _selectedOrg = null;
+        _openingsCount = 1;
+        _minSalary = null;
+        _maxSalary = null;
+        _targetStartDate = null;
+        _justification = null;
+        _showForm = true;
+    }
+
+    private void CancelForm()
+    {
+        _showForm = false;
+    }
+
     private async Task CreateAsync()
     {
         _error = null;
@@ -240,6 +274,7 @@ else
             _maxSalary = null;
             _targetStartDate = null;
             _justification = null;
+            _showForm = false;
             await RefreshAsync();
         }
         catch (InvalidOperationException ex)

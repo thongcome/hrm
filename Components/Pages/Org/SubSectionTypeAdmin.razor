@@ -25,29 +25,34 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มลักษณะของหน่วยงาน" : "แก้ไข")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อ" Required="true" /></MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มลักษณะของหน่วยงาน</MudButton>
+        <MudDivider Class="my-5" />
     }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มลักษณะของหน่วยงาน" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+        </MudGrid>
 
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
+        @if (!string.IsNullOrEmpty(_error))
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
-    </MudStack>
 
-    <MudDivider Class="my-5" />
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
 
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
@@ -84,6 +89,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private string _name = "";
     private bool _isActive = true;
@@ -111,6 +117,12 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Com_SubSectionType item)
     {
         _editingId = item.Id;
@@ -118,6 +130,7 @@
         _isActive = item.IsActive;
         _remark = item.Remark;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -127,6 +140,7 @@
         _isActive = true;
         _remark = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

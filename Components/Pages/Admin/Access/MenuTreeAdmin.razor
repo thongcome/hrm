@@ -40,6 +40,61 @@
         <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
     }
 
+    @if (_editing is not null)
+    {
+        <MudPaper Class="pa-4 mb-4" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-3">@(_editing.menuid == 0 ? "เพิ่มเมนู" : "แก้ไขเมนู") @(_currentParent is not null ? $"(ใต้ {_currentParent.menuname})" : "(ระดับบนสุด)")</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.menuname" Label="ชื่อเมนู (ไทย)" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.menuname_en" Label="ชื่อเมนู (English)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.menucode" Label="รหัสเมนู (Menu Code, ต้องไม่ซ้ำ)" Required="true"
+                        HelperText="ใช้ผูกเมนูลูก และใช้เป็น Menu:{code} policy สำหรับหน้าที่เมนูนี้ชี้ไป" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.url" Label="URL / Route" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.icon" Label="Icon (MudBlazor icon string)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_editing.menuorder" Label="Menu Order" Min="0" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long" @bind-Value="_editing.menugroupid" Label="กลุ่มเมนู (Menu Group)">
+                        @foreach (var g in _menuGroups)
+                        {
+                            <MudSelectItem T="long" Value="@g.menugroupid">@g.menugroupname</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_editing.tooltip" Label="Tooltip" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox T="bool" @bind-Value="_editing.isfinal" Label="Is Final (เมนูปลายทาง)" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox T="bool" @bind-Value="_editing.isshow" Label="แสดงในเมนู" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_editError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
+            }
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
     <MudTable Items="_children" Dense="true" Hover="true">
         <HeaderContent>
             <MudTh>Menu ID</MudTh>
@@ -91,61 +146,6 @@
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
-
-@if (_editing is not null)
-{
-    <MudPaper Class="pa-4" Outlined="true">
-        <MudText Typo="Typo.h6" Class="mb-3">@(_editing.menuid == 0 ? "เพิ่มเมนู" : "แก้ไขเมนู") @(_currentParent is not null ? $"(ใต้ {_currentParent.menuname})" : "(ระดับบนสุด)")</MudText>
-        <MudGrid>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.menuname" Label="ชื่อเมนู (ไทย)" Required="true" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.menuname_en" Label="ชื่อเมนู (English)" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.menucode" Label="รหัสเมนู (Menu Code, ต้องไม่ซ้ำ)" Required="true"
-                    HelperText="ใช้ผูกเมนูลูก และใช้เป็น Menu:{code} policy สำหรับหน้าที่เมนูนี้ชี้ไป" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.url" Label="URL / Route" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.icon" Label="Icon (MudBlazor icon string)" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField @bind-Value="_editing.menuorder" Label="Menu Order" Min="0" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudSelect T="long" @bind-Value="_editing.menugroupid" Label="กลุ่มเมนู (Menu Group)">
-                    @foreach (var g in _menuGroups)
-                    {
-                        <MudSelectItem T="long" Value="@g.menugroupid">@g.menugroupname</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_editing.tooltip" Label="Tooltip" />
-            </MudItem>
-            <MudItem xs="12" sm="3">
-                <MudCheckBox T="bool" @bind-Value="_editing.isfinal" Label="Is Final (เมนูปลายทาง)" />
-            </MudItem>
-            <MudItem xs="12" sm="3">
-                <MudCheckBox T="bool" @bind-Value="_editing.isshow" Label="แสดงในเมนู" />
-            </MudItem>
-        </MudGrid>
-
-        @if (!string.IsNullOrEmpty(_editError))
-        {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
-        }
-
-        <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
-        </MudStack>
-    </MudPaper>
-}
 
 @code {
     private sc_menu? _currentParent;

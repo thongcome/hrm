@@ -1,5 +1,6 @@
 @page "/wf_loas/edit/{id:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
@@ -10,9 +11,20 @@
 {
     <p><em>Loading...</em></p>
 }
+else if (_locked)
+{
+    <div class="alert alert-warning">
+        @WorkflowLockGuard.LockedMessage
+        <br /><a href="/wf_loas">← กลับไปหน้ารายการ LOA</a>
+    </div>
+}
 else
 {
     <h3>Edit LOA #@loa.id</h3>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
     <EditForm Model="loa" OnValidSubmit="Save">
         <DataAnnotationsValidator />
         <ValidationSummary />
@@ -96,6 +108,8 @@ else
     public long id { get; set; }
 
     private wf_loa? loa;
+    private bool _locked;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,16 +118,28 @@ else
         if (loa is null)
         {
             NavigationManager.NavigateTo("/wf_loas");
+            return;
         }
+        var workflow = await db.wf_workflows.FindAsync(loa.nowWorkflowid);
+        _locked = workflow?.isactive == true;
     }
 
     private async Task Save()
     {
         if (loa is null) return;
-        loa.moddate = DateTime.Now;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_loas.Update(loa);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_loas");
+        _error = null;
+        try
+        {
+            loa.moddate = DateTime.Now;
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureLoaEditableAsync(db, loa.nowWorkflowid);
+            db.wf_loas.Update(loa);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wf_loas");
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+        }
     }
 }

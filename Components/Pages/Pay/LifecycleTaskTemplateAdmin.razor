@@ -27,45 +27,52 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewTaskHeading") : string.Format(L.Translate("EditTaskHeadingTemplate"), _form.Title))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="LifecycleTaskDirection" @bind-Value="_form.Direction" Label="@L.Translate("DirectionLabel")">
-                <MudSelectItem Value="LifecycleTaskDirection.Onboarding">@L.Translate("OnboardingOptionLabel")</MudSelectItem>
-                <MudSelectItem Value="LifecycleTaskDirection.Offboarding">@L.Translate("OffboardingOptionLabel")</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.Code" Label="@L.Translate("TaskCodeLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="12">
-            <MudTextField @bind-Value="_form.Title" Label="@L.Translate("TaskTitleLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.Description" Label="@L.Translate("TaskDescriptionLabel")" Lines="2" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.DefaultAssigneeRole" Label="@L.Translate("DefaultAssigneeRoleLabel")" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddTaskButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewTaskHeading") : string.Format(L.Translate("EditTaskHeadingTemplate"), _form.Title))</MudText>
+        @if (!_showForm)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddTaskButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="LifecycleTaskDirection" @bind-Value="_form.Direction" Label="@L.Translate("DirectionLabel")">
+                    <MudSelectItem Value="LifecycleTaskDirection.Onboarding">@L.Translate("OnboardingOptionLabel")</MudSelectItem>
+                    <MudSelectItem Value="LifecycleTaskDirection.Offboarding">@L.Translate("OffboardingOptionLabel")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.Code" Label="@L.Translate("TaskCodeLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="12">
+                <MudTextField @bind-Value="_form.Title" Label="@L.Translate("TaskTitleLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.Description" Label="@L.Translate("TaskDescriptionLabel")" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.DefaultAssigneeRole" Label="@L.Translate("DefaultAssigneeRoleLabel")" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddTaskButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -84,6 +91,7 @@
     private List<Hrd_LifecycleTaskTemplate> _templates = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class TemplateForm
     {
@@ -115,6 +123,14 @@
             .ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _form = new TemplateForm();
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Hrd_LifecycleTaskTemplate template)
     {
         _editingId = template.Id;
@@ -128,6 +144,7 @@
             DefaultAssigneeRole = template.DefaultAssigneeRole,
         };
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -135,6 +152,7 @@
         _editingId = null;
         _form = new TemplateForm();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

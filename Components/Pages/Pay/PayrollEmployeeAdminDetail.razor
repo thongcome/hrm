@@ -14,6 +14,7 @@
 @inject ISnackbar Snackbar
 @inject PrivateFileStorage FileStorage
 @inject SeveranceService SeveranceService
+@inject HRM.Services.Hr.SeparationRequestService SeparationRequestService
 @inject NavigationManager Nav
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject JsonLocalizationService L
@@ -62,52 +63,108 @@ else
             </MudStack>
         </MudStack>
 
-                <EmployeeCoreFieldsForm Employee="_employee" IsCreating="false" CompanyId="@(_companyId!)"
-                    Email="@_formEmployeeEmail" EmailChanged="@(v => _formEmployeeEmail = v)"
-                    WorkDate="_workDate" WorkDateChanged="@(v => _workDate = v)"
-                    BirthDate="_birthDate" BirthDateChanged="@(v => _birthDate = v)"
-                    SalaryGrades="_salaryGrades"
-                    SelectedCostCenter="_selectedCostCenter" SelectedCostCenterChanged="@(v => _selectedCostCenter = v)"
-                    CurrentSlot="_currentSlot" CurrentOrgLabel="@_currentOrgLabel" />
-
-                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
-                    @L.Translate("PositionSalaryAutoTrackNote")
-                </MudAlert>
-                <MudGrid Class="mt-1">
-                    <MudItem xs="12" sm="4">
-                        <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="@L.Translate("ChangeTypeLabel")" Clearable="true">
-                            <MudSelectItem T="string" Value="@("P")">@L.Translate("ChangeTypePromotion")</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("D")">@L.Translate("ChangeTypeDemotion")</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("T")">@L.Translate("ChangeTypeTransfer")</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("S")">@L.Translate("ChangeTypeSalaryOnly")</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("O")">@L.Translate("ChangeTypeOther")</MudSelectItem>
-                        </MudSelect>
-                    </MudItem>
-                    <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryOrderNo" Label="@L.Translate("OrderNoLabel")" />
-                    </MudItem>
-                    <MudItem xs="12" sm="4">
-                        <MudTextField @bind-Value="_positionSalaryReason" Label="@L.Translate("ReasonNoteLabel")" />
-                    </MudItem>
-                </MudGrid>
-
-                @if (!string.IsNullOrEmpty(_formError))
+                @if (_editingCore)
                 {
-                    <MudAlert Severity="Severity.Error" Class="mt-3">@_formError</MudAlert>
+                    <EmployeeCoreFieldsForm Employee="_employee" IsCreating="false" CompanyId="@(_companyId!)"
+                        Email="@_formEmployeeEmail" EmailChanged="@(v => _formEmployeeEmail = v)"
+                        WorkDate="_workDate" WorkDateChanged="@(v => _workDate = v)"
+                        BirthDate="_birthDate" BirthDateChanged="@(v => _birthDate = v)"
+                        SalaryGrades="_salaryGrades"
+                        SelectedCostCenter="_selectedCostCenter" SelectedCostCenterChanged="@(v => _selectedCostCenter = v)"
+                        CurrentSlot="_currentSlot" CurrentOrgLabel="@_currentOrgLabel" />
+
+                    <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                        @L.Translate("PositionSalaryAutoTrackNote")
+                    </MudAlert>
+                    <MudGrid Class="mt-1">
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="string" @bind-Value="_positionSalaryChangeType" Label="@L.Translate("ChangeTypeLabel")" Clearable="true">
+                                <MudSelectItem T="string" Value="@("P")">@L.Translate("ChangeTypePromotion")</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("D")">@L.Translate("ChangeTypeDemotion")</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("T")">@L.Translate("ChangeTypeTransfer")</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("S")">@L.Translate("ChangeTypeSalaryOnly")</MudSelectItem>
+                                <MudSelectItem T="string" Value="@("O")">@L.Translate("ChangeTypeOther")</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudTextField @bind-Value="_positionSalaryOrderNo" Label="@L.Translate("OrderNoLabel")" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudTextField @bind-Value="_positionSalaryReason" Label="@L.Translate("ReasonNoteLabel")" />
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (!string.IsNullOrEmpty(_formError))
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-3">@_formError</MudAlert>
+                    }
+                    <MudStack Row="true" Spacing="2" Class="mt-4">
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEmployeeAsync">@L.Translate("SaveButton")</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CancelEditCoreAsync">@L.Translate("CancelButton")</MudButton>
+                    </MudStack>
                 }
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveEmployeeAsync">@L.Translate("SaveButton")</MudButton>
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("EmpNoLabel")</MudText><MudText Typo="Typo.body1">@_employee.EmpNo</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("FirstNameLabel")</MudText><MudText Typo="Typo.body1">@_employee.PrenameCode @_employee.EmpName @_employee.EmpSurname</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("EmailFieldLabel")</MudText><MudText Typo="Typo.body1">@(_formEmployeeEmail ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("EmployeeTypeFieldLabel")</MudText><MudText Typo="Typo.body1">@EmpTypeLabel()</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("DepartmentLabel")</MudText><MudText Typo="Typo.body1">@(_employee.DeptgrpCode ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("PositionLabel")</MudText><MudText Typo="Typo.body1">@(_employee.PosCode ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("CostCenterFieldLabel")</MudText><MudText Typo="Typo.body1">@(_selectedCostCenter is null ? "—" : $"{_selectedCostCenter.Code} — {_selectedCostCenter.NameTh}")</MudText></MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("OrganizationOrgChartLabel")</MudText>
+                            <MudText Typo="Typo.body1">@(_currentOrgLabel ?? L.Translate("NotLinkedToPositionSlotText"))</MudText>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">@string.Format(L.Translate("PositionInlineTemplate"), _currentSlot?.Name ?? "—")</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("WorkDateLabel")</MudText><MudText Typo="Typo.body1">@(_workDate?.ToString("dd/MM/yyyy") ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("BirthDateFieldLabel")</MudText><MudText Typo="Typo.body1">@(_birthDate?.ToString("dd/MM/yyyy") ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("IdCardLabel")</MudText><MudText Typo="Typo.body1">@(_employee.IdCard ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("SalaryLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalaryAmt?.ToString("N2") ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("SalaryGradeFieldLabel")</MudText><MudText Typo="Typo.body1">@SalaryGradeLabel()</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("BankCodeLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalexpBank ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("BranchCodeLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalexpBranch ?? "—")</MudText></MudItem>
+                        <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("AccountNoLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalexpAccid ?? "—")</MudText></MudItem>
+                    </MudGrid>
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Class="mt-4" OnClick="@(() => _editingCore = true)">@L.Translate("EditButton")</MudButton>
+                }
             </MudPaper>
 
             <MudPaper Class="pa-4 mb-4">
                 <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("ResignSeveranceHeading")</MudText>
                 @if (_employee.ResignDate is null)
                 {
-                    <MudDatePicker @bind-Date="_resignDate" Label="@L.Translate("ResignDateLabel")" Class="mt-1" />
-                    @if (!string.IsNullOrEmpty(_resignError))
+                    @if (_latestSeparationRequest is { Status: SeparationRequestStatus.PendingApproval })
                     {
-                        <MudAlert Severity="Severity.Error" Class="mt-2">@_resignError</MudAlert>
+                        <MudAlert Severity="Severity.Info" Class="mt-1">
+                            มีคำขอสิ้นสุดการจ้างงานรออนุมัติอยู่ — @HRM.Services.Hr.SeparationRequestService.SeparationTypeLabel(_latestSeparationRequest.SeparationType),
+                            มีผลวันที่ @_latestSeparationRequest.EffectiveDate.ToString("dd/MM/yyyy") —
+                            ดูสถานะได้ที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ (My Inbox)</MudLink>
+                        </MudAlert>
                     }
-                    <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="ConfirmResignAsync">@L.Translate("ConfirmResignDateButton")</MudButton>
+                    else
+                    {
+                        @if (_latestSeparationRequest is { Status: SeparationRequestStatus.Rejected })
+                        {
+                            <MudAlert Severity="Severity.Warning" Class="mt-1 mb-3">คำขอสิ้นสุดการจ้างงานก่อนหน้าถูกปฏิเสธ — ส่งคำขอใหม่ได้ด้านล่าง</MudAlert>
+                        }
+                        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+                            การสิ้นสุดการจ้างงานทุกกรณี (รวมลาออกเอง) ต้องผ่านการอนุมัติก่อนจึงจะบันทึกวันที่สิ้นสุดจริง
+                        </MudAlert>
+                        <MudSelect T="SeparationType" @bind-Value="_separationType" Label="ประเภทการสิ้นสุดการจ้างงาน" Class="mt-1">
+                            <MudSelectItem T="SeparationType" Value="SeparationType.VoluntaryResignation">ลาออกเอง (ไม่มีค่าชดเชย)</MudSelectItem>
+                            <MudSelectItem T="SeparationType" Value="SeparationType.TerminationOrdinary">เลิกจ้าง — ไม่เข้าข่ายมาตรา 119 (มีค่าชดเชยตามอายุงาน)</MudSelectItem>
+                            <MudSelectItem T="SeparationType" Value="SeparationType.TerminationSection119">เลิกจ้าง — เข้าข่ายมาตรา 119 (ไม่มีค่าชดเชย)</MudSelectItem>
+                        </MudSelect>
+                        <MudDatePicker @bind-Date="_separationEffectiveDate" Label="วันที่มีผล (วันสุดท้ายของการจ้างงาน)" Class="mt-2" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                        <MudTextField @bind-Value="_separationReason" Label="เหตุผล / หมายเหตุ" Lines="2" Class="mt-2" />
+                        @if (!string.IsNullOrEmpty(_separationError))
+                        {
+                            <MudAlert Severity="Severity.Error" Class="mt-2">@_separationError</MudAlert>
+                        }
+                        <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeparationAsync">ส่งคำขอสิ้นสุดการจ้างงาน</MudButton>
+                    }
                 }
                 else
                 {
@@ -220,6 +277,7 @@ else
     private Hremployee? _employee;
     private bool _notFound;
 
+    private bool _editingCore;
     private string? _formEmployeeEmail;
     private DateTime? _workDate;
     private DateTime? _birthDate;
@@ -232,8 +290,11 @@ else
     private Pos_PositionSlot? _currentSlot;
     private string? _currentOrgLabel;
 
-    private DateTime? _resignDate = DateTime.Today;
-    private string? _resignError;
+    private Hr_SeparationRequest? _latestSeparationRequest;
+    private SeparationType _separationType = SeparationType.VoluntaryResignation;
+    private DateTime? _separationEffectiveDate = DateTime.Today;
+    private string? _separationReason;
+    private string? _separationError;
 
     private HRM.Services.Pay.Calculators.SeveranceCalculator.SeveranceResult? _severancePreview;
     private DateTime? _severanceTargetMonth = DateTime.Today;
@@ -259,6 +320,18 @@ else
         if (_employee is null) { _notFound = true; return; }
 
         await AuditLogger.LogAccessAsync("Hremployee", _employee.id.ToString(), isSensitive: true, note: "employee admin record opened");
+
+        // Lazy apply-on-read: pick up a separation request whose workflow
+        // job has since closed (approved/rejected) before rendering the
+        // resignation panel below — no scheduler exists anywhere in this
+        // app, so this is the only place ResignDate/SeparationType get
+        // applied. Reload (not a second FirstOrDefaultAsync on the same
+        // context) because SyncStatusFromJobAsync writes through its own
+        // DbContext — the identity map would otherwise hand back the
+        // already-tracked, now-stale _employee instance.
+        await SeparationRequestService.SyncStatusFromJobAsync(_employee.id);
+        await context.Entry(_employee).ReloadAsync();
+        _latestSeparationRequest = await SeparationRequestService.GetLatestAsync(_employee.id);
 
         _workDate = _employee.WorkDate;
         _birthDate = _employee.BirthDate;
@@ -291,8 +364,10 @@ else
             _currentOrgLabel = null;
         }
 
-        _resignDate = DateTime.Today;
-        _resignError = null;
+        _separationType = SeparationType.VoluntaryResignation;
+        _separationEffectiveDate = DateTime.Today;
+        _separationReason = null;
+        _separationError = null;
 
         _severanceError = null;
         _severancePreview = null;
@@ -407,31 +482,61 @@ else
             return;
         }
 
+        _editingCore = false;
         Snackbar.Add(L.Translate("DataSavedSuccessGeneric"), Severity.Success);
     }
 
-    private async Task ConfirmResignAsync()
+    private async Task CancelEditCoreAsync()
     {
-        _resignError = null;
+        // Discard any unsaved edits by simply reloading everything from the
+        // DB — cheap and safe since OnParametersSetAsync is idempotent (same
+        // pattern ConfirmResignAsync already relies on below).
+        _formError = null;
+        await OnParametersSetAsync();
+        _editingCore = false;
+    }
 
-        if (_resignDate is null)
+    private string EmpTypeLabel() => _employee?.EmptypeCode switch
+    {
+        "01" => L.Translate("RegularEmployeeCheckbox"),
+        "02" => L.Translate("TemporaryEmployeeCheckbox"),
+        _ => "—",
+    };
+
+    private string SalaryGradeLabel()
+    {
+        if (_employee?.SalaryGradeId is not long gradeId) return "—";
+        var grade = _salaryGrades.FirstOrDefault(g => g.Id == gradeId);
+        return grade is null ? "—" : $"{grade.GradeCode} — {grade.GradeName}";
+    }
+
+    private async Task SubmitSeparationAsync()
+    {
+        _separationError = null;
+
+        if (_employee is null || _separationEffectiveDate is null)
         {
-            _resignError = L.Translate("PleaseSpecifyResignDateError");
+            _separationError = L.Translate("PleaseSpecifyResignDateError");
             return;
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id && e.companyid == _companyId);
-        if (existing is null)
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirstValue("sc_userid");
+        var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+        var requesterEmpId = state.User.FindFirst("empno")?.Value;
+
+        try
         {
-            _resignError = L.Translate("EmployeeDataNotFoundError");
+            await SeparationRequestService.SubmitAsync(_employee.id, _separationType, _separationEffectiveDate.Value,
+                _separationReason, userId, requesterEmpId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _separationError = ex.Message;
             return;
         }
 
-        existing.ResignDate = _resignDate;
-        await context.SaveChangesAsync();
-
-        Snackbar.Add(L.Translate("ResignDateSavedSuccess"), Severity.Success);
+        Snackbar.Add("ส่งคำขอสิ้นสุดการจ้างงานเรียบร้อย รออนุมัติ", Severity.Success);
         await OnParametersSetAsync();
     }
 

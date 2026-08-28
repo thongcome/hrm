@@ -27,42 +27,49 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewGradeHeading") : string.Format(L.Translate("EditGradeHeadingTemplate"), _form.GradeCode))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.GradeCode" Label="@L.Translate("GradeCodeLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.GradeName" Label="@L.Translate("GradeNameLabel")" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MinSalary" Label="@L.Translate("MinSalaryLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MidSalary" Label="@L.Translate("MidSalaryLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.MaxSalary" Label="@L.Translate("MaxSalaryLabel")" Format="N2" Min="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddGradeButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewGradeHeading") : string.Format(L.Translate("EditGradeHeadingTemplate"), _form.GradeCode))</MudText>
+        @if (!_showForm)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddGradeButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.GradeCode" Label="@L.Translate("GradeCodeLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.GradeName" Label="@L.Translate("GradeNameLabel")" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MinSalary" Label="@L.Translate("MinSalaryLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MidSalary" Label="@L.Translate("MidSalaryLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.MaxSalary" Label="@L.Translate("MaxSalaryLabel")" Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.SortOrder" Label="@L.Translate("SortOrderLabel")" Min="0" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddGradeButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -94,6 +101,7 @@
     private List<Pay_SalaryGrade> _grades = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class GradeForm
     {
@@ -125,6 +133,14 @@
             .ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _form = new GradeForm();
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Pay_SalaryGrade grade)
     {
         _editingId = grade.Id;
@@ -138,6 +154,7 @@
             SortOrder = grade.SortOrder,
         };
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -145,6 +162,7 @@
         _editingId = null;
         _form = new GradeForm();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

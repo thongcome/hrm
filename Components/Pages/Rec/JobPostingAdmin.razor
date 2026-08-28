@@ -22,7 +22,13 @@
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">ประกาศรับสมัครงาน</MudText>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h5">ประกาศรับสมัครงาน</MudText>
+            @if (!_showForm)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateForm">สร้างประกาศใหม่</MudButton>
+            }
+        </MudStack>
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -83,30 +89,36 @@ else
         </MudTable>
     </MudPaper>
 
-    <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6">สร้างประกาศใหม่</MudText>
-        <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Secondary">สร้างได้เฉพาะจากคำขออัตรากำลังที่อนุมัติแล้วและยังไม่มีประกาศ</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6">
-                <MudSelect T="Rec_Requisition" @bind-Value="_selectedRequisition" Label="คำขออัตรากำลังที่อนุมัติแล้ว" ToStringFunc="@(r => r == null ? null : $"#{r.Id} — {ExecTypeName(r.PosExecTypeId)} ({r.OpeningsCount} อัตรา)")">
-                    @foreach (var r in _postableRequisitions)
-                    {
-                        <MudSelectItem Value="r">#@r.Id — @ExecTypeName(r.PosExecTypeId) (@r.OpeningsCount อัตรา)</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_title" Label="ชื่อตำแหน่งที่จะประกาศ" /></MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="วันเปิดรับสมัคร" @bind-Date="_openDate" /></MudItem>
-            <MudItem xs="12" sm="6"><MudDatePicker Label="วันปิดรับสมัคร" @bind-Date="_closeDate" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_description" Label="รายละเอียดงาน" Lines="5" /></MudItem>
-            <MudItem xs="12">
-                <MudCheckBox T="bool" @bind-Value="_isInternal" Label="เปิดรับเฉพาะพนักงานภายใน (ไม่แสดงบน career site สาธารณะ)" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">บันทึกประกาศ (ร่าง)</MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+    @if (_showForm)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">สร้างประกาศใหม่</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Secondary">สร้างได้เฉพาะจากคำขออัตรากำลังที่อนุมัติแล้วและยังไม่มีประกาศ</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Rec_Requisition" @bind-Value="_selectedRequisition" Label="คำขออัตรากำลังที่อนุมัติแล้ว" ToStringFunc="@(r => r == null ? null : $"#{r.Id} — {ExecTypeName(r.PosExecTypeId)} ({r.OpeningsCount} อัตรา)")">
+                        @foreach (var r in _postableRequisitions)
+                        {
+                            <MudSelectItem Value="r">#@r.Id — @ExecTypeName(r.PosExecTypeId) (@r.OpeningsCount อัตรา)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_title" Label="ชื่อตำแหน่งที่จะประกาศ" /></MudItem>
+                <MudItem xs="12" sm="6"><MudDatePicker Label="วันเปิดรับสมัคร" @bind-Date="_openDate" /></MudItem>
+                <MudItem xs="12" sm="6"><MudDatePicker Label="วันปิดรับสมัคร" @bind-Date="_closeDate" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_description" Label="รายละเอียดงาน" Lines="5" /></MudItem>
+                <MudItem xs="12">
+                    <MudCheckBox T="bool" @bind-Value="_isInternal" Label="เปิดรับเฉพาะพนักงานภายใน (ไม่แสดงบน career site สาธารณะ)" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync">บันทึกประกาศ (ร่าง)</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CancelForm">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
 }
 
 @code {
@@ -116,6 +128,7 @@ else
     private Dictionary<long, string> _execTypeNames = new();
     private string? _error;
     private string? _info;
+    private bool _showForm;
 
     private Rec_Requisition? _selectedRequisition;
     private string? _title;
@@ -165,6 +178,24 @@ else
         _ => Color.Warning,
     };
 
+    private void OpenCreateForm()
+    {
+        _error = null;
+        _info = null;
+        _selectedRequisition = null;
+        _title = null;
+        _openDate = DateTime.Today;
+        _closeDate = null;
+        _description = null;
+        _isInternal = false;
+        _showForm = true;
+    }
+
+    private void CancelForm()
+    {
+        _showForm = false;
+    }
+
     private async Task CreateAsync()
     {
         _error = null;
@@ -191,6 +222,7 @@ else
         _description = null;
         _closeDate = null;
         _isInternal = false;
+        _showForm = false;
         await RefreshAsync();
     }
 

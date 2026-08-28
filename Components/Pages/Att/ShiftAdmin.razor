@@ -30,24 +30,37 @@
         return;
     }
 
-    <MudText Typo="Typo.h6" Class="mt-4">@L.Translate("ShiftListHeading")</MudText>
-    <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="3">
-            <MudTextField @bind-Value="_newShiftCode" Label="@L.Translate("ShiftCodeLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudTextField @bind-Value="_newShiftName" Label="@L.Translate("ShiftNameLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudTimePicker @bind-Time="_newStartTime" Label="@L.Translate("ShiftStartTimeLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudTimePicker @bind-Time="_newEndTime" Label="@L.Translate("ShiftEndTimeLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddShiftAsync" Class="mt-2">@L.Translate("AddShiftButton")</MudButton>
-        </MudItem>
-    </MudGrid>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mt-4">
+        <MudText Typo="Typo.h6">@L.Translate("ShiftListHeading")</MudText>
+        @if (!_showShiftForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenShiftForm">@L.Translate("AddShiftButton")</MudButton>
+        }
+    </MudStack>
+
+    @if (_showShiftForm)
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="3">
+                <MudTextField @bind-Value="_newShiftCode" Label="@L.Translate("ShiftCodeLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudTextField @bind-Value="_newShiftName" Label="@L.Translate("ShiftNameLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudTimePicker @bind-Time="_newStartTime" Label="@L.Translate("ShiftStartTimeLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudTimePicker @bind-Time="_newEndTime" Label="@L.Translate("ShiftEndTimeLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddShiftAsync">@L.Translate("AddShiftButton")</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelShiftForm">@L.Translate("CancelButton")</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    }
 
     @if (!string.IsNullOrEmpty(_shiftError))
     {
@@ -69,31 +82,45 @@
 
     <MudDivider Class="my-5" />
 
-    <MudText Typo="Typo.h6">@L.Translate("IndividualDailyAssignHeading")</MudText>
-    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("IndividualDailyAssignDesc")</MudText>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h6">@L.Translate("IndividualDailyAssignHeading")</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("IndividualDailyAssignDesc")</MudText>
+        </div>
+        @if (!_showAssignForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAssignForm">@L.Translate("AssignButton")</MudButton>
+        }
+    </MudStack>
 
-    <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeFieldLabel")" @bind-Value="_assignEmployee"
-                SearchFunc="SearchEmployeesAsync"
-                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker @bind-Date="_assignDate" Label="@L.Translate("ColDate")" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSelect T="long?" @bind-Value="_assignShiftId" Label="@L.Translate("ShiftFieldLabel")">
-                @foreach (var s in _shifts)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)s.Id)">@s.ShiftName (@s.ShiftCode)</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="2">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignShiftAsync" Class="mt-2">@L.Translate("AssignButton")</MudButton>
-        </MudItem>
-    </MudGrid>
+    @if (_showAssignForm)
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Hremployee" Label="@L.Translate("EmployeeFieldLabel")" @bind-Value="_assignEmployee"
+                    SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_assignDate" Label="@L.Translate("ColDate")" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_assignShiftId" Label="@L.Translate("ShiftFieldLabel")">
+                    @foreach (var s in _shifts)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)s.Id)">@s.ShiftName (@s.ShiftCode)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignShiftAsync">@L.Translate("AssignButton")</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelAssignForm">@L.Translate("CancelButton")</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    }
 
     @if (!string.IsNullOrEmpty(_assignError))
     {
@@ -233,12 +260,14 @@
     private TimeSpan? _newStartTime;
     private TimeSpan? _newEndTime;
     private string? _shiftError;
+    private bool _showShiftForm;
 
     private List<Att_ShiftAssignment> _assignments = new();
     private Hremployee? _assignEmployee;
     private DateTime? _assignDate = DateTime.Today;
     private long? _assignShiftId;
     private string? _assignError;
+    private bool _showAssignForm;
 
     protected override async Task OnInitializedAsync()
     {
@@ -276,6 +305,21 @@
             .ToListAsync();
     }
 
+    private void OpenShiftForm()
+    {
+        _shiftError = null;
+        _newShiftCode = "";
+        _newShiftName = "";
+        _newStartTime = null;
+        _newEndTime = null;
+        _showShiftForm = true;
+    }
+
+    private void CancelShiftForm()
+    {
+        _showShiftForm = false;
+    }
+
     private async Task AddShiftAsync()
     {
         _shiftError = null;
@@ -310,6 +354,7 @@
         _newShiftName = "";
         _newStartTime = null;
         _newEndTime = null;
+        _showShiftForm = false;
         await LoadShiftsAsync();
     }
 
@@ -324,6 +369,20 @@
                 || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
         }
         return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void OpenAssignForm()
+    {
+        _assignError = null;
+        _assignEmployee = null;
+        _assignDate = DateTime.Today;
+        _assignShiftId = null;
+        _showAssignForm = true;
+    }
+
+    private void CancelAssignForm()
+    {
+        _showAssignForm = false;
     }
 
     private async Task AssignShiftAsync()
@@ -358,6 +417,7 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add(L.Translate("ShiftAssignedSuccess"), Severity.Success);
+        _showAssignForm = false;
         await LoadAssignmentsAsync();
     }
 

@@ -29,6 +29,11 @@
         <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (ข้อความคำถาม)" Immediate="true" DebounceInterval="300"
             ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
 
+        @if (!_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มคำถามใหม่</MudButton>
+        }
+
         <MudTable Items="_templates" Dense="true" Hover="true">
             <HeaderContent>
                 <MudTh>คำถาม</MudTh>
@@ -52,39 +57,39 @@
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีคำถามในคลัง</MudText></NoRecordsContent>
         </MudTable>
 
-        <MudDivider Class="my-5" />
-
-        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มคำถามใหม่" : "แก้ไขคำถาม")</MudText>
-        <MudGrid Class="mt-2">
-            <MudItem xs="12"><MudTextField @bind-Value="_form.Text" Label="ข้อความคำถาม" Lines="2" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudSelect T="Eng_QuestionType" @bind-Value="_form.QuestionType" Label="ประเภทคำถาม">
-                    <MudSelectItem Value="Eng_QuestionType.Rating">ให้คะแนน (1-5)</MudSelectItem>
-                    <MudSelectItem Value="Eng_QuestionType.YesNo">ใช่/ไม่ใช่</MudSelectItem>
-                    <MudSelectItem Value="Eng_QuestionType.Text">ข้อความอิสระ</MudSelectItem>
-                    <MudSelectItem Value="Eng_QuestionType.MultipleChoice">ตัวเลือกหลายข้อ</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            @if (_form.QuestionType == Eng_QuestionType.MultipleChoice)
-            {
-                <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_form.Options" Label="ตัวเลือก (คั่นด้วยเครื่องหมายจุลภาค)" Placeholder="เช่น เห็นด้วยมาก, เห็นด้วย, ไม่เห็นด้วย" />
-                </MudItem>
-            }
-        </MudGrid>
-
-        @if (!string.IsNullOrEmpty(_error))
+        @if (_showForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-        }
+            <MudDivider Class="my-5" />
 
-        <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? "เพิ่ม" : "บันทึก")</MudButton>
-            @if (_editingId is not null)
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มคำถามใหม่" : "แก้ไขคำถาม")</MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12"><MudTextField @bind-Value="_form.Text" Label="ข้อความคำถาม" Lines="2" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Eng_QuestionType" @bind-Value="_form.QuestionType" Label="ประเภทคำถาม">
+                        <MudSelectItem Value="Eng_QuestionType.Rating">ให้คะแนน (1-5)</MudSelectItem>
+                        <MudSelectItem Value="Eng_QuestionType.YesNo">ใช่/ไม่ใช่</MudSelectItem>
+                        <MudSelectItem Value="Eng_QuestionType.Text">ข้อความอิสระ</MudSelectItem>
+                        <MudSelectItem Value="Eng_QuestionType.MultipleChoice">ตัวเลือกหลายข้อ</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                @if (_form.QuestionType == Eng_QuestionType.MultipleChoice)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_form.Options" Label="ตัวเลือก (คั่นด้วยเครื่องหมายจุลภาค)" Placeholder="เช่น เห็นด้วยมาก, เห็นด้วย, ไม่เห็นด้วย" />
+                    </MudItem>
+                }
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
             {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
             }
-        </MudStack>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? "เพิ่ม" : "บันทึก")</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+        }
     }
 </MudPaper>
 
@@ -94,6 +99,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
     private Eng_QuestionTemplate _form = new() { IsActive = true };
 
     protected override async Task OnInitializedAsync()
@@ -115,6 +121,14 @@
         _templates = await QuestionService.GetAllAsync(_companyId!, _searchTerm);
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new Eng_QuestionTemplate { IsActive = true };
+        _error = null;
+        _showForm = true;
+    }
+
     private void EditTemplate(Eng_QuestionTemplate template)
     {
         _editingId = template.Id;
@@ -126,6 +140,7 @@
             Options = template.Options,
             IsActive = template.IsActive,
         };
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -133,6 +148,7 @@
         _editingId = null;
         _form = new Eng_QuestionTemplate { IsActive = true };
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

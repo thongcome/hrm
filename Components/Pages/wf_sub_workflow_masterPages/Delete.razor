@@ -1,6 +1,7 @@
 ﻿@page "/wf_sub_workflow_masters/delete"
 @using Microsoft.EntityFrameworkCore
 @using HRM.Models
+@using HRM.Services.Workflow
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
 @inject NavigationManager NavigationManager
 
@@ -12,9 +13,20 @@
 <div>
     <h2>wf_sub_workflow_master</h2>
     <hr />
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
     @if (wf_sub_workflow_master is null)
     {
         <p><em>Loading...</em></p>
+    }
+    else if (_locked)
+    {
+        <div class="alert alert-warning">
+            @WorkflowLockGuard.LockedMessage
+            <br /><a href="/wf_sub_workflow_masters">Back to List</a>
+        </div>
     }
     else {
         <dl class="row">
@@ -238,6 +250,8 @@
 
 @code {
     private wf_sub_workflow_master? wf_sub_workflow_master;
+    private bool _locked;
+    private string? _error;
 
     [SupplyParameterFromQuery]
     private long subworkflowid { get; set; }
@@ -250,14 +264,27 @@
         if (wf_sub_workflow_master is null)
         {
             NavigationManager.NavigateTo("notfound");
+            return;
         }
+
+        var parentWorkflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == wf_sub_workflow_master.workflowid);
+        _locked = parentWorkflow?.isactive == true;
     }
 
     private async Task Deletewf_sub_workflow_master()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.wf_sub_workflow_masters.Remove(wf_sub_workflow_master!);
-        await context.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+        _error = null;
+        try
+        {
+            using var context = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, wf_sub_workflow_master!.workflowid);
+            context.wf_sub_workflow_masters.Remove(wf_sub_workflow_master!);
+            await context.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
     }
 }

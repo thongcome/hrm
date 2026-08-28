@@ -1,5 +1,6 @@
 @page "/wf_loa_users/create"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
@@ -7,6 +8,11 @@
 @inject NavigationManager NavigationManager
 
 <h3>Create LOA User</h3>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
 
 <EditForm Model="loaUser" OnValidSubmit="Save">
     <DataAnnotationsValidator />
@@ -77,13 +83,23 @@
 
 @code {
     private wf_loa_user loaUser = new() { isactive = true };
+    private string? _error;
 
     private async Task Save()
     {
-        loaUser.moddate = DateTime.Now;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_loa_users.Add(loaUser);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_loa_users");
+        _error = null;
+        try
+        {
+            loaUser.moddate = DateTime.Now;
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(db, loaUser.workflowid);
+            db.wf_loa_users.Add(loaUser);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wf_loa_users");
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+        }
     }
 }

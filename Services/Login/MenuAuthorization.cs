@@ -33,7 +33,14 @@ public class MenuAuthorizationHandler : AuthorizationHandler<MenuRequirement>
 
 public class MenuPolicyProvider : IAuthorizationPolicyProvider
 {
-    private const string Prefix = "Menu:";
+    private const string MenuPrefix = "Menu:";
+    // Only one IAuthorizationPolicyProvider can be registered at a time
+    // (Program.cs: AddSingleton<IAuthorizationPolicyProvider, ...> — a
+    // second registration would just replace this one), so the sibling
+    // "Program:" prefix (per-action Create/Edit/Delete checks, see
+    // ProgramAuthorization.cs) is resolved from here too rather than from a
+    // second provider class.
+    private const string ProgramPrefix = "Program:";
     private readonly DefaultAuthorizationPolicyProvider _fallback;
 
     public MenuPolicyProvider(Microsoft.Extensions.Options.IOptions<AuthorizationOptions> options)
@@ -43,12 +50,22 @@ public class MenuPolicyProvider : IAuthorizationPolicyProvider
 
     public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
-        if (policyName.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
+        if (policyName.StartsWith(MenuPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var menuCode = policyName[Prefix.Length..];
+            var menuCode = policyName[MenuPrefix.Length..];
             var policy = new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
                 .AddRequirements(new MenuRequirement(menuCode))
+                .Build();
+            return Task.FromResult<AuthorizationPolicy?>(policy);
+        }
+
+        if (policyName.StartsWith(ProgramPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var programCode = policyName[ProgramPrefix.Length..];
+            var policy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ProgramRequirement(programCode))
                 .Build();
             return Task.FromResult<AuthorizationPolicy?>(policy);
         }

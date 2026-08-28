@@ -34,5 +34,7 @@ public class Perf_GradeBand
 
     public int SortOrder { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public virtual Perf_EvaluationPeriod EvaluationPeriod { get; set; } = null!;
 }

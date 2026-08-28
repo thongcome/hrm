@@ -120,7 +120,7 @@ public class RecInterviewService(IDbContextFactory<HRMContext> dbFactory)
 
         return await context.Job_CompetencyRequirements
             .Include(r => r.Competency)
-            .Where(r => r.PosExecTypeId == req.PosExecTypeId)
+            .Where(r => r.PosExecTypeId == req.PosExecTypeId && r.IsActive)
             .OrderBy(r => r.SortOrder)
             .ToListAsync(ct);
     }

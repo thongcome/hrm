@@ -26,33 +26,37 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทใหม่" : $"แก้ไขประเภท — {_form.Name}")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.Code" Label="รหัส" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="8">
-            <MudTextField @bind-Value="_form.Name" Label="ชื่อประเภท" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มประเภทใหม่</MudButton>
     }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทใหม่" : $"แก้ไขประเภท — {_form.Name}")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.Code" Label="รหัส" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_form.Name" Label="ชื่อประเภท" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_form.SortOrder" Label="ลำดับการแสดงผล" Min="0" />
+            </MudItem>
+        </MudGrid>
 
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มประเภท" : "บันทึกการแก้ไข")
-        </MudButton>
-        @if (_editingId is not null)
+        @if (!string.IsNullOrEmpty(_error))
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
-    </MudStack>
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? "เพิ่มประเภท" : "บันทึกการแก้ไข")
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -84,6 +88,7 @@
     private List<Exp_ExpenseCategory> _categories = new();
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class CategoryForm
     {
@@ -112,11 +117,20 @@
             .ToListAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new CategoryForm();
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Exp_ExpenseCategory category)
     {
         _editingId = category.Id;
         _form = new CategoryForm { Code = category.Code, Name = category.Name, SortOrder = category.SortOrder };
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -124,6 +138,7 @@
         _editingId = null;
         _form = new CategoryForm();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

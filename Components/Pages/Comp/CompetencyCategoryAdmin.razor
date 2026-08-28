@@ -27,42 +27,46 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มหมวดสมรรถนะ" : "แก้ไข")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="CompetencyCategoryType" @bind-Value="_categoryType" Label="ประเภท">
-                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Core">Core (ทุกคนต้องมี)</MudSelectItem>
-                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Leadership">Leadership (สายบริหาร)</MudSelectItem>
-                <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Functional">Functional (เฉพาะสายอาชีพ)</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_name" Label="ชื่อหมวด" Required="true" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อหมวด (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_sortOrder" Label="ลำดับแสดงผล" /></MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
-    </MudStack>
-
-    <MudDivider Class="my-5" />
-
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มหมวดสมรรถนะ</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มหมวดสมรรถนะ" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="CompetencyCategoryType" @bind-Value="_categoryType" Label="ประเภท">
+                    <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Core">Core (ทุกคนต้องมี)</MudSelectItem>
+                    <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Leadership">Leadership (สายบริหาร)</MudSelectItem>
+                    <MudSelectItem T="CompetencyCategoryType" Value="CompetencyCategoryType.Functional">Functional (เฉพาะสายอาชีพ)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_name" Label="ชื่อหมวด" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อหมวด (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="int" @bind-Value="_sortOrder" Label="ลำดับแสดงผล" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
 
     <MudTable Items="_items" Dense="true" Hover="true">
         <HeaderContent>
@@ -98,6 +102,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private CompetencyCategoryType _categoryType = CompetencyCategoryType.Core;
     private string? _code;
@@ -129,6 +134,19 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _categoryType = CompetencyCategoryType.Core;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _sortOrder = 0;
+        _isActive = true;
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Comp_Category item)
     {
         _editingId = item.Id;
@@ -139,6 +157,7 @@
         _sortOrder = item.SortOrder;
         _isActive = item.IsActive;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -151,6 +170,7 @@
         _sortOrder = 0;
         _isActive = true;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

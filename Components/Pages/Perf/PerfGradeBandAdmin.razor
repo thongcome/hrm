@@ -20,19 +20,29 @@ else
             ช่วงคะแนน → เกรด → % ขึ้นเงินเดือน/โบนัส — เกรดที่ติ๊ก "บังคับชี้แจง" จะบังคับให้ผู้ประเมินเขียนเหตุผลคุณภาพ/ปริมาณงาน/ประสิทธิภาพก่อนส่งคะแนนได้
         </MudText>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="6" sm="2"><MudTextField @bind-Value="_gradeLabel" Label="เกรด" /></MudItem>
-            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMin" Label="คะแนนตั้งแต่ (%)" Min="0" Max="100" /></MudItem>
-            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMax" Label="ถึง (%)" Min="0" Max="100" /></MudItem>
-            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeSalaryPct" Label="% ขึ้นเงินเดือน" Min="0" /></MudItem>
-            <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeBonusPct" Label="% โบนัส" Min="0" /></MudItem>
-            <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_gradeRequiresJustification" Label="บังคับชี้แจง" /></MudItem>
-        </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="AddGradeBandAsync">เพิ่มเกรด</MudButton>
-
-        @if (!string.IsNullOrEmpty(_gradeError))
+        @if (!_showGradeForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-2">@_gradeError</MudAlert>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenGradeForm">เพิ่มเกรด</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="6" sm="2"><MudTextField @bind-Value="_gradeLabel" Label="เกรด" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMin" Label="คะแนนตั้งแต่ (%)" Min="0" Max="100" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMax" Label="ถึง (%)" Min="0" Max="100" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeSalaryPct" Label="% ขึ้นเงินเดือน" Min="0" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeBonusPct" Label="% โบนัส" Min="0" /></MudItem>
+                <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_gradeRequiresJustification" Label="บังคับชี้แจง" /></MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddGradeBandAsync">เพิ่มเกรด</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CloseGradeForm">ยกเลิก</MudButton>
+            </MudStack>
+
+            @if (!string.IsNullOrEmpty(_gradeError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_gradeError</MudAlert>
+            }
         }
 
         <MudTable Items="_gradeBands" Dense="true" Hover="true" Class="mt-3">
@@ -63,11 +73,23 @@ else
         <MudText Typo="Typo.body2" Class="mt-1">
             อธิบายความหมายของแต้มคะแนนแต่ละระดับ (เช่น 5=ดีเยี่ยม) ให้ผู้ประเมินเห็นตอนกรอกคะแนน — เปลี่ยนได้ทุกรอบโดยไม่กระทบรอบเก่า
         </MudText>
-        <MudGrid Class="mt-2">
-            <MudItem xs="4" sm="2"><MudNumericField T="int" @bind-Value="_scoreDescPoint" Label="แต้ม" Min="1" /></MudItem>
-            <MudItem xs="8" sm="7"><MudTextField @bind-Value="_scoreDescText" Label="คำอธิบาย" /></MudItem>
-            <MudItem xs="12" sm="3"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddRatingDescAsync">เพิ่ม</MudButton></MudItem>
-        </MudGrid>
+        @if (!_showRatingDescForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenRatingDescForm">เพิ่มคำอธิบาย</MudButton>
+        }
+        else
+        {
+            <MudGrid Class="mt-2">
+                <MudItem xs="4" sm="2"><MudNumericField T="int" @bind-Value="_scoreDescPoint" Label="แต้ม" Min="1" /></MudItem>
+                <MudItem xs="8" sm="7"><MudTextField @bind-Value="_scoreDescText" Label="คำอธิบาย" /></MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="AddRatingDescAsync">เพิ่ม</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CloseRatingDescForm">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        }
         <MudTable Items="_ratingDescs" Dense="true" Hover="true" Class="mt-3">
             <HeaderContent>
                 <MudTh>แต้ม</MudTh>
@@ -96,6 +118,9 @@ else
     private List<Perf_RatingScaleDescription> _ratingDescs = new();
     private string? _gradeError;
 
+    private bool _showGradeForm;
+    private bool _showRatingDescForm;
+
     private string _gradeLabel = "";
     private decimal _gradeMin;
     private decimal _gradeMax = 100;
@@ -115,13 +140,26 @@ else
         if (_period is null) return;
 
         _gradeBands = await context.Perf_GradeBands
-            .Where(g => g.EvaluationPeriodId == PeriodId)
+            .Where(g => g.EvaluationPeriodId == PeriodId && g.IsActive)
             .OrderByDescending(g => g.MinPercent)
             .ToListAsync();
         _ratingDescs = await context.Perf_RatingScaleDescriptions
-            .Where(d => d.EvaluationPeriodId == PeriodId)
+            .Where(d => d.EvaluationPeriodId == PeriodId && d.IsActive)
             .OrderBy(d => d.ScorePoint)
             .ToListAsync();
+    }
+
+    private void OpenGradeForm()
+    {
+        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeRequiresJustification = false;
+        _gradeError = null;
+        _showGradeForm = true;
+    }
+
+    private void CloseGradeForm()
+    {
+        _showGradeForm = false;
+        _gradeError = null;
     }
 
     private async Task AddGradeBandAsync()
@@ -145,6 +183,7 @@ else
         await context.SaveChangesAsync();
 
         _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeRequiresJustification = false;
+        _showGradeForm = false;
         await LoadAsync();
     }
 
@@ -153,9 +192,20 @@ else
         await using var context = await DbFactory.CreateDbContextAsync();
         var row = await context.Perf_GradeBands.FirstOrDefaultAsync(g => g.Id == id);
         if (row is null) return;
-        context.Perf_GradeBands.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
+    }
+
+    private void OpenRatingDescForm()
+    {
+        _scoreDescPoint = 1; _scoreDescText = "";
+        _showRatingDescForm = true;
+    }
+
+    private void CloseRatingDescForm()
+    {
+        _showRatingDescForm = false;
     }
 
     private async Task AddRatingDescAsync()
@@ -170,6 +220,7 @@ else
         });
         await context.SaveChangesAsync();
         _scoreDescText = "";
+        _showRatingDescForm = false;
         await LoadAsync();
     }
 
@@ -178,7 +229,7 @@ else
         await using var context = await DbFactory.CreateDbContextAsync();
         var row = await context.Perf_RatingScaleDescriptions.FirstOrDefaultAsync(d => d.Id == id);
         if (row is null) return;
-        context.Perf_RatingScaleDescriptions.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }

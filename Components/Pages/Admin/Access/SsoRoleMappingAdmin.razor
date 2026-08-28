@@ -23,28 +23,37 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">เพิ่มสิทธิ์ใหม่</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="5">
-            <MudAutocomplete T="sc_user" Label="ผู้ใช้" @bind-Value="_selectedUser"
-                SearchFunc="SearchUsersAsync"
-                ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-        </MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_clientId" Label="ระบบปลายทาง (Client)" HelperText="เช่น erp-web" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_role" Label="Role" HelperText="เช่น Sales, Accountant, Inventory, Admin" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddForm">เพิ่มสิทธิ์ใหม่</MudButton>
+        <MudDivider Class="my-5" />
     }
+    else
+    {
+        <MudText Typo="Typo.h6">เพิ่มสิทธิ์ใหม่</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="5">
+                <MudAutocomplete T="sc_user" Label="ผู้ใช้" @bind-Value="_selectedUser"
+                    SearchFunc="SearchUsersAsync"
+                    ToStringFunc="@(u => u == null ? null : $"{u.loginname} — {u.firstname} {u.lastname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_clientId" Label="ระบบปลายทาง (Client)" HelperText="เช่น erp-web" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_role" Label="Role" HelperText="เช่น Sales, Accountant, Inventory, Admin" /></MudItem>
+        </MudGrid>
 
-    <MudStack Row="true" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่ม</MudButton>
-    </MudStack>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
 
-    <MudDivider Class="my-5" />
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่ม</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CloseAddForm">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
 
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
@@ -81,6 +90,22 @@
     private string _clientId = "erp-web";
     private string _role = "";
     private long? _currentUserId;
+    private bool _showForm;
+
+    private void OpenAddForm()
+    {
+        _selectedUser = null;
+        _clientId = "erp-web";
+        _role = "";
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CloseAddForm()
+    {
+        _showForm = false;
+        _error = null;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,6 +119,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         var query =
             from m in context.Sso_ClientRoleMappings
+            where m.IsActive
             join u in context.sc_users on m.ScUserId equals u.userid
             select new { m, u.loginname, u.firstname, u.lastname };
 
@@ -135,26 +161,40 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
-        var duplicate = await context.Sso_ClientRoleMappings.AnyAsync(m =>
+        // Unique index on (ScUserId, ClientId) covers active AND soft-deleted
+        // rows, so a previously-removed mapping for this exact pair must be
+        // reactivated in place rather than inserted as a second row.
+        var existingForPair = await context.Sso_ClientRoleMappings.FirstOrDefaultAsync(m =>
             m.ScUserId == _selectedUser.userid && m.ClientId == _clientId);
-        if (duplicate)
+        if (existingForPair is { IsActive: true })
         {
             _error = "ผู้ใช้นี้มี role กำหนดไว้แล้วสำหรับระบบปลายทางนี้ — ลบอันเดิมก่อนถ้าต้องการเปลี่ยน";
             return;
         }
 
-        context.Sso_ClientRoleMappings.Add(new Sso_ClientRoleMapping
+        if (existingForPair is not null)
         {
-            ScUserId = _selectedUser.userid,
-            ClientId = _clientId,
-            Role = _role,
-            CreatedByUserId = _currentUserId,
-        });
+            existingForPair.IsActive = true;
+            existingForPair.Role = _role;
+            existingForPair.CreatedDate = DateTime.Now;
+            existingForPair.CreatedByUserId = _currentUserId;
+        }
+        else
+        {
+            context.Sso_ClientRoleMappings.Add(new Sso_ClientRoleMapping
+            {
+                ScUserId = _selectedUser.userid,
+                ClientId = _clientId,
+                Role = _role,
+                CreatedByUserId = _currentUserId,
+            });
+        }
         await context.SaveChangesAsync();
 
         Snackbar.Add("เพิ่มสำเร็จ", Severity.Success);
         _selectedUser = null;
         _role = "";
+        _showForm = false;
         await LoadAsync();
     }
 

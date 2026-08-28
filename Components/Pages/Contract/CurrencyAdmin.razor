@@ -16,39 +16,43 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสกุลเงินใหม่" : $"แก้ไข: {_form.Code}")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.Code" Label="รหัสสกุลเงิน" Required="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.Name" Label="ชื่อ (ไทย)" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_form.NameEn" Label="ชื่อ (อังกฤษ)" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? "เพิ่มสกุลเงิน" : "บันทึกการแก้ไข")
-        </MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
-    </MudStack>
-
-    <MudDivider Class="my-5" />
-
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มสกุลเงินใหม่</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสกุลเงินใหม่" : $"แก้ไข: {_form.Code}")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.Code" Label="รหัสสกุลเงิน" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.Name" Label="ชื่อ (ไทย)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_form.NameEn" Label="ชื่อ (อังกฤษ)" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? "เพิ่มสกุลเงิน" : "บันทึกการแก้ไข")
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
 
     <MudTable Items="_currencies" Dense="true" Hover="true">
         <HeaderContent>
@@ -78,6 +82,7 @@
     private string? _error;
     private string _searchTerm = "";
     private long? _editingId;
+    private bool _showForm;
 
     private class CurrencyForm
     {
@@ -104,11 +109,20 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new CurrencyForm();
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Currency currency)
     {
         _editingId = currency.id;
         _form = new CurrencyForm { Code = currency.code, Name = currency.name, NameEn = currency.name_en };
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -116,6 +130,7 @@
         _editingId = null;
         _form = new CurrencyForm();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

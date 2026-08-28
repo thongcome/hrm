@@ -19,5 +19,7 @@ public class Perf_RatingScaleDescription
     [Required, StringLength(300)]
     public string Description { get; set; } = null!;
 
+    public bool IsActive { get; set; } = true;
+
     public virtual Perf_EvaluationPeriod EvaluationPeriod { get; set; } = null!;
 }

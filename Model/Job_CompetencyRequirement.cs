@@ -24,5 +24,7 @@ public class Job_CompetencyRequirement
 
     public int SortOrder { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public virtual Comp_Competency Competency { get; set; } = null!;
 }

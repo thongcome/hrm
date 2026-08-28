@@ -31,7 +31,7 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
             throw new InvalidOperationException("รายการนี้ไม่มีเกรดที่จับคู่ได้ (คะแนนอยู่นอกช่วงเกรดทั้งหมดที่ตั้งไว้) — ไม่สามารถคำนวณการปรับเงินเดือนได้");
 
         var gradeBand = await context.Perf_GradeBands
-            .FirstOrDefaultAsync(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.Grade == instance.FinalGrade, ct)
+            .FirstOrDefaultAsync(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.Grade == instance.FinalGrade && g.IsActive, ct)
             ?? throw new InvalidOperationException("ไม่พบเกณฑ์เกรดนี้แล้ว (อาจถูกลบไปหลังคำนวณผล)");
 
         var employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == instance.HremployeeId, ct)
@@ -60,7 +60,7 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
             throw new InvalidOperationException("รายการนี้ไม่มีเกรดที่จับคู่ได้ ไม่สามารถปรับเงินเดือนได้");
 
         var gradeBand = await context.Perf_GradeBands
-            .FirstOrDefaultAsync(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.Grade == instance.FinalGrade, ct)
+            .FirstOrDefaultAsync(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.Grade == instance.FinalGrade && g.IsActive, ct)
             ?? throw new InvalidOperationException("ไม่พบเกณฑ์เกรดนี้แล้ว");
 
         var employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == instance.HremployeeId, ct)

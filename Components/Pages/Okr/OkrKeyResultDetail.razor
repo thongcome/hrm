@@ -44,24 +44,39 @@
     <MudProgressLinear Value="@((double)progress)" Color="Color.Primary" Class="mt-2" />
 
     <MudDivider Class="my-4" />
-    <MudText Typo="Typo.h6">Check-in ใหม่</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_checkInValue" Label="ค่าปัจจุบัน" /></MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSelect T="OkrConfidenceLevel?" @bind-Value="_checkInConfidence" Label="ความมั่นใจ">
-                <MudSelectItem T="OkrConfidenceLevel?" Value="null">— ไม่ระบุ —</MudSelectItem>
-                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OnTrack)">ตามแผน</MudSelectItem>
-                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.AtRisk)">เสี่ยง</MudSelectItem>
-                <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OffTrack)">หลุดเป้า</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_checkInNote" Label="หมายเหตุ" /></MudItem>
-        <MudItem xs="12" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CheckInAsync">บันทึก</MudButton></MudItem>
-    </MudGrid>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">Check-in</MudText>
+        @if (!_showCheckInForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showCheckInForm = true)">+ เพิ่ม Check-in</MudButton>
+        }
+    </MudStack>
 
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_showCheckInForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_checkInValue" Label="ค่าปัจจุบัน" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="OkrConfidenceLevel?" @bind-Value="_checkInConfidence" Label="ความมั่นใจ">
+                    <MudSelectItem T="OkrConfidenceLevel?" Value="null">— ไม่ระบุ —</MudSelectItem>
+                    <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OnTrack)">ตามแผน</MudSelectItem>
+                    <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.AtRisk)">เสี่ยง</MudSelectItem>
+                    <MudSelectItem Value="@((OkrConfidenceLevel?)OkrConfidenceLevel.OffTrack)">หลุดเป้า</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_checkInNote" Label="หมายเหตุ" /></MudItem>
+            <MudItem xs="12" sm="2">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CheckInAsync">บันทึก</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelCheckIn">ยกเลิก</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
     }
 
     <MudDivider Class="my-4" />
@@ -100,6 +115,7 @@
     private decimal _checkInValue;
     private OkrConfidenceLevel? _checkInConfidence;
     private string? _checkInNote;
+    private bool _showCheckInForm;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -128,6 +144,7 @@
             await GoalService.RecordKeyResultCheckInAsync(_keyResult.Id, _checkInValue, _checkInConfidence, string.IsNullOrWhiteSpace(_checkInNote) ? null : _checkInNote, await GetCurrentUserIdAsync());
             _checkInNote = null;
             Snackbar.Add("บันทึก check-in แล้ว", Severity.Success);
+            _showCheckInForm = false;
             await using var context = await DbFactory.CreateDbContextAsync();
             _keyResult = await context.Okr_KeyResults.FirstOrDefaultAsync(k => k.Id == Id);
             _checkIns = await context.Okr_KeyResultCheckIns.Where(c => c.KeyResultId == Id).OrderByDescending(c => c.CheckInDate).ToListAsync();
@@ -136,6 +153,15 @@
         {
             _error = ex.Message;
         }
+    }
+
+    private void CancelCheckIn()
+    {
+        _checkInValue = _keyResult?.CurrentValue ?? 0;
+        _checkInConfidence = null;
+        _checkInNote = null;
+        _error = null;
+        _showCheckInForm = false;
     }
 
     private static string MetricLabel(OkrKeyResultMetricType t) => t switch

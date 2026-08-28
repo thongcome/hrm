@@ -1,5 +1,6 @@
 @page "/wf/canvas/{WorkflowId:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -433,148 +434,220 @@ else
     {
         if (_selectedLevel is null || _quickAddCustomUserId is not long userId) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
-        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
-        if (level is null || user is null) return;
-
-        var already = await context.wf_custom_users.AnyAsync(u => u.subworkflowid == level.subworkflowid && u.userid == userId && u.isactive);
-        if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
-
-        context.wf_custom_users.Add(new wf_custom_user
+        try
         {
-            subworkflowid = level.subworkflowid,
-            workflowid = level.workflowid,
-            wlevel = level.wlevel,
-            userid = user.userid,
-            empid = user.empid,
-            isactive = true,
-            modate = DateTime.Now,
-        });
-        await context.SaveChangesAsync();
-        _quickAddCustomUserId = null;
-        await ReloadWorkflowDataAsync();
-        Snackbar.Add("เพิ่มผู้อนุมัติแล้ว", Severity.Success);
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+            var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+            if (level is null || user is null) return;
+
+            var already = await context.wf_custom_users.AnyAsync(u => u.subworkflowid == level.subworkflowid && u.userid == userId && u.isactive);
+            if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
+
+            context.wf_custom_users.Add(new wf_custom_user
+            {
+                subworkflowid = level.subworkflowid,
+                workflowid = level.workflowid,
+                wlevel = level.wlevel,
+                userid = user.userid,
+                empid = user.empid,
+                isactive = true,
+                modate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+            _quickAddCustomUserId = null;
+            await ReloadWorkflowDataAsync();
+            Snackbar.Add("เพิ่มผู้อนุมัติแล้ว", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task AddCustomRoleAsync()
     {
         if (_selectedLevel is null || _quickAddCustomRoleId is not long roleId) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
-        var role = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == roleId);
-        if (level is null || role is null) return;
-
-        var already = await context.wf_custom_roles.AnyAsync(r => r.subworkflowid == level.subworkflowid && r.roleid == roleId && r.isactive == true);
-        if (already) { Snackbar.Add("Role นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
-
-        context.wf_custom_roles.Add(new wf_custom_role
+        try
         {
-            subworkflowid = level.subworkflowid,
-            workflowid = level.workflowid,
-            wlevel = level.wlevel,
-            roleid = role.roleid,
-            rolecode = role.rolecode,
-            isactive = true,
-            modate = DateTime.Now,
-        });
-        await context.SaveChangesAsync();
-        _quickAddCustomRoleId = null;
-        await ReloadWorkflowDataAsync();
-        Snackbar.Add("เพิ่ม Role ผู้อนุมัติแล้ว", Severity.Success);
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+            var role = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == roleId);
+            if (level is null || role is null) return;
+
+            var already = await context.wf_custom_roles.AnyAsync(r => r.subworkflowid == level.subworkflowid && r.roleid == roleId && r.isactive == true);
+            if (already) { Snackbar.Add("Role นี้ผูกกับระดับนี้อยู่แล้ว", Severity.Warning); return; }
+
+            context.wf_custom_roles.Add(new wf_custom_role
+            {
+                subworkflowid = level.subworkflowid,
+                workflowid = level.workflowid,
+                wlevel = level.wlevel,
+                roleid = role.roleid,
+                rolecode = role.rolecode,
+                isactive = true,
+                modate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+            _quickAddCustomRoleId = null;
+            await ReloadWorkflowDataAsync();
+            Snackbar.Add("เพิ่ม Role ผู้อนุมัติแล้ว", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task AddAdhocUserAsync()
     {
         if (_selectedLevel is null || _quickAddAdhocUserId is not long userId) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
-        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
-        if (level is null || user is null) return;
-
-        context.wf_adhoc_users.Add(new wf_adhoc_user
+        try
         {
-            subworkflowid = level.subworkflowid,
-            workflowid = level.workflowid,
-            wlevel = level.wlevel,
-            userid = user.userid,
-            empid = user.empid,
-            isactive = true,
-            modate = DateTime.Now,
-        });
-        await context.SaveChangesAsync();
-        _quickAddAdhocUserId = null;
-        await ReloadWorkflowDataAsync();
-        Snackbar.Add("เพิ่มผู้อนุมัติเฉพาะกิจแล้ว", Severity.Success);
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == _selectedLevel.subworkflowid);
+            var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+            if (level is null || user is null) return;
+
+            context.wf_adhoc_users.Add(new wf_adhoc_user
+            {
+                subworkflowid = level.subworkflowid,
+                workflowid = level.workflowid,
+                wlevel = level.wlevel,
+                userid = user.userid,
+                empid = user.empid,
+                isactive = true,
+                modate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+            _quickAddAdhocUserId = null;
+            await ReloadWorkflowDataAsync();
+            Snackbar.Add("เพิ่มผู้อนุมัติเฉพาะกิจแล้ว", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task AddLoaUserAsync()
     {
         if (_selectedBand is null || _quickAddLoaUserId is not long userId) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var loa = await context.wf_loas.FirstOrDefaultAsync(l => l.id == _selectedBand.id);
-        var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
-        if (loa is null || user is null) return;
-
-        var already = await context.wf_loa_users.AnyAsync(u => u.loaid == loa.id && u.userid == userId && u.isactive);
-        if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับช่วงวงเงินนี้อยู่แล้ว", Severity.Warning); return; }
-
-        context.wf_loa_users.Add(new wf_loa_user
+        try
         {
-            loaid = loa.id,
-            workflowid = loa.wfid,
-            wlevel = loa.nowLevel,
-            userid = user.userid,
-            empid = user.empid,
-            isactive = true,
-            moddate = DateTime.Now,
-        });
-        await context.SaveChangesAsync();
-        _quickAddLoaUserId = null;
-        await ReloadWorkflowDataAsync();
-        Snackbar.Add("เพิ่มผู้อนุมัติวงเงินแล้ว", Severity.Success);
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var loa = await context.wf_loas.FirstOrDefaultAsync(l => l.id == _selectedBand.id);
+            var user = await context.sc_users.FirstOrDefaultAsync(u => u.userid == userId);
+            if (loa is null || user is null) return;
+
+            var already = await context.wf_loa_users.AnyAsync(u => u.loaid == loa.id && u.userid == userId && u.isactive);
+            if (already) { Snackbar.Add("ผู้ใช้นี้ผูกกับช่วงวงเงินนี้อยู่แล้ว", Severity.Warning); return; }
+
+            context.wf_loa_users.Add(new wf_loa_user
+            {
+                loaid = loa.id,
+                workflowid = loa.wfid,
+                wlevel = loa.nowLevel,
+                userid = user.userid,
+                empid = user.empid,
+                isactive = true,
+                moddate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+            _quickAddLoaUserId = null;
+            await ReloadWorkflowDataAsync();
+            Snackbar.Add("เพิ่มผู้อนุมัติวงเงินแล้ว", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task ToggleCustomUserActive(wf_custom_user row)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.wf_custom_users.FirstOrDefaultAsync(e => e.id == row.id);
-        if (existing is null) return;
-        existing.isactive = !existing.isactive;
-        existing.modate = DateTime.Now;
-        await context.SaveChangesAsync();
-        await ReloadWorkflowDataAsync();
+        try
+        {
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var existing = await context.wf_custom_users.FirstOrDefaultAsync(e => e.id == row.id);
+            if (existing is null) return;
+            existing.isactive = !existing.isactive;
+            existing.modate = DateTime.Now;
+            await context.SaveChangesAsync();
+            await ReloadWorkflowDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task ToggleCustomRoleActive(wf_custom_role row)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.wf_custom_roles.FirstOrDefaultAsync(e => e.id == row.id);
-        if (existing is null) return;
-        existing.isactive = !(existing.isactive ?? false);
-        existing.modate = DateTime.Now;
-        await context.SaveChangesAsync();
-        await ReloadWorkflowDataAsync();
+        try
+        {
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var existing = await context.wf_custom_roles.FirstOrDefaultAsync(e => e.id == row.id);
+            if (existing is null) return;
+            existing.isactive = !(existing.isactive ?? false);
+            existing.modate = DateTime.Now;
+            await context.SaveChangesAsync();
+            await ReloadWorkflowDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task ToggleAdhocUserActive(wf_adhoc_user row)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.wf_adhoc_users.FirstOrDefaultAsync(e => e.id == row.id);
-        if (existing is null) return;
-        existing.isactive = !existing.isactive;
-        existing.modate = DateTime.Now;
-        await context.SaveChangesAsync();
-        await ReloadWorkflowDataAsync();
+        try
+        {
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var existing = await context.wf_adhoc_users.FirstOrDefaultAsync(e => e.id == row.id);
+            if (existing is null) return;
+            existing.isactive = !existing.isactive;
+            existing.modate = DateTime.Now;
+            await context.SaveChangesAsync();
+            await ReloadWorkflowDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task ToggleLoaUserActive(wf_loa_user row)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.wf_loa_users.FirstOrDefaultAsync(e => e.id == row.id);
-        if (existing is null) return;
-        existing.isactive = !existing.isactive;
-        existing.moddate = DateTime.Now;
-        await context.SaveChangesAsync();
-        await ReloadWorkflowDataAsync();
+        try
+        {
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
+
+            var existing = await context.wf_loa_users.FirstOrDefaultAsync(e => e.id == row.id);
+            if (existing is null) return;
+            existing.isactive = !existing.isactive;
+            existing.moddate = DateTime.Now;
+            await context.SaveChangesAsync();
+            await ReloadWorkflowDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 }

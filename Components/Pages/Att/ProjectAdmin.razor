@@ -28,8 +28,14 @@
     {
         <MudDivider Class="my-4" />
 
-        <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchProjectPlaceholder")" Immediate="true" DebounceInterval="300"
-            ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudTextField T="string" Value="_searchTerm" Label="@L.Translate("SearchProjectPlaceholder")" Immediate="true" DebounceInterval="300"
+                ValueChanged="OnSearchChangedAsync" AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="flex-grow-1 mr-4" />
+            @if (!_showForm)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">@L.Translate("AddButtonPlain")</MudButton>
+            }
+        </MudStack>
 
         <MudTable Items="_projects" Dense="true" Hover="true">
             <HeaderContent>
@@ -54,27 +60,27 @@
             <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoProjectsMessage")</MudText></NoRecordsContent>
         </MudTable>
 
-        <MudDivider Class="my-5" />
-
-        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewProjectHeading") : L.Translate("EditProjectHeading"))</MudText>
-        <MudGrid Class="mt-2">
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.Code" Label="@L.Translate("ProjectCodeLabel")" /></MudItem>
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_form.Name" Label="@L.Translate("ColProjectName")" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_form.Description" Label="@L.Translate("DescriptionOptionalLabel")" Lines="2" /></MudItem>
-        </MudGrid>
-
-        @if (!string.IsNullOrEmpty(_error))
+        @if (_showForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-        }
+            <MudDivider Class="my-5" />
 
-        <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? L.Translate("AddButtonPlain") : L.Translate("SaveButton"))</MudButton>
-            @if (_editingId is not null)
+            <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewProjectHeading") : L.Translate("EditProjectHeading"))</MudText>
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_form.Code" Label="@L.Translate("ProjectCodeLabel")" /></MudItem>
+                <MudItem xs="12" sm="8"><MudTextField @bind-Value="_form.Name" Label="@L.Translate("ColProjectName")" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_form.Description" Label="@L.Translate("DescriptionOptionalLabel")" Lines="2" /></MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
             {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
             }
-        </MudStack>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@(_editingId is null ? L.Translate("AddButtonPlain") : L.Translate("SaveButton"))</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+        }
     }
 </MudPaper>
 
@@ -84,6 +90,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private class FormModel
     {
@@ -117,10 +124,20 @@
         _projects = await query.OrderBy(p => p.Name).ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _form = new FormModel();
+        _error = null;
+        _showForm = true;
+    }
+
     private void EditAsync(Att_Project project)
     {
         _editingId = project.Id;
         _form = new FormModel { Code = project.Code, Name = project.Name, Description = project.Description };
+        _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -128,6 +145,7 @@
         _editingId = null;
         _form = new FormModel();
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

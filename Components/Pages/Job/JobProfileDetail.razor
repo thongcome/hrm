@@ -146,7 +146,7 @@ else
         _purpose = _execType.Purpose;
         _keyAccountabilities = _execType.KeyAccountabilities;
 
-        _requirements = await context.Job_CompetencyRequirements.Where(r => r.PosExecTypeId == PosExecTypeId).OrderBy(r => r.SortOrder).ToListAsync();
+        _requirements = await context.Job_CompetencyRequirements.Where(r => r.PosExecTypeId == PosExecTypeId && r.IsActive).OrderBy(r => r.SortOrder).ToListAsync();
 
         var categoryIds = await context.Comp_Categories.Where(c => c.CompanyId == _execType.CompanyId).Select(c => c.Id).ToListAsync();
         _allCompetencies = await context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId) && c.IsActive).ToListAsync();
@@ -193,8 +193,22 @@ else
         if (_selectedCompetency is null) { _error = "กรุณาเลือกสมรรถนะ"; return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var dup = await context.Job_CompetencyRequirements.AnyAsync(r => r.PosExecTypeId == PosExecTypeId && r.CompetencyId == _selectedCompetency.Id);
-        if (dup) { _error = "สมรรถนะนี้ถูกเพิ่มไว้แล้ว"; return; }
+        var existingForPair = await context.Job_CompetencyRequirements.FirstOrDefaultAsync(r => r.PosExecTypeId == PosExecTypeId && r.CompetencyId == _selectedCompetency.Id);
+        if (existingForPair is { IsActive: true }) { _error = "สมรรถนะนี้ถูกเพิ่มไว้แล้ว"; return; }
+
+        if (existingForPair is not null)
+        {
+            existingForPair.IsActive = true;
+            existingForPair.RequiredLevel = _selectedLevel;
+            existingForPair.IsCritical = _selectedCritical;
+            existingForPair.SortOrder = _requirements.Count;
+            await context.SaveChangesAsync();
+            _selectedCompetency = null;
+            _selectedLevel = 3;
+            _selectedCritical = false;
+            await LoadAsync();
+            return;
+        }
 
         context.Job_CompetencyRequirements.Add(new Job_CompetencyRequirement
         {
@@ -217,7 +231,7 @@ else
         await using var context = await DbFactory.CreateDbContextAsync();
         var row = await context.Job_CompetencyRequirements.FirstOrDefaultAsync(r => r.Id == id);
         if (row is null) return;
-        context.Job_CompetencyRequirements.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }

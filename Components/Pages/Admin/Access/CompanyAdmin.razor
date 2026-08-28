@@ -30,6 +30,12 @@
 
     <MudDivider Class="my-4" />
 
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">@L.Translate("AddCompanyHeading")</MudButton>
+    }
+    else
+    {
     <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddCompanyHeading") : L.Translate("EditButton"))</MudText>
 
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mt-3 mb-2">
@@ -224,6 +230,7 @@
             <MudText Typo="Typo.body2" Class="mt-2">@L.Translate("NoContactsYetMessage")</MudText>
         }
     }
+    }
 
     <MudDivider Class="my-5" />
 
@@ -279,6 +286,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
     private string? _logoPath;
     private string _logoCacheBust = "0";
     private string? _logoError;
@@ -351,9 +359,16 @@
         return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
     }
 
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private async Task StartEditAsync(com_company item)
     {
         _editingId = item.id;
+        _showForm = true;
         _logoPath = item.logp_path;
         _logoCacheBust = DateTime.Now.Ticks.ToString();
         _code = item.code;
@@ -439,6 +454,7 @@
 
         _error = null;
         _logoError = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

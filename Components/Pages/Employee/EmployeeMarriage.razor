@@ -25,31 +25,35 @@ else
         </MudStack>
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการสมรส" : "แก้ไข")</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_marriageNo" Label="เลขทะเบียนสมรส" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_bookNo" Label="เล่มที่" /></MudItem>
-            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_marriedAt" Label="จดทะเบียน ณ" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_spouseName" Label="ชื่อคู่สมรส" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_spouseAge" Label="อายุคู่สมรส" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_spouseCareer" Label="อาชีพคู่สมรส" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_spouseIncome" Label="รายได้คู่สมรส" Format="N2" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childCount" Label="จำนวนบุตร" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childStudying" Label="กำลังศึกษา" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childNotStudying" Label="ไม่ได้ศึกษา" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
-        </MudGrid>
-
-        <MudStack Row="true" Spacing="2" Class="mt-3">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-            @if (_editingId is not null)
-            {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-            }
+        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">+ เพิ่มประวัติการสมรส</MudButton>
         </MudStack>
 
-        <MudDivider Class="my-5" />
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการสมรส" : "แก้ไข")</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_marriageNo" Label="เลขทะเบียนสมรส" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_bookNo" Label="เล่มที่" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_marriedAt" Label="จดทะเบียน ณ" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_spouseName" Label="ชื่อคู่สมรส" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_spouseAge" Label="อายุคู่สมรส" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_spouseCareer" Label="อาชีพคู่สมรส" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_spouseIncome" Label="รายได้คู่สมรส" Format="N2" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childCount" Label="จำนวนบุตร" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childStudying" Label="กำลังศึกษา" /></MudItem>
+                <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="_childNotStudying" Label="ไม่ได้ศึกษา" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+            </MudGrid>
+
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-5" />
+        }
 
         <MudTable Items="_items" Dense="true" Hover="true">
             <HeaderContent>
@@ -81,6 +85,7 @@ else
     private Hremployee? _emp;
     private List<Hrd_Marriage> _items = new();
     private long? _editingId;
+    private bool _showForm;
 
     private string? _marriageNo;
     private string? _bookNo;
@@ -111,6 +116,12 @@ else
         _items = await context.Hrd_Marriages.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.RegisterDate).ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Hrd_Marriage item)
     {
         _editingId = item.Id;
@@ -126,6 +137,7 @@ else
         _childStudying = item.ChildStudyingCount;
         _childNotStudying = item.ChildNotStudyingCount;
         _remark = item.Remark;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -134,6 +146,7 @@ else
         _marriageNo = null; _bookNo = null; _registerDate = null; _marriedAt = null; _spouseName = null;
         _spouseAge = null; _spouseCareer = null; _spouseIncome = null; _childCount = null; _childStudying = null;
         _childNotStudying = null; _remark = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

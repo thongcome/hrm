@@ -21,16 +21,28 @@
         return;
     }
 
-    <MudGrid Class="mt-3">
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCode" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newName" Label="ชื่อหมวดหมู่" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newNameEn" Label="ชื่อ (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Class="mt-2">เพิ่ม</MudButton></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _showForm = true)" Class="mt-3">เพิ่มหมวดหมู่</MudButton>
+    }
+    else
+    {
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCode" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newName" Label="ชื่อหมวดหมู่" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newNameEn" Label="ชื่อ (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="1">
+                <MudStack Row="true" Spacing="1" Class="mt-2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่ม</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelAdd">ยกเลิก</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
     }
 
     <MudTable Items="_categories" Dense="true" Hover="true" Class="mt-4">
@@ -56,6 +68,7 @@
     private string? _companyId;
     private List<Km_ArticleCategory> _categories = new();
     private string? _error;
+    private bool _showForm;
     private string _newCode = "";
     private string _newName = "";
     private string? _newNameEn;
@@ -75,6 +88,13 @@
             .Where(c => c.CompanyId == _companyId)
             .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
             .ToListAsync();
+    }
+
+    private void CancelAdd()
+    {
+        _newCode = ""; _newName = ""; _newNameEn = null;
+        _error = null;
+        _showForm = false;
     }
 
     private async Task AddAsync()
@@ -108,6 +128,7 @@
 
         Snackbar.Add("เพิ่มหมวดหมู่เรียบร้อย", Severity.Success);
         _newCode = ""; _newName = ""; _newNameEn = null;
+        _showForm = false;
         await LoadAsync();
     }
 

@@ -1,5 +1,6 @@
 @page "/wf_loa_users/delete/{id:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
@@ -11,21 +12,39 @@
     public long id { get; set; }
 
     private wf_loa_user? loaUser;
+    private bool _locked;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
         using var db = DbFactory.CreateDbContext();
         loaUser = await db.wf_loa_users.FindAsync(id);
-        if (loaUser is null) NavigationManager.NavigateTo("/wf_loa_users");
+        if (loaUser is null)
+        {
+            NavigationManager.NavigateTo("/wf_loa_users");
+            return;
+        }
+        var workflow = await db.wf_workflows.FindAsync(loaUser.workflowid);
+        _locked = workflow?.isactive == true;
     }
 
     private async Task DeleteConfirmed()
     {
         if (loaUser is null) return;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_loa_users.Remove(loaUser);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_loa_users");
+        _error = null;
+        try
+        {
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(db, loaUser.workflowid);
+            var tracked = await db.wf_loa_users.FindAsync(loaUser.id);
+            if (tracked is not null) db.wf_loa_users.Remove(tracked);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wf_loa_users");
+        }
+        catch (Exception ex)
+        {
+            _error = "ลบไม่สำเร็จ: " + ex.Message;
+        }
     }
 }
 
@@ -36,6 +55,14 @@
 else
 {
     <h3>Delete LOA User</h3>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+    @if (_locked)
+    {
+        <div class="alert alert-warning">@WorkflowLockGuard.LockedMessage</div>
+    }
     <p>Are you sure you want to delete <strong>LOA User #@loaUser.id (userid @loaUser.userid, workflow @loaUser.workflowid level @loaUser.wlevel)</strong>?</p>
     <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
     <a class="btn btn-secondary ms-2" href="/wf_loa_users">Cancel</a>

@@ -28,42 +28,49 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewAccountHeading") : L.Translate("EditAccountHeading"))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="@L.Translate("AccountCodeLabel")" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameTh" Label="@L.Translate("AccountNameThLabel")" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="@L.Translate("AccountNameEnLabel")" /></MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="AccountType" @bind-Value="_accountType" Label="@L.Translate("AccountTypeFieldLabel")">
-                <MudSelectItem T="AccountType" Value="AccountType.Asset">@L.Translate("AccountTypeAssetFull")</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Liability">@L.Translate("AccountTypeLiabilityFull")</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Equity">@L.Translate("AccountTypeEquityFull")</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Revenue">@L.Translate("AccountTypeRevenueFull")</MudSelectItem>
-                <MudSelectItem T="AccountType" Value="AccountType.Expense">@L.Translate("AccountTypeExpenseFull")</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSwitch T="bool" @bind-Value="_isCostCenter" Color="Color.Primary" Label="@L.Translate("IsCostCenterSwitchLabel")" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("IsActiveSwitchLabel")" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
-            @(_editingId is null ? L.Translate("AddAccountButton") : L.Translate("SaveEditButton"))
-        </MudButton>
-        @if (_editingId is not null)
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewAccountHeading") : L.Translate("EditAccountHeading"))</MudText>
+        @if (!_showForm)
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddAccountButton")</MudButton>
         }
     </MudStack>
+
+    @if (_showForm)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="@L.Translate("AccountCodeLabel")" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameTh" Label="@L.Translate("AccountNameThLabel")" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_nameEn" Label="@L.Translate("AccountNameEnLabel")" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="AccountType" @bind-Value="_accountType" Label="@L.Translate("AccountTypeFieldLabel")">
+                    <MudSelectItem T="AccountType" Value="AccountType.Asset">@L.Translate("AccountTypeAssetFull")</MudSelectItem>
+                    <MudSelectItem T="AccountType" Value="AccountType.Liability">@L.Translate("AccountTypeLiabilityFull")</MudSelectItem>
+                    <MudSelectItem T="AccountType" Value="AccountType.Equity">@L.Translate("AccountTypeEquityFull")</MudSelectItem>
+                    <MudSelectItem T="AccountType" Value="AccountType.Revenue">@L.Translate("AccountTypeRevenueFull")</MudSelectItem>
+                    <MudSelectItem T="AccountType" Value="AccountType.Expense">@L.Translate("AccountTypeExpenseFull")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_isCostCenter" Color="Color.Primary" Label="@L.Translate("IsCostCenterSwitchLabel")" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("IsActiveSwitchLabel")" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">
+                @(_editingId is null ? L.Translate("AddAccountButton") : L.Translate("SaveEditButton"))
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -111,6 +118,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private string _code = "";
     private string _nameTh = "";
@@ -152,6 +160,12 @@
         _ => type.ToString(),
     };
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Com_ChartOfAccount account)
     {
         _editingId = account.Id;
@@ -162,6 +176,7 @@
         _isCostCenter = account.IsCostCenter;
         _isActive = account.IsActive;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -174,6 +189,7 @@
         _isCostCenter = false;
         _isActive = true;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

@@ -1,6 +1,7 @@
 @page "/wf/sub-workflow-levels"
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -51,6 +52,8 @@
 
     private string WorkflowName(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.wname ?? $"#{workflowId}";
 
+    private bool IsParentWorkflowActive(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.isactive == true;
+
     // forwardstatus/standstatus/backwardstatus are NOT NULL in the DB — see
     // Gotcha #4 in the plan file. approver-type booleans already default to
     // false via the model's own property initializers, so only the three
@@ -88,6 +91,13 @@
     }
 
     private RenderFragment RenderViewFields(wf_sub_workflow_master e) => @<text>
+        @if (IsParentWorkflowActive(e.workflowid))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                Workflow นี้เปิดใช้งานอยู่ — ระดับการอนุมัตินี้ห้ามแก้ไข/เพิ่ม/ลบทุกกรณี
+                ถ้าต้องการเปลี่ยนแปลง ให้ไปยกเลิกการใช้งาน workflow นี้ก่อน แล้วสร้าง workflow ใหม่แทน
+            </MudAlert>
+        }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6"><MudTextField Value="@WorkflowName(e.workflowid)" Label="Workflow" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="2"><MudTextField Value="@e.wlevel.ToString()" Label="ระดับ" ReadOnly="true" /></MudItem>
@@ -195,6 +205,7 @@
     private async Task<wf_sub_workflow_master> SaveAsync(wf_sub_workflow_master entity)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
+        await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, entity.workflowid);
         if (entity.subworkflowid == 0)
         {
             context.wf_sub_workflow_masters.Add(entity);

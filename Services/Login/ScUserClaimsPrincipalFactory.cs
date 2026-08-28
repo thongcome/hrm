@@ -42,6 +42,7 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
         await using var context = await _hrmDbFactory.CreateDbContextAsync();
         var scUser = await context.sc_users
             .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_menus).ThenInclude(rm => rm.menu)
+            .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_programs).ThenInclude(rp => rp.prog)
             .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role).ThenInclude(r => r.sc_role_scopes)
             .FirstOrDefaultAsync(u => u.userid == user.userid);
 
@@ -114,6 +115,22 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             // edit rights via PermissionAdmin.razor's "แก้ไขได้" toggle.
             if (grant.canedit)
                 identity.AddClaim(new Claim("menu_edit", grant.menu.menucode!));
+        }
+
+        // sc_role_program (repurposed from the dormant legacy JSP dispatch
+        // table — see ProgramAuthorization.cs) — per-action Create/Edit/Delete
+        // grants, one progcode per (entity, action) e.g. "EMPLOYEE_CREATE".
+        // Same binary-grant shape as the "menu" claim above, just scoped to
+        // a button inside a page instead of the whole page.
+        var activeProgramGrants = scUser.sc_user_roles
+            .Where(ur => ur.isactive)
+            .SelectMany(ur => ur.role?.sc_role_programs ?? new List<sc_role_program>())
+            .Where(rp => rp.isactive && rp.prog is not null && rp.prog.isactive == true)
+            .Distinct();
+        foreach (var grant in activeProgramGrants)
+        {
+            if (!string.IsNullOrWhiteSpace(grant.prog!.progcode))
+                identity.AddClaim(new Claim("program", grant.prog.progcode));
         }
 
         // sc_role_scope (Advance Security slice 1) — data-scope claims, read

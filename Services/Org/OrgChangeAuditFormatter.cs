@@ -55,6 +55,23 @@ public static class OrgChangeAuditFormatter
         _ => "คำขอเปลี่ยนแปลงผังองค์กร",
     };
 
+    // หัวหน้าแผนก (boss_name) and ผู้อนุมัติ (approver_name) are genuinely
+    // separate fields on com_organization — an "acting" approver set via the
+    // workflow-gated change-boss flow can differ from the real department
+    // head. Shared by the tree view (OrganizationAdmin.razor) and the detail
+    // page (OrganizationDetail.razor) so both describe the same org the same
+    // way. Returns null when neither is set.
+    public static string? DescribeBossApprover(com_organization org)
+    {
+        var boss = string.IsNullOrWhiteSpace(org.boss_name) ? null : org.boss_name;
+        var approver = string.IsNullOrWhiteSpace(org.approver_name) ? null : org.approver_name;
+
+        if (boss is null && approver is null) return null;
+        if (boss is not null && approver is not null)
+            return boss == approver ? $"หัวหน้า/ผู้อนุมัติ: {boss}" : $"หัวหน้า: {boss} · ผู้อนุมัติ: {approver}";
+        return boss is not null ? $"หัวหน้า: {boss}" : $"ผู้อนุมัติ: {approver}";
+    }
+
     private static Dictionary<string, JsonElement>? Deserialize(string? json)
     {
         if (string.IsNullOrEmpty(json)) return null;

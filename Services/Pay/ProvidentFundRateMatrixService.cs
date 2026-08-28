@@ -20,7 +20,7 @@ public class ProvidentFundRateMatrixService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var rules = await context.Pay_ProvidentFundRateMatrixRules
-            .Where(r => r.PolicyId == policyId)
+            .Where(r => r.PolicyId == policyId && r.IsActive)
             .OrderBy(r => r.SortOrder)
             .ToListAsync(ct);
 

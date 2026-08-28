@@ -21,7 +21,7 @@ public class LmsQuizService(IDbContextFactory<HRMContext> dbFactory)
         var course = await context.Lms_Courses.FirstOrDefaultAsync(c => c.Id == session.CourseId, ct)
             ?? throw new InvalidOperationException("ไม่พบหลักสูตรนี้แล้ว");
 
-        var questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == course.Id).ToListAsync(ct);
+        var questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == course.Id && q.IsActive).ToListAsync(ct);
         if (questions.Count == 0)
             throw new InvalidOperationException("หลักสูตรนี้ยังไม่มีแบบทดสอบ");
 

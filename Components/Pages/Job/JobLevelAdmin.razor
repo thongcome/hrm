@@ -28,42 +28,46 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มระดับ" : "แก้ไข")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="CareerTrack" @bind-Value="_careerTrack" Label="สาย (Career Track)">
-                <MudSelectItem T="CareerTrack" Value="CareerTrack.IndividualContributor">สายผู้เชี่ยวชาญ (Individual Contributor)</MudSelectItem>
-                <MudSelectItem T="CareerTrack" Value="CareerTrack.Managerial">สายบริหาร (Managerial)</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_levelNumber" Label="ลำดับระดับ" Min="1" /></MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส (เช่น IC3, M2)" /></MudItem>
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="ชื่อระดับ (เช่น Senior)" Required="true" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อระดับ (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_description" Label="คำอธิบาย" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
-    </MudStack>
-
-    <MudDivider Class="my-5" />
-
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มระดับ</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มระดับ" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="CareerTrack" @bind-Value="_careerTrack" Label="สาย (Career Track)">
+                    <MudSelectItem T="CareerTrack" Value="CareerTrack.IndividualContributor">สายผู้เชี่ยวชาญ (Individual Contributor)</MudSelectItem>
+                    <MudSelectItem T="CareerTrack" Value="CareerTrack.Managerial">สายบริหาร (Managerial)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_levelNumber" Label="ลำดับระดับ" Min="1" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส (เช่น IC3, M2)" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_name" Label="ชื่อระดับ (เช่น Senior)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อระดับ (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_description" Label="คำอธิบาย" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
 
     <MudText Typo="Typo.subtitle1" Class="mt-4">สายผู้เชี่ยวชาญ (Individual Contributor)</MudText>
     @RenderLevelTable(_items.Where(i => i.CareerTrack == CareerTrack.IndividualContributor).OrderBy(i => i.LevelNumber))
@@ -78,6 +82,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private CareerTrack _careerTrack = CareerTrack.IndividualContributor;
     private int _levelNumber = 1;
@@ -110,6 +115,20 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _careerTrack = CareerTrack.IndividualContributor;
+        _levelNumber = 1;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _description = null;
+        _isActive = true;
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Job_Level item)
     {
         _editingId = item.Id;
@@ -121,6 +140,7 @@
         _description = item.Description;
         _isActive = item.IsActive;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -134,6 +154,7 @@
         _description = null;
         _isActive = true;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

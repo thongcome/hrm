@@ -25,16 +25,28 @@ else
             น้ำหนักรวมของ Topic ทั้งหมด: @_topicWeightTotal.ToString("0.#")% @(_topicWeightTotal == 100 ? "(ครบ)" : "— ยังไม่ครบ 100%")
         </MudAlert>
 
-        <MudGrid>
-            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newTopicCode" Label="รหัส Topic" /></MudItem>
-            <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newTopicName" Label="ชื่อ Topic" /></MudItem>
-            <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
-            <MudItem xs="4" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddTopicAsync">เพิ่ม Topic</MudButton></MudItem>
-        </MudGrid>
-
-        @if (!string.IsNullOrEmpty(_error))
+        @if (!_showTopicForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenTopicForm">เพิ่ม Topic</MudButton>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newTopicCode" Label="รหัส Topic" /></MudItem>
+                <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newTopicName" Label="ชื่อ Topic" /></MudItem>
+                <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                <MudItem xs="4" sm="2">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddTopicAsync">เพิ่ม Topic</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CloseTopicForm">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
         }
     </MudPaper>
 
@@ -54,12 +66,24 @@ else
                     </MudStack>
                 </TitleContent>
                 <ChildContent>
-                    <MudGrid Class="mb-2">
-                        <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newSubTopicCode" Label="รหัส SubTopic" /></MudItem>
-                        <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newSubTopicName" Label="ชื่อ SubTopic" /></MudItem>
-                        <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newSubTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
-                        <MudItem xs="4" sm="2"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddSubTopicAsync(topic.Id))">เพิ่ม SubTopic</MudButton></MudItem>
-                    </MudGrid>
+                    @if (_showSubTopicFormForTopicId != topic.Id)
+                    {
+                        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mb-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => OpenSubTopicForm(topic.Id))">เพิ่ม SubTopic</MudButton>
+                    }
+                    else
+                    {
+                        <MudGrid Class="mb-2">
+                            <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newSubTopicCode" Label="รหัส SubTopic" /></MudItem>
+                            <MudItem xs="6" sm="5"><MudTextField @bind-Value="_newSubTopicName" Label="ชื่อ SubTopic" /></MudItem>
+                            <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newSubTopicWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                            <MudItem xs="4" sm="2">
+                                <MudStack Row="true" Spacing="2">
+                                    <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddSubTopicAsync(topic.Id))">เพิ่ม SubTopic</MudButton>
+                                    <MudButton Variant="Variant.Text" OnClick="CloseSubTopicForm">ยกเลิก</MudButton>
+                                </MudStack>
+                            </MudItem>
+                        </MudGrid>
+                    }
 
                     @foreach (var subTopic in _subTopics.Where(s => s.TopicId == topic.Id))
                     {
@@ -90,13 +114,25 @@ else
                                 <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตัวชี้วัด</MudText></NoRecordsContent>
                             </MudTable>
 
-                            <MudGrid Class="mt-2">
-                                <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newIndicatorCode" Label="รหัส" /></MudItem>
-                                <MudItem xs="6" sm="4"><MudTextField @bind-Value="_newIndicatorName" Label="ชื่อตัวชี้วัด" /></MudItem>
-                                <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newIndicatorTarget" Label="คำอธิบายเกณฑ์เต็มคะแนน" /></MudItem>
-                                <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newIndicatorWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
-                                <MudItem xs="4" sm="1"><MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddIndicatorAsync(subTopic.Id))">เพิ่ม</MudButton></MudItem>
-                            </MudGrid>
+                            @if (_showIndicatorFormForSubTopicId != subTopic.Id)
+                            {
+                                <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => OpenIndicatorForm(subTopic.Id))">เพิ่มตัวชี้วัด</MudButton>
+                            }
+                            else
+                            {
+                                <MudGrid Class="mt-2">
+                                    <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newIndicatorCode" Label="รหัส" /></MudItem>
+                                    <MudItem xs="6" sm="4"><MudTextField @bind-Value="_newIndicatorName" Label="ชื่อตัวชี้วัด" /></MudItem>
+                                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newIndicatorTarget" Label="คำอธิบายเกณฑ์เต็มคะแนน" /></MudItem>
+                                    <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newIndicatorWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                                    <MudItem xs="4" sm="1">
+                                        <MudStack Row="true" Spacing="2">
+                                            <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddIndicatorAsync(subTopic.Id))">เพิ่ม</MudButton>
+                                            <MudButton Variant="Variant.Text" OnClick="CloseIndicatorForm">ยกเลิก</MudButton>
+                                        </MudStack>
+                                    </MudItem>
+                                </MudGrid>
+                            }
                         </MudPaper>
                     }
                 </ChildContent>
@@ -118,9 +154,52 @@ else
 
     private decimal _topicWeightTotal => _topics.Sum(t => t.Weight);
 
+    private bool _showTopicForm;
+    private long? _showSubTopicFormForTopicId;
+    private long? _showIndicatorFormForSubTopicId;
+
     private string _newTopicCode = ""; private string _newTopicName = ""; private decimal _newTopicWeight;
     private string _newSubTopicCode = ""; private string _newSubTopicName = ""; private decimal _newSubTopicWeight;
     private string _newIndicatorCode = ""; private string _newIndicatorName = ""; private string _newIndicatorTarget = ""; private decimal _newIndicatorWeight;
+
+    private void OpenTopicForm()
+    {
+        _newTopicCode = ""; _newTopicName = ""; _newTopicWeight = 0;
+        _error = null;
+        _showTopicForm = true;
+    }
+
+    private void CloseTopicForm()
+    {
+        _showTopicForm = false;
+        _error = null;
+    }
+
+    private void OpenSubTopicForm(long topicId)
+    {
+        _newSubTopicCode = ""; _newSubTopicName = ""; _newSubTopicWeight = 0;
+        _error = null;
+        _showSubTopicFormForTopicId = topicId;
+    }
+
+    private void CloseSubTopicForm()
+    {
+        _showSubTopicFormForTopicId = null;
+        _error = null;
+    }
+
+    private void OpenIndicatorForm(long subTopicId)
+    {
+        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0;
+        _error = null;
+        _showIndicatorFormForSubTopicId = subTopicId;
+    }
+
+    private void CloseIndicatorForm()
+    {
+        _showIndicatorFormForSubTopicId = null;
+        _error = null;
+    }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
@@ -130,11 +209,11 @@ else
         _evalType = await context.Perf_EvaluationTypes.FirstOrDefaultAsync(t => t.Id == EvaluationTypeId);
         if (_evalType is null) return;
 
-        _topics = await context.Perf_Topics.Where(t => t.EvaluationTypeId == EvaluationTypeId).OrderBy(t => t.SortOrder).ToListAsync();
+        _topics = await context.Perf_Topics.Where(t => t.EvaluationTypeId == EvaluationTypeId && t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
         var topicIds = _topics.Select(t => t.Id).ToList();
-        _subTopics = await context.Perf_SubTopics.Where(s => topicIds.Contains(s.TopicId)).OrderBy(s => s.SortOrder).ToListAsync();
+        _subTopics = await context.Perf_SubTopics.Where(s => topicIds.Contains(s.TopicId) && s.IsActive).OrderBy(s => s.SortOrder).ToListAsync();
         var subTopicIds = _subTopics.Select(s => s.Id).ToList();
-        _indicators = await context.Perf_Indicators.Where(i => subTopicIds.Contains(i.SubTopicId)).OrderBy(i => i.Code).ToListAsync();
+        _indicators = await context.Perf_Indicators.Where(i => subTopicIds.Contains(i.SubTopicId) && i.IsActive).OrderBy(i => i.Code).ToListAsync();
     }
 
     private decimal SubTopicWeightTotal(long topicId) => _subTopics.Where(s => s.TopicId == topicId).Sum(s => s.Weight);
@@ -156,17 +235,18 @@ else
         });
         await context.SaveChangesAsync();
         _newTopicCode = ""; _newTopicName = ""; _newTopicWeight = 0;
+        _showTopicForm = false;
         await LoadAsync();
     }
 
     private async Task RemoveTopicAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var hasChildren = await context.Perf_SubTopics.AnyAsync(s => s.TopicId == id);
+        var hasChildren = await context.Perf_SubTopics.AnyAsync(s => s.TopicId == id && s.IsActive);
         if (hasChildren) { _error = "ลบไม่ได้ — ยังมี SubTopic อยู่ภายใต้ Topic นี้"; return; }
         var row = await context.Perf_Topics.FirstOrDefaultAsync(t => t.Id == id);
         if (row is null) return;
-        context.Perf_Topics.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }
@@ -187,17 +267,18 @@ else
         });
         await context.SaveChangesAsync();
         _newSubTopicCode = ""; _newSubTopicName = ""; _newSubTopicWeight = 0;
+        _showSubTopicFormForTopicId = null;
         await LoadAsync();
     }
 
     private async Task RemoveSubTopicAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var hasChildren = await context.Perf_Indicators.AnyAsync(i => i.SubTopicId == id);
+        var hasChildren = await context.Perf_Indicators.AnyAsync(i => i.SubTopicId == id && i.IsActive);
         if (hasChildren) { _error = "ลบไม่ได้ — ยังมีตัวชี้วัดอยู่ภายใต้ SubTopic นี้"; return; }
         var row = await context.Perf_SubTopics.FirstOrDefaultAsync(s => s.Id == id);
         if (row is null) return;
-        context.Perf_SubTopics.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }
@@ -218,6 +299,7 @@ else
         });
         await context.SaveChangesAsync();
         _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0;
+        _showIndicatorFormForSubTopicId = null;
         await LoadAsync();
     }
 
@@ -228,7 +310,7 @@ else
         if (hasScores) { _error = "ลบไม่ได้ — มีคะแนนที่บันทึกไว้กับตัวชี้วัดนี้แล้ว"; return; }
         var row = await context.Perf_Indicators.FirstOrDefaultAsync(i => i.Id == id);
         if (row is null) return;
-        context.Perf_Indicators.Remove(row);
+        row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }

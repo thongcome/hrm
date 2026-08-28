@@ -33,74 +33,78 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มเลขที่อัตรา" : "แก้ไขเลขที่อัตรา")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_posCode" Label="เลขที่ตำแหน่ง" /></MudItem>
-        <MudItem xs="12" sm="8">
-            <MudAutocomplete T="Pos_ExecType" Label="ชื่อตำแหน่ง" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
-                SearchFunc="SearchExecTypesAsync"
-                ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudAutocomplete T="com_organization" Label="สังกัด" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
-                SearchFunc="SearchOrganizationsAsync"
-                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
-                @foreach (var et in _employeeTypes)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ตำแหน่งมีผล" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันสิ้นสุดการใช้ตำแหน่ง" @bind-Date="_expireDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_minGraduate" Label="ระดับการศึกษาขั้นต่ำ" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_paymentNo" Label="เลขที่จ่ายโดยตำแหน่ง" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="Hremployee" Label="พนักงานในตำแหน่ง (เว้นว่าง = ว่าง)" Value="_selectedEmployee" ValueChanged="v => _selectedEmployee = v"
-                SearchFunc="SearchEmployeesAsync"
-                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="อัตราเงินเดือนเริ่มต้น" Format="N2" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_normalSalary" Label="อัตราเงินเดือน" Format="N2" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="อัตราเงินเดือนสูงสุด" Format="N2" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudRadioGroup T="bool" @bind-Value="_isManpower">
-                <MudText Typo="Typo.caption">เงื่อนไขอัตรากำลัง:</MudText>
-                <MudRadio T="bool" Value="true" Color="Color.Primary">นับอัตรากำลัง</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่นับอัตรากำลัง</MudRadio>
-            </MudRadioGroup>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="สถานะตำแหน่ง: ใช้อยู่" />
-        </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_budgetWarning))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Warning" Class="mt-3">@_budgetWarning</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มเลขที่อัตรา</MudButton>
     }
-    @if (!string.IsNullOrEmpty(_error))
+    else
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มเลขที่อัตรา" : "แก้ไขเลขที่อัตรา")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_posCode" Label="เลขที่ตำแหน่ง" /></MudItem>
+            <MudItem xs="12" sm="8">
+                <MudAutocomplete T="Pos_ExecType" Label="ชื่อตำแหน่ง" Value="_selectedExecType" ValueChanged="v => _selectedExecType = v"
+                    SearchFunc="SearchExecTypesAsync"
+                    ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="com_organization" Label="สังกัด" Value="_selectedOrg" ValueChanged="v => _selectedOrg = v"
+                    SearchFunc="SearchOrganizationsAsync"
+                    ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
+                    @foreach (var et in _employeeTypes)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ตำแหน่งมีผล" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันสิ้นสุดการใช้ตำแหน่ง" @bind-Date="_expireDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_minGraduate" Label="ระดับการศึกษาขั้นต่ำ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_paymentNo" Label="เลขที่จ่ายโดยตำแหน่ง" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Hremployee" Label="พนักงานในตำแหน่ง (เว้นว่าง = ว่าง)" Value="_selectedEmployee" ValueChanged="v => _selectedEmployee = v"
+                    SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_minSalary" Label="อัตราเงินเดือนเริ่มต้น" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_normalSalary" Label="อัตราเงินเดือน" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_maxSalary" Label="อัตราเงินเดือนสูงสุด" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudRadioGroup T="bool" @bind-Value="_isManpower">
+                    <MudText Typo="Typo.caption">เงื่อนไขอัตรากำลัง:</MudText>
+                    <MudRadio T="bool" Value="true" Color="Color.Primary">นับอัตรากำลัง</MudRadio>
+                    <MudRadio T="bool" Value="false" Color="Color.Default">ไม่นับอัตรากำลัง</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="สถานะตำแหน่ง: ใช้อยู่" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
 
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
+        @if (!string.IsNullOrEmpty(_budgetWarning))
         {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            <MudAlert Severity="Severity.Warning" Class="mt-3">@_budgetWarning</MudAlert>
         }
-    </MudStack>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
 
     <MudDivider Class="my-5" />
 
@@ -164,6 +168,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
     private long? _filterOrgId;
     private long? _filterEmployeeId;
 
@@ -285,6 +290,12 @@
         return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
     }
 
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Pos_PositionSlot slot)
     {
         _editingId = slot.Id;
@@ -305,6 +316,7 @@
         _selectedOrg = null;
         _selectedEmployee = null;
         _error = null;
+        _showForm = true;
         _ = LoadEditContextAsync(slot);
     }
 
@@ -340,6 +352,7 @@
         _isActive = true;
         _remark = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

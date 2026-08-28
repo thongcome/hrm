@@ -27,26 +27,38 @@
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h6" Class="mb-2">เริ่ม PIP ใหม่</MudText>
-    <MudGrid>
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_selectedEmployee"
-                SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="sc_user" Label="หัวหน้าผู้ติดตาม PIP (ไม่บังคับ)" @bind-Value="_selectedManager"
-                SearchFunc="SearchUsersAsync" ToStringFunc="@(u => u == null ? null : $"{u.firstname} {u.lastname}")"
-                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-        </MudItem>
-        <MudItem xs="12" sm="2"><MudDatePicker Label="วันที่เริ่ม" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="2"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล/ปัญหาผลงานที่ต้องปรับปรุง" Lines="2" /></MudItem>
-        <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAsync">สร้างฉบับร่าง</MudButton></MudItem>
-    </MudGrid>
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateForm">เริ่ม PIP ใหม่</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">เริ่ม PIP ใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_selectedEmployee"
+                    SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="sc_user" Label="หัวหน้าผู้ติดตาม PIP (ไม่บังคับ)" @bind-Value="_selectedManager"
+                    SearchFunc="SearchUsersAsync" ToStringFunc="@(u => u == null ? null : $"{u.firstname} {u.lastname}")"
+                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+            </MudItem>
+            <MudItem xs="12" sm="2"><MudDatePicker Label="วันที่เริ่ม" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="2"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล/ปัญหาผลงานที่ต้องปรับปรุง" Lines="2" /></MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateAsync">สร้างฉบับร่าง</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CloseCreateForm">ยกเลิก</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
     }
 </MudPaper>
 
@@ -82,6 +94,8 @@
     private List<Perf_ImprovementPlan> _plans = new();
     private Dictionary<long, Hremployee> _employees = new();
 
+    private bool _showForm;
+
     private Hremployee? _selectedEmployee;
     private sc_user? _selectedManager;
     private DateTime? _startDate = DateTime.Today;
@@ -98,9 +112,27 @@
         {
             await using var context = await DbFactory.CreateDbContextAsync();
             _selectedEmployee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == empId);
+            _showForm = true;
         }
 
         await LoadAsync();
+    }
+
+    private void OpenCreateForm()
+    {
+        _selectedEmployee = null;
+        _selectedManager = null;
+        _startDate = DateTime.Today;
+        _endDate = DateTime.Today.AddDays(60);
+        _reason = null;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CloseCreateForm()
+    {
+        _showForm = false;
+        _error = null;
     }
 
     private async Task LoadAsync()

@@ -104,7 +104,7 @@ public static class OidcEndpoints
         var fullName = scUser is null ? appUser.UserName : $"{scUser.firstname} {scUser.lastname}".Trim();
 
         var role = await context.Sso_ClientRoleMappings
-            .Where(m => m.ScUserId == appUser.userid && m.ClientId == clientId)
+            .Where(m => m.ScUserId == appUser.userid && m.ClientId == clientId && m.IsActive)
             .Select(m => m.Role)
             .FirstOrDefaultAsync()
             ?? "Viewer"; // matches the client's own documented safe fallback for an unmapped user

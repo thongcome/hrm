@@ -1,6 +1,7 @@
 @page "/wf/canvas/{WorkflowId:long}/design"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -236,52 +237,60 @@ else
     {
         if (!_canEdit || !IsDirty) return;
 
-        // Old wlevel -> new wlevel, captured before any mutation. Needed to
-        // re-point wf_loa.nowLevel/nextLevel (which key off the numeric level,
-        // not subworkflowid) at whatever level they meant before the reorder.
-        var oldToNew = new Dictionary<int, int>();
-        for (var i = 0; i < _levels.Count; i++)
-            oldToNew[_levels[i].wlevel] = i + 1;
-
         await using var context = await DbFactory.CreateDbContextAsync();
-
-        for (var i = 0; i < _levels.Count; i++)
+        try
         {
-            var newWlevel = i + 1;
-            var subworkflowId = _levels[i].subworkflowid;
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, WorkflowId);
 
-            var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == subworkflowId);
-            if (level is null) continue;
-            level.wlevel = newWlevel;
-            // istop is deliberately left untouched — it marks a level as a
-            // terminal branch (see WorkflowEngineService's own comment on
-            // this), and LOA-branching workflows can legitimately have more
-            // than one istop=true level at once (e.g. two different LOA
-            // amount bands each ending the job at a different level).
-            // Position in this reordered list has nothing to do with that.
+            // Old wlevel -> new wlevel, captured before any mutation. Needed to
+            // re-point wf_loa.nowLevel/nextLevel (which key off the numeric level,
+            // not subworkflowid) at whatever level they meant before the reorder.
+            var oldToNew = new Dictionary<int, int>();
+            for (var i = 0; i < _levels.Count; i++)
+                oldToNew[_levels[i].wlevel] = i + 1;
 
-            // Keep the denormalized wlevel copy on each approver-assignment
-            // table in sync — WorkflowEngineService resolves approvers by
-            // subworkflowid, never by this column, so staleness here can't
-            // break live approval routing, but it would show a wrong level
-            // number on the wf_custom_user/role/adhoc-user admin pages.
-            await context.wf_custom_users.Where(u => u.subworkflowid == subworkflowId)
-                .ForEachAsync(u => u.wlevel = newWlevel);
-            await context.wf_custom_roles.Where(r => r.subworkflowid == subworkflowId)
-                .ForEachAsync(r => r.wlevel = newWlevel);
-            await context.wf_adhoc_users.Where(a => a.subworkflowid == subworkflowId)
-                .ForEachAsync(a => a.wlevel = newWlevel);
+            for (var i = 0; i < _levels.Count; i++)
+            {
+                var newWlevel = i + 1;
+                var subworkflowId = _levels[i].subworkflowid;
+
+                var level = await context.wf_sub_workflow_masters.FirstOrDefaultAsync(l => l.subworkflowid == subworkflowId);
+                if (level is null) continue;
+                level.wlevel = newWlevel;
+                // istop is deliberately left untouched — it marks a level as a
+                // terminal branch (see WorkflowEngineService's own comment on
+                // this), and LOA-branching workflows can legitimately have more
+                // than one istop=true level at once (e.g. two different LOA
+                // amount bands each ending the job at a different level).
+                // Position in this reordered list has nothing to do with that.
+
+                // Keep the denormalized wlevel copy on each approver-assignment
+                // table in sync — WorkflowEngineService resolves approvers by
+                // subworkflowid, never by this column, so staleness here can't
+                // break live approval routing, but it would show a wrong level
+                // number on the wf_custom_user/role/adhoc-user admin pages.
+                await context.wf_custom_users.Where(u => u.subworkflowid == subworkflowId)
+                    .ForEachAsync(u => u.wlevel = newWlevel);
+                await context.wf_custom_roles.Where(r => r.subworkflowid == subworkflowId)
+                    .ForEachAsync(r => r.wlevel = newWlevel);
+                await context.wf_adhoc_users.Where(a => a.subworkflowid == subworkflowId)
+                    .ForEachAsync(a => a.wlevel = newWlevel);
+            }
+
+            var bands = await context.wf_loas.Where(l => l.wfid == WorkflowId).ToListAsync();
+            foreach (var band in bands)
+            {
+                if (oldToNew.TryGetValue(band.nowLevel, out var newNow)) band.nowLevel = newNow;
+                if (oldToNew.TryGetValue(band.nextLevel, out var newNext)) band.nextLevel = newNext;
+            }
+
+            await context.SaveChangesAsync();
+            await LoadAsync();
+            Snackbar.Add("บันทึกลำดับระดับอนุมัติแล้ว", Severity.Success);
         }
-
-        var bands = await context.wf_loas.Where(l => l.wfid == WorkflowId).ToListAsync();
-        foreach (var band in bands)
+        catch (Exception ex)
         {
-            if (oldToNew.TryGetValue(band.nowLevel, out var newNow)) band.nowLevel = newNow;
-            if (oldToNew.TryGetValue(band.nextLevel, out var newNext)) band.nextLevel = newNext;
+            Snackbar.Add(ex.Message, Severity.Error);
         }
-
-        await context.SaveChangesAsync();
-        await LoadAsync();
-        Snackbar.Add("บันทึกลำดับระดับอนุมัติแล้ว", Severity.Success);
     }
 }

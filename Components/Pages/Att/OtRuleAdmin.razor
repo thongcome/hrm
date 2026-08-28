@@ -27,6 +27,13 @@
 
     <MudDivider Class="my-4" />
 
+    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+        @if (!_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">@L.Translate("AddMultiplierHeading")</MudButton>
+        }
+    </MudStack>
+
     <MudTable Items="_rules" Dense="true" Hover="true">
         <HeaderContent>
             <MudTh>@L.Translate("DayTypeLabel")</MudTh>
@@ -51,35 +58,35 @@
         </NoRecordsContent>
     </MudTable>
 
-    <MudDivider Class="my-5" />
-
-    <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddMultiplierHeading") : L.Translate("EditMultiplierHeading"))</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="4">
-            <MudSelect T="OtDayType" @bind-Value="_dayType" Label="@L.Translate("DayTypeLabel")" Disabled="_editingId is not null">
-                <MudSelectItem T="OtDayType" Value="OtDayType.Workday">@L.Translate("DayTypeWorkday")</MudSelectItem>
-                <MudSelectItem T="OtDayType" Value="OtDayType.Holiday">@L.Translate("DayTypeHoliday")</MudSelectItem>
-                <MudSelectItem T="OtDayType" Value="OtDayType.RestDay">@L.Translate("DayTypeRestDay")</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_multiplier" Label="@L.Translate("MultiplierTimesLabel")" Min="0" Format="0.0#" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("InUseLabel")" />
-        </MudItem>
-        <MudItem xs="12">
-            <MudStack Row="true" Spacing="2">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveButton")</MudButton>
-                @if (_editingId is not null)
-                {
-                    <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
-                }
-            </MudStack>
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudDivider Class="my-5" />
+
+        <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddMultiplierHeading") : L.Translate("EditMultiplierHeading"))</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="OtDayType" @bind-Value="_dayType" Label="@L.Translate("DayTypeLabel")" Disabled="_editingId is not null">
+                    <MudSelectItem T="OtDayType" Value="OtDayType.Workday">@L.Translate("DayTypeWorkday")</MudSelectItem>
+                    <MudSelectItem T="OtDayType" Value="OtDayType.Holiday">@L.Translate("DayTypeHoliday")</MudSelectItem>
+                    <MudSelectItem T="OtDayType" Value="OtDayType.RestDay">@L.Translate("DayTypeRestDay")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_multiplier" Label="@L.Translate("MultiplierTimesLabel")" Min="0" Format="0.0#" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="@L.Translate("InUseLabel")" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveButton")</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelEdit">@L.Translate("CancelButton")</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
     }
 </MudPaper>
 
@@ -92,6 +99,7 @@
     private OtDayType _dayType = OtDayType.Workday;
     private decimal _multiplier = 1.5m;
     private bool _isActive = true;
+    private bool _showForm;
 
     protected override async Task OnInitializedAsync()
     {
@@ -115,12 +123,24 @@
         _ => t.ToString(),
     };
 
+    private void OpenCreate()
+    {
+        _editingId = null;
+        _dayType = OtDayType.Workday;
+        _multiplier = 1.5m;
+        _isActive = true;
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Att_OtRule rule)
     {
         _editingId = rule.Id;
         _dayType = rule.DayType;
         _multiplier = rule.Multiplier;
         _isActive = rule.IsActive;
+        _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -129,6 +149,7 @@
         _dayType = OtDayType.Workday;
         _multiplier = 1.5m;
         _isActive = true;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

@@ -175,17 +175,18 @@
     private async Task RemoveCompetencyAsync(long id)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var inUse = await context.Job_CompetencyRequirements.AnyAsync(r => r.CompetencyId == id);
+        var inUse = await context.Job_CompetencyRequirements.AnyAsync(r => r.CompetencyId == id && r.IsActive);
         if (inUse) { _error = "ลบไม่ได้ — สมรรถนะนี้ถูกใช้เป็นข้อกำหนดของ Job Profile อยู่แล้ว"; return; }
 
         var inUseByIdp = await context.Idp_CompetencyAssessments.AnyAsync(a => a.CompetencyId == id)
             || await context.Idp_DevelopmentActions.AnyAsync(a => a.CompetencyId == id);
         if (inUseByIdp) { _error = "ลบไม่ได้ — สมรรถนะนี้ถูกใช้ในการประเมิน/แผนพัฒนารายบุคคล (IDP) ของพนักงานอยู่แล้ว"; return; }
 
-        var levels = context.Comp_ProficiencyLevels.Where(l => l.CompetencyId == id);
-        context.Comp_ProficiencyLevels.RemoveRange(levels);
+        // Soft-delete only — the proficiency-level descriptions stay attached
+        // (harmless, purely descriptive text) so re-activating the competency
+        // later doesn't lose its BARS write-up.
         var row = await context.Comp_Competencies.FirstOrDefaultAsync(c => c.Id == id);
-        if (row is not null) context.Comp_Competencies.Remove(row);
+        if (row is not null) row.IsActive = false;
         await context.SaveChangesAsync();
         await LoadAsync();
     }

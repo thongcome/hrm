@@ -1,5 +1,6 @@
 @page "/wf_loa_users/edit/{id:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
@@ -10,9 +11,20 @@
 {
     <p><em>Loading...</em></p>
 }
+else if (_locked)
+{
+    <div class="alert alert-warning">
+        @WorkflowLockGuard.LockedMessage
+        <br /><a href="/wf_loa_users">← กลับไปหน้ารายการ LOA User</a>
+    </div>
+}
 else
 {
     <h3>Edit LOA User #@loaUser.id</h3>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
     <EditForm Model="loaUser" OnValidSubmit="Save">
         <DataAnnotationsValidator />
         <ValidationSummary />
@@ -86,6 +98,8 @@ else
     public long id { get; set; }
 
     private wf_loa_user? loaUser;
+    private bool _locked;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,16 +108,28 @@ else
         if (loaUser is null)
         {
             NavigationManager.NavigateTo("/wf_loa_users");
+            return;
         }
+        var workflow = await db.wf_workflows.FindAsync(loaUser.workflowid);
+        _locked = workflow?.isactive == true;
     }
 
     private async Task Save()
     {
         if (loaUser is null) return;
-        loaUser.moddate = DateTime.Now;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_loa_users.Update(loaUser);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wf_loa_users");
+        _error = null;
+        try
+        {
+            loaUser.moddate = DateTime.Now;
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(db, loaUser.workflowid);
+            db.wf_loa_users.Update(loaUser);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wf_loa_users");
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+        }
     }
 }

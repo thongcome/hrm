@@ -377,6 +377,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Hr_DisciplinaryCase> Hr_DisciplinaryCases { get; set; }
     public virtual DbSet<Hr_Grievance> Hr_Grievances { get; set; }
     public virtual DbSet<Hr_RewardCase> Hr_RewardCases { get; set; }
+    public virtual DbSet<Hr_SeparationRequest> Hr_SeparationRequests { get; set; }
 
     public virtual DbSet<Lve_LeavePolicy> Lve_LeavePolicies { get; set; }
 

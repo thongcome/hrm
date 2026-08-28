@@ -15,7 +15,13 @@
 <PageTitle>งบประมาณฝึกอบรม</PageTitle>
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-    <MudText Typo="Typo.h5">งบประมาณฝึกอบรม (Training Budget)</MudText>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">งบประมาณฝึกอบรม (Training Budget)</MudText>
+        @if (!_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showForm = true)">+ ตั้งงบประมาณ</MudButton>
+        }
+    </MudStack>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -23,15 +29,23 @@
         return;
     }
 
-    <MudGrid Class="mt-3">
-        <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_newYear" Label="ปีงบประมาณ (ค.ศ.)" Min="2020" Max="2100" /></MudItem>
-        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_newAmount" Label="งบประมาณ (บาท)" Min="0" /></MudItem>
-        <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBudgetAsync" Class="mt-2">บันทึกงบ</MudButton></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_newYear" Label="ปีงบประมาณ (ค.ศ.)" Min="2020" Max="2100" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_newAmount" Label="งบประมาณ (บาท)" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBudgetAsync">บันทึกงบ</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelAdd">ยกเลิก</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
     }
 
     <MudDivider Class="my-4" />
@@ -65,6 +79,7 @@
     private int _newYear = DateTime.Now.Year;
     private decimal _newAmount;
     private string? _error;
+    private bool _showForm;
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,6 +121,15 @@
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกงบประมาณเรียบร้อย", Severity.Success);
+        _showForm = false;
         await LoadAsync();
+    }
+
+    private void CancelAdd()
+    {
+        _newYear = DateTime.Now.Year;
+        _newAmount = 0;
+        _error = null;
+        _showForm = false;
     }
 }

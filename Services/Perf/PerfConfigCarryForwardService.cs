@@ -20,15 +20,15 @@ public class PerfConfigCarryForwardService(IDbContextFactory<HRMContext> dbFacto
         var newPeriod = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(p => p.Id == newPeriodId, ct)
             ?? throw new InvalidOperationException("ไม่พบรอบการประเมินปลายทาง");
 
-        var alreadyHasConfig = await context.Perf_GradeBands.AnyAsync(g => g.EvaluationPeriodId == newPeriodId, ct)
-            || await context.Perf_RatingScaleDescriptions.AnyAsync(d => d.EvaluationPeriodId == newPeriodId, ct);
+        var alreadyHasConfig = await context.Perf_GradeBands.AnyAsync(g => g.EvaluationPeriodId == newPeriodId && g.IsActive, ct)
+            || await context.Perf_RatingScaleDescriptions.AnyAsync(d => d.EvaluationPeriodId == newPeriodId && d.IsActive, ct);
         if (alreadyHasConfig)
             throw new InvalidOperationException("รอบปลายทางมีเกณฑ์เกรด/มาตรวัดคะแนนอยู่แล้ว — ก็อปปี้ทับไม่ได้ (ลบของเดิมก่อนถ้าต้องการก็อปปี้ใหม่)");
 
         var sourceGradeBands = await context.Perf_GradeBands
-            .Where(g => g.EvaluationPeriodId == sourcePeriodId).OrderBy(g => g.SortOrder).ToListAsync(ct);
+            .Where(g => g.EvaluationPeriodId == sourcePeriodId && g.IsActive).OrderBy(g => g.SortOrder).ToListAsync(ct);
         var sourceScaleDescriptions = await context.Perf_RatingScaleDescriptions
-            .Where(d => d.EvaluationPeriodId == sourcePeriodId).OrderBy(d => d.ScorePoint).ToListAsync(ct);
+            .Where(d => d.EvaluationPeriodId == sourcePeriodId && d.IsActive).OrderBy(d => d.ScorePoint).ToListAsync(ct);
 
         if (sourceGradeBands.Count == 0 && sourceScaleDescriptions.Count == 0)
             throw new InvalidOperationException("รอบต้นทางยังไม่มีเกณฑ์เกรดหรือมาตรวัดคะแนนให้ก็อปปี้");

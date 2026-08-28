@@ -1,5 +1,6 @@
 @page "/wfworkflows/edit/{id:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Components
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<HRMContext> DbFactory
@@ -9,9 +10,20 @@
 {
     <p><em>Loading...</em></p>
 }
+else if (_locked)
+{
+    <div class="alert alert-warning">
+        @WorkflowLockGuard.LockedMessage
+        <br /><a href="/wfworkflows/manage/@workflow.workflowid">← กลับไปหน้าจัดการ Workflow</a>
+    </div>
+}
 else
 {
     <h3>Edit Workflow #@workflow.workflowid</h3>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
     <EditForm Model="workflow" OnValidSubmit="Save">
         <DataAnnotationsValidator />
         <ValidationSummary />
@@ -172,6 +184,8 @@ else
     public long id { get; set; }
 
     private wf_workflow? workflow;
+    private bool _locked;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,16 +194,27 @@ else
         if (workflow is null)
         {
             NavigationManager.NavigateTo("/wfworkflows");
+            return;
         }
+        _locked = workflow.isactive == true;
     }
 
     private async Task Save()
     {
         if (workflow is null) return;
-        workflow.moddate = DateTime.Now;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_workflows.Update(workflow);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wfworkflows");
+        _error = null;
+        try
+        {
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(db, workflow.workflowid);
+            workflow.moddate = DateTime.Now;
+            db.wf_workflows.Update(workflow);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wfworkflows");
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+        }
     }
 }

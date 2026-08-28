@@ -1,5 +1,6 @@
 @page "/org/organizations/{Id:long}"
 @using HRM.Models
+@using HRM.Services.Org
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -8,6 +9,35 @@
 @attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
 
 <PageTitle>ข้อมูลสังกัด</PageTitle>
+
+@* Same org-tree-* classes/markup as OrganizationAdmin.razor's "ผังต้นไม้"
+   tab — duplicated (plain <style> tag, not an isolated *.razor.css file)
+   rather than shared, matching that page's own comment on why its d3-chart
+   CSS is duplicated too. Keeps this page's sub-tree looking like the same
+   product as the full tree view. *@
+<style>
+    .org-tree-row { display: flex; align-items: flex-start; gap: 4px; padding: 3px 0; }
+    .org-tree-toggle {
+        cursor: pointer; border: none; background: none; padding: 0;
+        width: 22px; height: 34px; flex-shrink: 0;
+        color: var(--mud-palette-text-secondary, #777); font-size: 0.85rem;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .org-tree-card {
+        flex: 1; min-width: 0; display: block;
+        background: var(--mud-palette-surface, #fff);
+        border: 1px solid var(--mud-palette-lines-default, #e0e0e0);
+        border-left: 3px solid var(--mud-palette-primary, #594AE2);
+        border-radius: 6px; padding: 6px 10px; text-decoration: none;
+        transition: box-shadow .12s ease, background .12s ease;
+    }
+    .org-tree-card:hover { box-shadow: 0 1px 5px rgba(0, 0, 0, 0.12); background: var(--mud-palette-action-default-hover, rgba(0, 0, 0, 0.02)); }
+    .org-tree-card.org-tree-inactive { border-left-color: var(--mud-palette-lines-default, #bbb); opacity: 0.7; }
+    .org-tree-card-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .org-tree-card-name { font-weight: 600; font-size: 0.85rem; color: var(--mud-palette-text-primary, #212121); }
+    .org-tree-card-code { font-size: 0.7rem; color: var(--mud-palette-text-secondary, #888); }
+    .org-tree-card-meta { font-size: 0.7rem; color: var(--mud-palette-text-secondary, #888); margin-top: 1px; }
+</style>
 
 @if (_org is null)
 {
@@ -26,7 +56,21 @@ else
                 <tr><td>ลักษณะของหน่วยงาน</td><td>@_subSectionTypeName</td><td>สังกัดสูงสุด</td><td>@(_org.istop ? "ใช่" : "ไม่ใช่")</td></tr>
                 <tr><td>นับอัตรากำลัง</td><td>@(_org.isManPowerCount ? "ใช่" : "ไม่ใช่")</td><td>สถานะ</td><td>@(_org.isActive ? "ใช้งาน" : "ไม่ใช้งาน")</td></tr>
                 <tr><td>วันที่เริ่มต้นสังกัด</td><td>@(_org.startdate?.ToString("dd/MM/yyyy") ?? "-")</td><td>วันที่ยกเลิกสังกัด</td><td>@(_org.enddate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
-                <tr><td>หัวหน้า</td><td colspan="3">@(_org.approver_name ?? "— ยังไม่ได้กำหนด —")</td></tr>
+                <tr>
+                    <td>หัวหน้าแผนก</td><td>@(_org.boss_name ?? "— ยังไม่ได้กำหนด —")</td>
+                    <td>ผู้อนุมัติ (Workflow)</td>
+                    <td>
+                        @_org.approver_name
+                        @if (!string.IsNullOrWhiteSpace(_org.approver_name) && !string.IsNullOrWhiteSpace(_org.boss_name) && _org.approver_name == _org.boss_name)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-inline"> (คนเดียวกับหัวหน้าแผนก)</MudText>
+                        }
+                        else if (string.IsNullOrWhiteSpace(_org.approver_name))
+                        {
+                            @:— ยังไม่ได้กำหนด —
+                        }
+                    </td>
+                </tr>
                 <tr><td>หมายเหตุ</td><td colspan="3">@_org.remark</td></tr>
             </tbody>
         </MudSimpleTable>
@@ -36,6 +80,9 @@ else
             <MudButton Variant="Variant.Text" Href="/org/organizations">กลับไปหน้ารายการ</MudButton>
             <MudButton Variant="Variant.Text" OnClick="@(() => _showTree = !_showTree)">
                 @(_showTree ? "ซ่อนสังกัดภายใต้" : "แสดงสังกัดภายใต้")
+            </MudButton>
+            <MudButton Variant="Variant.Text" OnClick="ToggleHistoryAsync">
+                @(_showHistory ? "ซ่อนประวัติการปรับผังองค์กร" : "แสดงประวัติการปรับผังองค์กร")
             </MudButton>
             <MudButton Variant="Variant.Text" Href="@($"/pos/position-slots?orgId={Id}")">แสดงอัตราในสังกัด</MudButton>
         </MudStack>
@@ -52,6 +99,57 @@ else
             @RenderNode(_org, 0)
         </MudPaper>
     }
+
+    @if (_showHistory)
+    {
+        <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+            <MudText Typo="Typo.h6" Class="mb-2">ประวัติการปรับผังองค์กร — เฉพาะ @_org.name</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+                ดูทุกหน่วยงานพร้อมกันได้ที่ <MudLink Href="/org/change-history">ประวัติการปรับผังองค์กร (ทั้งหมด)</MudLink>
+            </MudText>
+
+            @if (_pendingForOrg.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">รอมีผล / อยู่ระหว่างดำเนินการ</MudText>
+                <MudSimpleTable Dense="true" Class="mb-4">
+                    <tbody>
+                        @foreach (var (req, statusText, statusColor) in _pendingForOrg)
+                        {
+                            <tr>
+                                <td>@OrgChangeAuditFormatter.DescribeRequest(req)</td>
+                                <td>@req.EffectiveFrom.ToString("dd/MM/yyyy")</td>
+                                <td><MudChip T="string" Color="@statusColor" Size="Size.Small">@statusText</MudChip></td>
+                                <td><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/org/change-requests/{req.Id}")">ดู</MudButton></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            @if (_appliedForOrg.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">ไม่พบประวัติที่มีผลแล้วสำหรับหน่วยงานนี้</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true">
+                    <thead>
+                        <tr><th>เวลา</th><th>รายละเอียด</th><th>ผู้ทำรายการ</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (log, description, actor) in _appliedForOrg)
+                        {
+                            <tr>
+                                <td>@log.EventDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@description</td>
+                                <td>@actor</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudPaper>
+    }
 }
 
 @code {
@@ -64,6 +162,15 @@ else
     private bool _showTree;
     private List<com_organization> _allOrgs = new();
     private HashSet<long> _expanded = new();
+
+    // Per-org slice of OrgChangeHistory.razor's data — same queries filtered
+    // to this org's id, so "รอมีผล"/"ประวัติที่มีผลแล้ว" read identically
+    // whether viewed from there or from here. Loaded lazily (only once the
+    // section is actually opened), same as the tree above.
+    private bool _showHistory;
+    private bool _historyLoaded;
+    private List<(Org_OrganizationChangeRequest Req, string StatusText, Color StatusColor)> _pendingForOrg = new();
+    private List<(AuditLog Log, string Description, string Actor)> _appliedForOrg = new();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -105,31 +212,60 @@ else
     {
         var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
         var isExpanded = _expanded.Contains(node.id);
+        var meta = OrgChangeAuditFormatter.DescribeBossApprover(node);
 
         builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0;");
+        builder.AddAttribute(1, "class", "org-tree-row");
+        builder.AddAttribute(2, "style", $"margin-left:{depth * 22}px;");
 
         if (children.Count > 0)
         {
-            builder.OpenElement(2, "a");
-            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
-            builder.AddAttribute(4, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleExpand(node.id)));
-            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.OpenElement(3, "button");
+            builder.AddAttribute(4, "type", "button");
+            builder.AddAttribute(5, "class", "org-tree-toggle");
+            builder.AddAttribute(6, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleExpand(node.id)));
+            builder.AddContent(7, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(8, "span");
+            builder.AddAttribute(9, "class", "org-tree-toggle");
             builder.CloseElement();
         }
 
-        builder.OpenElement(6, "a");
-        builder.AddAttribute(7, "href", $"/org/organizations/{node.id}");
-        builder.AddContent(8, $"{node.orgcodefull} - {node.name} ({node.abbr})");
+        builder.OpenElement(10, "a");
+        builder.AddAttribute(11, "class", node.isActive ? "org-tree-card" : "org-tree-card org-tree-inactive");
+        builder.AddAttribute(12, "href", $"/org/organizations/{node.id}");
+
+        builder.OpenElement(13, "div");
+        builder.AddAttribute(14, "class", "org-tree-card-title");
+        builder.OpenElement(15, "span");
+        builder.AddAttribute(16, "class", "org-tree-card-name");
+        builder.AddContent(17, node.name);
+        builder.CloseElement();
+        builder.OpenElement(18, "span");
+        builder.AddAttribute(19, "class", "org-tree-card-code");
+        builder.AddContent(20, $"{node.orgcodefull} · {node.abbr}");
+        builder.CloseElement();
         builder.CloseElement();
 
+        if (meta is not null)
+        {
+            builder.OpenElement(21, "div");
+            builder.AddAttribute(22, "class", "org-tree-card-meta");
+            builder.AddContent(23, meta);
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
         builder.CloseElement();
 
         if (isExpanded)
         {
             foreach (var child in children)
             {
-                builder.AddContent(9, RenderNode(child, depth + 1));
+                builder.AddContent(24, RenderNode(child, depth + 1));
             }
         }
     };
@@ -137,5 +273,87 @@ else
     private void ToggleExpand(long id)
     {
         if (!_expanded.Add(id)) _expanded.Remove(id);
+    }
+
+    private async Task ToggleHistoryAsync()
+    {
+        _showHistory = !_showHistory;
+        if (_showHistory && !_historyLoaded)
+        {
+            _historyLoaded = true;
+            await LoadHistoryAsync();
+        }
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var pending = await context.Org_OrganizationChangeRequests
+            .Where(r => !r.IsApplied && r.TargetOrganizationId == Id)
+            .OrderBy(r => r.EffectiveFrom)
+            .ToListAsync();
+        var jobIds = pending.Where(r => r.JobMasterId != null).Select(r => r.JobMasterId!.Value).Distinct().ToList();
+        var jobs = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid)).ToDictionaryAsync(j => j.jobmasterid);
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _pendingForOrg = pending.Select(r =>
+        {
+            job_master? job = r.JobMasterId is long jid && jobs.TryGetValue(jid, out var j) ? j : null;
+            var (text, color) = DescribeStatus(r, job, today);
+            return (r, text, color);
+        }).ToList();
+
+        var logs = await context.AuditLogs
+            .Where(a => a.EntityType == "com_organization" && a.RecordId == Id.ToString())
+            .OrderByDescending(a => a.EventDate)
+            .Take(100)
+            .ToListAsync();
+
+        var appliedRequests = await context.Org_OrganizationChangeRequests
+            .Where(r => r.IsApplied && r.TargetOrganizationId == Id)
+            .ToListAsync();
+        var empIds = appliedRequests.Select(r => r.RequestedByEmpId).Where(e => !string.IsNullOrEmpty(e)).Select(e => e!).Distinct().ToList();
+        var employeeNames = empIds.Count == 0
+            ? new Dictionary<string, string>()
+            : await context.Hremployee.Where(e => empIds.Contains(e.EmpNo)).ToDictionaryAsync(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+
+        _appliedForOrg = logs.Select(log =>
+        {
+            var description = OrgChangeAuditFormatter.Describe(log);
+            var actor = ResolveActor(log, appliedRequests, employeeNames);
+            return (log, description, actor);
+        }).ToList();
+    }
+
+    // Same status wording as OrgChangeHistory.razor's DescribeStatus/ResolveActor
+    // — kept as page-local copies rather than a shared service call, matching
+    // this codebase's precedent (OrganizationAdmin.razor's own tree-render
+    // comment) of duplicating small page-specific render helpers rather than
+    // introducing a shared abstraction for a two-caller need.
+    private static (string, Color) DescribeStatus(Org_OrganizationChangeRequest req, job_master? job, DateOnly today)
+    {
+        if (job is null) return ("รอเริ่มงานอนุมัติ", Color.Warning);
+        if (job.isJobClosed != true) return ($"รออนุมัติ (ระดับ {job.lastLevel}/{job.maxlevel})", Color.Warning);
+        if (job.status == HRM.Services.Workflow.WorkflowEngineService.StatusRejected) return ("ถูกปฏิเสธ", Color.Error);
+        if (job.status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted)
+            return req.EffectiveFrom <= today ? ("อนุมัติแล้ว รอนำไปใช้", Color.Success) : ($"อนุมัติแล้ว รอถึงวันที่มีผล ({req.EffectiveFrom:dd/MM/yyyy})", Color.Info);
+        return (job.status ?? "ไม่ทราบสถานะ", Color.Default);
+    }
+
+    private static string ResolveActor(AuditLog log, List<Org_OrganizationChangeRequest> appliedRequests, Dictionary<string, string> employeeNames)
+    {
+        var match = appliedRequests.FirstOrDefault(r =>
+            r.TargetOrganizationId!.Value.ToString() == log.RecordId &&
+            r.AppliedDate is not null &&
+            Math.Abs((r.AppliedDate.Value - log.EventDate).TotalSeconds) < 30);
+
+        if (match is not null)
+        {
+            if (!string.IsNullOrEmpty(match.RequestedByEmpId) && employeeNames.TryGetValue(match.RequestedByEmpId, out var name))
+                return name;
+            return match.RequestedByEmpId ?? match.RequestedByUserId.ToString();
+        }
+
+        return log.ActorName ?? log.ActorUserId?.ToString() ?? "ไม่ทราบผู้ทำรายการ";
     }
 }

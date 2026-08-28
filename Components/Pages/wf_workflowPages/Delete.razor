@@ -1,5 +1,6 @@
 @page "/wfworkflows/delete/{id:long}"
 @using HRM.Models
+@using HRM.Services.Workflow
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject NavigationManager NavigationManager
@@ -9,6 +10,7 @@
     public long id { get; set; }
 
     private wf_workflow? workflow;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -20,10 +22,20 @@
     private async Task DeleteConfirmed()
     {
         if (workflow is null) return;
-        using var db = DbFactory.CreateDbContext();
-        db.wf_workflows.Remove(workflow);
-        await db.SaveChangesAsync();
-        NavigationManager.NavigateTo("/wfworkflows");
+        _error = null;
+        try
+        {
+            using var db = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(db, workflow.workflowid);
+            var tracked = await db.wf_workflows.FindAsync(workflow.workflowid);
+            if (tracked is not null) db.wf_workflows.Remove(tracked);
+            await db.SaveChangesAsync();
+            NavigationManager.NavigateTo("/wfworkflows");
+        }
+        catch (Exception ex)
+        {
+            _error = "ลบไม่สำเร็จ: " + ex.Message;
+        }
     }
 }
 
@@ -34,6 +46,14 @@
 else
 {
     <h3>Delete Workflow</h3>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+    @if (workflow.isactive == true)
+    {
+        <div class="alert alert-warning">@WorkflowLockGuard.LockedMessage</div>
+    }
     <p>Are you sure you want to delete <strong>@workflow.wname</strong>?</p>
     <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
     <a class="btn btn-secondary ms-2" href="/wfworkflows">Cancel</a>

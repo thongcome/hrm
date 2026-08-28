@@ -100,3 +100,51 @@ This rules out the earlier version of Shape A where the create/edit form sat *ab
 Prefer splitting Create and Edit into their own routes entirely (mirrors Shape B) once the form has enough fields or business logic that it would otherwise dominate the list page — see `Components/Pages/Org/OrgUnitList.razor` + `OrgUnitCreate.razor` + `OrgUnitEdit.razor` for the reference shape: a pure list page (search, table, a "เพิ่ม..." button that navigates to a dedicated create route), a dedicated create route, and a dedicated edit route — none of which is what a user lands on by default.
 
 **Workflow/approval context belongs on the View or Edit/Create page, not on the list.** If saving a record requires approval (e.g. "การย้ายสังกัดต้องผ่านการอนุมัติ — ระบุวันที่มีผล"), that alert and its accompanying fields (effective date, request note) belong inside the Create/Edit form where they're relevant to the action being taken — never bolted onto the list page a user sees by default.
+
+## 10. Gate Create/Edit/Delete buttons with a per-action `Program:XXX` policy
+
+`@attribute [Authorize(Policy = "Menu:XXX")]` only controls whether the *page* is reachable at all — a role that can see the page can currently do anything the page's own code allows. When a page's Create/Edit/Delete actions should be separately grantable (a role that can view but not modify, or can edit but not create), gate each button with a second, narrower policy on top of the page-level one, instead of a manual `if (isAdmin)` check or a new bespoke claim.
+
+This reuses `sc_program`/`sc_role_program` — legacy JSP dispatch-by-ProgramID tables, same category as `sc_menu` was before it got wired up (correct shape, just dormant) — repurposed as an action-level permission store: **one `sc_program` row per (entity, action)**, granted to a role via `sc_role_program.isactive` (a plain binary grant, same shape `sc_role_menu` already uses for page-level access). `sc_program`'s legacy JSP fields (`templatename`/`filename`/`progmastercode`) are left null; only `progcode`/`progname`/`isactive` matter here.
+
+**Seeding convention** (so `PermissionAdmin.razor`'s program section — see below — can group and label rows automatically):
+- `progcode = "{ENTITY}_{ACTION}"` in upper snake case, action one of `CREATE`/`EDIT`/`DELETE` — e.g. `"JOBFAMILY_CREATE"`.
+- `progname = "{entity label} — {action label}"` — e.g. `"สายอาชีพ (Job Family) — เพิ่ม"`.
+- Only seed the actions the page actually has buttons for (a page with no delete button seeds `_CREATE`/`_EDIT` only).
+- Seed via migration, same as `sc_menu`/`sc_role_menu` — query `MAX(progid)`/`MAX(roleprogid)` from the live DB first (same discipline as every other seed migration in this codebase), grant the new programs to the Admin role (`roleid=9`) by default.
+
+**Wiring a page** (see `Components/Pages/Job/JobFamilyAdmin.razor` for the worked reference):
+
+```razor
+@inject IAuthorizationService AuthService
+...
+<AuthorizeView Policy="Program:JOBFAMILY_CREATE">
+    <Authorized>
+        <MudButton OnClick="StartCreate">เพิ่ม...</MudButton>
+    </Authorized>
+</AuthorizeView>
+```
+
+Inside a `MudTable` `RowTemplate` (which already binds `context` to the row), give the nested `AuthorizeView` its own `Context="..."` name to avoid shadowing:
+
+```razor
+<AuthorizeView Policy="Program:JOBFAMILY_EDIT" Context="editAuth">
+    <Authorized><MudButton OnClick="@(() => StartEdit(context))">แก้ไข</MudButton></Authorized>
+</AuthorizeView>
+```
+
+**The server-side handler must re-check the same policy** before writing — a hidden button stops nobody who guesses the URI or replays the request (same "both layers, always" rule the page-level Menu: gate already follows):
+
+```csharp
+var state = await AuthProvider.GetAuthenticationStateAsync();
+var requiredPolicy = _editingId is null ? "Program:JOBFAMILY_CREATE" : "Program:JOBFAMILY_EDIT";
+if (!(await AuthService.AuthorizeAsync(state.User, requiredPolicy)).Succeeded)
+{
+    _error = "คุณไม่มีสิทธิ์ทำรายการนี้";
+    return;
+}
+```
+
+**Admins grant these through `Components/Pages/Admin/Access/PermissionAdmin.razor`**, in its "สิทธิ์ปุ่ม เพิ่ม/แก้ไข/ลบ ต่อรายการ" section below the existing menu grants — it groups `sc_program` rows by the entity label parsed out of `progname` and shows one Create/Edit/Delete checkbox row per entity. No further wiring needed there when a new page follows the seeding convention above — the section already reads whatever `sc_program` rows exist.
+
+This is additive and opt-in per page — don't retrofit every existing page at once. Apply it going forward to new CRUD pages (or when explicitly asked to add finer-grained permission to an existing one), the same way `menu_edit`/`canedit` started on two pilot pages before spreading further.

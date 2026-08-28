@@ -28,6 +28,25 @@ public class SeveranceService
 
         if (emp.ResignDate is null)
             throw new InvalidOperationException("ต้องลงวันที่ลาออกก่อนจึงจะคำนวณค่าชดเชยได้");
+
+        // พ.ร.บ.คุ้มครองแรงงาน มาตรา 118-119: severance is only a legal
+        // entitlement for employer-initiated termination, and not even then
+        // if it falls under a มาตรา 119 exception — never for voluntary
+        // resignation. SeparationType is only ever written by
+        // SeparationRequestService once an Hr_SeparationRequest is approved,
+        // so this also means "no approved separation request yet" blocks
+        // severance the same as any other disqualifying type.
+        if (emp.SeparationType != SeparationType.TerminationOrdinary)
+        {
+            var reason = emp.SeparationType switch
+            {
+                SeparationType.VoluntaryResignation => "พนักงานคนนี้ลาออกเอง (ลาออกเอง) ไม่เข้าเงื่อนไขได้รับค่าชดเชยตามกฎหมาย",
+                SeparationType.TerminationSection119 => "การเลิกจ้างนี้เข้าข่ายข้อยกเว้นตามมาตรา 119 ไม่ต้องจ่ายค่าชดเชย",
+                _ => "ยังไม่มีคำขอสิ้นสุดการจ้างงานที่อนุมัติแล้วสำหรับพนักงานคนนี้ — ต้องส่งคำขอผ่านระบบอนุมัติก่อน",
+            };
+            throw new InvalidOperationException(reason);
+        }
+
         if (emp.WorkDate is null)
             throw new InvalidOperationException("พนักงานคนนี้ไม่มีวันเริ่มงาน (WorkDate) ในระบบ ไม่สามารถคำนวณอายุงานได้");
         if (emp.SalaryAmt is null || emp.SalaryAmt <= 0)

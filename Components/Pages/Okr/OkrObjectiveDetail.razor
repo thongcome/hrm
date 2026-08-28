@@ -117,24 +117,34 @@
         </MudText>
 
         <MudDivider Class="my-3" />
-        <MudText Typo="Typo.h6">แก้ไข Objective</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_editTitle" Label="ชื่อ Objective" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudSelect T="OkrObjectiveStatus" @bind-Value="_editStatus" Label="สถานะ">
-                    @foreach (OkrObjectiveStatus s in Enum.GetValues<OkrObjectiveStatus>())
-                    {
-                        <MudSelectItem Value="s">@StatusLabel(s)</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_editDescription" Label="รายละเอียด" Lines="2" /></MudItem>
-        </MudGrid>
-        @if (!string.IsNullOrEmpty(_error))
+        @if (!_showEditForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _showEditForm = true)">แก้ไข</MudButton>
         }
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-2" OnClick="SaveEditAsync">บันทึก</MudButton>
+        else
+        {
+            <MudText Typo="Typo.h6">แก้ไข Objective</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_editTitle" Label="ชื่อ Objective" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="OkrObjectiveStatus" @bind-Value="_editStatus" Label="สถานะ">
+                        @foreach (OkrObjectiveStatus s in Enum.GetValues<OkrObjectiveStatus>())
+                        {
+                            <MudSelectItem Value="s">@StatusLabel(s)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_editDescription" Label="รายละเอียด" Lines="2" /></MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEditAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEditObjective">ยกเลิก</MudButton>
+            </MudStack>
+        }
 
         <MudDivider Class="my-4" />
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
@@ -276,6 +286,7 @@
     private string _editTitle = "";
     private string? _editDescription;
     private OkrObjectiveStatus _editStatus;
+    private bool _showEditForm;
 
     private string _newKrTitle = "";
     private OkrKeyResultMetricType _newKrMetricType = OkrKeyResultMetricType.Numeric;
@@ -410,6 +421,7 @@
                 CategoryId = _objective.CategoryId,
             });
             Snackbar.Add("บันทึกแล้ว", Severity.Success);
+            _showEditForm = false;
             await using var context = await DbFactory.CreateDbContextAsync();
             await LoadDetailAsync(context);
         }
@@ -417,6 +429,16 @@
         {
             _error = ex.Message;
         }
+    }
+
+    private void CancelEditObjective()
+    {
+        if (_objective is null) return;
+        _editTitle = _objective.Title;
+        _editDescription = _objective.Description;
+        _editStatus = _objective.Status;
+        _error = null;
+        _showEditForm = false;
     }
 
     private async Task AddKeyResultAsync()

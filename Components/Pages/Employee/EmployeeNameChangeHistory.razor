@@ -25,28 +25,32 @@ else
         </MudStack>
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการเปลี่ยนชื่อ" : "แก้ไข")</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldFirstName" Label="ชื่อเดิม" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldLastName" Label="นามสกุลเดิม" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newFirstName" Label="ชื่อใหม่" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newLastName" Label="นามสกุลใหม่" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_docNo" Label="เลขที่เอกสาร" /></MudItem>
-            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่เอกสาร" @bind-Date="_docDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_issuedBy" Label="ออกโดย" /></MudItem>
-            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
-        </MudGrid>
-
-        <MudStack Row="true" Spacing="2" Class="mt-3">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-            @if (_editingId is not null)
-            {
-                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-            }
+        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">+ เพิ่มประวัติการเปลี่ยนชื่อ</MudButton>
         </MudStack>
 
-        <MudDivider Class="my-5" />
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประวัติการเปลี่ยนชื่อ" : "แก้ไข")</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldFirstName" Label="ชื่อเดิม" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_oldLastName" Label="นามสกุลเดิม" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newFirstName" Label="ชื่อใหม่" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newLastName" Label="นามสกุลใหม่" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_docNo" Label="เลขที่เอกสาร" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่เอกสาร" @bind-Date="_docDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่จดทะเบียน" @bind-Date="_registerDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_issuedBy" Label="ออกโดย" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
+            </MudGrid>
+
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-5" />
+        }
 
         <MudTable Items="_items" Dense="true" Hover="true">
             <HeaderContent>
@@ -78,6 +82,7 @@ else
     private Hremployee? _emp;
     private List<Hrd_NameChangeHistory> _items = new();
     private long? _editingId;
+    private bool _showForm;
 
     private string? _oldFirstName;
     private string? _oldLastName;
@@ -105,6 +110,12 @@ else
         _items = await context.Hrd_NameChangeHistories.Where(e => e.HremployeeId == Id).OrderByDescending(e => e.RegisterDate).ToListAsync();
     }
 
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
     private void StartEdit(Hrd_NameChangeHistory item)
     {
         _editingId = item.Id;
@@ -117,6 +128,7 @@ else
         _registerDate = item.RegisterDate?.ToDateTime(TimeOnly.MinValue);
         _issuedBy = item.IssuedBy;
         _remark = item.Remark;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -124,6 +136,7 @@ else
         _editingId = null;
         _oldFirstName = null; _oldLastName = null; _newFirstName = null; _newLastName = null;
         _docNo = null; _docDate = null; _registerDate = null; _issuedBy = null; _remark = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

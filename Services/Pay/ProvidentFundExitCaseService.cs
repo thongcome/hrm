@@ -140,7 +140,7 @@ public class ProvidentFundExitCaseService
         }
         else
         {
-            var tiers = await context.Pay_ProvidentFundVestingTiers.Where(t => t.PolicyId == policy.Id).OrderBy(t => t.SortOrder).ToListAsync(ct);
+            var tiers = await context.Pay_ProvidentFundVestingTiers.Where(t => t.PolicyId == policy.Id && t.IsActive).OrderBy(t => t.SortOrder).ToListAsync(ct);
             var vesting = ProvidentFundVestingCalculator.ResolveVesting(tenureStartDate, exitCase.ExitDate, tiers);
             vestingPercent = vesting.VestingPercent;
             matchedRuleDesc = $"{reasonRule.Name} — ใช้ตาราง vesting ปกติ ({(vesting.MatchedTierNote ?? "ไม่มีช่วงที่ตรง = 100%")})";

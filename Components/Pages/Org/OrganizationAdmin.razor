@@ -1,5 +1,6 @@
 @page "/org/organizations"
 @using System.Security.Claims
+@using System.Text.Json
 @using HRM.Models
 @using HRM.Services.Shared
 @using HRM.Services.Org
@@ -7,9 +8,13 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@implements IDisposable
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject OrgChangeRequestService ChangeRequestService
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject IJSRuntime JS
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
 
 @* Pure list page — CRUD skill rule 9 (landing state is always List/View,
@@ -23,13 +28,220 @@
 
 <PageTitle>ข้อมูลสังกัด</PageTitle>
 
+@* Same org-chart-card-* classes/markup as OrgChart.razor's <style> block —
+   duplicated (not shared) because this is a plain <style> tag, not an
+   isolated *.razor.css file, and it needs to be visible to elements the
+   d3-org-chart library injects into the "ผังองค์กร (ภาพ)" tab below (see
+   OrgChart.razor's own comment on why isolation wouldn't work here). *@
+<style>
+    .org-chart-canvas-wrap {
+        height: 70vh;
+        border: 1px solid var(--mud-palette-lines-default, #ddd);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .org-chart-card {
+        background: var(--mud-palette-surface, #fff);
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+        text-align: left;
+        user-select: none;
+    }
+
+    .org-chart-card-header {
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.7rem;
+        padding: 6px 8px;
+        border-radius: 8px 8px 0 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .org-chart-card-body {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        min-height: 44px;
+    }
+
+    .org-chart-card.org-chart-vacant .org-chart-card-body {
+        border: 1px dashed var(--mud-palette-lines-default, #ccc);
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+    }
+
+    .org-chart-card-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+        background: #ccc;
+    }
+
+    .org-chart-card-avatar.org-chart-avatar-initials {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--mud-palette-primary, #594AE2);
+        color: var(--mud-palette-primary-text, #fff);
+        font-weight: 700;
+        font-size: 0.85rem;
+    }
+
+    .org-chart-card-avatar.org-chart-avatar-vacant {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 1px dashed var(--mud-palette-lines-default, #ccc);
+        color: var(--mud-palette-text-secondary, #999);
+        font-size: 1.1rem;
+    }
+
+    .org-chart-card-info {
+        min-width: 0;
+    }
+
+    .org-chart-card-name {
+        font-weight: 700;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .org-chart-card-title {
+        font-size: 0.65rem;
+        color: var(--mud-palette-text-secondary, #777);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .org-chart-card-vacant-label {
+        font-size: 0.7rem;
+        font-style: italic;
+        color: var(--mud-palette-text-secondary, #999);
+    }
+
+    .org-chart-clickable {
+        cursor: pointer;
+    }
+
+    .org-chart-card-header.org-chart-clickable:hover {
+        text-decoration: underline;
+    }
+
+    .org-chart-card-body.org-chart-clickable:hover {
+        background: var(--mud-palette-action-default-hover, rgba(0, 0, 0, 0.04));
+    }
+
+    /* Browser Fullscreen API target — see OrgChartD3.toggleFullscreen in
+       org-chart-d3.js. Overrides the fixed 70vh so the chart fills the whole
+       screen instead of staying pinned at its normal-page size. */
+    .org-chart-canvas-wrap:fullscreen,
+    .org-chart-canvas-wrap:-webkit-full-screen {
+        height: 100vh;
+        width: 100vw;
+        border-radius: 0;
+        background: var(--mud-palette-background, #fff);
+    }
+
+    /* "ผังต้นไม้" tab node cards — same visual language as the d3 image-chart
+       cards above (rounded, subtle shadow, accent-colored header strip) so
+       the plain-text tree and the picture chart read as the same product,
+       just two zoom levels. A left accent bar (not a full colored header)
+       keeps depth-nested rows scannable without every row shouting for
+       attention the way a full-color header block would at 4-5 levels deep. */
+    .org-tree-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 3px 0;
+    }
+
+    .org-tree-toggle {
+        cursor: pointer;
+        border: none;
+        background: none;
+        padding: 0;
+        width: 22px;
+        height: 34px;
+        flex-shrink: 0;
+        color: var(--mud-palette-text-secondary, #777);
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .org-tree-card {
+        flex: 1;
+        min-width: 0;
+        display: block;
+        background: var(--mud-palette-surface, #fff);
+        border: 1px solid var(--mud-palette-lines-default, #e0e0e0);
+        border-left: 3px solid var(--mud-palette-primary, #594AE2);
+        border-radius: 6px;
+        padding: 6px 10px;
+        text-decoration: none;
+        transition: box-shadow .12s ease, background .12s ease;
+    }
+
+    .org-tree-card:hover {
+        box-shadow: 0 1px 5px rgba(0, 0, 0, 0.12);
+        background: var(--mud-palette-action-default-hover, rgba(0, 0, 0, 0.02));
+    }
+
+    .org-tree-card.org-tree-inactive {
+        border-left-color: var(--mud-palette-lines-default, #bbb);
+        opacity: 0.7;
+    }
+
+    .org-tree-card-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .org-tree-card-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--mud-palette-text-primary, #212121);
+    }
+
+    .org-tree-card-code {
+        font-size: 0.7rem;
+        color: var(--mud-palette-text-secondary, #888);
+    }
+
+    .org-tree-card-meta {
+        font-size: 0.7rem;
+        color: var(--mud-palette-text-secondary, #888);
+        margin-top: 1px;
+    }
+</style>
+
 <MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h5">ข้อมูลสังกัด (Organization)</MudText>
+        @* ข้อมูลประเภทสังกัด/ลักษณะของหน่วยงาน are reference-data master pages
+           reachable from the "ผังองค์กร (Organization)" nav group already —
+           per CRUD skill rule 8 this operational page shouldn't also carry
+           shortcut buttons to manage them (redundant, and it dilutes this
+           page's own focus). แสดงกำหนดหัวหน้า/ประวัติการปรับผังองค์กร stay —
+           they're different *views* of this same entity (all-orgs boss
+           roster, all-orgs change log), not reference data to manage
+           elsewhere; OrganizationDetail.razor now also shows both scoped to
+           one org, so this page keeps the whole-company versions. *@
         <MudStack Row="true" Spacing="2">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/org/organizations/new">เพิ่มหน่วยงานใหม่</MudButton>
-            <MudButton Variant="Variant.Text" Href="/org/section-types">ข้อมูลประเภทสังกัด</MudButton>
-            <MudButton Variant="Variant.Text" Href="/org/subsection-types">ลักษณะของหน่วยงาน</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/set-boss">แสดงกำหนดหัวหน้า</MudButton>
             <MudButton Variant="Variant.Text" Href="/org/change-history">ประวัติการปรับผังองค์กร</MudButton>
         </MudStack>
@@ -41,7 +253,7 @@
         return;
     }
 
-    <MudTabs Class="mt-3" Elevation="0" Rounded="true" PanelClass="pt-4">
+    <MudTabs Class="mt-3" Elevation="0" Rounded="true" PanelClass="pt-4" ActivePanelIndex="_activeTabIndex" ActivePanelIndexChanged="OnActiveTabChangedAsync">
         <MudTabPanel Text="รายการ">
             @* Search is explicit-trigger only — this table can grow large, so the
                page must not pull every row on every visit. Typing + Enter, or the
@@ -130,6 +342,61 @@
                 }
             }
         </MudTabPanel>
+
+        <MudTabPanel Text="ผังองค์กร (ภาพ)">
+            @* Reuses the same d3-org-chart rendering as OrgChart.razor
+               (Services/Shared/OrgChartNodeBuilder.cs + wwwroot/js/org-chart-d3.js)
+               but lets HR pick which สังกัด to root the chart at, instead of
+               always showing the whole company — pick a node here and the
+               chart starts from exactly that unit's own subtree. Rendered
+               lazily (only once this tab is actually opened, via
+               OnActiveTabChangedAsync) since MudTabs keeps every panel's
+               markup in the DOM even while hidden, and an SVG-based chart
+               measured while display:none'd would size itself to 0×0. *@
+            @if (_chartEmployeeCount > 0)
+            {
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="mb-2">PDPA</MudChip>
+            }
+            <MudGrid Class="mb-3">
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" Value="_chartRootOrgId" ValueChanged="OnRootOrgChangedAsync" Label="เริ่มผังจากสังกัด">
+                        <MudSelectItem T="long?" Value="@((long?)null)">- ทั้งบริษัท -</MudSelectItem>
+                        @foreach (var org in _allOrgsForTree.OrderBy(o => o.orgcodefull))
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)org.id)">@org.orgcodefull - @org.name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" Class="d-flex align-center ga-2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="ExpandAllChartAsync">ขยายทั้งหมด</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldLess" OnClick="CollapseAllChartAsync">ย่อทั้งหมด</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@(_chartIsFullscreen ? Icons.Material.Filled.FullscreenExit : Icons.Material.Filled.Fullscreen)" OnClick="ToggleChartFullscreenAsync">@(_chartIsFullscreen ? "ออกจากเต็มจอ" : "เต็มจอ")</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @* The canvas-wrap div (fixed 70vh) stays mounted at a constant size
+               across loading/empty/loaded — only its overlay content changes —
+               so switching states never reflows the rest of the page. Before
+               this, the wrapper only existed in the "loaded" branch, so the
+               page's total height jumped every time loading finished (or the
+               root-org selection changed), which read as the screen "jumping
+               around" on every interaction. *@
+            <div class="org-chart-canvas-wrap" style="position:relative;">
+                @if (_chartLoading)
+                {
+                    <div class="d-flex align-center justify-center" style="position:absolute; inset:0; z-index:1; background:var(--mud-palette-surface, #fff);">
+                        <MudProgressCircular Indeterminate="true" />
+                    </div>
+                }
+                else if (_chartNodes.Count == 0)
+                {
+                    <div class="d-flex align-center justify-center pa-4" style="position:absolute; inset:0; z-index:1;">
+                        <MudAlert Severity="Severity.Info">ไม่พบข้อมูลผังองค์กรสำหรับสังกัดที่เลือก</MudAlert>
+                    </div>
+                }
+                <div id="orgChartCanvasOrgAdmin" style="width:100%; height:100%;"></div>
+            </div>
+        </MudTabPanel>
     </MudTabs>
 </MudPaper>
 
@@ -146,6 +413,19 @@
     private List<com_organization> _allOrgsForTree = new();
     private List<com_organization> _treeRoots = new();
     private HashSet<long> _expandedTreeNodes = new();
+
+    // "ผังองค์กร (ภาพ)" tab state — lazy: only loaded/rendered the first time
+    // the user actually opens this tab (see OnActiveTabChangedAsync).
+    private int _activeTabIndex;
+    private bool _chartLoaded;
+    private bool _chartLoading;
+    private bool _chartNeedsRender;
+    private long? _chartRootOrgId;
+    private List<OrgChartNodeBuilder.ChartNode> _chartNodes = new();
+    private int _chartEmployeeCount;
+    private DotNetObjectReference<OrganizationAdmin>? _chartDotNetRef;
+    private bool _chartIsFullscreen;
+    private bool _chartFullscreenListenerAttached;
 
     protected override async Task OnInitializedAsync()
     {
@@ -186,41 +466,68 @@
     {
         var children = _allOrgsForTree.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
         var isExpanded = _expandedTreeNodes.Contains(node.id);
+        var meta = OrgChangeAuditFormatter.DescribeBossApprover(node);
 
         builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "style", $"margin-left:{depth * 24}px; padding:4px 0;");
+        builder.AddAttribute(1, "class", "org-tree-row");
+        builder.AddAttribute(2, "style", $"margin-left:{depth * 22}px;");
 
         if (children.Count > 0)
         {
-            builder.OpenElement(2, "a");
-            builder.AddAttribute(3, "style", "cursor:pointer; margin-right:6px; text-decoration:none;");
-            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => ToggleTreeExpand(node.id)));
-            builder.AddContent(5, isExpanded ? "▾" : "▸");
+            builder.OpenElement(3, "button");
+            builder.AddAttribute(4, "type", "button");
+            builder.AddAttribute(5, "class", "org-tree-toggle");
+            builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => ToggleTreeExpand(node.id)));
+            builder.AddContent(7, isExpanded ? "▾" : "▸");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(8, "span");
+            builder.AddAttribute(9, "class", "org-tree-toggle");
             builder.CloseElement();
         }
 
-        builder.OpenElement(6, "a");
-        builder.AddAttribute(7, "href", $"/org/organizations/{node.id}");
-        builder.AddContent(8, $"{node.orgcodefull} - {node.name} ({node.abbr})");
-        builder.CloseElement();
+        builder.OpenElement(10, "a");
+        builder.AddAttribute(11, "class", node.isActive ? "org-tree-card" : "org-tree-card org-tree-inactive");
+        builder.AddAttribute(12, "href", $"/org/organizations/{node.id}");
 
+        builder.OpenElement(13, "div");
+        builder.AddAttribute(14, "class", "org-tree-card-title");
+        builder.OpenElement(15, "span");
+        builder.AddAttribute(16, "class", "org-tree-card-name");
+        builder.AddContent(17, node.name);
+        builder.CloseElement();
+        builder.OpenElement(18, "span");
+        builder.AddAttribute(19, "class", "org-tree-card-code");
+        builder.AddContent(20, $"{node.orgcodefull} · {node.abbr}");
+        builder.CloseElement();
         if (!node.isActive)
         {
-            builder.OpenComponent<MudChip<string>>(9);
-            builder.AddAttribute(10, "Color", Color.Default);
-            builder.AddAttribute(11, "Size", Size.Small);
-            builder.AddAttribute(12, "Class", "ml-2");
-            builder.AddAttribute(13, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, "ไม่ใช้งาน")));
+            builder.OpenComponent<MudChip<string>>(21);
+            builder.AddAttribute(22, "Color", Color.Default);
+            builder.AddAttribute(23, "Size", Size.Small);
+            builder.AddAttribute(24, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, "ไม่ใช้งาน")));
             builder.CloseComponent();
         }
+        builder.CloseElement();
 
+        if (meta is not null)
+        {
+            builder.OpenElement(25, "div");
+            builder.AddAttribute(26, "class", "org-tree-card-meta");
+            builder.AddContent(27, meta);
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
         builder.CloseElement();
 
         if (isExpanded)
         {
             foreach (var child in children)
             {
-                builder.AddContent(14, RenderTreeNode(child, depth + 1));
+                builder.AddContent(28, RenderTreeNode(child, depth + 1));
             }
         }
     };
@@ -246,4 +553,83 @@
     {
         if (e.Key == "Enter") await SearchAsync();
     }
+
+    private async Task OnActiveTabChangedAsync(int index)
+    {
+        _activeTabIndex = index;
+        if (index == 2 && !_chartLoaded)
+        {
+            _chartLoaded = true;
+            await LoadChartAsync(_chartRootOrgId);
+        }
+    }
+
+    private async Task LoadChartAsync(long? rootOrgId)
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _chartLoading = true;
+        StateHasChanged();
+
+        var rootOrgCode = rootOrgId is long id ? _allOrgsForTree.FirstOrDefault(o => o.id == id)?.code : null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _chartNodes = await OrgChartNodeBuilder.BuildAsync(context, _companyId, rootOrgCode);
+
+        _chartEmployeeCount = _chartNodes.Count(n => !n.IsVacant);
+        if (_chartEmployeeCount > 0)
+        {
+            await AuditLogger.LogAccessAsync("Hremployee", null, isSensitive: true,
+                note: $"org chart tab view (root org id={(object?)rootOrgId ?? "whole company"}) — {_chartEmployeeCount} employee photo(s)/name(s) shown across {_chartNodes.Count} position card(s)");
+        }
+
+        _chartLoading = false;
+        _chartNeedsRender = _chartNodes.Count > 0;
+    }
+
+    private async Task OnRootOrgChangedAsync(long? newRootOrgId)
+    {
+        _chartRootOrgId = newRootOrgId;
+        await LoadChartAsync(newRootOrgId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_chartNeedsRender && _chartNodes.Count > 0)
+        {
+            _chartNeedsRender = false;
+            _chartDotNetRef ??= DotNetObjectReference.Create(this);
+            var json = JsonSerializer.Serialize(_chartNodes, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            await JS.InvokeVoidAsync("OrgChartD3.render", "orgChartCanvasOrgAdmin", json, _chartDotNetRef);
+
+            if (!_chartFullscreenListenerAttached)
+            {
+                _chartFullscreenListenerAttached = true;
+                await JS.InvokeVoidAsync("OrgChartD3.onFullscreenChange", _chartDotNetRef);
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnOrgNodeClicked(long orgId) => Nav.NavigateTo($"/org/organizations/{orgId}");
+
+    [JSInvokable]
+    public void OnEmployeeNodeClicked(long employeeId) => Nav.NavigateTo($"/employee/{employeeId}");
+
+    // Driven by the actual fullscreenchange event (see
+    // OrgChartD3.onFullscreenChange), not toggled optimistically, since the
+    // browser can exit fullscreen on its own (Esc key) without ever going
+    // through ToggleChartFullscreenAsync below.
+    [JSInvokable]
+    public void OnFullscreenChanged(bool isFullscreen)
+    {
+        _chartIsFullscreen = isFullscreen;
+        StateHasChanged();
+    }
+
+    private async Task ExpandAllChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.expandAll");
+    private async Task CollapseAllChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.collapseAll");
+    private async Task ToggleChartFullscreenAsync() => await JS.InvokeVoidAsync("OrgChartD3.toggleFullscreen", "orgChartCanvasOrgAdmin");
+
+    public void Dispose() => _chartDotNetRef?.Dispose();
 }

@@ -25,58 +25,62 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูลชื่อตำแหน่ง" : "แก้ไข")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="6">
-            <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
-                @foreach (var et in _employeeTypes)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudRadioGroup T="bool" @bind-Value="_isTopLevel">
-                <MudText Typo="Typo.caption">ตำแหน่งสูงสุด:</MudText>
-                <MudRadio T="bool" Value="true" Color="Color.Primary">ใช่</MudRadio>
-                <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่</MudRadio>
-            </MudRadioGroup>
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อตำแหน่ง (ไทย)" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ (ไทย)" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อตำแหน่ง (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbNameEn" Label="ชื่อย่อ (อังกฤษ)" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-        <MudItem xs="12" sm="4" />
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
-    </MudStack>
-
-    <MudDivider Class="my-5" />
-
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มข้อมูลชื่อตำแหน่ง</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูลชื่อตำแหน่ง" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_employeeTypeId" Label="ประเภทพนักงาน" Clearable="true">
+                    @foreach (var et in _employeeTypes)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)et.Id)">@et.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudRadioGroup T="bool" @bind-Value="_isTopLevel">
+                    <MudText Typo="Typo.caption">ตำแหน่งสูงสุด:</MudText>
+                    <MudRadio T="bool" Value="true" Color="Color.Primary">ใช่</MudRadio>
+                    <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อตำแหน่ง (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_abbName" Label="ชื่อย่อ (ไทย)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_nameEn" Label="ชื่อตำแหน่ง (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_abbNameEn" Label="ชื่อย่อ (อังกฤษ)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isBoss" Color="Color.Info" Label="เป็นหัวหน้า" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12" sm="4" />
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
 
     <MudTable Items="_items" Dense="true" Hover="true">
         <HeaderContent>
@@ -115,6 +119,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private long? _employeeTypeId;
     private bool _isTopLevel;
@@ -157,6 +162,25 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _employeeTypeId = null;
+        _isTopLevel = false;
+        _code = null;
+        _name = "";
+        _abbName = null;
+        _nameEn = null;
+        _abbNameEn = null;
+        _isBoss = false;
+        _isActive = true;
+        _startDate = null;
+        _endDate = null;
+        _remark = null;
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Pos_ExecType item)
     {
         _editingId = item.Id;
@@ -173,6 +197,7 @@
         _endDate = item.EndDate?.ToDateTime(TimeOnly.MinValue);
         _remark = item.Remark;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -191,6 +216,7 @@
         _endDate = null;
         _remark = null;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()

@@ -285,6 +285,12 @@ builder.Services.AddScoped<HRM.Services.Login.UserProvisioningService>();
 // [Authorize(Policy = "Menu:XXX")] like the ones already converted.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, HRM.Services.Login.MenuPolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.MenuAuthorizationHandler>();
+// Per-action (Create/Edit/Delete) button-level gate — see
+// Services/Login/ProgramAuthorization.cs. "Program:" policies are resolved
+// by the same MenuPolicyProvider registered above (only one
+// IAuthorizationPolicyProvider can be registered), so only the handler
+// needs adding here.
+builder.Services.AddSingleton<IAuthorizationHandler, HRM.Services.Login.ProgramAuthorizationHandler>();
 builder.Services.AddAuthorizationCore();
 
 // "ExternalApiCaller" policy for the ecosystem/chatbot resource-server
@@ -333,6 +339,12 @@ builder.Services.AddScoped<LanguageState>();
 // already correctly Scoped), but fixing it now avoids that landmine for
 // whoever reaches for it next.
 builder.Services.AddScoped<IJsonLocalizationService, JsonLocalizationService>();
+
+// Same Scoped reasoning as LanguageState/JsonLocalizationService above:
+// ThemeService reads the per-request theme cookie in its constructor, so it
+// must be Scoped (per-circuit), not Singleton.
+builder.Services.AddScoped<HRM.Services.ThemeState>();
+builder.Services.AddScoped<HRM.Services.ThemeService>();
 
 //builder.Services.AddSingleton(smtpSettings);
 
@@ -416,6 +428,7 @@ builder.Services.AddScoped<HRM.Services.Exp.ExpenseClaimService>();
 builder.Services.AddScoped<HRM.Services.Hr.DisciplinaryActionService>();
 builder.Services.AddScoped<HRM.Services.Hr.GrievanceService>();
 builder.Services.AddScoped<HRM.Services.Hr.RewardCaseService>();
+builder.Services.AddScoped<HRM.Services.Hr.SeparationRequestService>();
 // ----- end info_message module -----
 
 // ----- Idp_* module (Individual Development Plan) -----

@@ -79,7 +79,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         // Repeat applicants who already have education/experience on file
         // aren't re-asked to fill the form in — we just don't duplicate rows
         // for a candidate who already has at least one on record.
-        var hasEducation = await context.Rec_CandidateEducations.AnyAsync(e => e.CandidateId == candidate.Id, ct);
+        var hasEducation = await context.Rec_CandidateEducations.AnyAsync(e => e.CandidateId == candidate.Id && e.IsActive, ct);
         if (!hasEducation && education is not null && !string.IsNullOrWhiteSpace(education.Level))
         {
             context.Rec_CandidateEducations.Add(new Rec_CandidateEducation
@@ -94,7 +94,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
             });
         }
 
-        var hasExperience = await context.Rec_CandidateExperiences.AnyAsync(e => e.CandidateId == candidate.Id, ct);
+        var hasExperience = await context.Rec_CandidateExperiences.AnyAsync(e => e.CandidateId == candidate.Id && e.IsActive, ct);
         if (!hasExperience && experiences is { Count: > 0 })
         {
             foreach (var exp in experiences.Where(e => !string.IsNullOrWhiteSpace(e.Company) || !string.IsNullOrWhiteSpace(e.Position)))
@@ -255,7 +255,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
     public async Task<List<Rec_CandidateEducation>> GetCandidateEducationAsync(long candidateId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        return await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidateId).OrderByDescending(e => e.IsHighestDegree).ThenByDescending(e => e.FinishedDate).ToListAsync(ct);
+        return await context.Rec_CandidateEducations.Where(e => e.CandidateId == candidateId && e.IsActive).OrderByDescending(e => e.IsHighestDegree).ThenByDescending(e => e.FinishedDate).ToListAsync(ct);
     }
 
     public async Task AddCandidateEducationAsync(Rec_CandidateEducation entry, CancellationToken ct = default)
@@ -272,7 +272,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         var entry = await context.Rec_CandidateEducations.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (entry is not null)
         {
-            context.Rec_CandidateEducations.Remove(entry);
+            entry.IsActive = false;
             await context.SaveChangesAsync(ct);
         }
     }
@@ -280,7 +280,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
     public async Task<List<Rec_CandidateExperience>> GetCandidateExperienceAsync(long candidateId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        return await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidateId).OrderByDescending(e => e.StartDate).ToListAsync(ct);
+        return await context.Rec_CandidateExperiences.Where(e => e.CandidateId == candidateId && e.IsActive).OrderByDescending(e => e.StartDate).ToListAsync(ct);
     }
 
     public async Task AddCandidateExperienceAsync(Rec_CandidateExperience entry, CancellationToken ct = default)
@@ -297,7 +297,7 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         var entry = await context.Rec_CandidateExperiences.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (entry is not null)
         {
-            context.Rec_CandidateExperiences.Remove(entry);
+            entry.IsActive = false;
             await context.SaveChangesAsync(ct);
         }
     }

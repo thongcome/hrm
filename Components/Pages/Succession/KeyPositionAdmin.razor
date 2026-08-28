@@ -32,42 +32,54 @@ else
             @L.Translate("KeyPositionDesc")
         </MudText>
 
-        <MudGrid>
-            <MudItem xs="12" sm="4">
-                <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("JobFieldLabel")" @bind-Value="_selectedExecType"
-                    SearchFunc="SearchExecTypesAsync"
-                    ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
-                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudSelect T="BusinessImpactLevel" @bind-Value="_impact" Label="@L.Translate("BusinessImpactLabel")">
-                    @foreach (var v in Enum.GetValues<BusinessImpactLevel>())
-                    {
-                        <MudSelectItem Value="@v">@ImpactLabel(v)</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudSelect T="ReplacementDifficultyLevel" @bind-Value="_difficulty" Label="@L.Translate("ReplacementDifficultyLabel")">
-                    @foreach (var v in Enum.GetValues<ReplacementDifficultyLevel>())
-                    {
-                        <MudSelectItem Value="@v">@DifficultyLabel(v)</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudNumericField T="int?" @bind-Value="_minYearsExperience" Label="ประสบการณ์ขั้นต่ำ (ปี, ไม่บังคับ)" Min="0" />
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
-            </MudItem>
-        </MudGrid>
-        <MudButton Class="mt-2" Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Disabled="@(_selectedExecType is null)">
-            @L.Translate("AddAsKeyPositionButton")
-        </MudButton>
-        @if (!string.IsNullOrEmpty(_error))
+        @if (!_showForm)
         {
-            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _showForm = true)">
+                @L.Translate("AddAsKeyPositionButton")
+            </MudButton>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudAutocomplete T="Pos_ExecType" Label="@L.Translate("JobFieldLabel")" @bind-Value="_selectedExecType"
+                        SearchFunc="SearchExecTypesAsync"
+                        ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="6" sm="2">
+                    <MudSelect T="BusinessImpactLevel" @bind-Value="_impact" Label="@L.Translate("BusinessImpactLabel")">
+                        @foreach (var v in Enum.GetValues<BusinessImpactLevel>())
+                        {
+                            <MudSelectItem Value="@v">@ImpactLabel(v)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="2">
+                    <MudSelect T="ReplacementDifficultyLevel" @bind-Value="_difficulty" Label="@L.Translate("ReplacementDifficultyLabel")">
+                        @foreach (var v in Enum.GetValues<ReplacementDifficultyLevel>())
+                        {
+                            <MudSelectItem Value="@v">@DifficultyLabel(v)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="2">
+                    <MudNumericField T="int?" @bind-Value="_minYearsExperience" Label="ประสบการณ์ขั้นต่ำ (ปี, ไม่บังคับ)" Min="0" />
+                </MudItem>
+                <MudItem xs="6" sm="2">
+                    <MudTextField T="string" @bind-Value="_note" Label="@L.Translate("NoteIfAnyLabel")" />
+                </MudItem>
+            </MudGrid>
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync" Disabled="@(_selectedExecType is null)">
+                    @L.Translate("AddAsKeyPositionButton")
+                </MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelAdd">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
         }
     </MudPaper>
 
@@ -113,6 +125,7 @@ else
 @code {
     private string? _companyId;
     private List<SuccessionService.KeyPositionRow> _keyPositions = new();
+    private bool _showForm;
     private Pos_ExecType? _selectedExecType;
     private BusinessImpactLevel _impact = BusinessImpactLevel.Medium;
     private ReplacementDifficultyLevel _difficulty = ReplacementDifficultyLevel.Medium;
@@ -143,6 +156,17 @@ else
         return await query.OrderBy(t => t.Name).Take(20).ToListAsync(ct);
     }
 
+    private void CancelAdd()
+    {
+        _selectedExecType = null;
+        _impact = BusinessImpactLevel.Medium;
+        _difficulty = ReplacementDifficultyLevel.Medium;
+        _minYearsExperience = null;
+        _note = null;
+        _error = null;
+        _showForm = false;
+    }
+
     private async Task AddAsync()
     {
         if (_selectedExecType is null || string.IsNullOrEmpty(_companyId)) return;
@@ -160,6 +184,7 @@ else
             _difficulty = ReplacementDifficultyLevel.Medium;
             _minYearsExperience = null;
             _note = null;
+            _showForm = false;
             await LoadAsync();
         }
         catch (InvalidOperationException ex)

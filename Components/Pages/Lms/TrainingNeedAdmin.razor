@@ -13,7 +13,13 @@
 <PageTitle>ความต้องการฝึกอบรม</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">ความต้องการฝึกอบรม (Training Needs)</MudText>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.h5">ความต้องการฝึกอบรม (Training Needs)</MudText>
+        @if (!_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showForm = true)">+ เพิ่มรายการ</MudButton>
+        }
+    </MudStack>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -21,23 +27,31 @@
         return;
     }
 
-    <MudGrid Class="mt-3">
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน (ถ้าเจาะจงรายคน)" @bind-Value="_newEmployee" SearchFunc="SearchEmployeesAsync"
-                ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudAutocomplete T="com_organization" Label="หน่วยงาน (ถ้าเป็นความต้องการทั้งหน่วยงาน)" @bind-Value="_newOrg" SearchFunc="SearchOrganizationsAsync"
-                ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newTopic" Label="หัวข้อที่ต้องการอบรม" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
-        <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่มรายการ</MudButton></MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_showForm)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน (ถ้าเจาะจงรายคน)" @bind-Value="_newEmployee" SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudAutocomplete T="com_organization" Label="หน่วยงาน (ถ้าเป็นความต้องการทั้งหน่วยงาน)" @bind-Value="_newOrg" SearchFunc="SearchOrganizationsAsync"
+                    ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newTopic" Label="หัวข้อที่ต้องการอบรม" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddAsync">เพิ่มรายการ</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelAdd">ยกเลิก</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
     }
 
     <MudDivider Class="my-4" />
@@ -78,6 +92,7 @@
     private string _newTopic = "";
     private string? _newNote;
     private string? _error;
+    private bool _showForm;
     private long _actorUserId;
 
     protected override async Task OnInitializedAsync()
@@ -150,7 +165,15 @@
 
         Snackbar.Add("เพิ่มความต้องการฝึกอบรมเรียบร้อย", Severity.Success);
         _newEmployee = null; _newOrg = null; _newTopic = ""; _newNote = null;
+        _showForm = false;
         await LoadAsync();
+    }
+
+    private void CancelAdd()
+    {
+        _newEmployee = null; _newOrg = null; _newTopic = ""; _newNote = null;
+        _error = null;
+        _showForm = false;
     }
 
     private async Task UpdateStatusAsync(Lms_TrainingNeed need, TrainingNeedStatus status)

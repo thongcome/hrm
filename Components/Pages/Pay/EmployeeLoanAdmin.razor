@@ -33,17 +33,24 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
-        <MudText Typo="Typo.h6">@L.Translate("SubmitNewLoanHeading")</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1">
-            @L.Translate("SubmitNewLoanDesc")
-        </MudText>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">@L.Translate("SubmitNewLoanHeading")</MudText>
+            @if (!_showForm && !_hasActiveLoan)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("SubmitNewLoanHeading")</MudButton>
+            }
+        </MudStack>
 
         @if (_hasActiveLoan)
         {
             <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("HasActiveLoanInfo")</MudAlert>
         }
-        else
+        else if (_showForm)
         {
+            <MudText Typo="Typo.body2" Class="mt-1">
+                @L.Translate("SubmitNewLoanDesc")
+            </MudText>
+
             <MudGrid Class="mt-2">
                 <MudItem xs="12" sm="4">
                     <MudNumericField @bind-Value="_principal" Label="@L.Translate("LoanPrincipalLabel")" Format="N2" Min="0" />
@@ -60,7 +67,10 @@ else
                 </MudItem>
             </MudGrid>
 
-            <MudButton Color="Color.Secondary" Variant="Variant.Text" Class="mt-3" OnClick="PreviewSchedule">@L.Translate("ViewScheduleButton")</MudButton>
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Secondary" Variant="Variant.Text" OnClick="PreviewSchedule">@L.Translate("ViewScheduleButton")</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">@L.Translate("CancelButton")</MudButton>
+            </MudStack>
 
             @if (!string.IsNullOrEmpty(_error))
             {
@@ -165,6 +175,7 @@ else
     private string? _reason;
     private List<EmployeeLoanScheduleCalculator.InstallmentLine>? _previewSchedule;
     private string? _error;
+    private bool _showForm;
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,6 +202,17 @@ else
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         return state.User.FindFirstValue("payroll_company");
+    }
+
+    private void OpenCreate()
+    {
+        _principal = 0;
+        _totalInstallments = 6;
+        _startMonth = DateTime.Today;
+        _reason = null;
+        _previewSchedule = null;
+        _error = null;
+        _showForm = true;
     }
 
     private void OnStartMonthChanged(DateTime? date)
@@ -241,6 +263,7 @@ else
             _totalInstallments = 6;
             _reason = null;
             _previewSchedule = null;
+            _showForm = false;
             await LoadLoansAsync();
         }
         catch (InvalidOperationException ex)

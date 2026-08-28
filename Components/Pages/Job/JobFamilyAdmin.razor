@@ -9,6 +9,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject IAuthorizationService AuthService
 @attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
 
 <PageTitle>สายอาชีพ (Job Family)</PageTitle>
@@ -25,35 +26,47 @@
 
     <MudDivider Class="my-4" />
 
-    <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสายอาชีพ" : "แก้ไข")</MudText>
-    <MudGrid Class="mt-1">
-        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อสายอาชีพ (ไทย)" Required="true" /></MudItem>
-        <MudItem xs="12" sm="5"><MudTextField @bind-Value="_nameEn" Label="ชื่อสายอาชีพ (อังกฤษ)" /></MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_description" Label="คำอธิบาย" Lines="2" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
-        </MudItem>
-    </MudGrid>
-
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
-    }
-
-    <MudStack Row="true" Spacing="2" Class="mt-3">
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
-        @if (_editingId is not null)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
-        }
-    </MudStack>
-
-    <MudDivider Class="my-5" />
-
     <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
         DebounceInterval="300" ValueChanged="OnSearchChanged"
         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    @if (!_showForm)
+    {
+        @* Program:JOBFAMILY_CREATE — per-action button gate, separate from the
+           page-level Menu:JOBCOMP_ADMIN gate above (that one only controls
+           whether the page is reachable at all). See CRUD skill for the
+           seeding convention this pairs with. *@
+        <AuthorizeView Policy="Program:JOBFAMILY_CREATE">
+            <Authorized>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate" Class="mb-3">เพิ่มสายอาชีพ</MudButton>
+            </Authorized>
+        </AuthorizeView>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มสายอาชีพ" : "แก้ไข")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_name" Label="ชื่อสายอาชีพ (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_nameEn" Label="ชื่อสายอาชีพ (อังกฤษ)" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_description" Label="คำอธิบาย" Lines="2" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3 mb-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+    }
+
+    <MudDivider Class="my-5" />
 
     <MudTable Items="_items" Dense="true" Hover="true">
         <HeaderContent>
@@ -71,7 +84,11 @@
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <AuthorizeView Policy="Program:JOBFAMILY_EDIT" Context="editAuth">
+                    <Authorized>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                    </Authorized>
+                </AuthorizeView>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -86,6 +103,7 @@
     private string? _searchTerm;
     private string? _error;
     private long? _editingId;
+    private bool _showForm;
 
     private string? _code;
     private string _name = "";
@@ -116,6 +134,18 @@
         await LoadAsync();
     }
 
+    private void StartCreate()
+    {
+        _editingId = null;
+        _code = null;
+        _name = "";
+        _nameEn = null;
+        _description = null;
+        _isActive = true;
+        _error = null;
+        _showForm = true;
+    }
+
     private void StartEdit(Job_Family item)
     {
         _editingId = item.Id;
@@ -125,6 +155,7 @@
         _description = item.Description;
         _isActive = item.IsActive;
         _error = null;
+        _showForm = true;
     }
 
     private void CancelEdit()
@@ -136,12 +167,21 @@
         _description = null;
         _isActive = true;
         _error = null;
+        _showForm = false;
     }
 
     private async Task SaveAsync()
     {
         _error = null;
         if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อสายอาชีพ"; return; }
+
+        // Server-side re-check — the buttons above already hide themselves,
+        // but a hidden button stops nobody who guesses the URI/replays the
+        // request. Same policy the buttons render against.
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var requiredPolicy = _editingId is null ? "Program:JOBFAMILY_CREATE" : "Program:JOBFAMILY_EDIT";
+        var authResult = await AuthService.AuthorizeAsync(state.User, requiredPolicy);
+        if (!authResult.Succeeded) { _error = "คุณไม่มีสิทธิ์ทำรายการนี้"; return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
 

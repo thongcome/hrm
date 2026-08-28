@@ -1,6 +1,7 @@
 @page "/wf/loa"
 @using HRM.Models
 @using HRM.Services.Shared
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -45,6 +46,8 @@
 
     private string WorkflowName(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.wname ?? $"#{workflowId}";
 
+    private bool IsWorkflowActive(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.isactive == true;
+
     private wf_loa CreateNewRow() => new wf_loa { isactive = true };
 
     private RenderFragment RenderRowColumns(wf_loa row) => @<text>
@@ -55,6 +58,13 @@
     </text>;
 
     private RenderFragment RenderViewFields(wf_loa e) => @<text>
+        @if (IsWorkflowActive(e.nowWorkflowid))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                Workflow เจ้าของช่วงวงเงินนี้เปิดใช้งานอยู่ — ห้ามแก้ไข/เพิ่ม/ลบทุกกรณี
+                ถ้าต้องการเปลี่ยนแปลง ให้ปิดใช้งาน workflow นั้นก่อน แล้วสร้าง workflow ใหม่แทน
+            </MudAlert>
+        }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="4"><MudTextField Value="@WorkflowName(e.wfid)" Label="Workflow" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@e.subject" Label="หัวข้อ" ReadOnly="true" /></MudItem>
@@ -119,6 +129,7 @@
     private async Task<wf_loa> SaveAsync(wf_loa entity)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
+        await WorkflowLockGuard.EnsureLoaEditableAsync(context, entity.nowWorkflowid);
         if (entity.id == 0)
         {
             entity.moddate = DateTime.Now;

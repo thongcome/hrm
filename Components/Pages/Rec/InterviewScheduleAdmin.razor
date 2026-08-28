@@ -66,29 +66,39 @@
         </MudPaper>
     }
 
-    <MudPaper Class="pa-3 mt-3" Outlined="true">
-        <MudText Typo="Typo.h6">นัดสัมภาษณ์รอบใหม่</MudText>
-        <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_round" Label="รอบ (เช่น Phone Screen, Technical, Final)" /></MudItem>
-            <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่สัมภาษณ์" @bind-Date="_scheduleDate" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTimePicker Label="เวลา" @bind-Time="_scheduleTime" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_location" Label="สถานที่/ลิงก์" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudAutocomplete T="Hremployee" Label="เพิ่มผู้สัมภาษณ์" Value="_panelistPick" ValueChanged="AddPanelist"
-                    SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-            </MudItem>
-            <MudItem xs="12">
-                @foreach (var p in _selectedPanelists)
-                {
-                    <MudChip T="string" OnClose="@(() => _selectedPanelists.Remove(p))">@p.EmpName @p.EmpSurname</MudChip>
-                }
-            </MudItem>
-            <MudItem xs="12">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ScheduleAsync">นัดสัมภาษณ์</MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+    @if (!_showScheduleForm)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mt-3" OnClick="OpenScheduleForm">นัดสัมภาษณ์รอบใหม่</MudButton>
+    }
+    else
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true">
+            <MudText Typo="Typo.h6">นัดสัมภาษณ์รอบใหม่</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_round" Label="รอบ (เช่น Phone Screen, Technical, Final)" /></MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่สัมภาษณ์" @bind-Date="_scheduleDate" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTimePicker Label="เวลา" @bind-Time="_scheduleTime" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_location" Label="สถานที่/ลิงก์" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="Hremployee" Label="เพิ่มผู้สัมภาษณ์" Value="_panelistPick" ValueChanged="AddPanelist"
+                        SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12">
+                    @foreach (var p in _selectedPanelists)
+                    {
+                        <MudChip T="string" OnClose="@(() => _selectedPanelists.Remove(p))">@p.EmpName @p.EmpSurname</MudChip>
+                    }
+                </MudItem>
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ScheduleAsync">นัดสัมภาษณ์</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CancelScheduleForm">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
 </MudPaper>
 
 @code {
@@ -116,6 +126,7 @@
     private List<Hremployee> _selectedPanelists = new();
 
     private string? _error;
+    private bool _showScheduleForm;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -195,6 +206,23 @@
         _panelistPick = null;
     }
 
+    private void OpenScheduleForm()
+    {
+        _error = null;
+        _round = null;
+        _scheduleDate = DateTime.Today;
+        _scheduleTime = new TimeSpan(10, 0, 0);
+        _location = null;
+        _panelistPick = null;
+        _selectedPanelists.Clear();
+        _showScheduleForm = true;
+    }
+
+    private void CancelScheduleForm()
+    {
+        _showScheduleForm = false;
+    }
+
     private async Task ScheduleAsync()
     {
         _error = null;
@@ -211,6 +239,7 @@
         _round = null;
         _location = null;
         _selectedPanelists.Clear();
+        _showScheduleForm = false;
         await RefreshAsync();
     }
 

@@ -19,25 +19,39 @@
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">รอบอบรมของหลักสูตร: @_course.Title</MudText>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h5">รอบอบรมของหลักสูตร: @_course.Title</MudText>
+            @if (!_showForm)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showForm = true)">+ เปิดรอบใหม่</MudButton>
+            }
+        </MudStack>
         <MudButton Href="/lms/courses" Variant="Variant.Text" Class="mt-1">&larr; กลับไปคลังหลักสูตร</MudButton>
-
-        <MudDivider Class="my-4" />
 
         @if (!string.IsNullOrEmpty(_error))
         {
-            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+            <MudAlert Severity="Severity.Error" Class="mb-3 mt-3">@_error</MudAlert>
         }
 
-        <MudGrid>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newSession.SessionCode" Label="รหัสรอบ" /></MudItem>
-            <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newStartDate" Label="วันเริ่ม" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
-            <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newEndDate" Label="วันสิ้นสุด" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_newSession.MaxSeats" Label="ที่นั่งจำกัด (ถ้ามี)" Min="1" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.Location" Label="สถานที่ (Classroom)" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.OnlineLink" Label="ลิงก์ออนไลน์ (Online)" /></MudItem>
-            <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddSessionAsync">เปิดรอบใหม่</MudButton></MudItem>
-        </MudGrid>
+        @if (_showForm)
+        {
+            <MudDivider Class="my-4" />
+
+            <MudGrid>
+                <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newSession.SessionCode" Label="รหัสรอบ" /></MudItem>
+                <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newStartDate" Label="วันเริ่ม" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
+                <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newEndDate" Label="วันสิ้นสุด" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
+                <MudItem xs="12" sm="3"><MudNumericField T="int?" @bind-Value="_newSession.MaxSeats" Label="ที่นั่งจำกัด (ถ้ามี)" Min="1" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.Location" Label="สถานที่ (Classroom)" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_newSession.OnlineLink" Label="ลิงก์ออนไลน์ (Online)" /></MudItem>
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddSessionAsync">เปิดรอบใหม่</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="CancelAdd">ยกเลิก</MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        }
 
         <MudDivider Class="my-4" />
 
@@ -92,6 +106,7 @@ else
     private Lms_Course? _course;
     private List<Lms_CourseSession> _sessions = new();
     private string? _error;
+    private bool _showForm;
     private Lms_CourseSession _newSession = new();
     private DateTime? _newStartDate;
     private DateTime? _newEndDate;
@@ -143,7 +158,16 @@ else
         Snackbar.Add("เปิดรอบอบรมเรียบร้อย", Severity.Success);
         _newSession = new();
         _newStartDate = null; _newEndDate = null;
+        _showForm = false;
         await LoadAsync();
+    }
+
+    private void CancelAdd()
+    {
+        _newSession = new();
+        _newStartDate = null; _newEndDate = null;
+        _error = null;
+        _showForm = false;
     }
 
     private async Task UpdateStatusAsync(Lms_CourseSession session, CourseSessionStatus status)

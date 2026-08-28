@@ -29,7 +29,7 @@ public class IdpAssessmentService(IDbContextFactory<HRMContext> dbFactory)
 
         return await context.Job_CompetencyRequirements
             .Include(r => r.Competency)
-            .Where(r => r.PosExecTypeId == posExecTypeId)
+            .Where(r => r.PosExecTypeId == posExecTypeId && r.IsActive)
             .OrderBy(r => r.SortOrder)
             .ToListAsync(ct);
     }
@@ -106,7 +106,7 @@ public class IdpAssessmentService(IDbContextFactory<HRMContext> dbFactory)
 
         var requirements = await context.Job_CompetencyRequirements
             .Include(r => r.Competency)
-            .Where(r => r.PosExecTypeId == targetPosExecTypeId)
+            .Where(r => r.PosExecTypeId == targetPosExecTypeId && r.IsActive)
             .OrderBy(r => r.SortOrder)
             .ToListAsync(ct);
         if (requirements.Count == 0)

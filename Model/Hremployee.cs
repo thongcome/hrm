@@ -222,6 +222,14 @@ public partial class Hremployee
     [Column("RESIGN_DATE", TypeName = "DATE")]
     public DateTime? ResignDate { get; set; }
 
+    // Written only by SeparationRequestService.SyncStatusFromJobAsync once
+    // an Hr_SeparationRequest is approved — distinguishes voluntary
+    // resignation (no severance, มาตรา 118) from employer termination
+    // (severance applies unless มาตรา 119 exception) so SeveranceService can
+    // gate on it. Never written directly from the resignation panel.
+    [Column("SEPARATION_TYPE")]
+    public SeparationType? SeparationType { get; set; }
+
     // Onboarding/offboarding lifecycle module: suggested/edited probation
     // end date (WorkDate + company's DefaultProbationDays, editable by HR)
     // and the date HR confirmed the employee passed probation (null = not

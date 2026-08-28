@@ -2881,6 +2881,57 @@ namespace HRM.Migrations
                     b.ToTable("Hr_RewardCases");
                 });
 
+            modelBuilder.Entity("HRM.Models.Hr_SeparationRequest", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<DateTime>("EffectiveDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmpNo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long>("HremployeeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("JobMasterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long>("RequestedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("RequestedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SeparationType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobMasterId");
+
+                    b.HasIndex("HremployeeId", "Status");
+
+                    b.ToTable("Hr_SeparationRequest");
+                });
+
             modelBuilder.Entity("HRM.Models.Hrbasepayrollfixed", b =>
                 {
                     b.Property<long>("id")
@@ -3886,6 +3937,10 @@ namespace HRM.Migrations
                         .HasColumnType("nvarchar(3)")
                         .HasColumnName("SCAN_NO");
 
+                    b.Property<int?>("SeparationType")
+                        .HasColumnType("int")
+                        .HasColumnName("SEPARATION_TYPE");
+
                     b.Property<string>("Sex")
                         .HasMaxLength(1)
                         .HasColumnType("nvarchar(1)")
@@ -4842,6 +4897,9 @@ namespace HRM.Migrations
 
                     b.Property<long>("CompetencyId")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsCritical")
                         .HasColumnType("bit");
@@ -5893,6 +5951,9 @@ namespace HRM.Migrations
 
                     b.Property<long>("CourseId")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<string>("QuestionText")
                         .IsRequired()
@@ -8631,6 +8692,9 @@ namespace HRM.Migrations
                     b.Property<decimal?>("FixedCompanyRate")
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<int?>("MaxYearsOfService")
                         .HasColumnType("int");
 
@@ -8660,6 +8724,9 @@ namespace HRM.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<int?>("MaxYearsOfService")
                         .HasColumnType("int");
@@ -9272,6 +9339,9 @@ namespace HRM.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<decimal>("MaxPercent")
                         .HasColumnType("decimal(5,2)");
 
@@ -9593,6 +9663,9 @@ namespace HRM.Migrations
 
                     b.Property<long>("EvaluationPeriodId")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<int>("ScorePoint")
                         .HasColumnType("int");
@@ -10146,6 +10219,9 @@ namespace HRM.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsHighestDegree")
                         .HasColumnType("bit");
 
@@ -10193,6 +10269,9 @@ namespace HRM.Migrations
 
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Position")
                         .HasMaxLength(300)
@@ -10495,6 +10574,9 @@ namespace HRM.Migrations
 
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -21345,6 +21427,17 @@ namespace HRM.Migrations
                 });
 
             modelBuilder.Entity("HRM.Models.Hr_RewardCase", b =>
+                {
+                    b.HasOne("HRM.Models.Hremployee", "Hremployee")
+                        .WithMany()
+                        .HasForeignKey("HremployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Hremployee");
+                });
+
+            modelBuilder.Entity("HRM.Models.Hr_SeparationRequest", b =>
                 {
                     b.HasOne("HRM.Models.Hremployee", "Hremployee")
                         .WithMany()

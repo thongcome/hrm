@@ -97,7 +97,7 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         }
 
         var scaleDescriptions = await context.Perf_RatingScaleDescriptions
-            .Where(d => d.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId)
+            .Where(d => d.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId && d.IsActive)
             .OrderBy(d => d.ScorePoint)
             .ToListAsync(ct);
         var maxScorePoint = scaleDescriptions.Count > 0 ? scaleDescriptions.Max(d => d.ScorePoint) : 5;
@@ -133,7 +133,7 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
             throw new InvalidOperationException($"กรุณาให้คะแนนให้ครบทุกตัวชี้วัด (ขาดอีก {missing.Count} ตัว)");
 
         var scaleDescriptions = await context.Perf_RatingScaleDescriptions
-            .Where(d => d.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId)
+            .Where(d => d.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId && d.IsActive)
             .ToListAsync(ct);
         var maxScorePoint = scaleDescriptions.Count > 0 ? scaleDescriptions.Max(d => d.ScorePoint) : 5;
 
@@ -153,7 +153,7 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         // paper trail, per the plan).
         var raterPercent = ComputeWeightedPercent(indicatorWeights, scoresByIndicatorId, maxScorePoint);
         var gradeBands = await context.Perf_GradeBands
-            .Where(g => g.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId)
+            .Where(g => g.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId && g.IsActive)
             .OrderBy(g => g.SortOrder).ToListAsync(ct);
         var matchedBand = gradeBands.FirstOrDefault(g => raterPercent >= g.MinPercent && raterPercent <= g.MaxPercent);
         if (matchedBand is { RequiresJustification: true } &&
@@ -232,7 +232,7 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
             .ToListAsync(ct);
 
         var scaleDescriptions = await context.Perf_RatingScaleDescriptions
-            .Where(d => d.EvaluationPeriodId == instance.EvaluationPeriodId).ToListAsync(ct);
+            .Where(d => d.EvaluationPeriodId == instance.EvaluationPeriodId && d.IsActive).ToListAsync(ct);
         var maxScorePoint = scaleDescriptions.Count > 0 ? scaleDescriptions.Max(d => d.ScorePoint) : 5;
 
         decimal weightedSum = 0, weightTotal = 0;
@@ -253,7 +253,7 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         instance.FinalScorePercent = weightTotal == 0 ? 0 : Math.Round(weightedSum / weightTotal, 2);
 
         var gradeBands = await context.Perf_GradeBands
-            .Where(g => g.EvaluationPeriodId == instance.EvaluationPeriodId)
+            .Where(g => g.EvaluationPeriodId == instance.EvaluationPeriodId && g.IsActive)
             .OrderBy(g => g.SortOrder).ToListAsync(ct);
         var matchedBand = gradeBands.FirstOrDefault(g => instance.FinalScorePercent >= g.MinPercent && instance.FinalScorePercent <= g.MaxPercent);
         instance.FinalGrade = matchedBand?.Grade;

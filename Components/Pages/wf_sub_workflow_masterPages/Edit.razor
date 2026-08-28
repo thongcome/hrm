@@ -1,6 +1,7 @@
 ﻿@page "/wf_sub_workflow_masters/edit"
 @using Microsoft.EntityFrameworkCore
 @using HRM.Models
+@using HRM.Services.Workflow
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
 @inject NavigationManager NavigationManager
 
@@ -14,8 +15,19 @@
 {
     <p><em>Loading...</em></p>
 }
+else if (_locked)
+{
+    <div class="alert alert-warning">
+        @WorkflowLockGuard.LockedMessage
+        <br /><a href="/wf_sub_workflow_masters">Back to List</a>
+    </div>
+}
 else
 {
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
     <div class="row">
         <div class="col-md-4">
             <EditForm method="post" Model="wf_sub_workflow_master" OnValidSubmit="Updatewf_sub_workflow_master" FormName="edit" Enhance>
@@ -320,6 +332,8 @@ else
     private wf_sub_workflow_master? wf_sub_workflow_master { get; set; }
 
     private List<string> _jobStatusCodes = new();
+    private bool _locked;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -330,33 +344,47 @@ else
         if (wf_sub_workflow_master is null)
         {
             NavigationManager.NavigateTo("notfound");
+            return;
         }
+
+        var parentWorkflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == wf_sub_workflow_master.workflowid);
+        _locked = parentWorkflow?.isactive == true;
     }
 
     // To protect from overposting attacks, enable the specific properties you want to bind to.
     // For more information, see https://learn.microsoft.com/aspnet/core/blazor/forms/#mitigate-overposting-attacks.
     private async Task Updatewf_sub_workflow_master()
     {
-        using var context = DbFactory.CreateDbContext();
-        context.Attach(wf_sub_workflow_master!).State = EntityState.Modified;
-
+        _error = null;
         try
         {
-            await context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!wf_sub_workflow_masterExists(wf_sub_workflow_master!.subworkflowid))
-            {
-                NavigationManager.NavigateTo("notfound");
-            }
-            else
-            {
-                throw;
-            }
-        }
+            using var context = DbFactory.CreateDbContext();
+            await WorkflowLockGuard.EnsureWorkflowEditableAsync(context, wf_sub_workflow_master!.workflowid);
+            context.Attach(wf_sub_workflow_master!).State = EntityState.Modified;
 
-        NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+            try
+            {
+                await context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!wf_sub_workflow_masterExists(wf_sub_workflow_master!.subworkflowid))
+                {
+                    NavigationManager.NavigateTo("notfound");
+                    return;
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            NavigationManager.NavigateTo("/wf_sub_workflow_masters");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
     }
 
     private bool wf_sub_workflow_masterExists(long subworkflowid)
