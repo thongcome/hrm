@@ -482,6 +482,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Hrd_LifecycleTaskTemplate> Hrd_LifecycleTaskTemplates { get; set; }
     public virtual DbSet<Hrd_LifecycleTaskInstance> Hrd_LifecycleTaskInstances { get; set; }
     public virtual DbSet<Hrd_ExitInterview> Hrd_ExitInterviews { get; set; }
+    public virtual DbSet<Hrd_Committee> Hrd_Committees { get; set; }
+    public virtual DbSet<Hrd_CommitteeMembership> Hrd_CommitteeMemberships { get; set; }
 
     public virtual DbSet<WorkflowDesignTable> WorkflowDesignTables { get; set; }
 
