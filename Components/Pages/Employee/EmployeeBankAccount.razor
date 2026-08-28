@@ -1,0 +1,230 @@
+@page "/employee/{Id:long}/bank-account"
+@layout EmployeeHubLayout
+@using HRM.Models
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ประวัติบัญชีธนาคาร</PageTitle>
+
+@if (_emp is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงาน</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">ประวัติบัญชีธนาคาร — @_emp.EmpName @_emp.EmpSurname (@_emp.EmpNo)</MudText>
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            ข้อมูลบัญชีธนาคารสำหรับติดต่อประสานงาน — ไม่แสดงเงินเดือน (ดูเงินเดือนได้ที่โมดูลเงินเดือนเท่านั้น)
+        </MudText>
+        <MudDivider Class="my-4" />
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Class="mb-2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">+ เพิ่มบัญชีธนาคาร</MudButton>
+        </MudStack>
+
+        @if (_showForm)
+        {
+            <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มบัญชีธนาคาร" : "แก้ไข")</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" @bind-Value="_bankId" Label="ธนาคาร" Clearable="true">
+                        @foreach (var b in _banks)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)b.Id)">@b.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_bankBranch" Label="สาขา" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_bankAccountNo" Label="เลขที่บัญชี" Required="true" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_bankAccountName" Label="ชื่อบัญชี" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_accountTypeCode" Label="ประเภทบัญชี (ออมทรัพย์/กระแสรายวัน)" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="เป็นบัญชีที่ใช้งานอยู่" />
+                </MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="2" /></MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+            }
+
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-5" />
+        }
+
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ธนาคาร</MudTh>
+                <MudTh>สาขา</MudTh>
+                <MudTh>เลขที่บัญชี</MudTh>
+                <MudTh>ชื่อบัญชี</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@BankName(context.BankId)</MudTd>
+                <MudTd>@context.BankBranch</MudTd>
+                <MudTd>@context.BankAccountNo</MudTd>
+                <MudTd>@context.BankAccountName</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                        @(context.IsActive ? "ใช้งานอยู่" : "ไม่ใช้งาน")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Hremployee? _emp;
+    private List<Hrd_BankAccount> _items = new();
+    private List<Com_Bank> _banks = new();
+    private long? _editingId;
+    private bool _showForm;
+    private string? _error;
+
+    private long? _bankId;
+    private string? _bankBranch;
+    private string _bankAccountNo = "";
+    private string? _bankAccountName;
+    private string? _accountTypeCode;
+    private bool _isActive = true;
+    private string? _remark;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == Id);
+        if (_emp is null) return;
+
+        _banks = await context.Com_Banks.Where(b => b.IsActive).OrderBy(b => b.SortOrder).ToListAsync();
+
+        await AuditLogger.LogAccessAsync("Hrd_BankAccount", Id.ToString(), isSensitive: true, note: "employee bank account view");
+        await LoadAsync();
+    }
+
+    private string BankName(long? bankId)
+        => bankId is null ? "" : (_banks.FirstOrDefault(b => b.Id == bankId)?.Name ?? "");
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _items = await context.Hrd_BankAccounts.Where(e => e.HremployeeId == Id)
+            .OrderByDescending(e => e.IsActive).ThenByDescending(e => e.Id).ToListAsync();
+    }
+
+    private void OpenCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(Hrd_BankAccount item)
+    {
+        _editingId = item.Id;
+        _bankId = item.BankId;
+        _bankBranch = item.BankBranch;
+        _bankAccountNo = item.BankAccountNo;
+        _bankAccountName = item.BankAccountName;
+        _accountTypeCode = item.AccountTypeCode;
+        _isActive = item.IsActive;
+        _remark = item.Remark;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _bankId = null;
+        _bankBranch = null;
+        _bankAccountNo = "";
+        _bankAccountName = null;
+        _accountTypeCode = null;
+        _isActive = true;
+        _remark = null;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_bankAccountNo))
+        {
+            _error = "กรุณาระบุเลขที่บัญชี";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Only one "active" account should represent the current payee —
+        // mirrors legacy "islastbank" semantics. Turning this one on
+        // deactivates any other active row for the same employee instead of
+        // letting HR end up with two accounts both marked active.
+        if (_isActive)
+        {
+            var others = await context.Hrd_BankAccounts
+                .Where(e => e.HremployeeId == Id && e.IsActive && e.Id != (_editingId ?? 0)).ToListAsync();
+            foreach (var o in others) o.IsActive = false;
+        }
+
+        if (_editingId is long id)
+        {
+            var existing = await context.Hrd_BankAccounts.FirstOrDefaultAsync(e => e.Id == id && e.HremployeeId == Id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.BankId = _bankId;
+            existing.BankBranch = _bankBranch;
+            existing.BankAccountNo = _bankAccountNo;
+            existing.BankAccountName = _bankAccountName;
+            existing.AccountTypeCode = _accountTypeCode;
+            existing.IsActive = _isActive;
+            existing.Remark = _remark;
+            existing.ModDate = DateTime.Now;
+        }
+        else
+        {
+            context.Hrd_BankAccounts.Add(new Hrd_BankAccount
+            {
+                HremployeeId = Id,
+                BankId = _bankId,
+                BankBranch = _bankBranch,
+                BankAccountNo = _bankAccountNo,
+                BankAccountName = _bankAccountName,
+                AccountTypeCode = _accountTypeCode,
+                IsActive = _isActive,
+                Remark = _remark,
+                ModDate = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
