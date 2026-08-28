@@ -1,0 +1,186 @@
+@page "/pos/position-levels"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>ระดับตำแหน่ง (Legacy)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ระดับตำแหน่ง (pos_position_level)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ระดับตำแหน่ง (job grade) — คนละคนในตำแหน่งเดียวกันอาจได้ระดับไม่เท่ากัน คนละแนวคิดกับ "ระดับสายอาชีพ" ใน
+        <MudLink Href="/job/levels">/job/levels</MudLink>
+    </MudText>
+
+    <MudDivider Class="my-4" />
+
+    @if (!_showForm)
+    {
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มข้อมูล</MudButton>
+        <MudDivider Class="my-5" />
+    }
+    else
+    {
+        <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มข้อมูล" : "แก้ไขข้อมูล")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_code" Label="รหัสระดับ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_plevel" Label="ค่าลำดับระดับ (plevel)" Format="N2" /></MudItem>
+            <MudItem xs="12" sm="4" />
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อระดับ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_engname" Label="Name (English)" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_polNote" Label="หมายเหตุ" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+        </MudStack>
+
+        <MudDivider Class="my-5" />
+    }
+
+    <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnSearchChanged"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัสระดับ</MudTh>
+            <MudTh>ชื่อระดับ</MudTh>
+            <MudTh>ค่าลำดับ (plevel)</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@context.plevel</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<pos_position_level> _items = new();
+    private string? _searchTerm;
+    private string? _error;
+    private int? _editingId;
+    private bool _showForm;
+
+    private string _code = "";
+    private string _name = "";
+    private string? _engname;
+    private string? _polNote;
+    private decimal? _plevel;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.pos_position_levels.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(pos_position_level.code), nameof(pos_position_level.name), nameof(pos_position_level.engname));
+        _items = await query.OrderBy(t => t.plevel).ThenBy(t => t.name).ToListAsync();
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void StartCreate()
+    {
+        CancelEdit();
+        _showForm = true;
+    }
+
+    private void StartEdit(pos_position_level item)
+    {
+        _editingId = item.id;
+        _code = item.code ?? "";
+        _name = item.name ?? "";
+        _engname = item.engname;
+        _polNote = item.pol_note;
+        _plevel = item.plevel;
+        _error = null;
+        _showForm = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _code = "";
+        _name = "";
+        _engname = null;
+        _polNote = null;
+        _plevel = null;
+        _error = null;
+        _showForm = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_name))
+        {
+            _error = "กรุณาระบุรหัสและชื่อระดับ";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var duplicate = await context.pos_position_levels.AnyAsync(t => t.code == _code && t.id != (_editingId ?? 0));
+        if (duplicate)
+        {
+            _error = "มีรหัสระดับนี้อยู่แล้ว";
+            return;
+        }
+
+        if (_editingId is int id)
+        {
+            var existing = await context.pos_position_levels.FirstOrDefaultAsync(t => t.id == id);
+            if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
+            existing.code = _code;
+            existing.name = _name;
+            existing.engname = _engname;
+            existing.pol_note = _polNote;
+            existing.plevel = _plevel;
+            existing.update_date = DateTime.Now;
+        }
+        else
+        {
+            context.pos_position_levels.Add(new pos_position_level
+            {
+                code = _code,
+                name = _name,
+                engname = _engname,
+                pol_note = _polNote,
+                plevel = _plevel,
+                update_date = DateTime.Now,
+            });
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        CancelEdit();
+        await LoadAsync();
+    }
+}
