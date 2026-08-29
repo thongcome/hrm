@@ -1,6 +1,7 @@
 @page "/pay/runs/{RunId:long}/employee/{EmployeeId:long}"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Pay
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -9,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
@@ -45,16 +47,28 @@ else
 
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("LineItemsHeading")</MudText>
-        <MudTable Items="_lineItems" Dense="true">
+        <MudTable Items="_displayRows" Dense="true">
             <HeaderContent>
                 <MudTh>@L.Translate("ColItemName")</MudTh>
                 <MudTh>@L.Translate("ColItemType")</MudTh>
                 <MudTh>@L.Translate("ColAmount")</MudTh>
+                <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@context.Pay_PayItemType.NameTh (@context.Pay_PayItemType.NameEn)</MudTd>
-                <MudTd>@(context.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
-                <MudTd>@((context.SignFlag * context.Amount).ToString("N2"))</MudTd>
+                <MudTd>
+                    @context.LineItem.Pay_PayItemType.NameTh (@context.LineItem.Pay_PayItemType.NameEn)
+                    @if (!context.IsCalculated)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2">@L.Translate("NoItemThisPeriodChip")</MudChip>
+                    }
+                </MudTd>
+                <MudTd>@(context.LineItem.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
+                <MudTd>@((context.LineItem.SignFlag * context.LineItem.Amount).ToString("N2"))</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Info" OnClick="@(() => ShowCalculationDetailAsync(context))">
+                        @L.Translate("ViewCalculationLink")
+                    </MudButton>
+                </MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -109,6 +123,7 @@ else
     private Pay_PayrollEmployee? _employee;
     private bool _forbidden;
     private List<Pay_PayrollLineItem> _lineItems = new();
+    private List<PayrollLineItemDisplayHelper.DisplayRow> _displayRows = new();
     private List<Pay_PayrollAnomaly> _anomalies = new();
     private string? _taxDetailJson;
 
@@ -135,6 +150,9 @@ else
             .Where(li => li.PayrollEmployeeId == EmployeeId)
             .OrderBy(li => li.SeqNo)
             .ToListAsync();
+
+        var payItemTypes = await context.Pay_PayItemTypes.Where(t => t.IsActive).ToListAsync();
+        _displayRows = PayrollLineItemDisplayHelper.BuildDisplayRows(_lineItems, payItemTypes);
 
         _taxDetailJson = await context.Pay_PayrollAuditLogs
             .Where(a => a.PayrollRunId == RunId && a.PayrollEmployeeId == EmployeeId && a.EventType == PayAuditEventType.TaxCalculationDetail)
@@ -164,6 +182,18 @@ else
 
         await OnParametersSetAsync();
         Snackbar.Add(L.Translate("AcknowledgedSuccess"), Severity.Success);
+    }
+
+    private Task ShowCalculationDetailAsync(PayrollLineItemDisplayHelper.DisplayRow row)
+    {
+        var typeName = $"{row.LineItem.Pay_PayItemType.NameTh} ({row.LineItem.Pay_PayItemType.NameEn})";
+        var message = row.IsCalculated
+            ? (string.IsNullOrWhiteSpace(row.LineItem.Description)
+                ? string.Format(L.Translate("CalculationDetailAmountOnlyTemplate"), (row.LineItem.SignFlag * row.LineItem.Amount).ToString("N2"))
+                : row.LineItem.Description!)
+            : L.Translate("CalculationDetailNotCalculatedNote");
+
+        return DialogService.ShowMessageBox(typeName, message, yesText: L.Translate("CloseButton"));
     }
 
     private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch

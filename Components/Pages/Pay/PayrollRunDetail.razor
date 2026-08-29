@@ -15,6 +15,7 @@
 @inject PayslipGenerationService PayslipGenerationService
 @inject BankFileExportService BankFileExportService
 @inject GLExportService GLExportService
+@inject PayrollAnomalyDetectionService AnomalyDetectionService
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
@@ -33,13 +34,44 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <div>
-                <MudText Typo="Typo.h5">@L.Translate("RunDetailHeadingPrefix") @_run.CompanyId — @_run.PayrollPeriod (@_run.RunType)</MudText>
+                <MudText Typo="Typo.h5">@L.Translate("RunDetailHeadingPrefix") @_run.CompanyId — @_run.PayrollPeriod (@RunTypeLabel(_run.RunType))</MudText>
                 <MudText Typo="Typo.body2" Class="mt-1">
                     @string.Format(L.Translate("RunDetailPeriodLine"), _run.PeriodStart.ToString("dd/MM/yyyy"), _run.PeriodEnd.ToString("dd/MM/yyyy"), _run.PayDate.ToString("dd/MM/yyyy"))
                 </MudText>
             </div>
-            <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@_run.Status</MudChip>
+            <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@StatusLabel(_run.Status)</MudChip>
         </MudStack>
+
+        @if (_run.Status == PayrollRunStatus.Cancelled)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@L.Translate("RunCancelledNotice")</MudAlert>
+        }
+        else
+        {
+            <MudStack Row="true" Spacing="0" AlignItems="AlignItems.Start" Class="mt-4 mb-1" Style="overflow-x:auto;">
+                @for (var i = 0; i < _stepTrack.Length; i++)
+                {
+                    var step = _stepTrack[i];
+                    <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="min-width:88px;">
+                        <MudAvatar Color="StepColor(step)" Size="Size.Small">
+                            @if ((int)step < (int)_run.Status)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                            }
+                            else
+                            {
+                                @((i + 1).ToString())
+                            }
+                        </MudAvatar>
+                        <MudText Typo="Typo.caption" Align="Align.Center" Class="mt-1">@StatusLabel(step)</MudText>
+                    </MudStack>
+                    @if (i < _stepTrack.Length - 1)
+                    {
+                        <MudDivider Style="@($"flex:1;min-width:24px;margin-top:16px;border-color:{(((int)_stepTrack[i + 1] <= (int)_run.Status) ? "var(--mud-palette-success)" : "var(--mud-palette-lines-default)")};")" />
+                    }
+                }
+            </MudStack>
+        }
 
         <MudDivider Class="my-3" />
 
@@ -110,7 +142,7 @@ else
             </MudAlert>
         }
 
-        @if (_pendingAdhocCount > 0 || _unconsumedApprovedAdhocCount > 0)
+        @if ((_pendingAdhocCount > 0 || _unconsumedApprovedAdhocCount > 0) && _run.Status < PayrollRunStatus.Posted)
         {
             <MudAlert Severity="Severity.Error" Class="mt-3">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
@@ -131,6 +163,23 @@ else
                     </MudButton>
                 </MudStack>
             </MudAlert>
+        }
+
+        @if (_employees.Count > 0)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3" Wrap="Wrap.Wrap">
+                <MudText Typo="Typo.body2">@L.Translate("AnomalyBaselineLabel")</MudText>
+                <MudSelect T="long?" @bind-Value="_selectedBaselineRunId" Dense="true" Style="min-width: 260px;">
+                    <MudSelectItem T="long?" Value="null">@L.Translate("AnomalyBaselineAuto")</MudSelectItem>
+                    @foreach (var r in _pastRuns)
+                    {
+                        <MudSelectItem T="long?" Value="r.Id">@r.PayrollPeriod (@L.Translate("PayrollRunType_" + r.RunType))</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="RerunAnomalyDetectionAsync" Disabled="_busy">
+                    @L.Translate("AnomalyRerunButton")
+                </MudButton>
+            </MudStack>
         }
 
         @{ var pendingAnomalies = _anomalies.Where(a => !a.IsAcknowledged).ToList(); }
@@ -272,6 +321,8 @@ else
     private bool _canGenerateGL;
     private PayslipGenerationResult? _payslipSummary;
     private List<Pay_PayrollAnomaly> _anomalies = new();
+    private List<Pay_PayrollRun> _pastRuns = new();
+    private long? _selectedBaselineRunId;
     private Dictionary<long, long> _payslipIdByEmployeeId = new();
     private List<Pay_BankFileExportBatch> _bankFileBatches = new();
     private List<Pay_GLExportBatch> _glExportBatches = new();
@@ -340,6 +391,33 @@ else
             .Where(a => a.PayrollRunId == RunId)
             .OrderByDescending(a => a.Severity)
             .ToListAsync();
+
+        // For the "compare against this period instead" dropdown — any other
+        // non-cancelled run for this company, regardless of RunType, newest
+        // first. Excludes the current run itself.
+        _pastRuns = await context.Pay_PayrollRuns
+            .Where(r => r.CompanyId == _run.CompanyId && r.Id != RunId && r.Status != PayrollRunStatus.Cancelled)
+            .OrderByDescending(r => r.PeriodStart)
+            .ToListAsync();
+    }
+
+    private async Task RerunAnomalyDetectionAsync()
+    {
+        _busy = true;
+        try
+        {
+            DateOnly? compareAsOf = _selectedBaselineRunId is long baselineId
+                ? _pastRuns.FirstOrDefault(r => r.Id == baselineId)?.PeriodStart
+                : null;
+
+            await AnomalyDetectionService.DetectAnomaliesAsync(RunId, compareAsOf);
+            await LoadAsync();
+            Snackbar.Add(L.Translate("AnomalyRerunSuccess"), Severity.Success);
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task AcknowledgeAnomalyAsync(long anomalyId)
@@ -478,6 +556,26 @@ else
         PayrollRunStatus.Cancelled => Color.Error,
         _ => Color.Default,
     };
+
+    private string StatusLabel(PayrollRunStatus status) => L.Translate("PayrollStatus_" + status);
+    private string RunTypeLabel(PayrollRunType type) => L.Translate("PayrollRunType_" + type);
+
+    // The 6-step happy-path progression (Cancelled is a terminal exit, not a
+    // step on this track — shown as its own alert instead, see markup).
+    private static readonly PayrollRunStatus[] _stepTrack =
+    {
+        PayrollRunStatus.Draft, PayrollRunStatus.Calculated, PayrollRunStatus.Reviewed,
+        PayrollRunStatus.Approved, PayrollRunStatus.Posted, PayrollRunStatus.Paid,
+    };
+
+    private Color StepColor(PayrollRunStatus step)
+    {
+        if (_run is null) return Color.Default;
+        if (_run.Status == PayrollRunStatus.Cancelled) return Color.Default;
+        if ((int)step < (int)_run.Status) return Color.Success;   // already passed
+        if (step == _run.Status) return StatusColor(step);         // current
+        return Color.Default;                                       // not reached yet
+    }
 
     private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch
     {

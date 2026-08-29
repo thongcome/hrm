@@ -55,6 +55,16 @@ public class Pay_AdhocPayItem
     // it isn't pulled into a second run for the same period
     public long? ConsumedByPayrollRunId { get; set; }
 
+    // Set once, at submission time, by PayrollSpikeDetector comparing this
+    // Amount against the same employee's own history for the same
+    // PayItemTypeId (see AdhocPayItemList.razor.SubmitAsync). Non-blocking —
+    // HR sees a warning but the item still saves; this just flags it for a
+    // closer look before approving. Null/empty AnomalyNote when not flagged
+    // or when there wasn't enough history (<4 points) to say anything.
+    public bool IsAmountAnomalyFlagged { get; set; }
+    [StringLength(300)]
+    public string? AnomalyNote { get; set; }
+
     public virtual Hremployee Hremployee { get; set; } = null!;
     public virtual Pay_PayItemType Pay_PayItemType { get; set; } = null!;
     public virtual Pay_PayrollRun? ConsumedByPayrollRun { get; set; }

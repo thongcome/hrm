@@ -2,6 +2,7 @@
 @layout PayrollEmployeeHubLayout
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Pay
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -10,6 +11,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject IDialogService DialogService
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
@@ -57,16 +59,28 @@ else
             </MudSimpleTable>
 
             <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">@L.Translate("LineItemsHeading")</MudText>
-            <MudTable Items="_calculatedLineItems" Dense="true">
+            <MudTable Items="_displayRows" Dense="true">
                 <HeaderContent>
                     <MudTh>@L.Translate("ColItemName")</MudTh>
                     <MudTh>@L.Translate("ColItemType")</MudTh>
                     <MudTh>@L.Translate("ColAmount")</MudTh>
+                    <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd>@context.Pay_PayItemType.NameTh (@context.Pay_PayItemType.NameEn)</MudTd>
-                    <MudTd>@(context.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
-                    <MudTd>@((context.SignFlag * context.Amount).ToString("N2"))</MudTd>
+                    <MudTd>
+                        @context.LineItem.Pay_PayItemType.NameTh (@context.LineItem.Pay_PayItemType.NameEn)
+                        @if (!context.IsCalculated)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2">@L.Translate("NoItemThisPeriodChip")</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>@(context.LineItem.SignFlag > 0 ? L.Translate("EarningChip") : L.Translate("DeductionChip"))</MudTd>
+                    <MudTd>@((context.LineItem.SignFlag * context.LineItem.Amount).ToString("N2"))</MudTd>
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Info" OnClick="@(() => ShowCalculationDetailAsync(context))">
+                            @L.Translate("ViewCalculationLink")
+                        </MudButton>
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
         </MudPaper>
@@ -204,6 +218,7 @@ else
     private List<Pay_AdhocPayItem> _deductionItems = new();
     private Pay_PayrollEmployee? _payrollEmployee;
     private List<Pay_PayrollLineItem> _calculatedLineItems = new();
+    private List<PayrollLineItemDisplayHelper.DisplayRow> _displayRows = new();
     private DateTime? _periodMonth = DateTime.Today;
     private bool _showCreate;
     private PayItemCategory _createCategory;
@@ -278,6 +293,22 @@ else
                 .Where(li => li.PayrollEmployeeId == _payrollEmployee.Id)
                 .OrderBy(li => li.SeqNo)
                 .ToListAsync();
+
+        _displayRows = _payrollEmployee is null
+            ? new()
+            : PayrollLineItemDisplayHelper.BuildDisplayRows(_calculatedLineItems, _payItemTypes);
+    }
+
+    private Task ShowCalculationDetailAsync(PayrollLineItemDisplayHelper.DisplayRow row)
+    {
+        var typeName = $"{row.LineItem.Pay_PayItemType.NameTh} ({row.LineItem.Pay_PayItemType.NameEn})";
+        var message = row.IsCalculated
+            ? (string.IsNullOrWhiteSpace(row.LineItem.Description)
+                ? string.Format(L.Translate("CalculationDetailAmountOnlyTemplate"), (row.LineItem.SignFlag * row.LineItem.Amount).ToString("N2"))
+                : row.LineItem.Description!)
+            : L.Translate("CalculationDetailNotCalculatedNote");
+
+        return DialogService.ShowMessageBox(typeName, message, yesText: L.Translate("CloseButton"));
     }
 
     private void OpenCreate(PayItemCategory category)

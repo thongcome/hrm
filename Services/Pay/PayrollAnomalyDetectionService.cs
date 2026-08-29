@@ -25,7 +25,18 @@ public class PayrollAnomalyDetectionService
         _dbFactory = dbFactory;
     }
 
-    public async Task<int> DetectAnomaliesAsync(long payrollRunId, CancellationToken ct = default)
+    // compareAsOfPeriodStart lets HR pin the "จากงวดก่อน" comparison baseline
+    // to a specific period, overriding the automatic default. Automatic mode
+    // (null) restricts history to periods strictly before this run's own
+    // PeriodStart — NOT simply "every other run this employee has". Without
+    // that restriction, a run entered out of chronological order (e.g.
+    // backfilling an early period after later ones already exist) would pull
+    // *future* periods into its "previous period" comparison, since the old
+    // query only excluded the current run by Id and then took the last item
+    // after sorting everything else by PeriodStart. When HR picks an explicit
+    // baseline period, history is capped at (and includes) that period's
+    // PeriodStart instead, so the comparison uses exactly the period they chose.
+    public async Task<int> DetectAnomaliesAsync(long payrollRunId, DateOnly? compareAsOfPeriodStart = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -59,11 +70,17 @@ public class PayrollAnomalyDetectionService
                 });
             }
 
-            var history = await context.Pay_PayrollEmployees
+            var historyQuery = context.Pay_PayrollEmployees
                 .Include(pe => pe.Pay_PayrollRun)
                 .Where(pe => pe.HremployeeId == emp.HremployeeId
                     && pe.PayrollRunId != payrollRunId
-                    && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                    && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled);
+
+            historyQuery = compareAsOfPeriodStart is DateOnly cutoff
+                ? historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart <= cutoff)
+                : historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart < run.PeriodStart);
+
+            var history = await historyQuery
                 .OrderBy(pe => pe.Pay_PayrollRun.PeriodStart)
                 .ToListAsync(ct);
 
@@ -78,7 +95,7 @@ public class PayrollAnomalyDetectionService
             }
         }
 
-        await CheckPeriodTotalAsync(context, run, employees, newRows, ct);
+        await CheckPeriodTotalAsync(context, run, employees, compareAsOfPeriodStart, newRows, ct);
 
         context.Pay_PayrollAnomalies.AddRange(newRows);
         await context.SaveChangesAsync(ct);
@@ -210,14 +227,20 @@ public class PayrollAnomalyDetectionService
 
     // (จ) ยอดรวมทั้งงวดผิดปกติจากค่าเฉลี่ยงวดก่อนๆ — ระดับทั้งบริษัท/ประเภทรอบเดียวกัน
     private static async Task CheckPeriodTotalAsync(HRMContext context, Pay_PayrollRun run,
-        List<Pay_PayrollEmployee> employees, List<Pay_PayrollAnomaly> newRows, CancellationToken ct)
+        List<Pay_PayrollEmployee> employees, DateOnly? compareAsOfPeriodStart, List<Pay_PayrollAnomaly> newRows, CancellationToken ct)
     {
-        var priorTotals = await context.Pay_PayrollEmployees
+        var priorTotalsQuery = context.Pay_PayrollEmployees
             .Include(pe => pe.Pay_PayrollRun)
             .Where(pe => pe.Pay_PayrollRun.CompanyId == run.CompanyId
                 && pe.Pay_PayrollRun.RunType == run.RunType
                 && pe.Pay_PayrollRun.Id != run.Id
-                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled);
+
+        priorTotalsQuery = compareAsOfPeriodStart is DateOnly cutoff
+            ? priorTotalsQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart <= cutoff)
+            : priorTotalsQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart < run.PeriodStart);
+
+        var priorTotals = await priorTotalsQuery
             .GroupBy(pe => new { pe.Pay_PayrollRun.Id, pe.Pay_PayrollRun.PeriodStart })
             .Select(g => new { g.Key.PeriodStart, Total = g.Sum(pe => pe.NetPay) })
             .OrderBy(x => x.PeriodStart)

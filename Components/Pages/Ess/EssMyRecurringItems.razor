@@ -1,0 +1,74 @@
+@page "/ess/my-recurring-items"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inherits LocalizedComponentBase
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>@L.Translate("RecurringItemsPageTitle")</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">@L.Translate("RecurringItemsMyPageTitle")</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("RecurringItemsMyDesc")</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">@L.Translate("NoEmployeeLinkedError")</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_rows" Hover="true" Dense="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>@L.Translate("ColItemName")</MudTh>
+                <MudTh>@L.Translate("RecurringItemsColDetail")</MudTh>
+                <MudTh>@L.Translate("RecurringItemsColEffective")</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.TypeName</MudTd>
+                <MudTd>@context.Detail</MudTd>
+                <MudTd>
+                    @if (context.EffectiveFrom is not null)
+                    {
+                        @($"{context.EffectiveFrom:dd/MM/yyyy} — {(context.EffectiveTo is not null ? context.EffectiveTo.Value.ToString("dd/MM/yyyy") : L.Translate("RecurringItemsOngoing"))}")
+                    }
+                    else
+                    {
+                        <text>-</text>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>@L.Translate("RecurringItemsNoneForEmployee")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<HRM.Services.Pay.RecurringItemRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        if (_employee is not null)
+            _rows = await HRM.Services.Pay.RecurringPayItemService.GetForEmployeeAsync(context, _employee.id);
+
+        _loaded = true;
+    }
+}

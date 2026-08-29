@@ -1,7 +1,9 @@
 @page "/pay/adhoc"
 @page "/pay/adhoc/{Period}"
+@using System.Globalization
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Pay.Calculators
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -16,22 +18,46 @@
 <PageTitle>@L.Translate("AdhocListPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2">
         <div>
             <MudText Typo="Typo.h5">@L.Translate("AdhocListPageTitle")</MudText>
             <MudText Typo="Typo.body2" Class="mt-1">
                 @L.Translate("AdhocListDesc")
             </MudText>
-            @if (!string.IsNullOrWhiteSpace(Period))
-            {
-                <MudChip T="string" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClose="@(() => Nav.NavigateTo("/pay/adhoc"))">
-                    @string.Format(L.Translate("AdhocFilteredByPeriod"), Period)
-                </MudChip>
-            }
         </div>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showCreate = !_showCreate)">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ToggleCreateForm">
             @(_showCreate ? L.Translate("AdhocCloseFormButton") : L.Translate("AdhocAddNewButton"))
         </MudButton>
+    </MudStack>
+
+    <MudDivider Class="my-3" />
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3">
+        <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodMonthChangedAsync" Editable="true" Label="@L.Translate("Period")"
+            DateFormat="MM/yyyy" PickerVariant="PickerVariant.Dialog" OpenTo="OpenTo.Month" Class="mud-width-200" />
+
+        @if (ViewingAll)
+        {
+            <MudChip T="string" Color="Color.Info" Size="Size.Small">@L.Translate("AdhocViewAllPeriodsButton")</MudChip>
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/adhoc"))">
+                @L.Translate("AdhocBackToCurrentPeriodButton")
+            </MudButton>
+        }
+        else
+        {
+            <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                @string.Format(L.Translate("AdhocCurrentPeriodChip"), EffectivePeriod)
+            </MudChip>
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/adhoc/ALL"))">
+                @L.Translate("AdhocViewAllPeriodsButton")
+            </MudButton>
+            @if (!string.Equals(Period, CurrentPeriodCode(), StringComparison.Ordinal) && Period is not null)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pay/adhoc"))">
+                    @L.Translate("AdhocBackToCurrentPeriodButton")
+                </MudButton>
+            }
+        }
     </MudStack>
 
     @if (_showCreate)
@@ -73,51 +99,136 @@
     }
 </MudPaper>
 
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3 text-center">
+            <MudText Typo="Typo.caption">@L.Translate("AdhocSummaryTotalEarning")</MudText>
+            <MudText Typo="Typo.h6" Color="Color.Success">@TotalEarning.ToString("N2")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3 text-center">
+            <MudText Typo="Typo.caption">@L.Translate("AdhocSummaryTotalDeduction")</MudText>
+            <MudText Typo="Typo.h6" Color="Color.Error">@TotalDeduction.ToString("N2")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3 text-center">
+            <MudText Typo="Typo.caption">@L.Translate("AdhocSummaryPendingCount")</MudText>
+            <MudText Typo="Typo.h6" Color="Color.Warning">@PendingCount</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3 text-center">
+            <MudText Typo="Typo.caption">@L.Translate("AdhocSummaryApprovedCount")</MudText>
+            <MudText Typo="Typo.h6" Color="Color.Info">@ApprovedCount</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
 <MudPaper Class="pa-4">
-    <MudTable Items="_items" Hover="true" Dense="true" Loading="_loading">
-        <HeaderContent>
-            <MudTh>@L.Translate("EmployeeLabel")</MudTh>
-            <MudTh>@L.Translate("ColType")</MudTh>
-            <MudTh>@L.Translate("Period")</MudTh>
-            <MudTh>@L.Translate("AmountLabel")</MudTh>
-            <MudTh>@L.Translate("ReasonLabel")</MudTh>
-            <MudTh>@L.Translate("ColStatus")</MudTh>
-            <MudTh></MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd>@context.Hremployee.EmpNo — @context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
-            <MudTd>@context.Pay_PayItemType.NameTh</MudTd>
-            <MudTd>@context.TargetPeriod</MudTd>
-            <MudTd>@context.Amount.ToString("N2")</MudTd>
-            <MudTd>@context.Reason</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@context.Status</MudChip></MudTd>
-            <MudTd>
-                @if (context.Status == PayAdhocItemStatus.Pending)
-                {
-                    <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">@L.Translate("ApproveButton")</MudButton>
-                    <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">@L.Translate("RejectButton")</MudButton>
-                }
-                @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
-                {
-                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">@L.Translate("CancelButton")</MudButton>
-                }
-            </MudTd>
-        </RowTemplate>
-        <NoRecordsContent>
-            <MudText>@L.Translate("NoItemsYet")</MudText>
-        </NoRecordsContent>
-    </MudTable>
+    <MudTabs Elevation="0" Rounded="true">
+        <MudTabPanel Text="@L.Translate("AdhocTabAll")">
+            <MudTable Items="_items" Hover="true" Dense="true" Loading="_loading" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>@L.Translate("EmployeeLabel")</MudTh>
+                    <MudTh>@L.Translate("ColType")</MudTh>
+                    <MudTh>@L.Translate("Period")</MudTh>
+                    <MudTh>@L.Translate("AmountLabel")</MudTh>
+                    <MudTh>@L.Translate("ReasonLabel")</MudTh>
+                    <MudTh>@L.Translate("ColStatus")</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Hremployee.EmpNo — @context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
+                    <MudTd>@context.Pay_PayItemType.NameTh</MudTd>
+                    <MudTd>@context.TargetPeriod</MudTd>
+                    <MudTd>
+                        @context.Amount.ToString("N2")
+                        @if (context.IsAmountAnomalyFlagged)
+                        {
+                            <MudTooltip Text="@context.AnomalyNote">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@L.Translate("AdhocAnomalyChip")</MudChip>
+                            </MudTooltip>
+                        }
+                    </MudTd>
+                    <MudTd>@context.Reason</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@context.Status</MudChip></MudTd>
+                    <MudTd>
+                        @if (context.Status == PayAdhocItemStatus.Pending)
+                        {
+                            <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">@L.Translate("ApproveButton")</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">@L.Translate("RejectButton")</MudButton>
+                        }
+                        @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">@L.Translate("CancelButton")</MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>@L.Translate("NoItemsYet")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="@L.Translate("AdhocTabByEmployee")">
+            <MudTable Items="_byEmployee" Hover="true" Dense="true" Loading="_loading" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>@L.Translate("EmployeeLabel")</MudTh>
+                    <MudTh>@L.Translate("AdhocSummaryTotalEarning")</MudTh>
+                    <MudTh>@L.Translate("AdhocSummaryTotalDeduction")</MudTh>
+                    <MudTh>@L.Translate("AdhocSummaryTotalItems")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.EmpNo — @context.EmpName</MudTd>
+                    <MudTd>@context.TotalEarning.ToString("N2")</MudTd>
+                    <MudTd>@context.TotalDeduction.ToString("N2")</MudTd>
+                    <MudTd>@context.Count</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>@L.Translate("NoItemsYet")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="@L.Translate("AdhocTabByType")">
+            <MudTable Items="_byType" Hover="true" Dense="true" Loading="_loading" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>@L.Translate("ColType")</MudTh>
+                    <MudTh>@L.Translate("AdhocByTypeColCategory")</MudTh>
+                    <MudTh>@L.Translate("AdhocByTypeColTotal")</MudTh>
+                    <MudTh>@L.Translate("AdhocSummaryTotalItems")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.NameTh (@context.NameEn)</MudTd>
+                    <MudTd>@(context.Category == PayItemCategory.Earning ? L.Translate("AdhocEarningLabel") : L.Translate("AdhocDeductionLabel"))</MudTd>
+                    <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
+                    <MudTd>@context.Count</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>@L.Translate("NoItemsYet")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
 </MudPaper>
 
 @code {
     [Parameter] public string? Period { get; set; }
 
     private List<Pay_AdhocPayItem> _items = new();
+    private List<EmployeeSummaryRow> _byEmployee = new();
+    private List<TypeSummaryRow> _byType = new();
     private List<Pay_PayItemType> _payItemTypes = new();
     private bool _loading = true;
     private bool _showCreate;
     private string? _error;
     private CreateForm _form = new();
+    private DateTime? _periodMonth;
+
+    private record EmployeeSummaryRow(long HremployeeId, string EmpNo, string EmpName, decimal TotalEarning, decimal TotalDeduction, int Count);
+    private record TypeSummaryRow(int PayItemTypeId, string NameTh, string NameEn, PayItemCategory Category, decimal TotalAmount, int Count);
 
     private class CreateForm
     {
@@ -129,12 +240,45 @@
         public string Reason { get; set; } = "";
     }
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    // "ALL" is a sentinel route value (not a real "yyyyMM" period) meaning
+    // "no period filter, show everything" — chosen so bare /pay/adhoc keeps
+    // its normal, intuitive meaning of "the current period" rather than
+    // silently showing every period ever (the old default, which is what
+    // prompted this redesign: HR wants the current period front-and-center).
+    private bool ViewingAll => string.Equals(Period, "ALL", StringComparison.OrdinalIgnoreCase);
+    private string EffectivePeriod => ViewingAll ? "" : (Period ?? CurrentPeriodCode());
+    private static string CurrentPeriodCode() => DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _periodMonth = ViewingAll ? null : ParsePeriodToDate(EffectivePeriod);
+        await LoadAsync();
+    }
+
+    private static DateTime? ParsePeriodToDate(string period)
+    {
+        if (period.Length == 6 && int.TryParse(period.AsSpan(0, 4), out var year) && int.TryParse(period.AsSpan(4, 2), out var month) && month is >= 1 and <= 12)
+            return new DateTime(year, month, 1);
+        return DateTime.Today;
+    }
+
+    private void OnPeriodMonthChangedAsync(DateTime? date) => Nav.NavigateTo($"/pay/adhoc/{(date ?? DateTime.Today):yyyyMM}");
+
+    private void ToggleCreateForm()
+    {
+        _showCreate = !_showCreate;
+        if (_showCreate)
+        {
+            _form = new CreateForm { TargetMonth = _periodMonth ?? DateTime.Today };
+            _error = null;
+        }
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
         var companyId = await GetCurrentCompanyIdAsync();
+        var effectivePeriod = EffectivePeriod;
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _payItemTypes = await context.Pay_PayItemTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
@@ -143,14 +287,44 @@
             .Include(a => a.Pay_PayItemType)
             .Where(a => a.Hremployee.companyid == companyId)
             .AsQueryable();
-        if (!string.IsNullOrWhiteSpace(Period))
-            query = query.Where(a => a.TargetPeriod == Period);
+        if (!ViewingAll)
+            query = query.Where(a => a.TargetPeriod == effectivePeriod);
         _items = await query
             .OrderByDescending(a => a.RequestedDate)
-            .Take(200)
+            .Take(500)
             .ToListAsync();
+
+        var active = _items.Where(i => i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).ToList();
+        _byEmployee = active
+            .GroupBy(i => i.HremployeeId)
+            .Select(g => new EmployeeSummaryRow(
+                g.Key,
+                g.First().Hremployee.EmpNo,
+                $"{g.First().Hremployee.EmpName} {g.First().Hremployee.EmpSurname}",
+                g.Where(i => i.Pay_PayItemType.Category == PayItemCategory.Earning).Sum(i => i.Amount),
+                g.Where(i => i.Pay_PayItemType.Category == PayItemCategory.Deduction).Sum(i => i.Amount),
+                g.Count()))
+            .OrderBy(r => r.EmpNo)
+            .ToList();
+        _byType = active
+            .GroupBy(i => i.PayItemTypeId)
+            .Select(g => new TypeSummaryRow(
+                g.Key,
+                g.First().Pay_PayItemType.NameTh,
+                g.First().Pay_PayItemType.NameEn,
+                g.First().Pay_PayItemType.Category,
+                g.Sum(i => i.Amount),
+                g.Count()))
+            .OrderByDescending(r => r.TotalAmount)
+            .ToList();
+
         _loading = false;
     }
+
+    private decimal TotalEarning => _items.Where(i => i.Pay_PayItemType.Category == PayItemCategory.Earning && i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount);
+    private decimal TotalDeduction => _items.Where(i => i.Pay_PayItemType.Category == PayItemCategory.Deduction && i.Status != PayAdhocItemStatus.Rejected && i.Status != PayAdhocItemStatus.Cancelled).Sum(i => i.Amount);
+    private int PendingCount => _items.Count(i => i.Status == PayAdhocItemStatus.Pending);
+    private int ApprovedCount => _items.Count(i => i.Status is PayAdhocItemStatus.Approved or PayAdhocItemStatus.Consumed);
 
     private async Task<long> GetCurrentUserIdAsync()
     {
@@ -196,7 +370,7 @@
         // InvariantCulture: the server's ambient culture is Thai, whose default
         // calendar formats "yyyy" as the Buddhist year (e.g. 2569, not 2026) —
         // TargetPeriod must stay Gregorian to match Pay_PayrollRun.PayrollPeriod.
-        var targetPeriod = _form.TargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+        var targetPeriod = _form.TargetMonth.Value.ToString("yyyyMM", CultureInfo.InvariantCulture);
 
         var companyId = await GetCurrentCompanyIdAsync();
         if (_form.SelectedEmployee.companyid != companyId)
@@ -206,6 +380,26 @@
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
+
+        // AI-assisted anomaly check (same IidSpikeEstimator approach as
+        // PayrollRunDetail.razor's payroll-run spike detection): compare this
+        // amount against this employee's own history for the same pay item
+        // type. Non-blocking — flags for review, never refuses the save —
+        // because HR is the one who decided this amount is correct; the
+        // system is just pointing out something worth a second look.
+        var historyAmounts = await context.Pay_AdhocPayItems
+            .Where(a => a.HremployeeId == _form.SelectedEmployee.id
+                     && a.PayItemTypeId == _form.PayItemTypeId
+                     && a.Status != PayAdhocItemStatus.Rejected && a.Status != PayAdhocItemStatus.Cancelled)
+            .OrderBy(a => a.TargetPeriod)
+            .Select(a => (float)a.Amount)
+            .ToListAsync();
+        historyAmounts.Add((float)_form.Amount);
+        var spike = PayrollSpikeDetector.DetectLastPointSpike(historyAmounts);
+        var isAnomalyFlagged = spike is { IsSpike: true };
+        var anomalyNote = isAnomalyFlagged
+            ? string.Format(L.Translate("AdhocAnomalyNoteTemplate"), _form.Amount, historyAmounts.Count - 1, spike!.Score)
+            : null;
 
         var actorUserId = await GetCurrentUserIdAsync();
         context.Pay_AdhocPayItems.Add(new Pay_AdhocPayItem
@@ -218,12 +412,14 @@
             Reason = _form.Reason,
             Status = PayAdhocItemStatus.Pending,
             RequestedByUserId = actorUserId,
+            IsAmountAnomalyFlagged = isAnomalyFlagged,
+            AnomalyNote = anomalyNote,
         });
         await context.SaveChangesAsync();
 
         _form = new CreateForm();
         _showCreate = false;
-        Snackbar.Add(L.Translate("AdhocSubmitSuccess"), Severity.Success);
+        Snackbar.Add(isAnomalyFlagged ? L.Translate("AdhocAnomalyWarningSnackbar") : L.Translate("AdhocSubmitSuccess"), isAnomalyFlagged ? Severity.Warning : Severity.Success);
         await LoadAsync();
     }
 

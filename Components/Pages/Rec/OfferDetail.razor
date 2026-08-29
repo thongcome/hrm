@@ -24,7 +24,13 @@ else
 {
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">ข้อเสนอจ้างงาน #@_offer.Id — @_candidateName</MudText>
-        <MudButton Variant="Variant.Text" Href="/rec/offers" Class="mb-2">กลับ</MudButton>
+        <MudStack Row="true" Spacing="2" Class="mb-2">
+            <MudButton Variant="Variant.Text" Href="/rec/offers">กลับ</MudButton>
+            @if (_candidateId > 0)
+            {
+                <MudButton Variant="Variant.Text" Href="@($"/rec/candidates/{_candidateId}")">ดูโปรไฟล์ผู้สมัคร (Candidate)</MudButton>
+            }
+        </MudStack>
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -78,6 +84,7 @@ else
     [Parameter] public long Id { get; set; }
 
     private Rec_Offer? _offer;
+    private long _candidateId;
     private string _candidateName = "";
     private string _candidateEmail = "";
     private long _actorUserId;
@@ -108,6 +115,7 @@ else
             var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.Id == app.CandidateId);
             if (candidate is not null)
             {
+                _candidateId = candidate.Id;
                 _candidateName = $"{candidate.FirstName} {candidate.LastName}";
                 _candidateEmail = candidate.Email;
             }

@@ -164,31 +164,36 @@ public class PayrollCalculationService
             var seq = 0;
 
             var baseSalary = Math.Round((emp.SalaryAmt ?? 0m) * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
-            lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id));
+            lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
+                $"ฐานเงินเดือน {(emp.SalaryAmt ?? 0m):N2} × สัดส่วนวันทำงาน {proration.ActualWorkingDays}/{proration.WorkingDaysInPeriod} วัน ({proration.ProrationFactor:P2}) = {baseSalary:N2}"));
 
             var otRecords = await _overtimeCalculator.GetOvertimeForPeriodAsync(emp.companyid, emp.EmpNo, run.PeriodStart, run.PeriodEnd, ct);
             var otAmount = OvertimeEarningsCalculator.SumAmount(otRecords);
             if (otAmount != 0)
-                lineItems.Add(NewLine(payItemTypes["OT"], PayLineSourceType.Overtime, otAmount, 1, ++seq, "HRW_OT", null));
+                lineItems.Add(NewLine(payItemTypes["OT"], PayLineSourceType.Overtime, otAmount, 1, ++seq, "HRW_OT", null,
+                    $"รวมค่าล่วงเวลาจากรายการที่บันทึกไว้ {otRecords.Count} รายการในงวดนี้ = {otAmount:N2}"));
 
             var grossEarnings = baseSalary + otAmount;
 
             var ssoAmount = SocialSecurityCalculator.Calculate(grossEarnings, ssoRate, ssoCap);
             if (ssoAmount != 0)
-                lineItems.Add(NewLine(payItemTypes["SSO"], PayLineSourceType.SocialSecurity, ssoAmount, -1, ++seq, null, null));
+                lineItems.Add(NewLine(payItemTypes["SSO"], PayLineSourceType.SocialSecurity, ssoAmount, -1, ++seq, null, null,
+                    $"{ssoRate:0.##}% ของค่าจ้างที่คำนวณได้ {grossEarnings:N2} (เพดานฐานคำนวณ {ssoCap:N2}) = {ssoAmount:N2}"));
 
             var election = pfElections.FirstOrDefault(pe => pe.HremployeeId == emp.id);
             var pfEmployeeRate = election?.EmployeeContributionRate ?? emp.ProvfEmprate ?? 0m;
             var pfCompanyRate = election?.CompanyContributionRate ?? emp.ProvfCorprate ?? 0m;
             var pf = ProvidentFundCalculator.Calculate(grossEarnings, pfEmployeeRate, pfCompanyRate);
             if (pf.EmployeeAmount != 0)
-                lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, "Pay_ProvidentFundElection", election?.Id));
+                lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, "Pay_ProvidentFundElection", election?.Id,
+                    $"อัตราสะสมพนักงาน {pfEmployeeRate:0.##}% × เงินได้ {grossEarnings:N2} = {pf.EmployeeAmount:N2} (บริษัทสมทบ {pfCompanyRate:0.##}% = {pf.CompanyAmount:N2})"));
 
             var empInsuranceEnrollments = insuranceEnrollments.Where(e => e.HremployeeId == emp.id).ToList();
             var insuranceEmployeeAmount = empInsuranceEnrollments.Sum(e => e.EmployeeAmount);
             var insuranceCompanyAmount = empInsuranceEnrollments.Sum(e => e.CompanyAmount);
             if (insuranceEmployeeAmount != 0)
-                lineItems.Add(NewLine(payItemTypes["INSURANCE"], PayLineSourceType.Insurance, insuranceEmployeeAmount, -1, ++seq, "Pay_EmployeeInsuranceEnrollment", null));
+                lineItems.Add(NewLine(payItemTypes["INSURANCE"], PayLineSourceType.Insurance, insuranceEmployeeAmount, -1, ++seq, "Pay_EmployeeInsuranceEnrollment", null,
+                    $"รวมเบี้ยประกันกลุ่มที่พนักงานสมทบจาก {empInsuranceEnrollments.Count} กรมธรรม์ = {insuranceEmployeeAmount:N2} (บริษัทสมทบ {insuranceCompanyAmount:N2})"));
 
             var welfareFundEmployeeAmount = 0m;
             var welfareFundCompanyAmount = 0m;
@@ -201,7 +206,8 @@ public class PayrollCalculationService
                 welfareFundEmployeeAmount = wf.EmployeeAmount;
                 welfareFundCompanyAmount = wf.CompanyAmount;
                 if (welfareFundEmployeeAmount != 0)
-                    lineItems.Add(NewLine(payItemTypes["WELFAREFUND"], PayLineSourceType.WelfareFund, welfareFundEmployeeAmount, -1, ++seq, "Pay_WelfareFundPolicy", welfareFundPolicy.Id));
+                    lineItems.Add(NewLine(payItemTypes["WELFAREFUND"], PayLineSourceType.WelfareFund, welfareFundEmployeeAmount, -1, ++seq, "Pay_WelfareFundPolicy", welfareFundPolicy.Id,
+                        $"อัตราสะสมพนักงาน {welfareFundPolicy.EmployeeContributionRate:0.##}% ของเงินได้ {grossEarnings:N2} (เพดาน {welfareFundPolicy.WageCapPerMonth?.ToString("N2") ?? "ไม่กำหนด"}) = {welfareFundEmployeeAmount:N2}"));
             }
 
             var loanAmount = 0m;
@@ -210,7 +216,8 @@ public class PayrollCalculationService
                 var loanDetails = await _loanCalculator.GetLoanDeductionsForPeriodAsync(emp.companyid, emp.RefMembno, run.PayrollPeriod, ct);
                 loanAmount = LoanDeductionCalculator.SumAmount(loanDetails);
                 if (loanAmount != 0)
-                    lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, loanAmount, -1, ++seq, "KPTEMPRECEIVEDET", null));
+                    lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, loanAmount, -1, ++seq, "KPTEMPRECEIVEDET", null,
+                        $"หักเงินกู้สหกรณ์ตามรายการที่บันทึกไว้ (KPTEMPRECEIVEDET) ในงวดนี้ = {loanAmount:N2}"));
             }
 
             // HR-entered company loans (Pay_EmployeeLoan) — separate pathway
@@ -219,7 +226,8 @@ public class PayrollCalculationService
             var empLoanInstallments = await LoanDeductionCalculator.GetEmployeeLoanInstallmentsForPeriodAsync(context, emp.id, run.PayrollPeriod, run.Id, ct);
             foreach (var installment in empLoanInstallments)
             {
-                lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, installment.Amount, -1, ++seq, "Pay_EmployeeLoanInstallment", installment.Id));
+                lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, installment.Amount, -1, ++seq, "Pay_EmployeeLoanInstallment", installment.Id,
+                    $"งวดผ่อนที่ {installment.InstallmentNo}/{installment.Pay_EmployeeLoan.TotalInstallments} ของเงินกู้ = {installment.Amount:N2} (คงเหลือหลังหัก {installment.BalanceAfter:N2})"));
                 installment.Status = Pay_LoanInstallmentStatus.Consumed;
                 installment.ConsumedByPayrollRunId = run.Id;
                 installment.Pay_EmployeeLoan.RemainingBalance = installment.BalanceAfter;
@@ -246,7 +254,8 @@ public class PayrollCalculationService
             foreach (var adhoc in adhocItems)
             {
                 var signFlag = adhoc.Pay_PayItemType.DefaultSignFlag;
-                lineItems.Add(NewLine(adhoc.Pay_PayItemType, PayLineSourceType.Adjustment, adhoc.Amount, signFlag, ++seq, "Pay_AdhocPayItem", adhoc.Id));
+                lineItems.Add(NewLine(adhoc.Pay_PayItemType, PayLineSourceType.Adjustment, adhoc.Amount, signFlag, ++seq, "Pay_AdhocPayItem", adhoc.Id,
+                    $"รายการเฉพาะกิจที่ HR อนุมัติ: {adhoc.Reason}"));
 
                 if (signFlag > 0)
                 {
@@ -269,7 +278,8 @@ public class PayrollCalculationService
             var (monthlyTax, annualCalc) = TaxBracketCalculator.CalculateMonthlyWithholding(
                 ytdIncome, taxableGrossThisPeriod, ytdDeduction, 0m, remainingPeriods, ytdTax, taxBrackets);
             if (monthlyTax != 0)
-                lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null));
+                lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null,
+                    "ภาษีหัก ณ ที่จ่ายประจำเดือน คำนวณจากเงินได้สะสมทั้งปีเทียบตารางอัตราภาษี — ดูรายละเอียดฉบับเต็มในหัวข้อ \"บันทึกการคำนวณภาษี\" ด้านล่าง"));
 
             var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + welfareFundEmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
             var netPayResult = NetPayGuardService.Ensure(grossEarnings - totalDeductions);
@@ -332,7 +342,7 @@ public class PayrollCalculationService
         // here throws, log it and let the calculation stand.
         try
         {
-            await _anomalyDetectionService.DetectAnomaliesAsync(payrollRunId, ct);
+            await _anomalyDetectionService.DetectAnomaliesAsync(payrollRunId, ct: ct);
         }
         catch (Exception ex)
         {
@@ -342,7 +352,7 @@ public class PayrollCalculationService
         return new PayrollRunCalculationSummary(eligibleEmployees.Count, negativeCount, totalNet);
     }
 
-    private static Pay_PayrollLineItem NewLine(Pay_PayItemType itemType, PayLineSourceType sourceType, decimal amount, int signFlag, int seq, string? sourceRefTable, long? sourceRefId)
+    private static Pay_PayrollLineItem NewLine(Pay_PayItemType itemType, PayLineSourceType sourceType, decimal amount, int signFlag, int seq, string? sourceRefTable, long? sourceRefId, string? description = null)
     {
         return new Pay_PayrollLineItem
         {
@@ -353,6 +363,7 @@ public class PayrollCalculationService
             Amount = amount,
             SignFlag = signFlag,
             SeqNo = seq,
+            Description = description,
         };
     }
 
