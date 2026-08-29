@@ -12,6 +12,10 @@ public class Pay_TaxBracket
     [Key]
     public int Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? Code { get; set; }
+
     public int EffectiveYear { get; set; }
 
     public int Step { get; set; }

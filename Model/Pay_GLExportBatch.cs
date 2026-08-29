@@ -13,6 +13,10 @@ public class Pay_GLExportBatch
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? BatchNo { get; set; }
+
     public long PayrollRunId { get; set; }
 
     [Required, StringLength(30)]

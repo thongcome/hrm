@@ -7,6 +7,10 @@ public class Hr_Grievance
 {
     public long Id { get; set; }
 
+    // Stable human-facing case number for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? CaseNo { get; set; }
+
     // Deliberately left null when IsAnonymous is true, even though the submitter is
     // authenticated when they file — the record itself never retains the identity link
     // for anonymous reports, matching how anonymous-reporting channels are expected to work.

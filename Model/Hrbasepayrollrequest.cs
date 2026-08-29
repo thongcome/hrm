@@ -15,7 +15,11 @@ namespace HRM.Models
         [Column("ID")]
         public long id { get; set; }
 
-       
+        // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+        [StringLength(30)]
+        public string? RequestNo { get; set; }
+
+
         [Column("CompCode")]
         [StringLength(50)]
         

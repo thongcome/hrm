@@ -12,8 +12,13 @@ public partial class pdpa_objective
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public long id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(20)]
+
+    public string? code { get; set; }
+
     [StringLength(250)]
-    
+
     public string? name { get; set; }
 
     [StringLength(250)]

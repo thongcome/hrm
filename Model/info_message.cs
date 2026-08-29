@@ -12,6 +12,10 @@ public class info_message
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(20)]
+    public string? code { get; set; }
+
     [StringLength(200)]
     public string? subject { get; set; }
 

@@ -20,6 +20,10 @@ public class Pay_EmployeeLoan
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? LoanNo { get; set; }
+
     public long HremployeeId { get; set; }
 
     [StringLength(6)]

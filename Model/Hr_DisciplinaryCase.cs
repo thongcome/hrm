@@ -10,6 +10,10 @@ public class Hr_DisciplinaryCase
 {
     public long Id { get; set; }
 
+    // Stable human-facing case number for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? CaseNo { get; set; }
+
     public long HremployeeId { get; set; }
     [StringLength(6)]
     public string? EmpNo { get; set; }

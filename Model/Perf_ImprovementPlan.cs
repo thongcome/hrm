@@ -17,6 +17,10 @@ public class Perf_ImprovementPlan
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? PlanCode { get; set; }
+
     // Soft link to Hremployee.id — same convention as Perf_EvaluationInstance
     // (no DB FK, avoids a second cascade path).
     public long HremployeeId { get; set; }

@@ -14,6 +14,10 @@ public class Eng_SurveyCampaign
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? Code { get; set; }
+
     [Required, StringLength(6)]
     public string CompanyId { get; set; } = null!;
 

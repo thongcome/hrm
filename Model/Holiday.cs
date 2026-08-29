@@ -12,8 +12,12 @@ public partial class Holiday
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public long id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? HolCode { get; set; }
+
     [StringLength(250)]
-    
+
     public string Name { get; set; } = null!;
 
     public int hol_month { get; set; }

@@ -12,8 +12,13 @@ public partial class stoa
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public int stoaid { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(20)]
+
+    public string? stoa_code { get; set; }
+
     [StringLength(125)]
-    
+
     public string? comcode { get; set; }
 
     [StringLength(250)]

@@ -12,6 +12,11 @@ public partial class pc_vd_Clarify
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public long id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(20)]
+
+    public string? clarify_no { get; set; }
+
     public long rfqid { get; set; }
 
     public long vendorid { get; set; }

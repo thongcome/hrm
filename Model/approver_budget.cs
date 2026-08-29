@@ -12,8 +12,13 @@ public partial class approver_budget
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public long budgetid { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(20)]
+
+    public string? budgetcode { get; set; }
+
     [StringLength(50)]
-    
+
     public string approvelevel { get; set; } = null!;
 
     [Column(TypeName = "decimal(18, 4)")]

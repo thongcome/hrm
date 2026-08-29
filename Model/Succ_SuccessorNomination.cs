@@ -20,6 +20,10 @@ public class Succ_SuccessorNomination
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? NominationCode { get; set; }
+
     public long KeyPositionId { get; set; }
     public long HremployeeId { get; set; }
 

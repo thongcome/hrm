@@ -20,6 +20,10 @@ public class Org_OrganizationChangeRequest
     [Key]
     public long Id { get; set; }
 
+    // Stable human-facing code for this record (audit: every master/document table needs one beyond the surrogate Id).
+    [StringLength(30)]
+    public string? RequestNo { get; set; }
+
     public OrgOrganizationChangeType ChangeType { get; set; }
 
     // Existing org being changed — null for NewOrganization (row doesn't exist yet).
