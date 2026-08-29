@@ -1,23 +1,43 @@
 @page "/leave-requests"
+@using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Ess
 @using HRM.Services.Leave
+@using HRM.Services.Pay
 @using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
 @inject LeaveBalanceService LeaveBalanceSvc
+@inject LeaveRequestService LeaveRequestSvc
+@inject PrivateFileStorage FileStorage
 @inject AuthenticationStateProvider AuthProvider
-@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@attribute [Authorize(Policy = "Menu:LEAVE_ACCESS")]
 
 <PageTitle>คำขอลางาน</PageTitle>
 
+@if (!_isInitialized)
+{
+    <MudPaper Class="pa-4 mb-4"><MudProgressCircular Indeterminate="true" Size="Size.Small" /></MudPaper>
+}
+else if (!_isAdmin && _selectedEmployee is null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับข้อมูลพนักงาน — ติดต่อแอดมิน</MudAlert>
+    </MudPaper>
+}
+else
+{
 <MudPaper Class="pa-4 mb-4">
     <MudText Typo="Typo.h5">คำขอลางาน</MudText>
     <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
-        ยื่นคำขอลา → หัวหน้าอนุมัติตามผังองค์กร → ฝ่ายบุคคลอนุมัติ — วิ่งผ่าน Workflow Approval Engine เดียวกับคำขอ OT (MVP รอบนี้ยังไม่คำนวณยอดวันลาคงเหลือ/ไม่กระทบเงินเดือนอัตโนมัติ)
+        @(_isAdmin
+            ? "ยื่นคำขอลาแทนพนักงาน → หัวหน้าอนุมัติตามผังองค์กร → ฝ่ายบุคคลอนุมัติ — วิ่งผ่าน Workflow Approval Engine เดียวกับคำขอ OT"
+            : "ยื่นคำขอลาของคุณเอง → หัวหน้าอนุมัติตามผังองค์กร → ฝ่ายบุคคลอนุมัติ")
     </MudText>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -32,7 +52,10 @@
     <MudTable Items="_requests" Dense="true" Hover="true">
         <HeaderContent>
             <MudTh>#</MudTh>
-            <MudTh>พนักงาน</MudTh>
+            @if (_isAdmin)
+            {
+                <MudTh>พนักงาน</MudTh>
+            }
             <MudTh>ประเภทการลา</MudTh>
             <MudTh>วันที่ลา</MudTh>
             <MudTh>จำนวนวัน</MudTh>
@@ -41,8 +64,11 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.Request.Id</MudTd>
-            <MudTd>@context.EmployeeName</MudTd>
-            <MudTd>@LeaveTypeLabel(context.Request.LeaveType)</MudTd>
+            @if (_isAdmin)
+            {
+                <MudTd>@context.EmployeeName</MudTd>
+            }
+            <MudTd>@LeaveRequestService.LeaveTypeLabel(context.Request.LeaveType)@(context.Request.IsHalfDay ? " (ครึ่งวัน)" : "")</MudTd>
             <MudTd>@context.Request.StartDate.ToString("dd/MM/yyyy") - @context.Request.EndDate.ToString("dd/MM/yyyy")</MudTd>
             <MudTd>@context.Request.TotalDays.ToString("0.#")</MudTd>
             <MudTd>
@@ -75,8 +101,15 @@
     <MudText Typo="Typo.h6">ยื่นคำขอลาใหม่</MudText>
     <MudGrid Class="mt-1">
         <MudItem xs="12" sm="6">
-            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync"
-                SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" />
+            @if (_isAdmin)
+            {
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync"
+                    SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" />
+            }
+            else
+            {
+                <MudTextField T="string" Label="พนักงาน" Value="@($"{_selectedEmployee!.EmpNo} - {_selectedEmployee.EmpName} {_selectedEmployee.EmpSurname}")" ReadOnly="true" />
+            }
         </MudItem>
         <MudItem xs="12" sm="6">
             <MudSelect T="LeaveType" @bind-Value="_leaveType" @bind-Value:after="RecomputeBalanceAsync" Label="ประเภทการลา">
@@ -97,23 +130,54 @@
                 @if (_remainingBalance is decimal remaining)
                 {
                     <MudAlert Severity="@(remaining > 0 ? Severity.Info : Severity.Warning)" Dense="true">
-                        สิทธิ@(LeaveTypeLabel(_leaveType))คงเหลือปีนี้: @remaining.ToString("0.#") วัน
+                        สิทธิ@(LeaveRequestService.LeaveTypeLabel(_leaveType))คงเหลือปีนี้: @remaining.ToString("0.#") วัน
+                        @if (_carriedOverDays is decimal carried && carried > 0)
+                        {
+                            <text> (รวมทบจากปีก่อน @carried.ToString("0.#") วัน)</text>
+                        }
                     </MudAlert>
                 }
                 else
                 {
-                    <MudAlert Severity="Severity.Warning" Dense="true">ยังไม่ได้ตั้งค่าสิทธิ@(LeaveTypeLabel(_leaveType))สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink></MudAlert>
+                    <MudAlert Severity="Severity.Warning" Dense="true">ยังไม่ได้ตั้งค่าสิทธิ@(LeaveRequestService.LeaveTypeLabel(_leaveType))สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink></MudAlert>
                 }
             </MudItem>
         }
         <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มลา" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" Disabled="_isHalfDay" /></MudItem>
+        @if (_startDate is not null && _endDate is not null && _startDate.Value.Date == _endDate.Value.Date)
+        {
+            <MudItem xs="12" sm="@(_isHalfDay ? 6 : 12)">
+                <MudCheckBox T="bool" @bind-Value="_isHalfDay" Label="ลาครึ่งวัน" />
+            </MudItem>
+            @if (_isHalfDay)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="HalfDayPeriod" @bind-Value="_halfDayPeriod" Label="ช่วงเวลา">
+                        <MudSelectItem T="HalfDayPeriod" Value="HalfDayPeriod.Morning">ช่วงเช้า</MudSelectItem>
+                        <MudSelectItem T="HalfDayPeriod" Value="HalfDayPeriod.Afternoon">ช่วงบ่าย</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            }
+        }
         <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล" Lines="2" /></MudItem>
+        @if (_leaveType == LeaveType.Sick)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.body2" Class="mb-1">แนบใบรับรองแพทย์ (ไม่บังคับ)</MudText>
+                <InputFile OnChange="OnMedCertSelectedAsync" />
+                @if (_pendingMedCertName is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Success">เลือกไฟล์แล้ว: @_pendingMedCertName</MudText>
+                }
+            </MudItem>
+        }
         <MudItem xs="12">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateRequestAsync">บันทึกคำขอ (ร่าง)</MudButton>
         </MudItem>
     </MudGrid>
 </MudPaper>
+}
 
 @code {
     private record RequestRow(Lve_LeaveRequest Request, string EmployeeName, string JobStatus);
@@ -123,27 +187,55 @@
     private string? _info;
 
     private long _actorUserId;
+    private bool _isAdmin;
 
     private Hremployee? _selectedEmployee;
     private string? _selectedEmployeeCountryCode;
     private LeaveType _leaveType = LeaveType.Sick;
     private DateTime? _startDate = DateTime.Today;
     private DateTime? _endDate = DateTime.Today;
+    private bool _isHalfDay;
+    private HalfDayPeriod _halfDayPeriod = HalfDayPeriod.Morning;
     private string? _reason;
     private decimal? _remainingBalance;
+    private decimal? _carriedOverDays;
+
+    private IBrowserFile? _pendingMedCertFile;
+    private string? _pendingMedCertName;
+
+    // Blazor Server renders once immediately if OnInitializedAsync doesn't
+    // complete synchronously (it never does here — the first await always
+    // yields), using field defaults at that point. Without this flag, that
+    // transient render sees _isAdmin=false/_selectedEmployee=null (both
+    // defaults) and would otherwise hit the non-admin form branch before
+    // _selectedEmployee is actually resolved, dereferencing null.
+    private bool _isInitialized;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
+
+        if (!_isAdmin)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var self = await EssEmployeeResolver.ResolveAsync(context, state.User);
+            if (self is not null)
+                await OnEmployeeChangedAsync(self);
+        }
 
         await RefreshAsync();
+        _isInitialized = true;
     }
 
     private async Task RefreshAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var requests = await context.Lve_LeaveRequests.OrderByDescending(r => r.Id).ToListAsync();
+        var query = context.Lve_LeaveRequests.AsQueryable();
+        if (!_isAdmin && _selectedEmployee is not null)
+            query = query.Where(r => r.HremployeeId == _selectedEmployee.id);
+        var requests = await query.OrderByDescending(r => r.Id).ToListAsync();
 
         var empIds = requests.Select(r => r.HremployeeId).Distinct().ToList();
         var employees = await context.Hremployee.Where(e => empIds.Contains(e.id))
@@ -158,16 +250,6 @@
             employees.TryGetValue(r.HremployeeId, out var name) ? name : r.EmpNo,
             r.JobMasterId is not null && jobStatuses.TryGetValue(r.JobMasterId.Value, out var s) ? s : "-")).ToList();
     }
-
-    private static string LeaveTypeLabel(LeaveType type) => type switch
-    {
-        LeaveType.Sick => "ลาป่วย",
-        LeaveType.Personal => "ลากิจ",
-        LeaveType.Vacation => "ลาพักร้อน",
-        LeaveType.Maternity => "ลาคลอด",
-        LeaveType.Ordination => "ลาบวช",
-        _ => "อื่นๆ",
-    };
 
     private static Color StatusColor(string status) => status switch
     {
@@ -204,11 +286,13 @@
         if (_selectedEmployee is null)
         {
             _remainingBalance = null;
+            _carriedOverDays = null;
             return;
         }
 
         var balances = await LeaveBalanceSvc.GetBalancesAsync(_selectedEmployee.id, _selectedEmployee.companyid, _leaveType);
         _remainingBalance = balances.Count > 0 ? balances[0].RemainingDays : (decimal?)null;
+        _carriedOverDays = balances.Count > 0 ? balances[0].CarriedOverDays : (decimal?)null;
     }
 
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
@@ -218,6 +302,12 @@
         if (!string.IsNullOrWhiteSpace(term))
             query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
         return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private void OnMedCertSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _pendingMedCertFile = e.File;
+        _pendingMedCertName = e.File.Name;
     }
 
     private async Task CreateRequestAsync()
@@ -230,33 +320,52 @@
             return;
         }
 
-        var start = DateOnly.FromDateTime(_startDate.Value);
-        var end = DateOnly.FromDateTime(_endDate.Value);
-        if (end < start)
+        // Defense in depth — the UI already locks non-admins to themselves,
+        // but never trust that alone for a write.
+        if (!_isAdmin)
         {
-            _error = "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มลา";
-            return;
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            await using var checkContext = await DbFactory.CreateDbContextAsync();
+            var self = await EssEmployeeResolver.ResolveAsync(checkContext, state.User);
+            if (self is null || self.id != _selectedEmployee.id)
+            {
+                _error = "ยื่นคำขอลาได้เฉพาะของตัวเองเท่านั้น";
+                return;
+            }
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-        context.Lve_LeaveRequests.Add(new Lve_LeaveRequest
+        try
         {
-            HremployeeId = _selectedEmployee.id,
-            EmpNo = _selectedEmployee.EmpNo,
-            CompanyId = _selectedEmployee.companyid,
-            LeaveType = _leaveType,
-            StartDate = start,
-            EndDate = end,
-            TotalDays = await CalculateWorkingDaysAsync(context, _selectedEmployee.companyid, start, end),
-            Reason = _reason,
-        });
-        await context.SaveChangesAsync();
+            var start = DateOnly.FromDateTime(_startDate.Value);
+            var end = DateOnly.FromDateTime(_endDate.Value);
+            var requestId = await LeaveRequestSvc.CreateDraftAsync(_selectedEmployee.id, _leaveType, start, end,
+                _isHalfDay, _isHalfDay ? _halfDayPeriod : null, _reason);
 
-        _info = "บันทึกคำขอลาสำเร็จ (ยังเป็นร่าง กด \"ส่งขออนุมัติ\" เพื่อเข้าสู่ workflow)";
-        _selectedEmployee = null;
-        _reason = null;
-        _remainingBalance = null;
-        await RefreshAsync();
+            if (_pendingMedCertFile is not null)
+            {
+                const long maxSize = 10 * 1024 * 1024;
+                await using var stream = _pendingMedCertFile.OpenReadStream(maxSize);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var storedFileName = $"{requestId}_{Guid.NewGuid():N}_{_pendingMedCertFile.Name}";
+                var (relativePath, _) = await FileStorage.SaveAsync("leave-medcerts", storedFileName, ms.ToArray());
+                await LeaveRequestSvc.AttachMedCertAsync(requestId, _pendingMedCertFile.Name, relativePath);
+            }
+
+            _info = "บันทึกคำขอลาสำเร็จ (ยังเป็นร่าง กด \"ส่งขออนุมัติ\" เพื่อเข้าสู่ workflow)";
+            var keepEmployee = _isAdmin ? null : _selectedEmployee;
+            _reason = null;
+            _remainingBalance = null;
+            _isHalfDay = false;
+            _pendingMedCertFile = null;
+            _pendingMedCertName = null;
+            await OnEmployeeChangedAsync(keepEmployee);
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
     }
 
     private async Task SubmitAsync(long requestId)
@@ -265,38 +374,15 @@
         _info = null;
         try
         {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == requestId)
-                ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
-            if (request.JobMasterId is not null)
-                throw new InvalidOperationException("คำขอนี้ถูกส่งเข้าสู่กระบวนการอนุมัติไปแล้ว");
-
-            var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == "LEAVE_APPROVAL")
-                ?? throw new InvalidOperationException("ไม่พบ workflow LEAVE_APPROVAL — ตรวจสอบว่า migration ถูก apply แล้ว");
-
-            var subject = $"ขอลา: {request.EmpNo} {LeaveTypeLabel(request.LeaveType)} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}";
-            var jobId = await Engine.StartJobAsync(workflow.workflowid, "Lve_LeaveRequest", requestId.ToString(),
-                _actorUserId, request.EmpNo, subject, null);
-
-            request.JobMasterId = jobId;
-            await context.SaveChangesAsync();
-
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var actorEmpNo = state.User.FindFirstValue("empno");
+            var jobId = await LeaveRequestSvc.SubmitAsync(requestId, _actorUserId, actorEmpNo);
             _info = $"ส่งขออนุมัติสำเร็จ (Job #{jobId})";
             await RefreshAsync();
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             _error = "ส่งขออนุมัติไม่สำเร็จ: " + ex.Message;
         }
-    }
-
-    private static async Task<decimal> CalculateWorkingDaysAsync(HRMContext context, string? companyId, DateOnly start, DateOnly end)
-    {
-        var holidayDates = await context.Lve_CompanyHolidays
-            .Where(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate >= start && h.HolidayDate <= end)
-            .Select(h => h.HolidayDate)
-            .ToListAsync();
-
-        return LeaveDayCalculator.CalculateWorkingDays(start, end, holidayDates.ToHashSet());
     }
 }

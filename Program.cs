@@ -391,6 +391,7 @@ builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
+builder.Services.AddScoped<HRM.Services.Leave.LeaveRequestService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
@@ -585,6 +586,7 @@ app.MapLoginEndpoints();
 app.MapForgotPasswordEndpoints();
 app.MapEssFileEndpoints();
 app.MapExpenseFileEndpoints();
+app.MapLeaveFileEndpoints();
 app.MapWorkflowFileEndpoints();
 app.MapInfoMessageFileEndpoints();
 app.MapHrFileEndpoints();

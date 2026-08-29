@@ -1,10 +1,16 @@
 @page "/leave-requests/detail/{Id:long}"
 @using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Leave
+@using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
-@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+@inject AuthenticationStateProvider AuthProvider
+@inject LeaveRequestService LeaveRequestSvc
+@attribute [Authorize(Policy = "Menu:LEAVE_ACCESS")]
 
 <PageTitle>รายละเอียดคำขอลางาน</PageTitle>
 
@@ -19,7 +25,7 @@
 
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6"><MudTextField Value="@_employeeName" Label="พนักงานผู้ขอ" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField Value="@LeaveTypeLabel(_request.LeaveType)" Label="ประเภทการลา" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@(LeaveRequestService.LeaveTypeLabel(_request.LeaveType) + (_request.IsHalfDay ? " (ครึ่งวัน)" : ""))" Label="ประเภทการลา" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.RequestedDate.ToString("dd/MM/yyyy HH:mm")" Label="วันที่ยื่นคำขอ" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.StartDate.ToString("dd/MM/yyyy")" Label="เริ่มลา" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.EndDate.ToString("dd/MM/yyyy")" Label="สิ้นสุดลา" ReadOnly="true" /></MudItem>
@@ -27,6 +33,13 @@
             @if (!string.IsNullOrWhiteSpace(_request.Reason))
             {
                 <MudItem xs="12"><MudTextField Value="@_request.Reason" Label="เหตุผล" ReadOnly="true" Lines="2" /></MudItem>
+            }
+            @if (_request.MedCertDocCenterId is not null)
+            {
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile"
+                        Href="@($"/leave-requests/files/medcert/{_request.MedCertDocCenterId}")" Target="_blank">ดาวน์โหลดใบรับรองแพทย์</MudButton>
+                </MudItem>
             }
         </MudGrid>
 
@@ -55,10 +68,28 @@
                     <MudTd>@context.comment</MudTd>
                 </RowTemplate>
             </MudTable>
+
+            @if (_isAdmin && !_isPaidLeaveType && _request.AdhocPayItemId is null && _job.isJobClosed == true && _job.status == WorkflowEngineService.StatusCompleted)
+            {
+                <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Warning" OnClick="PushToPayrollAsync">ผลักเข้าระบบเงินเดือน (หักเงินลาไม่รับค่าจ้าง)</MudButton>
+            }
+            @if (_request.AdhocPayItemId is not null)
+            {
+                <MudChip T="string" Class="mt-3" Color="Color.Success">ผลักเข้าระบบเงินเดือนแล้ว (รายการ #@_request.AdhocPayItemId)</MudChip>
+            }
         }
         else
         {
             <MudAlert Severity="Severity.Info">คำขอนี้ยังไม่ถูกส่งเข้าสู่กระบวนการอนุมัติ (ร่าง)</MudAlert>
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
         }
 
         <MudButton Class="mt-4" Variant="Variant.Text" Href="/leave-requests">กลับไปหน้ารายการคำขอลางาน</MudButton>
@@ -72,9 +103,18 @@
     private job_master? _job;
     private string _employeeName = "";
     private bool _notFound;
+    private bool _isAdmin;
+    private bool _isPaidLeaveType = true;
+    private long _actorUserId;
+    private string? _error;
+    private string? _info;
 
     protected override async Task OnInitializedAsync()
     {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
+
         await using var context = await DbFactory.CreateDbContextAsync();
         _request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == Id);
         if (_request is null)
@@ -83,8 +123,22 @@
             return;
         }
 
+        if (!_isAdmin)
+        {
+            var self = await EssEmployeeResolver.ResolveAsync(context, state.User);
+            if (self is null || self.id != _request.HremployeeId)
+            {
+                _notFound = true;
+                _request = null;
+                return;
+            }
+        }
+
         var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _request.HremployeeId);
         _employeeName = emp is null ? _request.EmpNo : $"{emp.EmpName} {emp.EmpSurname} ({emp.EmpNo})";
+
+        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _request.CompanyId && p.LeaveType == _request.LeaveType);
+        _isPaidLeaveType = policy is null || policy.IsPaid;
 
         if (_request.JobMasterId is not null)
         {
@@ -94,13 +148,20 @@
         }
     }
 
-    private static string LeaveTypeLabel(LeaveType type) => type switch
+    private async Task PushToPayrollAsync()
     {
-        LeaveType.Sick => "ลาป่วย",
-        LeaveType.Personal => "ลากิจ",
-        LeaveType.Vacation => "ลาพักร้อน",
-        LeaveType.Maternity => "ลาคลอด",
-        LeaveType.Ordination => "ลาบวช",
-        _ => "อื่นๆ",
-    };
+        _error = null;
+        _info = null;
+        try
+        {
+            var itemId = await LeaveRequestSvc.PushUnpaidToPayrollAsync(Id, _actorUserId);
+            _info = $"ผลักเข้าระบบเงินเดือนสำเร็จ (รายการ #{itemId})";
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
 }

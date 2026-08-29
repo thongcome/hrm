@@ -25,5 +25,17 @@ public class Lve_LeavePolicy
     [Column(TypeName = "decimal(5,1)")]
     public decimal EntitlementDaysPerYear { get; set; }
 
+    // false = this leave type deducts pay — LeaveRequestService.PushUnpaidToPayrollAsync
+    // creates a Pay_AdhocPayItem deduction once a request of this type is approved.
+    public bool IsPaid { get; set; } = true;
+
+    // Whether unused EntitlementDaysPerYear carries into next year — company
+    // + leave-type specific (e.g. vacation carries, personal doesn't).
+    // Capped uses MaxCarryOverDays; only the immediately prior year is
+    // considered (no multi-year chaining). See LeaveBalanceService.
+    public LeaveCarryOverMode CarryOverMode { get; set; } = LeaveCarryOverMode.None;
+    [Column(TypeName = "decimal(5,1)")]
+    public decimal? MaxCarryOverDays { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

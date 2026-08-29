@@ -22,4 +22,10 @@ public class Lve_CompanySetting
     // ISO 3166-1 alpha-2, e.g. "TH", "VN", "MM", "KH", "LA", "SG", "MY", "PH", "ID"
     [StringLength(2)]
     public string? CountryCode { get; set; }
+
+    // Bit flags, 1 << (int)DayOfWeek (Sunday=0 .. Saturday=6) — which days
+    // count as working days for LeaveDayCalculator. Null = default Mon-Fri
+    // (preserves prior hardcoded behavior for every company predating this
+    // field, same fallback convention as CountryCode above).
+    public int? WorkDaysMask { get; set; }
 }
