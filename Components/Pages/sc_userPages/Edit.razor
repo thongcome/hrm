@@ -1,4 +1,6 @@
 ﻿@page "/sc_users/edit"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using HRM.Models
 @inject IDbContextFactory<HRM.Models.HRMContext> DbFactory
@@ -37,11 +39,11 @@ else
                     <InputText id="loginname" @bind-Value="sc_user.loginname" class="form-control" />
                     <ValidationMessage For="() => sc_user.loginname" class="text-danger" />
                 </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">password:</label>
-                    <InputText id="password" @bind-Value="sc_user.password" class="form-control" />
-                    <ValidationMessage For="() => sc_user.password" class="text-danger" />
-                </div>
+                @* password intentionally not editable here — it is a hashed
+                   value (see sc_user.password / IPasswordHasher<sc_user>).
+                   Reset it via a dedicated hashed reset flow (e.g.
+                   PayrollEmployeeAdmin.razor's ResetPassword action), never
+                   as a raw bound field. *@
                 <div class="mb-3">
                     <label for="phone" class="form-label">phone:</label>
                     <InputText id="phone" @bind-Value="sc_user.phone" class="form-control" />
@@ -290,7 +292,12 @@ else
     private async Task Updatesc_user()
     {
         using var context = DbFactory.CreateDbContext();
-        context.Attach(sc_user!).State = EntityState.Modified;
+        var entry = context.Attach(sc_user!);
+        entry.State = EntityState.Modified;
+        // password is not part of this form (it's a hashed value, never
+        // exposed/edited as raw text here) — excluding it from the update
+        // keeps the existing hash in the database untouched.
+        entry.Property(x => x.password).IsModified = false;
 
         try
         {
