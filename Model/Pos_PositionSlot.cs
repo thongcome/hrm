@@ -60,6 +60,13 @@ public class Pos_PositionSlot
     // legacy headcount tree displays explicitly rather than hiding the slot.
     public long? HremployeeId { get; set; }
 
+    // Denormalized snapshot of the occupant's EmpNo — same reasoning as
+    // Name/AbbName above (fast list rendering without a join), kept in sync
+    // by Services/Shared/EmployeePositionSync.cs whenever HremployeeId
+    // changes. Null when the slot is vacant.
+    [StringLength(6)]
+    public string? EmpNo { get; set; }
+
     [StringLength(50)]
     public string? PaymentNo { get; set; }
 

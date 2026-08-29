@@ -86,6 +86,7 @@ public static class EmployeePositionSync
         if (newHremployeeId is long curId)
         {
             var curEmp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == curId, ct);
+            slot.EmpNo = curEmp?.EmpNo;
             if (curEmp is not null)
             {
                 if (slot.IsActive && slot.OrganizationId is long orgId)
@@ -110,6 +111,10 @@ public static class EmployeePositionSync
                     curEmp.orgcodefull = null;
                 }
             }
+        }
+        else
+        {
+            slot.EmpNo = null;
         }
 
         // 4) IsBoss position slots also drive com_organization.boss_name/
