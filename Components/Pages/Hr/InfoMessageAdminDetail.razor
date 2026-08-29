@@ -61,8 +61,17 @@
             <MudStack>
                 <MudCheckBox T="bool" Value="@(_message.isactive ?? true)" ValueChanged="@(v => _message.isactive = v)" Label="ใช้งาน (ปิดเพื่อระงับชั่วคราว)" />
                 <MudCheckBox @bind-Value="_message.IsPinned" Label="ปักหมุดที่หน้า Home" />
+                <MudCheckBox @bind-Value="_message.IsPublicAnonymous" Label="เผยแพร่ก่อน login (สาธารณะ)" Color="Color.Warning" />
             </MudStack>
         </MudItem>
+        @if (_message.IsPublicAnonymous)
+        {
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    ประกาศนี้ (และไฟล์แนบ) จะแสดงให้ใครก็ได้เห็นบนอินเทอร์เน็ต โดยไม่ต้อง login — อย่าใส่ข้อมูลภายในหรือข้อมูลส่วนบุคคล
+                </MudAlert>
+            </MudItem>
+        }
 
         <MudItem xs="12">
             <MudDivider Class="my-2" />

@@ -211,6 +211,7 @@ public class InfoMessageService(IDbContextFactory<HRMContext> dbFactory)
             existing.isactive = entity.isactive;
             existing.PriorityLevel = entity.PriorityLevel;
             existing.IsPinned = entity.IsPinned;
+            existing.IsPublicAnonymous = entity.IsPublicAnonymous;
             existing.CompanyId = entity.CompanyId;
             existing.ModifiedDate = DateTime.Now;
             existing.ModifiedByUserId = actorUserId;
@@ -229,6 +230,28 @@ public class InfoMessageService(IDbContextFactory<HRMContext> dbFactory)
         await context.SaveChangesAsync(ct);
 
         return entity;
+    }
+
+    // For the anonymous "/" home page — no employee/company context to
+    // resolve, so this bypasses GetVisibleAnnouncementsAsync's targeting
+    // entirely and looks only at the explicit IsPublicAnonymous opt-in.
+    // Pooled across all companies (this app has no anonymous-visitor
+    // company-routing concept yet); fine while there's effectively one
+    // company in practice, but if multiple companies each start using this
+    // flag, revisit scoping this per-tenant.
+    public async Task<List<info_message>> GetPublicAnonymousAnnouncementsAsync(CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return await context.info_messages
+            .Where(m => m.IsPublicAnonymous
+                && m.isactive == true
+                && (m.startdate == null || m.startdate <= today)
+                && (m.enddate == null || m.enddate >= today))
+            .OrderByDescending(m => m.IsPinned)
+            .ThenByDescending(m => m.PriorityLevel)
+            .ThenByDescending(m => m.startdate)
+            .ToListAsync(ct);
     }
 
     public async Task<List<info_message>> GetAllForAdminAsync(string companyId, CancellationToken ct = default)

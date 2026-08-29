@@ -1,11 +1,55 @@
 ﻿
+@using HRM.Models
+@using HRM.Services.Hr
 @inject UserService UserService
 @inject AuthenticationStateProvider AuthenticationStateProvider
-
-<h3>Welcome to the New Life</h3>
-
+@inject InfoMessageService InfoService
 
 <PageTitle>Home</PageTitle>
+
+@if (!isAuthenticated)
+{
+    <div style="max-width:700px;margin:24px auto;padding:0 16px;">
+        <h3 style="text-align:center;">ประกาศ</h3>
+        @if (!_loadedPublic)
+        {
+            <p style="text-align:center;opacity:.7;">กำลังโหลด...</p>
+        }
+        else if (_publicAnnouncements.Count == 0)
+        {
+            <p style="text-align:center;opacity:.7;">ยังไม่มีประกาศ</p>
+        }
+        else
+        {
+            @foreach (var m in _publicAnnouncements)
+            {
+                <div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-bottom:12px;">
+                    <div style="font-weight:600;">@m.subject</div>
+                    @if (m.startdate is not null)
+                    {
+                        <div style="font-size:.85rem;opacity:.6;">@m.startdate?.ToString("dd/MM/yyyy")</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(m.message))
+                    {
+                        <div style="white-space:pre-wrap;margin-top:8px;">@m.message</div>
+                    }
+                    @if (_attachmentsByMessage.TryGetValue(m.Id, out var files) && files.Count > 0)
+                    {
+                        <div style="margin-top:8px;">
+                            @foreach (var f in files)
+                            {
+                                <div><a href="@($"/public/announcement-files/{f.id}")" target="_blank">@f.files</a></div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+    return;
+}
+
+<h3>Welcome to the New Life</h3>
 
 <div class="alert alert-info" style="max-width:500px;margin:10px auto;text-align:center;">
     <strong>Test Login (โมดูลเงินเดือนใหม่ /pay/runs):</strong><br />
@@ -171,6 +215,9 @@
 
 @code {
     private bool isAuthenticated = false;
+    private bool _loadedPublic;
+    private List<info_message> _publicAnnouncements = new();
+    private Dictionary<long, List<doc_center>> _attachmentsByMessage = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -181,6 +228,17 @@
         if (user != null && user.Identity != null)
         {
             isAuthenticated = user.Identity.IsAuthenticated;
+        }
+
+        if (!isAuthenticated)
+        {
+            _publicAnnouncements = await InfoService.GetPublicAnonymousAnnouncementsAsync();
+            foreach (var m in _publicAnnouncements)
+            {
+                var files = await InfoService.GetAttachmentsAsync(m.Id);
+                if (files.Count > 0) _attachmentsByMessage[m.Id] = files;
+            }
+            _loadedPublic = true;
         }
     }
 }

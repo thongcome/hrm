@@ -45,4 +45,13 @@ public class info_message
     public DateTime? ModifiedDate { get; set; }
 
     public long? ModifiedByUserId { get; set; }
+
+    // HR's explicit opt-in to show this announcement to visitors who have
+    // NOT logged in yet (the public "/" home page) — deliberately separate
+    // from the normal employee-visibility rules in
+    // InfoMessageService.GetVisibleAnnouncementsAsync, since an anonymous
+    // visitor has no Hremployee/company context to resolve targeting
+    // against. False by default: an announcement must be explicitly marked
+    // public, never leaked to anonymous visitors by omission.
+    public bool IsPublicAnonymous { get; set; }
 }

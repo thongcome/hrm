@@ -44,5 +44,36 @@ public static class InfoMessageFileEndpoints
             var bytes = await storage.ReadAsync(doc.path);
             return Results.File(bytes, "application/octet-stream", doc.files);
         });
+
+        // Separate, deliberately anonymous group for attachments on
+        // announcements HR explicitly marked IsPublicAnonymous — mirrors the
+        // authenticated route above but checks that flag directly instead of
+        // resolving an Hremployee (there isn't one for an anonymous visitor).
+        // A docId belonging to any non-public announcement is refused here
+        // even if guessed, since the check is against the live DB flag, not
+        // trust in how the caller reached the link.
+        var publicGroup = app.MapGroup("/public/announcement-files").AllowAnonymous();
+
+        publicGroup.MapGet("/{docId:long}", async (
+            long docId, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+
+            var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docId && d.doctypecode == "HR_ANNOUNCEMENT");
+            if (doc is null || doc.refid is not long infoMessageId || string.IsNullOrWhiteSpace(doc.path) || string.IsNullOrWhiteSpace(doc.files))
+                return Results.NotFound();
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var isPublicAndActive = await context.info_messages.AnyAsync(m => m.Id == infoMessageId
+                && m.IsPublicAnonymous
+                && m.isactive == true
+                && (m.startdate == null || m.startdate <= today)
+                && (m.enddate == null || m.enddate >= today));
+            if (!isPublicAndActive)
+                return Results.Forbid();
+
+            var bytes = await storage.ReadAsync(doc.path);
+            return Results.File(bytes, "application/octet-stream", doc.files);
+        });
     }
 }
