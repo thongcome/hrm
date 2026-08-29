@@ -383,6 +383,7 @@ builder.Services.AddScoped<HRM.Services.Pay.DocumentExpiryService>();
 builder.Services.AddScoped<HRM.Services.Pay.ProvidentFundRateMatrixService>();
 builder.Services.AddScoped<HRM.Services.Pay.ProvidentFundRateChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Pay.ProvidentFundExitCaseService>();
+builder.Services.AddScoped<HRM.Services.Pay.EmployeeRehireService>();
 builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
 // ----- end Pay_* module -----
 

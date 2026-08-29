@@ -230,6 +230,14 @@ public partial class Hremployee
     [Column("SEPARATION_TYPE")]
     public SeparationType? SeparationType { get; set; }
 
+    // Independent HR toggle, unrelated to resignation — for reasons that have
+    // nothing to do with leaving (suspended pending investigation, extended
+    // unpaid leave, seconded elsewhere). Never touched by the
+    // resignation/rehire flow itself. Combined with ResignDate via
+    // Services/Shared/EmployeeStatusHelper.CanTransact — that's the check to
+    // use for "can this person currently transact," not this field alone.
+    public bool IsActive { get; set; } = true;
+
     // Onboarding/offboarding lifecycle module: suggested/edited probation
     // end date (WorkDate + company's DefaultProbationDays, editable by HR)
     // and the date HR confirmed the employee passed probation (null = not

@@ -29,6 +29,15 @@ public class Rec_Candidate
     [StringLength(50)]
     public string? Phone { get; set; }
 
+    // Optional at application time (not every applicant has it in hand),
+    // but required before RecOfferService.SubmitForHireApprovalAsync will
+    // start the hire-approval workflow — used by
+    // Services/Shared/EmployeeIdentityHelper.CheckAsync to catch a candidate
+    // who is actually a former employee before a duplicate Hremployee row
+    // gets created.
+    [StringLength(13)]
+    public string? IdCard { get; set; }
+
     // Free text: Referral / JobBoard / Agency / Direct / CareerSite
     [StringLength(50)]
     public string? Source { get; set; }

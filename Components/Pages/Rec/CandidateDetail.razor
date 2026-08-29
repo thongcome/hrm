@@ -33,6 +33,15 @@ else
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" Href="@($"/rec/files/resume/{_candidate.ResumeDocCenterId}")" Target="_blank">ดาวน์โหลดเรซูเม่</MudButton>
             }
         </MudStack>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3">
+            <MudTextField T="string" @bind-Value="_idCard" Label="เลขบัตรประชาชน" MaxLength="13" Style="max-width: 260px;"
+                HelperText="ไม่บังคับตอนสมัคร แต่ต้องกรอกก่อนส่งอนุมัติการจ้าง" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveIdCardAsync">บันทึกเลขบัตรประชาชน</MudButton>
+        </MudStack>
+        @if (!string.IsNullOrEmpty(_idCardInfo))
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-2" Dense="true">@_idCardInfo</MudAlert>
+        }
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
@@ -123,11 +132,14 @@ else
     private Rec_CandidateExperience _newExp = new();
     private DateTime? _newExpStart;
     private DateTime? _newExpEnd;
+    private string? _idCard;
+    private string? _idCardInfo;
 
     protected override async Task OnParametersSetAsync()
     {
         _candidate = await ApplicationService.GetCandidateAsync(Id);
         if (_candidate is null) return;
+        _idCard = _candidate.IdCard;
 
         await AuditLogger.LogAccessAsync("Rec_Candidate", Id.ToString(), isSensitive: true, note: "candidate detail view");
 
@@ -141,6 +153,14 @@ else
     }
 
     private string PostingTitle(long id) => _postingTitles.TryGetValue(id, out var t) ? t : $"#{id}";
+
+    private async Task SaveIdCardAsync()
+    {
+        _idCardInfo = null;
+        await ApplicationService.UpdateCandidateIdCardAsync(Id, _idCard);
+        _candidate = await ApplicationService.GetCandidateAsync(Id);
+        _idCardInfo = "บันทึกเลขบัตรประชาชนสำเร็จ";
+    }
 
     private async Task AddEducationAsync()
     {

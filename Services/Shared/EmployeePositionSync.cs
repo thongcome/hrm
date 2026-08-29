@@ -32,15 +32,60 @@ public static class EmployeePositionSync
     // recompute on the org it LEFT, not just the one it landed in. Omit
     // (default null) for callers that never move a slot between orgs (e.g.
     // RecOfferService assigning a new hire into an already-vacant slot).
+    // actorUserId: who to attribute a Pos_PositionSlot_his row to (see step 0
+    // below). Omit (default null) for callers that haven't been updated to
+    // pass it — the history row is still written, just with a null actor,
+    // same "old callers keep working unchanged" discipline as actorScope.
     public static async Task SyncAsync(
         HRMContext context,
         Pos_PositionSlot slot,
         long? oldHremployeeId,
         RoleScopeSnapshot? actorScope = null,
         long? oldOrganizationId = null,
+        long? actorUserId = null,
         CancellationToken ct = default)
     {
         var newHremployeeId = slot.HremployeeId;
+
+        // 0) Auto-log the occupant change — covers every caller (direct HR
+        // edits, RecOfferService hiring someone into a slot, rehire) without
+        // each of them needing to write history themselves. Looked up fresh
+        // here rather than reusing step 2/3's conditional lookups below, so
+        // this doesn't depend on their branching (e.g. step 2 skips clearing
+        // the old employee's snapshot if they still hold another active slot,
+        // but they still left THIS slot and that's still worth logging).
+        if (oldHremployeeId != newHremployeeId)
+        {
+            var changeType = oldHremployeeId is null
+                ? PositionSlotChangeType.Appointment
+                : newHremployeeId is null
+                    ? PositionSlotChangeType.Vacate
+                    : PositionSlotChangeType.Transfer;
+
+            var prevEmpNo = oldHremployeeId is long prevId
+                ? (await context.Hremployee.FirstOrDefaultAsync(e => e.id == prevId, ct))?.EmpNo
+                : null;
+            var newEmpNo = newHremployeeId is long newLogId
+                ? (await context.Hremployee.FirstOrDefaultAsync(e => e.id == newLogId, ct))?.EmpNo
+                : null;
+
+            context.Pos_PositionSlot_hises.Add(new Pos_PositionSlot_his
+            {
+                // Set via navigation, not slot.Id directly — for a brand-new
+                // slot (create branch), slot.Id is still 0 at this point (the
+                // caller's own SaveChangesAsync hasn't run yet); EF's
+                // relationship fixup resolves the real FK once both this row
+                // and `slot` are saved together in that same call.
+                PositionSlot = slot,
+                CompanyId = slot.CompanyId,
+                PreviousHremployeeId = oldHremployeeId,
+                PreviousEmpNo = prevEmpNo,
+                NewHremployeeId = newHremployeeId,
+                NewEmpNo = newEmpNo,
+                ChangeType = changeType,
+                ChangedByUserId = actorUserId,
+            });
+        }
 
         // 1) Whenever this slot now holds an employee, make sure no OTHER
         // active slot also claims them — enforces "one employee, at most one

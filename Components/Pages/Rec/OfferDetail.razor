@@ -69,7 +69,16 @@ else
             }
             @if (_offer.Status == OfferStatus.Accepted && _offer.HiredHremployeeId is null)
             {
-                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="HireAsync">จ้าง (สร้างพนักงานใหม่)</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SubmitForHireApprovalAsync">ส่งอนุมัติการจ้าง</MudButton>
+            }
+            @if (_offer.HireJobMasterId is not null && _offer.Status == OfferStatus.PendingHireApproval)
+            {
+                <MudChip T="string" Color="Color.Info">รออนุมัติการจ้าง</MudChip>
+                <MudButton Variant="Variant.Text" Href="/wf/my-inbox">ดูในกล่องอนุมัติ</MudButton>
+            }
+            @if (_hireApproved && _offer.HiredHremployeeId is null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmHireAsync">ยืนยันจ้าง</MudButton>
             }
             @if (_offer.HiredHremployeeId is not null)
             {
@@ -90,6 +99,7 @@ else
     private long _actorUserId;
     private string? _actorEmpId;
     private bool _approved;
+    private bool _hireApproved;
     private string? _error;
     private string? _info;
 
@@ -100,6 +110,7 @@ else
         _actorEmpId = state.User.FindFirstValue("empno");
 
         await OfferService.SyncStatusFromJobAsync(Id);
+        await OfferService.SyncHireApprovalStatusFromJobAsync(Id);
         await RefreshAsync();
     }
 
@@ -123,6 +134,10 @@ else
 
         _approved = _offer.JobMasterId is not null &&
             await context.job_masters.AnyAsync(j => j.jobmasterid == _offer.JobMasterId && j.isJobClosed == true
+                && j.status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted);
+
+        _hireApproved = _offer.HireJobMasterId is not null &&
+            await context.job_masters.AnyAsync(j => j.jobmasterid == _offer.HireJobMasterId && j.isJobClosed == true
                 && j.status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted);
     }
 
@@ -175,12 +190,24 @@ else
         catch (InvalidOperationException ex) { _error = ex.Message; }
     }
 
-    private async Task HireAsync()
+    private async Task SubmitForHireApprovalAsync()
     {
         _error = null; _info = null;
         try
         {
-            var empId = await OfferService.HireAsync(Id, _actorUserId);
+            var jobId = await OfferService.SubmitForHireApprovalAsync(Id, _actorUserId, _actorEmpId);
+            _info = $"ส่งอนุมัติการจ้างสำเร็จ (Job #{jobId})";
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task ConfirmHireAsync()
+    {
+        _error = null; _info = null;
+        try
+        {
+            var empId = await OfferService.ConfirmHireAsync(Id, _actorUserId);
             _info = $"จ้างสำเร็จ — สร้างพนักงานใหม่ #{empId} และเริ่มกระบวนการ Onboarding แล้ว";
             await RefreshAsync();
         }

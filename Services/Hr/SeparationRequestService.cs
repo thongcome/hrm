@@ -85,6 +85,16 @@ public class SeparationRequestService(IDbContextFactory<HRMContext> dbFactory, W
             {
                 emp.ResignDate = request.EffectiveDate;
                 emp.SeparationType = request.SeparationType;
+
+                // Close any still-open PF membership period — nothing else in
+                // the codebase writes Pay_ProvidentFundMembershipPeriod.LeaveDate,
+                // so without this a departed employee's membership clock never
+                // stops even though they're no longer contributing.
+                var openPfPeriod = await context.Pay_ProvidentFundMembershipPeriods
+                    .Where(p => p.HremployeeId == emp.id && p.LeaveDate == null)
+                    .FirstOrDefaultAsync(ct);
+                if (openPfPeriod is not null)
+                    openPfPeriod.LeaveDate = DateOnly.FromDateTime(request.EffectiveDate);
             }
         }
         else

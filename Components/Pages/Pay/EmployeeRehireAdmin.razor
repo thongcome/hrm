@@ -1,0 +1,158 @@
+@page "/pay/employees/rehire"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject EmployeeRehireService RehireService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>รับพนักงานเก่ากลับเข้างาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">รับพนักงานเก่ากลับเข้างาน</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ค้นหาด้วยเลขบัตรประชาชนของอดีตพนักงาน เพื่อรับกลับเข้าทำงานโดยใช้เลขที่พนักงานเดิม — ห้ามสร้างพนักงานใหม่ซ้ำ
+    </MudText>
+
+    <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Start">
+        <MudTextField T="string" @bind-Value="_idCard" Label="เลขบัตรประชาชน" MaxLength="13" Style="max-width: 260px;" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync">ค้นหา</MudButton>
+    </MudStack>
+
+    @if (!string.IsNullOrEmpty(_searchError))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_searchError</MudAlert>
+    }
+
+    @if (_matched is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-2">พบข้อมูลอดีตพนักงาน — กรุณายืนยันว่าเป็นคนเดียวกัน</MudText>
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.body1"><b>เลขที่พนักงาน:</b> @_matched.EmpNo</MudText>
+                <MudText Typo="Typo.body1"><b>ชื่อ-สกุล:</b> @_matched.EmpName @_matched.EmpSurname</MudText>
+                <MudText Typo="Typo.body1"><b>วันที่เข้างานเดิม:</b> @(_matched.WorkDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+                <MudText Typo="Typo.body1"><b>วันที่ลาออก:</b> @(_matched.ResignDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+            </MudStack>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle1" Class="mb-2">รายละเอียดการรับกลับเข้างาน</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_rehireDate" Label="วันที่รับกลับเข้างาน" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.body2" Class="mt-4 mb-1"><b>อายุงาน (ใช้กับ severance / ทดลองงาน / ฯลฯ ทุกจุดในระบบ)</b></MudText>
+            <MudRadioGroup T="TenureTreatment" @bind-Value="_tenureTreatment">
+                <MudRadio T="TenureTreatment" Value="TenureTreatment.Continuous" Color="Color.Primary">
+                    นับต่อเนื่อง — ใช้วันที่เข้างานเดิม (@(_matched.WorkDate?.ToString("dd/MM/yyyy") ?? "-"))
+                </MudRadio>
+                <MudRadio T="TenureTreatment" Value="TenureTreatment.Reset" Color="Color.Primary">
+                    นับใหม่ — ใช้วันที่รับกลับเข้างานเป็นวันเริ่มนับอายุงาน
+                </MudRadio>
+            </MudRadioGroup>
+
+            <MudText Typo="Typo.body2" Class="mt-4 mb-1"><b>อายุสมาชิกกองทุนสำรองเลี้ยงชีพ (PF) — แยกอิสระจากอายุงานด้านบน</b></MudText>
+            <MudRadioGroup T="bool" @bind-Value="_transferPf">
+                <MudRadio T="bool" Value="true" Color="Color.Primary">โอนอายุสมาชิกกองทุนจากช่วงก่อนหน้า</MudRadio>
+                <MudRadio T="bool" Value="false" Color="Color.Primary">นับอายุสมาชิกกองทุนใหม่ (เริ่มจากวันที่รับกลับ)</MudRadio>
+            </MudRadioGroup>
+
+            @if (!string.IsNullOrEmpty(_saveError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_saveError</MudAlert>
+            }
+            @if (!string.IsNullOrEmpty(_saveInfo))
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">@_saveInfo</MudAlert>
+            }
+
+            @if (string.IsNullOrEmpty(_saveInfo))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Class="mt-4" OnClick="ConfirmRehireAsync">ยืนยันรับกลับเข้างาน</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" Href="/pos/position-slots">ไปมอบหมายตำแหน่ง</MudButton>
+            }
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    private string? _idCard;
+    private string? _searchError;
+    private Hremployee? _matched;
+
+    private DateTime? _rehireDate = DateTime.Today;
+    private TenureTreatment _tenureTreatment = TenureTreatment.Continuous;
+    private bool _transferPf = true;
+    private string? _saveError;
+    private string? _saveInfo;
+
+    private async Task SearchAsync()
+    {
+        _searchError = null;
+        _matched = null;
+        _saveError = null;
+        _saveInfo = null;
+
+        if (string.IsNullOrWhiteSpace(_idCard))
+        {
+            _searchError = "กรุณากรอกเลขบัตรประชาชน";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var result = await EmployeeIdentityHelper.CheckAsync(context, _idCard);
+
+        if (result.Result == IdCardMatchResult.NoMatch)
+        {
+            _searchError = "ไม่พบพนักงานที่ลาออกไปแล้วซึ่งตรงกับเลขบัตรประชาชนนี้";
+            return;
+        }
+        if (result.Result == IdCardMatchResult.MatchesActiveEmployee)
+        {
+            _searchError = $"เลขบัตรประชาชนนี้ตรงกับพนักงานที่ยังทำงานอยู่ในระบบ ({result.Matched!.EmpNo} {result.Matched.EmpName} {result.Matched.EmpSurname}) ไม่ใช่อดีตพนักงาน — ไม่ต้องรับกลับ";
+            return;
+        }
+
+        _matched = result.Matched;
+        _tenureTreatment = TenureTreatment.Continuous;
+        _transferPf = true;
+        _rehireDate = DateTime.Today;
+    }
+
+    private async Task ConfirmRehireAsync()
+    {
+        _saveError = null;
+        if (_matched is null || _rehireDate is null) return;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        try
+        {
+            await RehireService.RehireAsync(_matched.id, DateOnly.FromDateTime(_rehireDate.Value), _tenureTreatment, _transferPf, actorUserId);
+            _saveInfo = $"รับพนักงาน {_matched.EmpNo} {_matched.EmpName} {_matched.EmpSurname} กลับเข้างานสำเร็จ — ขั้นตอนถัดไปคือมอบหมายตำแหน่ง";
+            Snackbar.Add("รับกลับเข้างานสำเร็จ", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+}

@@ -227,6 +227,18 @@ public class RecApplicationService(IDbContextFactory<HRMContext> dbFactory, Priv
         return await context.Rec_Applications.Where(a => a.CandidateId == candidateId).OrderByDescending(a => a.Id).ToListAsync(ct);
     }
 
+    // IdCard is optional at application time but required before
+    // RecOfferService.SubmitForHireApprovalAsync will start the hire-approval
+    // workflow — see CandidateDetail.razor for where HR fills this in.
+    public async Task UpdateCandidateIdCardAsync(long candidateId, string? idCard, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.Id == candidateId, ct)
+            ?? throw new InvalidOperationException("ไม่พบผู้สมัครนี้");
+        candidate.IdCard = idCard;
+        await context.SaveChangesAsync(ct);
+    }
+
     public async Task UpdateStageAsync(long applicationId, ApplicationStage stage, long actorUserId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);

@@ -27,6 +27,12 @@ public class Rec_Offer
 
     public long? JobMasterId { get; set; }
 
+    // Second, separate approval gate — starts only once the candidate has
+    // accepted (Status -> PendingHireApproval), gates ConfirmHireAsync (the
+    // step that actually creates the Hremployee row). Distinct from
+    // JobMasterId above, which only ever gated the offer's own terms.
+    public long? HireJobMasterId { get; set; }
+
     public DateTime? SentDate { get; set; }
     public DateTime? RespondedDate { get; set; }
     public DateOnly? ExpiryDate { get; set; }

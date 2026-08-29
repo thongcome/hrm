@@ -73,4 +73,14 @@ public class Hrd_EmploymentHistory
 
     public DateTime CreatedDate { get; set; } = DateTime.Now;
     public long? CreatedByUserId { get; set; }
+
+    // Used only on rows where OrderType = "กลับเข้าทำงาน" (rehire) — written
+    // by Services/Pay/EmployeeRehireService.cs. TenureTreatment is the choice
+    // HR made for Hremployee.WorkDate (Continuous = left untouched, Reset =
+    // overwritten to the rehire date); PriorWorkDate/PriorResignDate snapshot
+    // what those fields held right before the rehire cleared them, so the
+    // fact isn't lost even when WorkDate itself gets reset.
+    public TenureTreatment? TenureTreatment { get; set; }
+    public DateTime? PriorWorkDate { get; set; }
+    public DateTime? PriorResignDate { get; set; }
 }

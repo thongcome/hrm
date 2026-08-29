@@ -1,6 +1,5 @@
 namespace HRM.Services.Rec;
 
-using System.Text.RegularExpressions;
 using HRM.Models;
 using HRM.Services.Hrd;
 using HRM.Services.Shared;
@@ -8,11 +7,14 @@ using HRM.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
 
 // Offer lifecycle: draft -> submit for approval (OFFER_APPROVAL workflow) ->
-// lazy status sync -> send -> record candidate response -> HireAsync (the
-// most consequential method in the whole Rec_* module — creates the real
-// Hremployee row and hands off to onboarding).
+// lazy status sync -> send -> record candidate response -> SubmitForHireApprovalAsync
+// (starts a SECOND, separate HIRE_APPROVAL workflow — gates ConfirmHireAsync,
+// the most consequential method in the whole Rec_* module, which creates the
+// real Hremployee row and hands off to onboarding).
 public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEngineService engine, LifecycleTaskService lifecycleTaskService, RecRequisitionService requisitionService)
 {
+    private const string HireWorkflowCode = "HIRE_APPROVAL";
+
     public async Task<long> CreateDraftAsync(Rec_Offer draft, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
@@ -124,23 +126,98 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
         await context.SaveChangesAsync(ct);
     }
 
-    // The consequential step: turns an accepted offer into a real Hremployee,
-    // assigns them to the target seat, and kicks off onboarding — mirrors
-    // PayrollEmployeeAdmin.razor's create-employee flow (EmpNo auto-gen,
-    // mandatory email via EmployeeEmailResolver) plus
-    // EmployeePositionSync.SyncAsync (the same helper PositionSlotAdmin.razor
-    // uses) plus LifecycleTaskService.StartOnboardingAsync (idempotent, safe
-    // to call unconditionally right after creating the new hire).
-    public async Task<long> HireAsync(long offerId, long actorUserId, CancellationToken ct = default)
+    // Second, separate approval gate — starts only once the candidate has
+    // accepted, and mirrors SubmitForApprovalAsync's shape but against
+    // Rec_Offer.HireJobMasterId instead of JobMasterId (that field only ever
+    // gated the offer's own terms, not the decision to actually create an
+    // employee record). Requires candidate.IdCard so
+    // EmployeeIdentityHelper.CheckAsync can catch a former employee before
+    // the workflow even starts — cheaper to block here than to discover the
+    // duplicate at ConfirmHireAsync after approval has already been spent.
+    public async Task<long> SubmitForHireApprovalAsync(long offerId, long requesterUserId, string? requesterEmpId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
         var offer = await context.Rec_Offers.FirstOrDefaultAsync(o => o.Id == offerId, ct)
             ?? throw new InvalidOperationException("ไม่พบข้อเสนอนี้");
         if (offer.Status != OfferStatus.Accepted)
-            throw new InvalidOperationException("จ้างได้เฉพาะข้อเสนอที่ผู้สมัครตอบรับแล้วเท่านั้น");
+            throw new InvalidOperationException("ส่งอนุมัติการจ้างได้เฉพาะข้อเสนอที่ผู้สมัครตอบรับแล้วเท่านั้น");
         if (offer.HiredHremployeeId is not null)
             throw new InvalidOperationException("จ้างพนักงานคนนี้ไปแล้ว");
+
+        var app = await context.Rec_Applications.FirstOrDefaultAsync(a => a.Id == offer.ApplicationId, ct)
+            ?? throw new InvalidOperationException("ไม่พบใบสมัครนี้");
+        var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.Id == app.CandidateId, ct)
+            ?? throw new InvalidOperationException("ไม่พบผู้สมัครนี้");
+        if (string.IsNullOrWhiteSpace(candidate.IdCard))
+            throw new InvalidOperationException("ต้องกรอกเลขบัตรประชาชนของผู้สมัครก่อน (ที่หน้าข้อมูลผู้สมัคร) จึงจะส่งอนุมัติการจ้างได้");
+
+        var identityCheck = await EmployeeIdentityHelper.CheckAsync(context, candidate.IdCard, ct);
+        if (identityCheck.Result == IdCardMatchResult.MatchesActiveEmployee)
+            throw new InvalidOperationException($"เลขบัตรประชาชนนี้ตรงกับพนักงานที่ยังทำงานอยู่ ({identityCheck.Matched!.EmpNo} {identityCheck.Matched.EmpName} {identityCheck.Matched.EmpSurname}) ไม่สามารถจ้างซ้ำได้");
+        if (identityCheck.Result == IdCardMatchResult.MatchesDepartedEmployee)
+            throw new InvalidOperationException($"เลขบัตรประชาชนนี้ตรงกับอดีตพนักงาน ({identityCheck.Matched!.EmpNo} {identityCheck.Matched.EmpName} {identityCheck.Matched.EmpSurname}) กรุณาใช้หน้า \"รับพนักงานเก่ากลับเข้างาน\" แทน");
+
+        var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == HireWorkflowCode, ct)
+            ?? throw new InvalidOperationException($"ไม่พบ workflow '{HireWorkflowCode}' — ติดต่อแอดมินให้ตั้งค่าก่อน");
+        if (workflow.isactive != true)
+            throw new InvalidOperationException($"workflow '{workflow.wname}' ปิดใช้งานอยู่ ไม่สามารถส่งอนุมัติได้");
+
+        var subject = $"อนุมัติการจ้าง: {candidate.FirstName} {candidate.LastName}";
+        var jobId = await engine.StartJobAsync(workflow.workflowid, "Rec_Offer", offer.Id.ToString(),
+            requesterUserId, requesterEmpId, subject, offer.OfferedSalary, ct);
+
+        offer.HireJobMasterId = jobId;
+        offer.Status = OfferStatus.PendingHireApproval;
+        await context.SaveChangesAsync(ct);
+        return jobId;
+    }
+
+    // Lazy apply-on-read for the hire-approval gate. Reverts to Accepted (not
+    // Withdrawn) on rejection so HR can fix whatever blocked it and resubmit
+    // — the candidate's acceptance is still on file, only the internal
+    // approval failed.
+    public async Task SyncHireApprovalStatusFromJobAsync(long offerId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var offer = await context.Rec_Offers.FirstOrDefaultAsync(o => o.Id == offerId, ct);
+        if (offer is null || offer.Status != OfferStatus.PendingHireApproval || offer.HireJobMasterId is null)
+            return;
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == offer.HireJobMasterId, ct);
+        if (job is null || job.isJobClosed != true)
+            return;
+
+        if (job.status != WorkflowEngineService.StatusCompleted)
+        {
+            offer.Status = OfferStatus.Accepted;
+            await context.SaveChangesAsync(ct);
+        }
+    }
+
+    // The consequential step: turns an approved-for-hire offer into a real
+    // Hremployee, assigns them to the target seat, and kicks off onboarding —
+    // mirrors PayrollEmployeeAdmin.razor's create-employee flow (EmpNo
+    // auto-gen, mandatory email via EmployeeEmailResolver) plus
+    // EmployeePositionSync.SyncAsync (the same helper PositionSlotAdmin.razor
+    // uses) plus LifecycleTaskService.StartOnboardingAsync (idempotent, safe
+    // to call unconditionally right after creating the new hire). Gated on
+    // HireJobMasterId being approved — checked directly against the job, same
+    // pattern as MarkSentAsync — rather than trusting offer.Status alone.
+    public async Task<long> ConfirmHireAsync(long offerId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var offer = await context.Rec_Offers.FirstOrDefaultAsync(o => o.Id == offerId, ct)
+            ?? throw new InvalidOperationException("ไม่พบข้อเสนอนี้");
+        if (offer.HiredHremployeeId is not null)
+            throw new InvalidOperationException("จ้างพนักงานคนนี้ไปแล้ว");
+
+        var hireApproved = offer.HireJobMasterId is not null &&
+            await context.job_masters.AnyAsync(j => j.jobmasterid == offer.HireJobMasterId && j.isJobClosed == true && j.status == WorkflowEngineService.StatusCompleted, ct);
+        if (!hireApproved)
+            throw new InvalidOperationException("การจ้างพนักงานคนนี้ยังไม่ผ่านการอนุมัติ");
 
         var slot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == offer.TargetPositionSlotId, ct)
             ?? throw new InvalidOperationException("ไม่พบเลขที่อัตราเป้าหมาย");
@@ -149,7 +226,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
         var candidate = await context.Rec_Candidates.FirstOrDefaultAsync(c => c.Id == app.CandidateId, ct)
             ?? throw new InvalidOperationException("ไม่พบผู้สมัครนี้");
 
-        var empNo = await GenerateNextEmpNoAsync(context, slot.CompanyId, ct);
+        var empNo = await EmployeeIdentityHelper.GenerateNextEmpNoAsync(context, slot.CompanyId, ct);
 
         var emp = new Hremployee
         {
@@ -157,6 +234,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
             EmpNo = empNo,
             EmpName = candidate.FirstName,
             EmpSurname = candidate.LastName,
+            IdCard = candidate.IdCard,
             WorkDate = offer.StartDate.ToDateTime(TimeOnly.MinValue),
             SalaryAmt = offer.OfferedSalary,
         };
@@ -210,7 +288,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
 
         var oldHremployeeId = slot.HremployeeId;
         slot.HremployeeId = emp.id;
-        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, ct: ct);
+        await EmployeePositionSync.SyncAsync(context, slot, oldHremployeeId, actorUserId: actorUserId, ct: ct);
         await context.SaveChangesAsync(ct);
 
         offer.HiredHremployeeId = emp.id;
@@ -225,53 +303,5 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
             await requisitionService.MarkFilledIfCompleteAsync(posting.RequisitionId, ct);
 
         return emp.id;
-    }
-
-    private static async Task<string> GenerateNextEmpNoAsync(HRMContext context, string? companyId, CancellationToken ct)
-    {
-        var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
-        var prefix = settings?.EmpCodePrefix ?? string.Empty;
-        var digits = settings is null || settings.EmpCodeDigits < 1 ? 3 : settings.EmpCodeDigits;
-
-        int next;
-        if (settings?.EmpCodeNextNumber is int statefulNext)
-        {
-            next = statefulNext;
-        }
-        else
-        {
-            var existingNumbers = await context.Hremployee.Where(e => e.EmpNo.StartsWith(prefix)).Select(e => e.EmpNo).ToListAsync(ct);
-            var pattern = $"^{Regex.Escape(prefix)}(\\d+)$";
-            next = existingNumbers
-                .Select(no => Regex.Match(no, pattern))
-                .Where(m => m.Success)
-                .Select(m => int.Parse(m.Groups[1].Value))
-                .DefaultIfEmpty(0)
-                .Max() + 1;
-        }
-
-        var candidate = prefix + next.ToString(new string('0', digits));
-        if (await context.Hremployee.AnyAsync(e => e.EmpNo == candidate, ct))
-        {
-            // Extremely unlikely race with the stateful counter path — fall
-            // back to scanning for real rather than crashing HireAsync.
-            var existingNumbers = await context.Hremployee.Where(e => e.EmpNo.StartsWith(prefix)).Select(e => e.EmpNo).ToListAsync(ct);
-            var pattern = $"^{Regex.Escape(prefix)}(\\d+)$";
-            next = existingNumbers
-                .Select(no => Regex.Match(no, pattern))
-                .Where(m => m.Success)
-                .Select(m => int.Parse(m.Groups[1].Value))
-                .DefaultIfEmpty(0)
-                .Max() + 1;
-            candidate = prefix + next.ToString(new string('0', digits));
-        }
-
-        if (settings?.EmpCodeNextNumber is not null)
-        {
-            settings.EmpCodeNextNumber++;
-            await context.SaveChangesAsync(ct);
-        }
-
-        return candidate;
     }
 }
