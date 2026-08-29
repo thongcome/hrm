@@ -1,0 +1,51 @@
+@page "/ess/my-profile"
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+@* ESS-facing wrapper around the same rich personnel-profile view HR uses at
+   /employee/personnel-profile/{id} (Components/Pages/Employee/
+   EmployeePersonnelProfile.razor). No search box, no way to pick anyone
+   else's record — the employeeid comes only from the logged-in user's own
+   claims via EssEmployeeResolver, per product owner instruction. All the
+   real display/loading logic lives in the shared
+   Components/Shared/PersonnelProfileView.razor component. *@
+
+<PageTitle>ข้อมูลบุคลากรของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ข้อมูลบุคลากรของฉัน</MudText>
+</MudPaper>
+
+@if (!_loaded)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+}
+else if (_myEmployeeId is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบข้อมูลพนักงานของคุณ</MudAlert>
+}
+else
+{
+    <PersonnelProfileView HremployeeId="@_myEmployeeId.Value" />
+}
+
+@code {
+    private bool _loaded;
+    private long? _myEmployeeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var emp = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        _myEmployeeId = emp?.id;
+        _loaded = true;
+    }
+}

@@ -1,8 +1,10 @@
 @page "/careers/{PostingId:long}/apply"
 @using HRM.Models
 @using HRM.Services.Rec
+@using Microsoft.AspNetCore.Components.Forms
 @using MudBlazor
 @inject RecJobPostingService PostingService
+@inject ISnackbar Snackbar
 
 @* Deliberately public — no [Authorize]. The actual submission posts via a
    plain HTML form (not a Blazor event handler) to
@@ -44,16 +46,40 @@
                 </div>
                 <div class="mb-3">
                     <label>อีเมล</label>
-                    <input class="form-control" name="email" type="email" required />
+                    <input class="form-control" name="email" type="email" required @bind="_email" />
                 </div>
                 <div class="mb-3">
                     <label>เบอร์โทร</label>
-                    <input class="form-control" name="phone" />
+                    <input class="form-control" name="phone" @bind="_phone" />
                 </div>
                 <div class="mb-3">
                     <label>เรซูเม่ (PDF, DOC, DOCX ไม่เกิน 5MB)</label>
                     <input class="form-control" name="resume" type="file" accept=".pdf,.doc,.docx" />
                 </div>
+
+                @if (CvReaderService.Enabled)
+                {
+                    <div class="mb-3 pa-2" style="border:1px solid #ccc; border-radius:4px;">
+                        <MudFileUpload T="IBrowserFile" FilesChanged="OnCvFileSelected" Accept="image/*">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DocumentScanner" Disabled="_cvBusy">
+                                    @(_cvBusy ? "กำลังอ่าน..." : "อ่านจาก CV (OCR)")
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+                        <MudText Typo="Typo.caption" Class="d-block mt-1">
+                            แนบรูปถ่าย/สแกน CV (JPG, PNG) เพื่อลองเติมอีเมล/เบอร์โทรอัตโนมัติ — ไม่รองรับไฟล์ PDF
+                        </MudText>
+                        @if (_cvMessage is not null)
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@_cvMessage</MudAlert>
+                        }
+                        @if (_cvError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_cvError</MudAlert>
+                        }
+                    </div>
+                }
 
                 <hr class="my-4" />
                 <MudText Typo="Typo.subtitle1" Class="mb-2">การศึกษาสูงสุด (ถ้ามี)</MudText>
@@ -125,8 +151,69 @@
 
     private Rec_JobPosting? _posting;
 
+    private string? _email;
+    private string? _phone;
+    private bool _cvBusy;
+    private string? _cvMessage;
+    private string? _cvError;
+
     protected override async Task OnInitializedAsync()
     {
         _posting = await PostingService.GetOpenPostingPublicAsync(PostingId);
+    }
+
+    // Reads a candidate-attached CV image via OCR and pre-fills empty fields.
+    // Never overwrites a field the candidate has already typed something into.
+    private async Task OnCvFileSelected(IBrowserFile file)
+    {
+        _cvMessage = null;
+        _cvError = null;
+        const long maxCvBytes = 15 * 1024 * 1024;
+        if (file.Size > maxCvBytes)
+        {
+            _cvError = "ไฟล์รูป CV ใหญ่เกิน 15MB";
+            return;
+        }
+
+        _cvBusy = true;
+        StateHasChanged();
+        try
+        {
+            byte[] bytes;
+            await using (var stream = file.OpenReadStream(maxCvBytes))
+            await using (var ms = new MemoryStream())
+            {
+                await stream.CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            var extract = await CvReaderService.ReadAsync(bytes, file.ContentType);
+
+            var filled = new List<string>();
+            if (string.IsNullOrWhiteSpace(_email) && !string.IsNullOrWhiteSpace(extract.Email))
+            {
+                _email = extract.Email;
+                filled.Add("อีเมล");
+            }
+            if (string.IsNullOrWhiteSpace(_phone) && !string.IsNullOrWhiteSpace(extract.Phone))
+            {
+                _phone = extract.Phone;
+                filled.Add("เบอร์โทร");
+            }
+
+            var extra = extract.BirthDate is not null ? $" (พบวันเกิดในรูป: {extract.BirthDate:dd/MM/yyyy} กรุณากรอกเพิ่มเติมด้วยตนเองหากต้องการ)" : "";
+            _cvMessage = filled.Count > 0
+                ? $"อ่าน CV แล้ว เติมค่าให้อัตโนมัติ: {string.Join(", ", filled)} — กรุณาตรวจสอบความถูกต้องก่อนส่งใบสมัคร (OCR อาจไม่แม่นยำ 100%){extra}"
+                : $"อ่าน CV แล้ว แต่ไม่พบข้อมูลที่เติมให้อัตโนมัติได้ กรุณากรอกด้วยตนเอง{extra}";
+            Snackbar.Add("อ่าน CV เสร็จแล้ว กรุณาตรวจสอบข้อมูลก่อนส่ง", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            _cvError = "อ่าน CV ไม่สำเร็จ: " + ex.Message;
+        }
+        finally
+        {
+            _cvBusy = false;
+        }
     }
 }
