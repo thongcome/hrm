@@ -456,8 +456,17 @@
                     <MudNavLink Href="/wf/canvas" Icon="@Icons.Material.Filled.ViewKanban">@L.Translate("NavWfCanvas")</MudNavLink>
                     <MudNavLink Href="/wf/workflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflows")</MudNavLink>
                 }
-                @* No [Authorize] on the raw wf_workflow CRUD scaffold or the inbox — left ungated, same as their current unrestricted behavior. *@
-                <MudNavLink Href="/wfworkflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflowsCrud")</MudNavLink>
+                @if (Has("WF_WORKFLOW_ADMIN"))
+                {
+                    @* Legacy scaffold CRUD for wf_workflow — superseded by /wf/workflows above,
+                       kept reachable for now per this codebase's "don't delete, might be
+                       waiting" convention. Previously had bare [Authorize] (any logged-in
+                       user, not just admins) despite every sibling scaffold folder
+                       (wf_loaPages/wf_loa_userPages/wf_role_authorityPages) already using
+                       Menu:WF_WORKFLOW_ADMIN — fixed to match, since this scaffold lets you
+                       CRUD workflow definitions and approval-level config directly. *@
+                    <MudNavLink Href="/wfworkflows" Icon="@Icons.Material.Filled.Route">@L.Translate("NavWfWorkflowsCrud")</MudNavLink>
+                }
 
                 @if (Has("WF_WORKFLOW_ADMIN"))
                 {
