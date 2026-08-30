@@ -68,7 +68,7 @@ else
             {
                 <MudTd>@context.EmployeeName</MudTd>
             }
-            <MudTd>@LeaveRequestService.LeaveTypeLabel(context.Request.LeaveType)@(context.Request.IsHalfDay ? " (ครึ่งวัน)" : "")</MudTd>
+            <MudTd>@context.Request.Lve_LeaveType.NameTh@(context.Request.IsHalfDay ? " (ครึ่งวัน)" : "")</MudTd>
             <MudTd>@context.Request.StartDate.ToString("dd/MM/yyyy") - @context.Request.EndDate.ToString("dd/MM/yyyy")</MudTd>
             <MudTd>@context.Request.TotalDays.ToString("0.#")</MudTd>
             <MudTd>
@@ -112,16 +112,11 @@ else
             }
         </MudItem>
         <MudItem xs="12" sm="6">
-            <MudSelect T="LeaveType" @bind-Value="_leaveType" @bind-Value:after="RecomputeBalanceAsync" Label="ประเภทการลา">
-                <MudSelectItem T="LeaveType" Value="LeaveType.Sick">ลาป่วย</MudSelectItem>
-                <MudSelectItem T="LeaveType" Value="LeaveType.Personal">ลากิจ</MudSelectItem>
-                <MudSelectItem T="LeaveType" Value="LeaveType.Vacation">ลาพักร้อน</MudSelectItem>
-                <MudSelectItem T="LeaveType" Value="LeaveType.Maternity">ลาคลอด</MudSelectItem>
-                @if (LeaveCountryHelper.IsApplicable(LeaveType.Ordination, _selectedEmployeeCountryCode))
+            <MudSelect T="int" @bind-Value="_leaveTypeId" @bind-Value:after="RecomputeBalanceAsync" Label="ประเภทการลา">
+                @foreach (var t in _availableLeaveTypes)
                 {
-                    <MudSelectItem T="LeaveType" Value="LeaveType.Ordination">ลาบวช</MudSelectItem>
+                    <MudSelectItem T="int" Value="t.Id">@t.NameTh</MudSelectItem>
                 }
-                <MudSelectItem T="LeaveType" Value="LeaveType.Other">อื่นๆ</MudSelectItem>
             </MudSelect>
         </MudItem>
         @if (_selectedEmployee is not null)
@@ -130,7 +125,7 @@ else
                 @if (_remainingBalance is decimal remaining)
                 {
                     <MudAlert Severity="@(remaining > 0 ? Severity.Info : Severity.Warning)" Dense="true">
-                        สิทธิ@(LeaveRequestService.LeaveTypeLabel(_leaveType))คงเหลือปีนี้: @remaining.ToString("0.#") วัน
+                        สิทธิ@(SelectedLeaveTypeName)คงเหลือปีนี้: @remaining.ToString("0.#") วัน
                         @if (_carriedOverDays is decimal carried && carried > 0)
                         {
                             <text> (รวมทบจากปีก่อน @carried.ToString("0.#") วัน)</text>
@@ -139,7 +134,7 @@ else
                 }
                 else
                 {
-                    <MudAlert Severity="Severity.Warning" Dense="true">ยังไม่ได้ตั้งค่าสิทธิ@(LeaveRequestService.LeaveTypeLabel(_leaveType))สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink></MudAlert>
+                    <MudAlert Severity="Severity.Warning" Dense="true">ยังไม่ได้ตั้งค่าสิทธิ@(SelectedLeaveTypeName)สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink></MudAlert>
                 }
             </MudItem>
         }
@@ -161,7 +156,7 @@ else
             }
         }
         <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล" Lines="2" /></MudItem>
-        @if (_leaveType == LeaveType.Sick)
+        @if (_availableLeaveTypes.FirstOrDefault(t => t.Id == _leaveTypeId)?.RequiresMedicalCert == true)
         {
             <MudItem xs="12">
                 <MudText Typo="Typo.body2" Class="mb-1">แนบใบรับรองแพทย์ (ไม่บังคับ)</MudText>
@@ -191,7 +186,10 @@ else
 
     private Hremployee? _selectedEmployee;
     private string? _selectedEmployeeCountryCode;
-    private LeaveType _leaveType = LeaveType.Sick;
+    private List<Lve_LeaveType> _allLeaveTypes = new();
+    private List<Lve_LeaveType> _availableLeaveTypes = new();
+    private int _leaveTypeId;
+    private string SelectedLeaveTypeName => _availableLeaveTypes.FirstOrDefault(t => t.Id == _leaveTypeId)?.NameTh ?? "";
     private DateTime? _startDate = DateTime.Today;
     private DateTime? _endDate = DateTime.Today;
     private bool _isHalfDay;
@@ -217,6 +215,12 @@ else
         _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
         _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
 
+        await using (var typeContext = await DbFactory.CreateDbContextAsync())
+        {
+            _allLeaveTypes = await typeContext.Lve_LeaveTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
+        }
+        _availableLeaveTypes = _allLeaveTypes;
+
         if (!_isAdmin)
         {
             await using var context = await DbFactory.CreateDbContextAsync();
@@ -232,7 +236,7 @@ else
     private async Task RefreshAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
-        var query = context.Lve_LeaveRequests.AsQueryable();
+        var query = context.Lve_LeaveRequests.Include(r => r.Lve_LeaveType).AsQueryable();
         if (!_isAdmin && _selectedEmployee is not null)
             query = query.Where(r => r.HremployeeId == _selectedEmployee.id);
         var requests = await query.OrderByDescending(r => r.Id).ToListAsync();
@@ -267,15 +271,16 @@ else
             await using var context = await DbFactory.CreateDbContextAsync();
             _selectedEmployeeCountryCode = (await context.Lve_CompanySettings
                 .FirstOrDefaultAsync(s => s.CompanyId == employee.companyid))?.CountryCode;
-
-            if (_leaveType == LeaveType.Ordination && !LeaveCountryHelper.IsApplicable(LeaveType.Ordination, _selectedEmployeeCountryCode))
-            {
-                _leaveType = LeaveType.Other;
-            }
         }
         else
         {
             _selectedEmployeeCountryCode = null;
+        }
+
+        _availableLeaveTypes = _allLeaveTypes.Where(t => LeaveCountryHelper.IsApplicable(t, _selectedEmployeeCountryCode)).ToList();
+        if (_availableLeaveTypes.All(t => t.Id != _leaveTypeId))
+        {
+            _leaveTypeId = _availableLeaveTypes.FirstOrDefault()?.Id ?? 0;
         }
 
         await RecomputeBalanceAsync();
@@ -290,7 +295,7 @@ else
             return;
         }
 
-        var balances = await LeaveBalanceSvc.GetBalancesAsync(_selectedEmployee.id, _selectedEmployee.companyid, _leaveType);
+        var balances = await LeaveBalanceSvc.GetBalancesAsync(_selectedEmployee.id, _selectedEmployee.companyid, _leaveTypeId);
         _remainingBalance = balances.Count > 0 ? balances[0].RemainingDays : (decimal?)null;
         _carriedOverDays = balances.Count > 0 ? balances[0].CarriedOverDays : (decimal?)null;
     }
@@ -314,9 +319,9 @@ else
     {
         _error = null;
         _info = null;
-        if (_selectedEmployee is null || _startDate is null || _endDate is null)
+        if (_selectedEmployee is null || _startDate is null || _endDate is null || _leaveTypeId == 0)
         {
-            _error = "กรุณาเลือกพนักงานและระบุวันที่ให้ครบ";
+            _error = "กรุณาเลือกพนักงาน ประเภทการลา และระบุวันที่ให้ครบ";
             return;
         }
 
@@ -338,7 +343,7 @@ else
         {
             var start = DateOnly.FromDateTime(_startDate.Value);
             var end = DateOnly.FromDateTime(_endDate.Value);
-            var requestId = await LeaveRequestSvc.CreateDraftAsync(_selectedEmployee.id, _leaveType, start, end,
+            var requestId = await LeaveRequestSvc.CreateDraftAsync(_selectedEmployee.id, _leaveTypeId, start, end,
                 _isHalfDay, _isHalfDay ? _halfDayPeriod : null, _reason);
 
             if (_pendingMedCertFile is not null)

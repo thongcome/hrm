@@ -82,15 +82,19 @@ public static class ExternalApiEndpoints
             if (employee is null)
                 return Results.NotFound(new { error = $"No employee found for empno claim '{empNo}'" });
 
-            LeaveType? parsedLeaveType = null;
+            int? parsedLeaveTypeId = null;
             if (!string.IsNullOrWhiteSpace(leaveType))
             {
-                if (!Enum.TryParse<LeaveType>(leaveType, ignoreCase: true, out var lt))
-                    return Results.BadRequest(new { error = $"Unknown leaveType '{leaveType}'. Valid values: {string.Join(", ", Enum.GetNames<LeaveType>())}" });
-                parsedLeaveType = lt;
+                var match = await context.Lve_LeaveTypes.FirstOrDefaultAsync(t => t.Code.ToLower() == leaveType.ToLower(), ct);
+                if (match is null)
+                {
+                    var validCodes = await context.Lve_LeaveTypes.Where(t => t.IsActive).Select(t => t.Code).ToListAsync(ct);
+                    return Results.BadRequest(new { error = $"Unknown leaveType '{leaveType}'. Valid values: {string.Join(", ", validCodes)}" });
+                }
+                parsedLeaveTypeId = match.Id;
             }
 
-            var balances = await leaveBalanceService.GetBalancesAsync(employee.id, employee.companyid, parsedLeaveType, year, ct);
+            var balances = await leaveBalanceService.GetBalancesAsync(employee.id, employee.companyid, parsedLeaveTypeId, year, ct);
 
             await auditLogger.LogAccessAsync("Lve_LeaveRequest", employee.id.ToString(), isSensitive: true,
                 note: $"External API leave-balance — client_id={clientId}, empno={empNo}", ct);
@@ -102,7 +106,7 @@ public static class ExternalApiEndpoints
                 year = year ?? DateTime.Today.Year,
                 balances = balances.Select(b => new
                 {
-                    leaveType = b.LeaveType.ToString(),
+                    leaveType = b.LeaveTypeCode,
                     entitlementDays = b.EntitlementDays,
                     usedDays = b.UsedDays,
                     remainingDays = b.RemainingDays,

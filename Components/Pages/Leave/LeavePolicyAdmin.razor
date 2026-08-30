@@ -65,7 +65,7 @@
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@LeaveTypeLabel(context.LeaveType)</MudTd>
+            <MudTd>@context.Lve_LeaveType.NameTh</MudTd>
             <MudTd>
                 @if (_editingId == context.Id)
                 {
@@ -74,6 +74,12 @@
                 else
                 {
                     @context.EntitlementDaysPerYear.ToString("0.#")
+                    @if (context.Lve_LeaveType.StatutoryMinDaysPerYear is decimal min && context.EntitlementDaysPerYear < min)
+                    {
+                        <MudTooltip Text="@($"ต่ำกว่าขั้นต่ำตาม{context.Lve_LeaveType.LawReference ?? "กฎหมายแรงงาน"} ({min:0.#} วัน)")">
+                            <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Color="Color.Warning" Size="Size.Small" Class="ml-1" />
+                        </MudTooltip>
+                    }
                 }
             </MudTd>
             <MudTd>
@@ -137,7 +143,7 @@
         <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
             @foreach (var type in _missingTypes)
             {
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddPolicyAsync(type))">+ @LeaveTypeLabel(type)</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddPolicyAsync(type))">+ @type.NameTh</MudButton>
             }
         </MudStack>
     }
@@ -153,7 +159,7 @@
     private LeaveCarryOverMode _editCarryOverMode;
     private decimal? _editMaxCarryOverDays;
 
-    private List<LeaveType> _missingTypes = new();
+    private List<Lve_LeaveType> _missingTypes = new();
     private string? _countryCode;
 
     private static readonly DayOfWeek[] _weekDays =
@@ -176,17 +182,19 @@
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         _policies = await context.Lve_LeavePolicies
+            .Include(p => p.Lve_LeaveType)
             .Where(p => p.CompanyId == _companyId)
-            .OrderBy(p => p.LeaveType)
+            .OrderBy(p => p.Lve_LeaveType.SortOrder)
             .ToListAsync();
 
         var setting = await context.Lve_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _companyId);
         _countryCode = setting?.CountryCode;
         _workDaysSelected = DecodeWorkDaysMask(setting?.WorkDaysMask);
 
-        var existingTypes = _policies.Select(p => p.LeaveType).ToHashSet();
-        _missingTypes = Enum.GetValues<LeaveType>()
-            .Where(t => !existingTypes.Contains(t) && HRM.Services.Leave.LeaveCountryHelper.IsApplicable(t, _countryCode))
+        var allTypes = await context.Lve_LeaveTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
+        var existingTypeIds = _policies.Select(p => p.LeaveTypeId).ToHashSet();
+        _missingTypes = allTypes
+            .Where(t => !existingTypeIds.Contains(t.Id) && HRM.Services.Leave.LeaveCountryHelper.IsApplicable(t, _countryCode))
             .ToList();
     }
 
@@ -248,16 +256,6 @@
         await LoadAsync();
     }
 
-    private static string LeaveTypeLabel(LeaveType type) => type switch
-    {
-        LeaveType.Sick => "ลาป่วย",
-        LeaveType.Personal => "ลากิจ",
-        LeaveType.Vacation => "ลาพักร้อน",
-        LeaveType.Maternity => "ลาคลอด",
-        LeaveType.Ordination => "ลาบวช",
-        _ => "อื่นๆ",
-    };
-
     private void StartEdit(Lve_LeavePolicy policy)
     {
         _editingId = policy.Id;
@@ -297,14 +295,14 @@
         await LoadAsync();
     }
 
-    private async Task AddPolicyAsync(LeaveType type)
+    private async Task AddPolicyAsync(Lve_LeaveType type)
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Lve_LeavePolicies.Add(new Lve_LeavePolicy
         {
             CompanyId = _companyId!,
-            LeaveType = type,
-            EntitlementDaysPerYear = 0,
+            LeaveTypeId = type.Id,
+            EntitlementDaysPerYear = type.StatutoryMinDaysPerYear ?? 0,
             IsActive = true,
         });
         await context.SaveChangesAsync();

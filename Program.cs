@@ -660,4 +660,12 @@ using (var oidcSeedScope = app.Services.CreateScope())
     }
 }
 
+// Guarantees a known dev login — see Services/Dev/DevAuthSeeder.cs. Never
+// runs outside Development, and does nothing at all in Production (the
+// account isn't even seeded there): safe to leave in place permanently.
+if (app.Environment.IsDevelopment())
+{
+    await HRM.Services.Dev.DevAuthSeeder.EnsureKnownDevPasswordAsync(app.Services);
+}
+
 app.Run();

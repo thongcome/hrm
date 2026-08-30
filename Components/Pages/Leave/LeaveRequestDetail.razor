@@ -25,7 +25,7 @@
 
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6"><MudTextField Value="@_employeeName" Label="พนักงานผู้ขอ" ReadOnly="true" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField Value="@(LeaveRequestService.LeaveTypeLabel(_request.LeaveType) + (_request.IsHalfDay ? " (ครึ่งวัน)" : ""))" Label="ประเภทการลา" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@(_request.Lve_LeaveType.NameTh + (_request.IsHalfDay ? " (ครึ่งวัน)" : ""))" Label="ประเภทการลา" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.RequestedDate.ToString("dd/MM/yyyy HH:mm")" Label="วันที่ยื่นคำขอ" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.StartDate.ToString("dd/MM/yyyy")" Label="เริ่มลา" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@_request.EndDate.ToString("dd/MM/yyyy")" Label="สิ้นสุดลา" ReadOnly="true" /></MudItem>
@@ -116,7 +116,7 @@
         _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        _request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == Id);
+        _request = await context.Lve_LeaveRequests.Include(r => r.Lve_LeaveType).FirstOrDefaultAsync(r => r.Id == Id);
         if (_request is null)
         {
             _notFound = true;
@@ -137,7 +137,7 @@
         var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == _request.HremployeeId);
         _employeeName = emp is null ? _request.EmpNo : $"{emp.EmpName} {emp.EmpSurname} ({emp.EmpNo})";
 
-        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _request.CompanyId && p.LeaveType == _request.LeaveType);
+        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _request.CompanyId && p.LeaveTypeId == _request.LeaveTypeId);
         _isPaidLeaveType = policy is null || policy.IsPaid;
 
         if (_request.JobMasterId is not null)

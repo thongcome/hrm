@@ -11,15 +11,15 @@ using Microsoft.EntityFrameworkCore;
 // DirectReportResolverHelper.cs elsewhere in this codebase.
 public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
 {
-    public record LeaveBalanceRow(LeaveType LeaveType, decimal EntitlementDays, decimal CarriedOverDays, decimal UsedDays, decimal RemainingDays);
+    public record LeaveBalanceRow(int LeaveTypeId, string LeaveTypeCode, decimal EntitlementDays, decimal CarriedOverDays, decimal UsedDays, decimal RemainingDays);
 
-    public async Task<List<LeaveBalanceRow>> GetBalancesAsync(long hremployeeId, string companyId, LeaveType? leaveType = null, int? year = null, CancellationToken ct = default)
+    public async Task<List<LeaveBalanceRow>> GetBalancesAsync(long hremployeeId, string companyId, int? leaveTypeId = null, int? year = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var policiesQuery = context.Lve_LeavePolicies.Where(p => p.CompanyId == companyId && p.IsActive);
-        if (leaveType is LeaveType lt)
-            policiesQuery = policiesQuery.Where(p => p.LeaveType == lt);
+        var policiesQuery = context.Lve_LeavePolicies.Include(p => p.Lve_LeaveType).Where(p => p.CompanyId == companyId && p.IsActive);
+        if (leaveTypeId is int id)
+            policiesQuery = policiesQuery.Where(p => p.LeaveTypeId == id);
         var policies = await policiesQuery.ToListAsync(ct);
         if (policies.Count == 0)
             return new();
@@ -31,10 +31,10 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
         foreach (var policy in policies)
         {
             var entitlementThisYear = ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, targetYear);
-            var usedThisYear = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveType, targetYear, ct);
+            var usedThisYear = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveTypeId, targetYear, ct);
             var carriedOver = await ComputeCarryOverAsync(context, hremployeeId, policy, workDate, targetYear, ct);
 
-            rows.Add(new LeaveBalanceRow(policy.LeaveType, entitlementThisYear, carriedOver, usedThisYear, entitlementThisYear + carriedOver - usedThisYear));
+            rows.Add(new LeaveBalanceRow(policy.LeaveTypeId, policy.Lve_LeaveType.Code, entitlementThisYear, carriedOver, usedThisYear, entitlementThisYear + carriedOver - usedThisYear));
         }
 
         return rows;
@@ -68,7 +68,7 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
 
         var priorYear = targetYear - 1;
         var priorYearEntitlement = ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, priorYear);
-        var priorYearUsed = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveType, priorYear, ct);
+        var priorYearUsed = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveTypeId, priorYear, ct);
         var priorYearOwnRemaining = Math.Max(0m, priorYearEntitlement - priorYearUsed);
 
         return policy.CarryOverMode switch
@@ -79,13 +79,13 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
         };
     }
 
-    private static async Task<decimal> SumUsedDaysAsync(HRMContext context, long hremployeeId, LeaveType leaveType, int year, CancellationToken ct)
+    private static async Task<decimal> SumUsedDaysAsync(HRMContext context, long hremployeeId, int leaveTypeId, int year, CancellationToken ct)
     {
         return await (
             from r in context.Lve_LeaveRequests
             join j in context.job_masters on r.JobMasterId equals j.jobmasterid
             where r.HremployeeId == hremployeeId
-                  && r.LeaveType == leaveType
+                  && r.LeaveTypeId == leaveTypeId
                   && r.StartDate.Year == year
                   && j.status == "COMPLETED"
             select r.TotalDays

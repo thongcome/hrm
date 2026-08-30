@@ -388,6 +388,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Lve_CompanySetting> Lve_CompanySettings { get; set; }
 
+    public virtual DbSet<Lve_LeaveType> Lve_LeaveTypes { get; set; }
+
     public virtual DbSet<Pay_WelfareFundPolicy> Pay_WelfareFundPolicies { get; set; }
 
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
@@ -1746,13 +1748,33 @@ public partial class HRMContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // Explicit FK config on both — LeaveTypeId doesn't match EF's naming
+        // convention for the Lve_LeaveType navigation (it would look for
+        // "Lve_LeaveTypeId"), so without this EF silently adds a second
+        // shadow FK column. Same reasoning as Pay_EmployeeTaxDeductionElection
+        // above.
         modelBuilder.Entity<Lve_LeaveRequest>(entity =>
         {
             entity.HasOne(d => d.Hremployee)
                 .WithMany()
                 .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Lve_LeaveType)
+                .WithMany()
+                .HasForeignKey(d => d.LeaveTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
+
+        modelBuilder.Entity<Lve_LeavePolicy>(entity =>
+        {
+            entity.HasOne(d => d.Lve_LeaveType)
+                .WithMany()
+                .HasForeignKey(d => d.LeaveTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Lve_LeaveType>().HasIndex(t => t.Code).IsUnique();
 
         modelBuilder.Entity<Pay_PayslipSettings>().HasData(
             new Pay_PayslipSettings { Id = 1, CompanyId = "001", PasswordTemplate = "{BirthDateDDMMYYYY}", ModifiedDate = new DateTime(2026, 7, 29) }

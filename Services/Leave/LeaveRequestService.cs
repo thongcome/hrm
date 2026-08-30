@@ -16,7 +16,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
     private const string UnpaidLeavePayItemCode = "LEAVE_UNPAID";
     private static readonly string[] NonBlockingStatuses = ["REJECTED", "RETURNED"];
 
-    public async Task<long> CreateDraftAsync(long hremployeeId, LeaveType leaveType, DateOnly start, DateOnly end,
+    public async Task<long> CreateDraftAsync(long hremployeeId, int leaveTypeId, DateOnly start, DateOnly end,
         bool isHalfDay, HalfDayPeriod? halfDayPeriod, string? reason, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
@@ -37,7 +37,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
             HremployeeId = emp.id,
             EmpNo = emp.EmpNo,
             CompanyId = emp.companyid,
-            LeaveType = leaveType,
+            LeaveTypeId = leaveTypeId,
             StartDate = start,
             EndDate = end,
             TotalDays = totalDays,
@@ -53,7 +53,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
     public async Task<long> SubmitAsync(long requestId, long actorUserId, string? actorEmpNo, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct)
+        var request = await context.Lve_LeaveRequests.Include(r => r.Lve_LeaveType).FirstOrDefaultAsync(r => r.Id == requestId, ct)
             ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
         if (request.JobMasterId is not null)
             throw new InvalidOperationException("คำขอนี้ถูกส่งเข้าสู่กระบวนการอนุมัติไปแล้ว");
@@ -61,7 +61,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == WorkflowCode, ct)
             ?? throw new InvalidOperationException($"ไม่พบ workflow '{WorkflowCode}' — ตรวจสอบว่า migration ถูก apply แล้ว");
 
-        var subject = $"ขอลา: {request.EmpNo} {LeaveTypeLabel(request.LeaveType)} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}";
+        var subject = $"ขอลา: {request.EmpNo} {request.Lve_LeaveType.NameTh} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}";
         var jobId = await engine.StartJobAsync(workflow.workflowid, "Lve_LeaveRequest", requestId.ToString(),
             actorUserId, actorEmpNo, subject, null, ct);
 
@@ -100,7 +100,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
     public async Task<long> PushUnpaidToPayrollAsync(long requestId, long actorUserId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct)
+        var request = await context.Lve_LeaveRequests.Include(r => r.Lve_LeaveType).FirstOrDefaultAsync(r => r.Id == requestId, ct)
             ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
         if (request.AdhocPayItemId is not null)
             throw new InvalidOperationException("ผลักเข้าระบบเงินเดือนไปแล้ว");
@@ -110,7 +110,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         if (!approved)
             throw new InvalidOperationException("คำขอนี้ยังไม่ผ่านการอนุมัติ");
 
-        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == request.CompanyId && p.LeaveType == request.LeaveType, ct);
+        var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == request.CompanyId && p.LeaveTypeId == request.LeaveTypeId, ct);
         if (policy is null || policy.IsPaid)
             throw new InvalidOperationException("ประเภทการลานี้เป็นการลาแบบได้รับค่าจ้าง ไม่ต้องผลักเข้าระบบเงินเดือน");
 
@@ -134,7 +134,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
             TargetPeriod = request.StartDate.ToString("yyyyMM"),
             Amount = amount,
             IsTaxable = false,
-            Reason = $"หักเงินลาไม่รับค่าจ้าง ({LeaveTypeLabel(request.LeaveType)} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}, {request.TotalDays:0.#} วัน)",
+            Reason = $"หักเงินลาไม่รับค่าจ้าง ({request.Lve_LeaveType.NameTh} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}, {request.TotalDays:0.#} วัน)",
             Status = PayAdhocItemStatus.Approved,
             RequestedByUserId = actorUserId,
             ApprovedByUserId = actorUserId,
@@ -180,14 +180,4 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
 
         return LeaveDayCalculator.CalculateWorkingDays(start, end, holidayDates.ToHashSet(), workDaysMask);
     }
-
-    public static string LeaveTypeLabel(LeaveType type) => type switch
-    {
-        LeaveType.Sick => "ลาป่วย",
-        LeaveType.Personal => "ลากิจ",
-        LeaveType.Vacation => "ลาพักร้อน",
-        LeaveType.Maternity => "ลาคลอด",
-        LeaveType.Ordination => "ลาบวช",
-        _ => "อื่นๆ",
-    };
 }

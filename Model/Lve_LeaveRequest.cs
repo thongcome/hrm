@@ -5,10 +5,11 @@ namespace HRM.Models;
 
 // A leave-of-absence request routed through the generic Workflow Approval
 // Engine (Services/Workflow/WorkflowEngineService.cs) — mirrors
-// emp_overtime_request's soft-link/JobMasterId convention exactly (see
-// comments on that model): no FK constraints, HremployeeId/EmpNo/CompanyId
-// are denormalized snapshots checked in application code, and JobMasterId
-// is null while the request is still an editable draft and gets set once
+// emp_overtime_request's soft-link/JobMasterId convention for the
+// HremployeeId/EmpNo/CompanyId snapshot fields (checked in application code,
+// no FK), though HremployeeId and LeaveTypeId do have real FK constraints
+// configured in HRMContext.OnModelCreating. JobMasterId is null while the
+// request is still an editable draft and gets set once
 // StartJobAsync(reftable: "Lve_LeaveRequest", refid: this.Id) is called.
 [Table("Lve_LeaveRequest")]
 public class Lve_LeaveRequest
@@ -26,7 +27,8 @@ public class Lve_LeaveRequest
     [StringLength(6)]
     public string? CompanyId { get; set; }
 
-    public LeaveType LeaveType { get; set; }
+    public int LeaveTypeId { get; set; }
+    public virtual Lve_LeaveType Lve_LeaveType { get; set; } = null!;
 
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }

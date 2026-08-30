@@ -20,7 +20,8 @@ public class Lve_LeavePolicy
     [Required, StringLength(6)]
     public string CompanyId { get; set; } = null!;
 
-    public LeaveType LeaveType { get; set; }
+    public int LeaveTypeId { get; set; }
+    public virtual Lve_LeaveType Lve_LeaveType { get; set; } = null!;
 
     [Column(TypeName = "decimal(5,1)")]
     public decimal EntitlementDaysPerYear { get; set; }

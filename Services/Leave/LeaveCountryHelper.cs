@@ -2,17 +2,19 @@ namespace HRM.Services.Leave;
 
 using HRM.Models;
 
-// Decides which LeaveType values are offered to a given company based on its
-// configured country (Lve_CompanySetting.CountryCode). Only Ordination is
-// country-restricted today (Thai-law-only leave category) — every other
-// LeaveType is treated as universal. Null/unset country code preserves prior
-// behavior (everything visible) since this predates the country concept.
+// Decides which Lve_LeaveType catalog rows are offered to a given company
+// based on its configured country (Lve_CompanySetting.CountryCode), reading
+// each type's own Lve_LeaveType.ApplicableCountryCode rather than a
+// hardcoded rule (e.g. Ordination used to be hardcoded Thailand-only here —
+// that's now just data: ApplicableCountryCode = "TH" on that catalog row).
+// Null/unset country code preserves prior behavior (everything visible)
+// since this predates the country concept.
 public static class LeaveCountryHelper
 {
-    public static bool IsApplicable(LeaveType type, string? countryCode)
+    public static bool IsApplicable(Lve_LeaveType type, string? countryCode)
     {
-        if (type != LeaveType.Ordination) return true;
-        return string.IsNullOrWhiteSpace(countryCode) || countryCode == "TH";
+        if (string.IsNullOrWhiteSpace(type.ApplicableCountryCode)) return true;
+        return string.IsNullOrWhiteSpace(countryCode) || countryCode == type.ApplicableCountryCode;
     }
 
     public static readonly (string Code, string Label)[] CommonCountries =
