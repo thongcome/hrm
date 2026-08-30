@@ -24,6 +24,7 @@
 
     <MudTable Items="_types" Dense="true" Hover="true" Class="mt-3">
         <HeaderContent>
+            <MudTh>ไอคอน</MudTh>
             <MudTh>รหัส</MudTh>
             <MudTh>ชื่อ (ไทย / อังกฤษ)</MudTh>
             <MudTh>กฎหมาย</MudTh>
@@ -37,6 +38,23 @@
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
+            <MudTd>
+                @if (_editingId == context.Id)
+                {
+                    <MudSelect T="string" @bind-Value="_editIconName" Dense="true" Style="width:170px">
+                        @foreach (var opt in LeaveIconCatalog.Options)
+                        {
+                            <MudSelectItem T="string" Value="@opt.Name">
+                                <MudIcon Icon="@opt.Icon" Size="Size.Small" Class="mr-1" />@opt.LabelTh
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudIcon Icon="@LeaveIconCatalog.Resolve(context.IconName)" />
+                }
+            </MudTd>
             <MudTd>
                 @context.Code
                 @if (context.IsStatutory)
@@ -182,6 +200,16 @@
                 }
             </MudSelect>
         </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="string" @bind-Value="_newIconName" Label="ไอคอน">
+                @foreach (var opt in LeaveIconCatalog.Options)
+                {
+                    <MudSelectItem T="string" Value="@opt.Name">
+                        <MudIcon Icon="@opt.Icon" Size="Size.Small" Class="mr-1" />@opt.LabelTh
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
         <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="_newRequiresMedicalCert" Label="ต้องแนบใบรับรองแพทย์" /></MudItem>
         <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="_newAllowHalfDay" Label="ลาครึ่งวันได้" /></MudItem>
         <MudItem xs="12">
@@ -205,6 +233,7 @@
     private bool _editAllowHalfDay;
     private int _editSortOrder;
     private bool _editIsActive;
+    private string? _editIconName;
 
     private string? _newCode;
     private string? _newNameTh;
@@ -212,6 +241,7 @@
     private string? _newApplicableCountryCode;
     private bool _newRequiresMedicalCert;
     private bool _newAllowHalfDay = true;
+    private string _newIconName = LeaveIconCatalog.DefaultIconName;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -235,6 +265,7 @@
         _editAllowHalfDay = type.AllowHalfDay;
         _editSortOrder = type.SortOrder;
         _editIsActive = type.IsActive;
+        _editIconName = type.IconName ?? LeaveIconCatalog.DefaultIconName;
         _error = null;
     }
 
@@ -271,6 +302,7 @@
         existing.AllowHalfDay = _editAllowHalfDay;
         existing.SortOrder = _editSortOrder;
         existing.IsActive = _editIsActive;
+        existing.IconName = _editIconName;
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกประเภทการลาเรียบร้อย", Severity.Success);
@@ -305,6 +337,7 @@
             ApplicableCountryCode = _newApplicableCountryCode,
             RequiresMedicalCert = _newRequiresMedicalCert,
             AllowHalfDay = _newAllowHalfDay,
+            IconName = _newIconName,
             SortOrder = nextSortOrder,
             IsActive = true,
         });
@@ -317,6 +350,7 @@
         _newApplicableCountryCode = null;
         _newRequiresMedicalCert = false;
         _newAllowHalfDay = true;
+        _newIconName = LeaveIconCatalog.DefaultIconName;
         await LoadAsync();
     }
 }

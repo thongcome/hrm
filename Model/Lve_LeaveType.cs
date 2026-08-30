@@ -55,6 +55,13 @@ public class Lve_LeaveType
 
     public bool AllowHalfDay { get; set; } = true;
 
+    // MudBlazor icon constant name (e.g. "BeachAccess") — see
+    // LeaveIconCatalog.cs for the curated picker list and the fallback used
+    // when null or not recognized. Drives the icon-card leave-type picker in
+    // LeaveRequestList.razor.
+    [StringLength(100)]
+    public string? IconName { get; set; }
+
     public int SortOrder { get; set; }
 
     // Soft block, never hard delete — a type referenced by any

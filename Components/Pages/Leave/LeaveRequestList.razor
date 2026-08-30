@@ -116,13 +116,18 @@ else
                 <MudTextField T="string" Label="พนักงาน" Value="@($"{_selectedEmployee!.EmpNo} - {_selectedEmployee.EmpName} {_selectedEmployee.EmpSurname}")" ReadOnly="true" />
             }
         </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="int" @bind-Value="_leaveTypeId" @bind-Value:after="RecomputeBalanceAsync" Label="ประเภทการลา">
+        <MudItem xs="12">
+            <MudText Typo="Typo.body2" Class="mb-2">ประเภทการลา</MudText>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
                 @foreach (var t in _availableLeaveTypes)
                 {
-                    <MudSelectItem T="int" Value="t.Id">@t.NameTh</MudSelectItem>
+                    <div @key="t.Id" @onclick="@(() => SelectLeaveTypeAsync(t.Id))" style="@LeaveTypeCardStyle(t)">
+                        <MudIcon Icon="@LeaveIconCatalog.Resolve(t.IconName)" Size="Size.Medium"
+                            Style="@(t.Id == _leaveTypeId ? "color:var(--mud-palette-white);" : $"color:{LeaveTypeAccentVar(t)};")" />
+                        <MudText Typo="Typo.caption" Style="@(t.Id == _leaveTypeId ? "color:var(--mud-palette-white);display:block;" : "display:block;")">@t.NameTh</MudText>
+                    </div>
                 }
-            </MudSelect>
+            </div>
         </MudItem>
         @if (_selectedEmployee is not null)
         {
@@ -292,6 +297,22 @@ else
         }
 
         await RecomputeBalanceAsync();
+    }
+
+    private async Task SelectLeaveTypeAsync(int id)
+    {
+        _leaveTypeId = id;
+        await RecomputeBalanceAsync();
+    }
+
+    private static string LeaveTypeAccentVar(Lve_LeaveType t) => t.IsStatutory ? "var(--mud-palette-info)" : "var(--mud-palette-success)";
+
+    private string LeaveTypeCardStyle(Lve_LeaveType t)
+    {
+        var accent = LeaveTypeAccentVar(t);
+        var selected = t.Id == _leaveTypeId;
+        var bg = selected ? accent : "transparent";
+        return $"cursor:pointer;user-select:none;width:100px;padding:10px 6px;border-radius:10px;text-align:center;border:2px solid {accent};background:{bg};transition:background-color .15s;";
     }
 
     private async Task RecomputeBalanceAsync()
