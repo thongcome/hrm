@@ -51,11 +51,26 @@ public static class TaxBracketCalculator
     // pay periods of the year (added to what's already accumulated YTD),
     // compute the full annual tax progressively, subtract tax already withheld
     // YTD, and spread the remainder over the remaining periods (including this one).
+    //
+    // Deductions come in two shapes, handled differently:
+    //   - thisPeriodFlatDeduction (personal allowance/12, SSO, PF, elected
+    //     monthly deductions) is a flat amount that recurs every period, so
+    //     it's projected the same way income is: × remainingPeriodsIncludingThis,
+    //     added to ytdAccumulatedDeduction (the sum of PRIOR periods' actual
+    //     flat deductions).
+    //   - The expense deduction (ค่าใช้จ่าย) is NOT flat — it's a percentage
+    //     of ANNUAL income capped at a fixed ceiling, so it must be computed
+    //     here from projectedAnnualIncome directly, not passed in as an
+    //     external per-period number (there's no way to know the correct
+    //     per-period share of it without first knowing the annual total,
+    //     which is exactly what this method is computing).
     public static (decimal MonthlyWithholding, TaxCalculationResult AnnualCalculation) CalculateMonthlyWithholding(
         decimal ytdAccumulatedIncome,
         decimal thisPeriodIncome,
         decimal ytdAccumulatedDeduction,
-        decimal thisPeriodDeduction,
+        decimal thisPeriodFlatDeduction,
+        decimal expenseDeductionRate,
+        decimal expenseDeductionCap,
         int remainingPeriodsIncludingThis,
         decimal ytdAccumulatedTax,
         IReadOnlyList<Pay_TaxBracket> brackets)
@@ -63,7 +78,8 @@ public static class TaxBracketCalculator
         if (remainingPeriodsIncludingThis <= 0) remainingPeriodsIncludingThis = 1;
 
         var projectedAnnualIncome = ytdAccumulatedIncome + thisPeriodIncome * remainingPeriodsIncludingThis;
-        var projectedAnnualDeduction = ytdAccumulatedDeduction + thisPeriodDeduction * remainingPeriodsIncludingThis;
+        var expenseDeduction = Math.Min(Math.Max(0m, projectedAnnualIncome) * expenseDeductionRate, expenseDeductionCap);
+        var projectedAnnualDeduction = ytdAccumulatedDeduction + thisPeriodFlatDeduction * remainingPeriodsIncludingThis + expenseDeduction;
         var taxableIncome = Math.Max(0m, projectedAnnualIncome - projectedAnnualDeduction);
 
         var annualCalculation = CalculateProgressiveTax(taxableIncome, brackets);

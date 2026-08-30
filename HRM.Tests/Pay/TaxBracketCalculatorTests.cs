@@ -95,7 +95,9 @@ public class TaxBracketCalculatorTests
             ytdAccumulatedIncome: 0m,
             thisPeriodIncome: 40000m,
             ytdAccumulatedDeduction: 0m,
-            thisPeriodDeduction: 0m,
+            thisPeriodFlatDeduction: 0m,
+            expenseDeductionRate: 0m,
+            expenseDeductionCap: 0m,
             remainingPeriodsIncludingThis: 7,
             ytdAccumulatedTax: 0m,
             brackets: StandardBrackets());
@@ -112,7 +114,9 @@ public class TaxBracketCalculatorTests
             ytdAccumulatedIncome: 200000m,
             thisPeriodIncome: 40000m,
             ytdAccumulatedDeduction: 0m,
-            thisPeriodDeduction: 0m,
+            thisPeriodFlatDeduction: 0m,
+            expenseDeductionRate: 0m,
+            expenseDeductionCap: 0m,
             remainingPeriodsIncludingThis: 5,
             ytdAccumulatedTax: 2500m,
             brackets: StandardBrackets());
@@ -120,5 +124,50 @@ public class TaxBracketCalculatorTests
         // projected annual = 200,000 + 40,000*5 = 400,000 -> total tax = 17,500 (from earlier test)
         // remaining = 17,500 - 2,500 = 15,000; monthly = 15,000/5 = 3,000
         Assert.Equal(3000m, monthlyTax);
+    }
+
+    [Fact]
+    public void Expense_deduction_is_computed_from_projected_annual_income_and_capped()
+    {
+        // 50,000/month, 12 remaining periods -> projected annual income 600,000.
+        // Expense deduction = min(600,000 * 50%, 100,000) = 100,000 (capped,
+        // 50% would be 300,000 uncapped). Personal allowance flat 60,000/year
+        // via thisPeriodFlatDeduction = 5,000/month * 12 = 60,000.
+        // Taxable = 600,000 - 100,000 - 60,000 = 440,000.
+        var (_, annual) = TaxBracketCalculator.CalculateMonthlyWithholding(
+            ytdAccumulatedIncome: 0m,
+            thisPeriodIncome: 50000m,
+            ytdAccumulatedDeduction: 0m,
+            thisPeriodFlatDeduction: 5000m,
+            expenseDeductionRate: 0.50m,
+            expenseDeductionCap: 100000m,
+            remainingPeriodsIncludingThis: 12,
+            ytdAccumulatedTax: 0m,
+            brackets: StandardBrackets());
+
+        // 0-150,000 @0% + 150,000-300,000 @5%=7,500 + 300,000-440,000 @10%=14,000 = 21,500
+        Assert.Equal(21500m, annual.TotalAnnualTax);
+    }
+
+    [Fact]
+    public void Expense_deduction_below_cap_uses_the_percentage_not_the_cap()
+    {
+        // 10,000/month, 12 periods -> projected annual income 120,000.
+        // Expense deduction = min(120,000*50%, 100,000) = 60,000 (percentage wins, cap doesn't bind).
+        // No personal allowance/flat deduction in this test to isolate the expense-deduction math.
+        // Taxable = 120,000 - 60,000 = 60,000, entirely within the 0% bracket.
+        var (monthlyTax, annual) = TaxBracketCalculator.CalculateMonthlyWithholding(
+            ytdAccumulatedIncome: 0m,
+            thisPeriodIncome: 10000m,
+            ytdAccumulatedDeduction: 0m,
+            thisPeriodFlatDeduction: 0m,
+            expenseDeductionRate: 0.50m,
+            expenseDeductionCap: 100000m,
+            remainingPeriodsIncludingThis: 12,
+            ytdAccumulatedTax: 0m,
+            brackets: StandardBrackets());
+
+        Assert.Equal(0m, annual.TotalAnnualTax);
+        Assert.Equal(0m, monthlyTax);
     }
 }

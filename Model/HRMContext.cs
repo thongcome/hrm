@@ -348,6 +348,9 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_PayrollLineItem> Pay_PayrollLineItems { get; set; }
     public virtual DbSet<Pay_PayItemType> Pay_PayItemTypes { get; set; }
     public virtual DbSet<Pay_TaxBracket> Pay_TaxBrackets { get; set; }
+    public virtual DbSet<Pay_TaxDeductionSetting> Pay_TaxDeductionSettings { get; set; }
+    public virtual DbSet<Pay_TaxDeductionType> Pay_TaxDeductionTypes { get; set; }
+    public virtual DbSet<Pay_EmployeeTaxDeductionElection> Pay_EmployeeTaxDeductionElections { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
     public virtual DbSet<Pay_PayrollAnomaly> Pay_PayrollAnomalies { get; set; }
@@ -1512,6 +1515,25 @@ public partial class HRMContext : DbContext
                 .WithMany(p => p.VestingTiers)
                 .HasForeignKey(d => d.PolicyId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Explicit FK config — DeductionTypeId doesn't match EF's naming
+        // convention for the Pay_TaxDeductionType navigation (it would look
+        // for "Pay_TaxDeductionTypeId"), so without this EF silently adds a
+        // second shadow FK column instead of using the one that's actually
+        // there. Same reasoning as Pay_AdhocPayItem's explicit
+        // Pay_PayItemType config below.
+        modelBuilder.Entity<Pay_EmployeeTaxDeductionElection>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Pay_TaxDeductionType)
+                .WithMany(p => p.Elections)
+                .HasForeignKey(d => d.DeductionTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Pay_ProvidentFundRateChangeWindow>(entity =>

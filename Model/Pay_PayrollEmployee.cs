@@ -37,6 +37,17 @@ public class Pay_PayrollEmployee
 
     [Column(TypeName = "decimal(15,2)")]
     public decimal TaxAmount { get; set; }
+
+    // The flat-per-period deduction actually applied when computing TaxAmount
+    // above (personal allowance/12 + SocialSecurityAmount + ProvidentFund-
+    // EmployeeAmount + any ApplyMonthly elections/12 this period) — does NOT
+    // include the expense deduction, which TaxBracketCalculator recomputes
+    // fresh from projected annual income every time rather than storing a
+    // per-period share of it. Summed by GetYtdAccumulatorsAsync to give the
+    // next period's calculation a real YtdDeduction instead of a hardcoded 0.
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal TaxDeductionAmount { get; set; }
+
     [Column(TypeName = "decimal(15,2)")]
     public decimal SocialSecurityAmount { get; set; }
     [Column(TypeName = "decimal(15,2)")]

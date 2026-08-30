@@ -1,0 +1,277 @@
+@page "/pay/admin/tax-deduction-config"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ตั้งค่าค่าลดหย่อนภาษี</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ตั้งค่าค่าลดหย่อนภาษี (Tax Deduction Config)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ตั้งค่าต่อปีภาษี — ค่าลดหย่อนมาตรฐาน (บังคับใช้กับพนักงานทุกคนอัตโนมัติ) และประเภทลดหย่อนพิเศษที่ HR เพิ่มเองได้ (พนักงานเลือกใช้สิทธิที่หน้า "ค่าลดหย่อนภาษีพนักงาน")
+    </MudText>
+
+    <MudGrid Class="mt-3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="int" @bind-Value="_selectedYear" @bind-Value:after="LoadAsync" Label="ปีภาษี (ค.ศ.)" Min="2020" Max="2100" />
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-4" />
+
+    <MudText Typo="Typo.h6" Class="mb-2">ค่าลดหย่อนมาตรฐาน (บังคับ ใช้กับทุกคนอัตโนมัติ)</MudText>
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="decimal" @bind-Value="_personalAllowance" Label="ค่าลดหย่อนส่วนตัว (บาท/ปี)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="decimal" @bind-Value="_expenseRatePercent" Label="อัตราค่าใช้จ่าย (%)" Format="0.##" Min="0" Max="100" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="decimal" @bind-Value="_expenseCap" Label="เพดานค่าใช้จ่าย (บาท/ปี)" Format="N2" Min="0" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettingAsync">บันทึกค่าลดหย่อนมาตรฐานปี @_selectedYear</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_settingInfo))
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true">@_settingInfo</MudAlert>
+    }
+
+    <MudDivider Class="my-5" />
+
+    <MudText Typo="Typo.h6" Class="mb-2">ประเภทลดหย่อนพิเศษ ปี @_selectedYear (พนักงานเลือกใช้สิทธิเอง)</MudText>
+    <MudTable Items="_types" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ (ไทย)</MudTh>
+            <MudTh>เพดาน/ปี</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>
+                @if (_editingTypeId == context.Id)
+                {
+                    <MudTextField T="string" @bind-Value="_editNameTh" />
+                }
+                else
+                {
+                    @context.NameTh
+                }
+            </MudTd>
+            <MudTd>
+                @if (_editingTypeId == context.Id)
+                {
+                    <MudNumericField T="decimal" @bind-Value="_editMaxAmount" Format="N2" Min="0" />
+                }
+                else
+                {
+                    @context.MaxAmountPerYear.ToString("N2")
+                }
+            </MudTd>
+            <MudTd>
+                @if (_editingTypeId == context.Id)
+                {
+                    <MudCheckBox T="bool" @bind-Value="_editIsActive" Dense="true" />
+                }
+                else
+                {
+                    @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
+                }
+            </MudTd>
+            <MudTd>
+                @if (_editingTypeId == context.Id)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveTypeAsync">บันทึก</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CancelEditType">ยกเลิก</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditType(context))">แก้ไข</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีประเภทลดหย่อนพิเศษสำหรับปีนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มประเภทลดหย่อนใหม่</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_newCode" Label="รหัส (Code)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newNameTh" Label="ชื่อ (ไทย)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newNameEn" Label="Name (English)" /></MudItem>
+        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_newMaxAmount" Label="เพดาน/ปี (บาท)" Format="N2" Min="0" /></MudItem>
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddTypeAsync">+ เพิ่มประเภทลดหย่อน</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private int _selectedYear = DateTime.Today.Year;
+
+    private decimal _personalAllowance = 60000m;
+    private decimal _expenseRatePercent = 50m;
+    private decimal _expenseCap = 100000m;
+    private string? _settingInfo;
+
+    private List<Pay_TaxDeductionType> _types = new();
+    private long? _editingTypeId;
+    private string? _editNameTh;
+    private decimal _editMaxAmount;
+    private bool _editIsActive;
+
+    private string? _newCode;
+    private string? _newNameTh;
+    private string? _newNameEn;
+    private decimal _newMaxAmount;
+
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _settingInfo = null;
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        var setting = await context.Pay_TaxDeductionSettings.FirstOrDefaultAsync(s => s.EffectiveYear == _selectedYear);
+        if (setting is not null)
+        {
+            _personalAllowance = setting.PersonalAllowancePerYear;
+            _expenseRatePercent = setting.ExpenseDeductionRate * 100m;
+            _expenseCap = setting.ExpenseDeductionCap;
+        }
+        else
+        {
+            // No row for this year yet — show the current legal defaults as a
+            // starting point (matches PayrollCalculationService.cs's own
+            // fallback so what HR sees here is what would actually apply).
+            _personalAllowance = 60000m;
+            _expenseRatePercent = 50m;
+            _expenseCap = 100000m;
+        }
+
+        _types = await context.Pay_TaxDeductionTypes
+            .Where(t => t.EffectiveYear == _selectedYear)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Code)
+            .ToListAsync();
+    }
+
+    private async Task SaveSettingAsync()
+    {
+        _error = null;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_TaxDeductionSettings.FirstOrDefaultAsync(s => s.EffectiveYear == _selectedYear);
+        if (existing is null)
+        {
+            context.Pay_TaxDeductionSettings.Add(new Pay_TaxDeductionSetting
+            {
+                EffectiveYear = _selectedYear,
+                PersonalAllowancePerYear = _personalAllowance,
+                ExpenseDeductionRate = _expenseRatePercent / 100m,
+                ExpenseDeductionCap = _expenseCap,
+                IsActive = true,
+            });
+        }
+        else
+        {
+            existing.PersonalAllowancePerYear = _personalAllowance;
+            existing.ExpenseDeductionRate = _expenseRatePercent / 100m;
+            existing.ExpenseDeductionCap = _expenseCap;
+        }
+        await context.SaveChangesAsync();
+
+        _settingInfo = $"บันทึกค่าลดหย่อนมาตรฐานปี {_selectedYear} เรียบร้อย";
+        Snackbar.Add(_settingInfo, Severity.Success);
+    }
+
+    private void StartEditType(Pay_TaxDeductionType type)
+    {
+        _editingTypeId = type.Id;
+        _editNameTh = type.NameTh;
+        _editMaxAmount = type.MaxAmountPerYear;
+        _editIsActive = type.IsActive;
+        _error = null;
+    }
+
+    private void CancelEditType()
+    {
+        _editingTypeId = null;
+        _error = null;
+    }
+
+    private async Task SaveTypeAsync()
+    {
+        if (_editingTypeId is not long id) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Pay_TaxDeductionTypes.FirstOrDefaultAsync(t => t.Id == id);
+        if (existing is null)
+        {
+            _error = "ไม่พบประเภทลดหย่อนที่ต้องการแก้ไข";
+            return;
+        }
+
+        existing.NameTh = _editNameTh ?? existing.NameTh;
+        existing.MaxAmountPerYear = _editMaxAmount;
+        existing.IsActive = _editIsActive;
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("บันทึกประเภทลดหย่อนเรียบร้อย", Severity.Success);
+        _editingTypeId = null;
+        await LoadAsync();
+    }
+
+    private async Task AddTypeAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_newCode) || string.IsNullOrWhiteSpace(_newNameTh) || string.IsNullOrWhiteSpace(_newNameEn))
+        {
+            _error = "กรุณากรอกรหัสและชื่อให้ครบ";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var duplicate = await context.Pay_TaxDeductionTypes.AnyAsync(t => t.Code == _newCode && t.EffectiveYear == _selectedYear);
+        if (duplicate)
+        {
+            _error = $"มีรหัส '{_newCode}' สำหรับปี {_selectedYear} อยู่แล้ว";
+            return;
+        }
+
+        context.Pay_TaxDeductionTypes.Add(new Pay_TaxDeductionType
+        {
+            Code = _newCode.Trim().ToUpperInvariant(),
+            EffectiveYear = _selectedYear,
+            NameTh = _newNameTh,
+            NameEn = _newNameEn,
+            MaxAmountPerYear = _newMaxAmount,
+            IsActive = true,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มประเภทลดหย่อนใหม่เรียบร้อย", Severity.Success);
+        _newCode = null;
+        _newNameTh = null;
+        _newNameEn = null;
+        _newMaxAmount = 0;
+        await LoadAsync();
+    }
+}
