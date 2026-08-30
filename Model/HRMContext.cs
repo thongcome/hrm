@@ -351,6 +351,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_TaxDeductionSetting> Pay_TaxDeductionSettings { get; set; }
     public virtual DbSet<Pay_TaxDeductionType> Pay_TaxDeductionTypes { get; set; }
     public virtual DbSet<Pay_EmployeeTaxDeductionElection> Pay_EmployeeTaxDeductionElections { get; set; }
+
+    public virtual DbSet<Pay_EmployeePriorEmployerIncome> Pay_EmployeePriorEmployerIncomes { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
     public virtual DbSet<Pay_PayrollAnomaly> Pay_PayrollAnomalies { get; set; }
@@ -1535,6 +1537,14 @@ public partial class HRMContext : DbContext
             entity.HasOne(d => d.Pay_TaxDeductionType)
                 .WithMany(p => p.Elections)
                 .HasForeignKey(d => d.DeductionTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_EmployeePriorEmployerIncome>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee)
+                .WithMany()
+                .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

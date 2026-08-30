@@ -105,6 +105,12 @@ public class PayrollCalculationService
             .Where(e => e.IsActive && e.ApplyMonthly && e.Pay_TaxDeductionType.EffectiveYear == run.PeriodStart.Year)
             .ToListAsync(ct);
 
+        // Mid-year hires only — see Pay_EmployeePriorEmployerIncome.cs and
+        // GetYtdAccumulatorsAsync/FoldPriorEmployerIncome below.
+        var priorEmployerIncomes = await context.Pay_EmployeePriorEmployerIncomes
+            .Where(p => p.IsActive && p.TaxYear == run.PeriodStart.Year)
+            .ToListAsync(ct);
+
         var (ssoRate, ssoCap) = await _socialSecurityRateProvider.GetCurrentRateAsync(run.CompanyId, ct);
 
         var periodEndDt = run.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
@@ -298,7 +304,8 @@ public class PayrollCalculationService
             var electedMonthlyDeduction = empMonthlyElections.Sum(e => e.AnnualAmount) / 12m;
             var thisPeriodFlatDeduction = personalAllowancePerMonth + ssoAmount + pf.EmployeeAmount + electedMonthlyDeduction;
 
-            var (ytdIncome, ytdDeduction, ytdTax) = await GetYtdAccumulatorsAsync(context, emp.id, run, ct);
+            var priorEmployerIncome = priorEmployerIncomes.FirstOrDefault(p => p.HremployeeId == emp.id);
+            var (ytdIncome, ytdDeduction, ytdTax) = await GetYtdAccumulatorsAsync(context, emp.id, run, priorEmployerIncome, ct);
             var (monthlyTax, annualCalc) = TaxBracketCalculator.CalculateMonthlyWithholding(
                 ytdIncome, taxableGrossThisPeriod, ytdDeduction, thisPeriodFlatDeduction,
                 expenseDeductionRate, expenseDeductionCap, remainingPeriods, ytdTax, taxBrackets);
@@ -339,6 +346,13 @@ public class PayrollCalculationService
                     YtdIncomeBeforeThisPeriod = ytdIncome,
                     YtdDeductionBeforeThisPeriod = ytdDeduction,
                     RemainingPeriods = remainingPeriods,
+                    PriorEmployerIncomeIncluded = priorEmployerIncome is null ? null : new
+                    {
+                        priorEmployerIncome.PriorEmployerName,
+                        priorEmployerIncome.IncomeAmount,
+                        priorEmployerIncome.DeductionAmount,
+                        priorEmployerIncome.TaxWithheldAmount,
+                    },
                     DeductionBreakdown = new
                     {
                         PersonalAllowancePerMonth = personalAllowancePerMonth,
@@ -405,9 +419,11 @@ public class PayrollCalculationService
     }
 
     // YTD figures are derived from previously-calculated Pay_PayrollEmployee rows
-    // in the same calendar year rather than a separate accumulator table.
+    // in the same calendar year, plus (for a mid-year hire) whatever prior-
+    // employer income HR entered at Pay/admin/prior-employer-income — never a
+    // separate running-accumulator table.
     private static async Task<(decimal YtdIncome, decimal YtdDeduction, decimal YtdTax)> GetYtdAccumulatorsAsync(
-        HRMContext context, long hremployeeId, Pay_PayrollRun run, CancellationToken ct)
+        HRMContext context, long hremployeeId, Pay_PayrollRun run, Pay_EmployeePriorEmployerIncome? priorEmployerIncome, CancellationToken ct)
     {
         var yearStart = new DateOnly(run.PeriodStart.Year, 1, 1);
 
@@ -419,6 +435,20 @@ public class PayrollCalculationService
                         && e.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
             .ToListAsync(ct);
 
-        return (priorRows.Sum(r => r.GrossEarnings), priorRows.Sum(r => r.TaxDeductionAmount), priorRows.Sum(r => r.TaxAmount));
+        return FoldPriorEmployerIncome(
+            priorRows.Sum(r => r.GrossEarnings), priorRows.Sum(r => r.TaxDeductionAmount), priorRows.Sum(r => r.TaxAmount),
+            priorEmployerIncome);
     }
+
+    // Pure and unit-testable on purpose (mirrors TaxBracketCalculator's own
+    // separation of math from EF orchestration) — folds a mid-year hire's
+    // prior-employer income/deduction/tax-withheld (from
+    // Pay_EmployeePriorEmployerIncome, entered once from the certificate the
+    // employee brings in) into this company's own YTD accumulators, so the
+    // withholding projection reflects the employee's TRUE annual income.
+    public static (decimal YtdIncome, decimal YtdDeduction, decimal YtdTax) FoldPriorEmployerIncome(
+        decimal ytdIncome, decimal ytdDeduction, decimal ytdTax, Pay_EmployeePriorEmployerIncome? prior)
+        => prior is null
+            ? (ytdIncome, ytdDeduction, ytdTax)
+            : (ytdIncome + prior.IncomeAmount, ytdDeduction + prior.DeductionAmount, ytdTax + prior.TaxWithheldAmount);
 }
