@@ -15,8 +15,8 @@
     <MudText Typo="Typo.h5">ปฏิทินทีม</MudText>
     <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
         @(_isAdmin
-            ? "เลือกพนักงานเพื่อดูปฏิทินการลาของหน่วยงานที่พนักงานคนนั้นสังกัด (รวมหน่วยงานย่อย)"
-            : "ปฏิทินการลาของหน่วยงานคุณ (รวมหน่วยงานย่อย)")
+            ? "เลือกพนักงานเพื่อดูปฏิทินการลาของหน่วยงานที่พนักงานคนนั้นสังกัด (รวมหน่วยงานย่อย) หรือสลับไปดูทั้งบริษัทได้"
+            : "ปฏิทินการลาของหน่วยงานคุณ (รวมหน่วยงานย่อย) หรือสลับไปดูทั้งบริษัทได้")
         — แสดงพนักงานที่ยังทำงานอยู่ในช่วงเดือนนั้น รวมถึงคนที่ลาออกระหว่างเดือนด้วย (มีป้าย "วันสุดท้าย" กำกับ เพื่อให้หัวหน้ารีบมอบหมายงานแทน)
     </MudText>
 
@@ -26,13 +26,21 @@
             ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" Class="mb-3" Style="max-width:400px" />
     }
 
+    @if (_selectedEmployee is not null)
+    {
+        <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined" Class="mb-3">
+            <MudButton Variant="@(_scope == CalendarScope.Team ? Variant.Filled : Variant.Outlined)" OnClick="@(() => ChangeScopeAsync(CalendarScope.Team))">ตามหน่วยงาน</MudButton>
+            <MudButton Variant="@(_scope == CalendarScope.Company ? Variant.Filled : Variant.Outlined)" OnClick="@(() => ChangeScopeAsync(CalendarScope.Company))">ทั้งบริษัท</MudButton>
+        </MudButtonGroup>
+    }
+
     @if (_selectedEmployee is null)
     {
         <MudAlert Severity="Severity.Warning">@(_isAdmin ? "เลือกพนักงานก่อนเพื่อดูปฏิทิน" : "บัญชีของคุณยังไม่ได้ผูกกับข้อมูลพนักงาน — ติดต่อแอดมิน")</MudAlert>
     }
-    else if (_orgId is null)
+    else if (_scope == CalendarScope.Team && _orgId is null)
     {
-        <MudAlert Severity="Severity.Warning">พนักงานคนนี้ยังไม่ได้ผูกกับหน่วยงานใดๆ — ไม่สามารถแสดงปฏิทินทีมได้</MudAlert>
+        <MudAlert Severity="Severity.Warning">พนักงานคนนี้ยังไม่ได้ผูกกับหน่วยงานใดๆ — ไม่สามารถแสดงปฏิทินตามหน่วยงานได้ ลองสลับไปดู "ทั้งบริษัท" แทน</MudAlert>
     }
     else
     {
@@ -82,9 +90,12 @@
     private record ResignationMarker(string EmployeeName, string EmployeeShortName);
     private record CalendarDay(DateOnly Date, List<CalendarEntry> Entries, List<ResignationMarker> Resignations);
 
+    private enum CalendarScope { Team, Company }
+
     private bool _isAdmin;
     private Hremployee? _selectedEmployee;
     private long? _orgId;
+    private CalendarScope _scope = CalendarScope.Team;
     private DateOnly _visibleMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private List<CalendarDay> _days = new();
     private int _leadingBlanks;
@@ -127,10 +138,17 @@
         await LoadMonthAsync();
     }
 
+    private async Task ChangeScopeAsync(CalendarScope scope)
+    {
+        _scope = scope;
+        await LoadMonthAsync();
+    }
+
     private async Task LoadMonthAsync()
     {
         _days = new();
-        if (_selectedEmployee is null || _orgId is null) return;
+        if (_selectedEmployee is null) return;
+        if (_scope == CalendarScope.Team && _orgId is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
@@ -139,9 +157,6 @@
         var monthStartDt = monthStart.ToDateTime(TimeOnly.MinValue);
         var monthEndDt = monthEnd.ToDateTime(TimeOnly.MaxValue);
 
-        var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == _orgId.Value);
-        if (org is null || string.IsNullOrWhiteSpace(org.orgcodefull)) return;
-
         // Deliberately NOT OrgEmployeeResolverHelper — that helper answers
         // "who's active TODAY," but a calendar for an arbitrary month needs
         // "who was actually here during THIS month," which is a different
@@ -149,11 +164,19 @@
         // mid-month still worked (and could still have taken leave) for the
         // part of the month before that, and still needs to show up so a
         // manager sees the gap coming — see ResignationMarker below.
-        var teamEmployees = await context.Hremployee
-            .Where(e => e.companyid == _selectedEmployee.companyid && e.orgcodefull != null && e.orgcodefull.StartsWith(org.orgcodefull)
+        var employeeQuery = context.Hremployee
+            .Where(e => e.companyid == _selectedEmployee.companyid
                 && (e.WorkDate == null || e.WorkDate <= monthEndDt)
-                && (e.ResignDate == null || e.ResignDate >= monthStartDt))
-            .ToListAsync();
+                && (e.ResignDate == null || e.ResignDate >= monthStartDt));
+
+        if (_scope == CalendarScope.Team)
+        {
+            var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == _orgId!.Value);
+            if (org is null || string.IsNullOrWhiteSpace(org.orgcodefull)) return;
+            employeeQuery = employeeQuery.Where(e => e.orgcodefull != null && e.orgcodefull.StartsWith(org.orgcodefull));
+        }
+
+        var teamEmployees = await employeeQuery.ToListAsync();
         var empLookup = teamEmployees.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
         var empIds = teamEmployees.Select(e => e.id).ToList();
 
