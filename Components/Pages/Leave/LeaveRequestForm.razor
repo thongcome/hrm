@@ -78,7 +78,7 @@ else
             </MudTd>
             <MudTd>
                 <MudStack Row="true" Spacing="1">
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/leave-requests/detail/{context.Request.Id}")">ดูรายละเอียด</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="@DetailHref(context.Request.Id)">ดูรายละเอียด</MudButton>
                     @if (context.Request.JobMasterId is null)
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => SubmitAsync(context.Request.Id))">ส่งขออนุมัติ</MudButton>
@@ -288,6 +288,10 @@ else
                 job?.status ?? "-", job?.isJobClosed ?? false);
         }).ToList();
     }
+
+    private string DetailHref(long requestId) => ProxyMode
+        ? $"/leave-requests/detail/{requestId}?from=proxy"
+        : $"/leave-requests/detail/{requestId}";
 
     private static Color StatusColor(string status) => status switch
     {

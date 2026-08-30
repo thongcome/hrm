@@ -98,12 +98,18 @@
             <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
         }
 
-        <MudButton Class="mt-4" Variant="Variant.Text" Href="/leave-requests">กลับไปหน้ารายการคำขอลางาน</MudButton>
+        <MudButton Class="mt-4" Variant="Variant.Text" Href="@BackHref">กลับไปหน้ารายการคำขอลางาน</MudButton>
     }
 </MudPaper>
 
 @code {
     [Parameter] public long Id { get; set; }
+    [SupplyParameterFromQuery] public string? From { get; set; }
+
+    // Reached either from the ESS self-service list or the HR on-behalf
+    // list (LeaveRequestForm.razor tags its links with ?from=proxy) —
+    // send the user back to whichever one they came from.
+    private string BackHref => From == "proxy" ? "/leave-requests/on-behalf" : "/leave-requests";
 
     private Lve_LeaveRequest? _request;
     private job_master? _job;
@@ -180,7 +186,7 @@
             await LeaveRequestSvc.CancelAsync(Id, _actorUserId, _isAdmin, reason: null);
             if (wasDraft)
             {
-                NavigationManager.NavigateTo("/leave-requests");
+                NavigationManager.NavigateTo(BackHref);
                 return;
             }
 
