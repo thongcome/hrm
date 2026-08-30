@@ -18,17 +18,33 @@ public static class DevAuthSeeder
     public const string DevAdminEmail = "admin@local.humanok";
     public const string DevAdminPassword = "Dev@12345";
 
+    // Non-admin counterpart to the admin account above, for verifying
+    // ESS-only / non-admin behavior (e.g. that an admin-gated page actually
+    // rejects a plain employee) without guessing or raw-SQL-resetting a
+    // real person's password. sc_user 26 ("008", empid 008) already exists
+    // with only the "Employee" role — no "Admin" — so this account is a
+    // true non-admin fixture, not a stand-in that happens to also have
+    // elevated access.
+    public const string DevEssEmail = "ess.test008@hrm.local";
+    public const string DevEssPassword = "Dev@12345";
+
     public static async Task EnsureKnownDevPasswordAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        var user = await userManager.FindByEmailAsync(DevAdminEmail);
+        await ResetPasswordAsync(userManager, DevAdminEmail, DevAdminPassword);
+        await ResetPasswordAsync(userManager, DevEssEmail, DevEssPassword);
+    }
+
+    private static async Task ResetPasswordAsync(UserManager<ApplicationUser> userManager, string email, string password)
+    {
+        var user = await userManager.FindByEmailAsync(email);
         if (user is null)
             return; // Account itself (and its sc_user/role/menu linkage) is expected to already exist — this only resets the password, never creates the account.
 
         if (await userManager.HasPasswordAsync(user))
             await userManager.RemovePasswordAsync(user);
-        await userManager.AddPasswordAsync(user, DevAdminPassword);
+        await userManager.AddPasswordAsync(user, password);
     }
 }
