@@ -27,14 +27,29 @@ public class BlockLeaveComplianceService(IDbContextFactory<HRMContext> dbFactory
         var policy = await context.Lve_BlockLeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == companyId, ct);
         var minDays = policy?.MinConsecutiveWorkingDays ?? 5;
 
+        var yearStart = new DateOnly(year, 1, 1);
+        var yearEnd = new DateOnly(year, 12, 31);
+        var yearStartDt = yearStart.ToDateTime(TimeOnly.MinValue);
+        var yearEndDt = yearEnd.ToDateTime(TimeOnly.MaxValue);
+
+        // Deliberately NOT a raw `ResignDate == null` check (nor
+        // EmployeeStatusHelper.CanTransact, which answers "active TODAY,"
+        // the wrong question for a report about an arbitrary past/current
+        // year) — an employee who worked any part of `year` should still be
+        // evaluated for it. This matters more here than almost anywhere
+        // else in the module: Block Leave is a fraud-prevention control
+        // (mandatory consecutive leave so a colleague/successor can catch
+        // irregularities), and someone who has just resigned is exactly
+        // who an auditor most wants checked, not silently dropped from the
+        // report. Same reasoning as TeamCalendar.razor's month-aware filter,
+        // just scoped to a year instead of a month.
         var employees = await context.Hremployee
-            .Where(e => e.companyid == companyId && e.ResignDate == null)
+            .Where(e => e.companyid == companyId
+                && (e.WorkDate == null || e.WorkDate <= yearEndDt)
+                && (e.ResignDate == null || e.ResignDate >= yearStartDt))
             .ToListAsync(ct);
         if (employees.Count == 0) return new();
         var empIds = employees.Select(e => e.id).ToList();
-
-        var yearStart = new DateOnly(year, 1, 1);
-        var yearEnd = new DateOnly(year, 12, 31);
 
         var requests = await context.Lve_LeaveRequests
             .Where(r => empIds.Contains(r.HremployeeId) && r.JobMasterId != null
