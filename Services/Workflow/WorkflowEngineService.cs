@@ -40,6 +40,7 @@ public class WorkflowEngineService
     public const string StatusApproved = "APPROVED";
     public const string StatusRejected = "REJECTED";
     public const string StatusCompleted = "COMPLETED";
+    public const string StatusCancelled = "CANCELLED";
 
     // Block 6 (Mix Approval): job_user_list.reason rows for a vertical
     // pre-check hop always start with this marker, so hop-completion count
@@ -286,6 +287,48 @@ public class WorkflowEngineService
 
         if (outcome != WorkflowOutcome.StillOpen)
             await NotifyRequesterAsync(context, job, outcome, ct);
+    }
+
+    // Requester-initiated withdrawal of their own still-open job — the one
+    // capability this engine never had until now (see the Leave "cancel
+    // request" feature this was built for). Deliberately does NOT touch
+    // TryAdvanceLevelAsync/NotifyRequesterAsync — there is no approval
+    // outcome to propagate, the requester already knows they cancelled it.
+    // Bulk-flipping every still-PENDING job_user_list row (not just the
+    // current level's) is required, not optional: GetMyInboxAsync filters
+    // strictly on jobstatus == StatusPending, so any row left at that value
+    // would keep showing up in an approver's inbox forever for a job that
+    // no longer exists in any meaningful sense.
+    public async Task CancelAsync(long jobMasterId, long actorUserId, bool isAdminOverride, string? reason, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบงาน id {jobMasterId}");
+        if (job.isJobClosed == true)
+            throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถยกเลิกได้");
+        if (!isAdminOverride && job.createuserid != actorUserId)
+            throw new InvalidOperationException("ยกเลิกได้เฉพาะผู้ยื่นคำขอเองเท่านั้น");
+
+        var pendingRows = await context.job_user_lists
+            .Where(a => a.jobmasterid == jobMasterId && a.jobstatus == StatusPending)
+            .ToListAsync(ct);
+        foreach (var row in pendingRows)
+        {
+            row.jobstatus = StatusCancelled;
+            row.approvedate = DateTime.Now;
+            row.comment = reason;
+        }
+
+        job.status = StatusCancelled;
+        job.isJobClosed = true;
+        job.reasonClosed = reason;
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", jobMasterId.ToString(),
+            new { status = StatusPending }, new { status = StatusCancelled, reason }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} cancelled by user {ActorUserId} (admin override: {IsAdminOverride})",
+            jobMasterId, actorUserId, isAdminOverride);
     }
 
     // Admin-only: fills a vacant approver slot (userid == null, created by

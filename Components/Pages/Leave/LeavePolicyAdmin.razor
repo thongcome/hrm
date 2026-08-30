@@ -61,6 +61,7 @@
             <MudTh>สิทธิ (วัน/ปี)</MudTh>
             <MudTh>จ่ายเงิน</MudTh>
             <MudTh>ทบวันลาไปปีถัดไป</MudTh>
+            <MudTh>อายุงานขั้นต่ำ (เดือน)</MudTh>
             <MudTh>สถานะ</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -105,6 +106,10 @@
                         {
                             <MudNumericField T="decimal?" @bind-Value="_editMaxCarryOverDays" Min="0" Format="0.#" Label="สูงสุด (วัน)" Style="width:120px" />
                         }
+                        @if (_editCarryOverMode != LeaveCarryOverMode.None)
+                        {
+                            <MudNumericField T="int?" @bind-Value="_editCarryOverExpiryMonths" Min="1" Label="หมดอายุภายใน (เดือน)" Style="width:140px" />
+                        }
                     </MudStack>
                 }
                 else
@@ -116,6 +121,20 @@
                         LeaveCarryOverMode.Unlimited => "ทบได้ไม่จำกัด",
                         _ => "-",
                     })
+                    @if (context.CarryOverMode != LeaveCarryOverMode.None && context.CarryOverExpiryMonths is int months)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">(หมดอายุภายใน @months เดือน)</MudText>
+                    }
+                }
+            </MudTd>
+            <MudTd>
+                @if (_editingId == context.Id)
+                {
+                    <MudNumericField T="int?" @bind-Value="_editMinServiceMonths" Min="0" Style="width:100px" />
+                }
+                else
+                {
+                    @(context.MinServiceMonths?.ToString() ?? "ไม่มี")
                 }
             </MudTd>
             <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
@@ -158,6 +177,8 @@
     private bool _editIsPaid;
     private LeaveCarryOverMode _editCarryOverMode;
     private decimal? _editMaxCarryOverDays;
+    private int? _editCarryOverExpiryMonths;
+    private int? _editMinServiceMonths;
 
     private List<Lve_LeaveType> _missingTypes = new();
     private string? _countryCode;
@@ -263,6 +284,8 @@
         _editIsPaid = policy.IsPaid;
         _editCarryOverMode = policy.CarryOverMode;
         _editMaxCarryOverDays = policy.MaxCarryOverDays;
+        _editCarryOverExpiryMonths = policy.CarryOverExpiryMonths;
+        _editMinServiceMonths = policy.MinServiceMonths;
         _error = null;
     }
 
@@ -288,6 +311,8 @@
         existing.IsPaid = _editIsPaid;
         existing.CarryOverMode = _editCarryOverMode;
         existing.MaxCarryOverDays = _editCarryOverMode == LeaveCarryOverMode.Capped ? _editMaxCarryOverDays : null;
+        existing.CarryOverExpiryMonths = _editCarryOverMode != LeaveCarryOverMode.None ? _editCarryOverExpiryMonths : null;
+        existing.MinServiceMonths = _editMinServiceMonths;
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึกสิทธิการลาเรียบร้อย", Severity.Success);

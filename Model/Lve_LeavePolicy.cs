@@ -5,8 +5,8 @@ namespace HRM.Models;
 
 // Per-company, per-leave-type annual entitlement — used to compute remaining
 // balance (Entitlement - approved days used this calendar year) shown when
-// submitting a Lve_LeaveRequest. Deliberately simple for this MVP: no
-// pro-ration for mid-year hires and no carry-over tracking yet.
+// submitting a Lve_LeaveRequest. Pro-ration for mid-year hires and carry-over
+// tracking both live in LeaveBalanceService, driven by the fields below.
 [Table("Lve_LeavePolicy")]
 public class Lve_LeavePolicy
 {
@@ -37,6 +37,20 @@ public class Lve_LeavePolicy
     public LeaveCarryOverMode CarryOverMode { get; set; } = LeaveCarryOverMode.None;
     [Column(TypeName = "decimal(5,1)")]
     public decimal? MaxCarryOverDays { get; set; }
+
+    // Carried-over days from the prior year are only usable through this many
+    // months into the target year (e.g. 3 = must be used by March 31) — null
+    // means no expiry, only the MaxCarryOverDays cap applies (today's
+    // behavior). Checked in LeaveBalanceService.ComputeCarryOverAsync against
+    // DateTime.Today, so it only affects the balance shown going forward —
+    // never retroactively invalidates days already used before expiry.
+    public int? CarryOverExpiryMonths { get; set; }
+
+    // Employee must have at least this many months of service (Hremployee.WorkDate)
+    // before this leave type has any entitlement at all — null means no
+    // minimum (every policy's default, backward compatible). See
+    // Services/Shared/TenureHelper.cs and LeaveBalanceService.GetBalancesAsync.
+    public int? MinServiceMonths { get; set; }
 
     public bool IsActive { get; set; } = true;
 }

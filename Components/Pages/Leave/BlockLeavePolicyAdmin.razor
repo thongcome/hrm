@@ -1,0 +1,86 @@
+@page "/leave-requests/block-leave-policy"
+@using System.Security.Claims
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>นโยบาย Block Leave</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">นโยบายบังคับลาหยุดต่อเนื่อง (Block Leave)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        มาตรการควบคุมภายใน — กำหนดให้พนักงานต้องลาหยุดต่อเนื่องอย่างน้อยกี่วันทำการต่อปี เพื่อให้มีคนอื่นดูแลงานแทนช่วงที่ไม่อยู่ (พบมากในธุรกิจการเงิน/ธนาคาร)
+        เป็นรายงานให้ HR/ผู้ตรวจสอบดูเท่านั้น — ระบบไม่บล็อกการยื่นคำขอลาใดๆ
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="6">
+                <MudCheckBox T="bool" @bind-Value="_isEnabled" Label="เปิดใช้งานนโยบายนี้" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int" @bind-Value="_minDays" Label="จำนวนวันทำการขั้นต่ำติดต่อกัน" Min="1" Max="60" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+        }
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private bool _isEnabled;
+    private int _minDays = 5;
+    private string? _info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var policy = await context.Lve_BlockLeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _companyId);
+        if (policy is not null)
+        {
+            _isEnabled = policy.IsEnabled;
+            _minDays = policy.MinConsecutiveWorkingDays;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var policy = await context.Lve_BlockLeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _companyId);
+        if (policy is null)
+        {
+            context.Lve_BlockLeavePolicies.Add(new Lve_BlockLeavePolicy { CompanyId = _companyId!, IsEnabled = _isEnabled, MinConsecutiveWorkingDays = _minDays });
+        }
+        else
+        {
+            policy.IsEnabled = _isEnabled;
+            policy.MinConsecutiveWorkingDays = _minDays;
+        }
+        await context.SaveChangesAsync();
+
+        _info = "บันทึกนโยบายเรียบร้อย";
+        Snackbar.Add(_info, Severity.Success);
+    }
+}

@@ -392,6 +392,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Lve_LeaveType> Lve_LeaveTypes { get; set; }
 
+    public virtual DbSet<Lve_BlockLeavePolicy> Lve_BlockLeavePolicies { get; set; }
+
     public virtual DbSet<Pay_WelfareFundPolicy> Pay_WelfareFundPolicies { get; set; }
 
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }

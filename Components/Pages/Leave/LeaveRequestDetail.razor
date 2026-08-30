@@ -10,6 +10,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject LeaveRequestService LeaveRequestSvc
+@inject NavigationManager NavigationManager
 @attribute [Authorize(Policy = "Menu:LEAVE_ACCESS")]
 
 <PageTitle>รายละเอียดคำขอลางาน</PageTitle>
@@ -77,10 +78,15 @@
             {
                 <MudChip T="string" Class="mt-3" Color="Color.Success">ผลักเข้าระบบเงินเดือนแล้ว (รายการ #@_request.AdhocPayItemId)</MudChip>
             }
+            @if (_job.isJobClosed != true)
+            {
+                <MudButton Class="mt-3" Variant="Variant.Text" Color="Color.Error" OnClick="CancelAsync">ยกเลิกคำขอ</MudButton>
+            }
         }
         else
         {
             <MudAlert Severity="Severity.Info">คำขอนี้ยังไม่ถูกส่งเข้าสู่กระบวนการอนุมัติ (ร่าง)</MudAlert>
+            <MudButton Class="mt-3" Variant="Variant.Text" Color="Color.Error" OnClick="CancelAsync">ลบร่าง</MudButton>
         }
 
         @if (!string.IsNullOrEmpty(_error))
@@ -162,6 +168,31 @@
         catch (InvalidOperationException ex)
         {
             _error = ex.Message;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        try
+        {
+            var wasDraft = _request!.JobMasterId is null;
+            await LeaveRequestSvc.CancelAsync(Id, _actorUserId, _isAdmin, reason: null);
+            if (wasDraft)
+            {
+                NavigationManager.NavigateTo("/leave-requests");
+                return;
+            }
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _job = await context.job_masters
+                .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
+                .FirstOrDefaultAsync(j => j.jobmasterid == _request.JobMasterId);
+            _info = "ยกเลิกคำขอลาเรียบร้อย";
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = "ยกเลิกไม่สำเร็จ: " + ex.Message;
         }
     }
 }

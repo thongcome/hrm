@@ -392,6 +392,7 @@ builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveRequestService>();
+builder.Services.AddScoped<HRM.Services.Leave.BlockLeaveComplianceService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();

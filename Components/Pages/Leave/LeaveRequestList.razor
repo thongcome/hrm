@@ -87,6 +87,11 @@ else
                     @if (context.Request.JobMasterId is null)
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => SubmitAsync(context.Request.Id))">ส่งขออนุมัติ</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => CancelAsync(context.Request.Id))">ลบร่าง</MudButton>
+                    }
+                    else if (!context.IsJobClosed)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => CancelAsync(context.Request.Id))">ยกเลิกคำขอ</MudButton>
                     }
                 </MudStack>
             </MudTd>
@@ -128,7 +133,7 @@ else
                         สิทธิ@(SelectedLeaveTypeName)คงเหลือปีนี้: @remaining.ToString("0.#") วัน
                         @if (_carriedOverDays is decimal carried && carried > 0)
                         {
-                            <text> (รวมทบจากปีก่อน @carried.ToString("0.#") วัน)</text>
+                            <text> (รวมทบจากปีก่อน @carried.ToString("0.#") วัน@(_carryOverExpiryDate is DateOnly exp ? $" — ต้องใช้ภายใน {exp:dd/MM/yyyy}" : ""))</text>
                         }
                     </MudAlert>
                 }
@@ -175,7 +180,7 @@ else
 }
 
 @code {
-    private record RequestRow(Lve_LeaveRequest Request, string EmployeeName, string JobStatus);
+    private record RequestRow(Lve_LeaveRequest Request, string EmployeeName, string JobStatus, bool IsJobClosed);
 
     private List<RequestRow> _requests = new();
     private string? _error;
@@ -197,6 +202,7 @@ else
     private string? _reason;
     private decimal? _remainingBalance;
     private decimal? _carriedOverDays;
+    private DateOnly? _carryOverExpiryDate;
 
     private IBrowserFile? _pendingMedCertFile;
     private string? _pendingMedCertName;
@@ -246,13 +252,15 @@ else
             .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
 
         var jobIds = requests.Where(r => r.JobMasterId is not null).Select(r => r.JobMasterId!.Value).ToList();
-        var jobStatuses = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid))
-            .ToDictionaryAsync(j => j.jobmasterid, j => j.status);
+        var jobs = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid))
+            .ToDictionaryAsync(j => j.jobmasterid, j => j);
 
-        _requests = requests.Select(r => new RequestRow(
-            r,
-            employees.TryGetValue(r.HremployeeId, out var name) ? name : r.EmpNo,
-            r.JobMasterId is not null && jobStatuses.TryGetValue(r.JobMasterId.Value, out var s) ? s : "-")).ToList();
+        _requests = requests.Select(r =>
+        {
+            jobs.TryGetValue(r.JobMasterId ?? 0, out var job);
+            return new RequestRow(r, employees.TryGetValue(r.HremployeeId, out var name) ? name : r.EmpNo,
+                job?.status ?? "-", job?.isJobClosed ?? false);
+        }).ToList();
     }
 
     private static Color StatusColor(string status) => status switch
@@ -292,12 +300,23 @@ else
         {
             _remainingBalance = null;
             _carriedOverDays = null;
+            _carryOverExpiryDate = null;
             return;
         }
 
         var balances = await LeaveBalanceSvc.GetBalancesAsync(_selectedEmployee.id, _selectedEmployee.companyid, _leaveTypeId);
         _remainingBalance = balances.Count > 0 ? balances[0].RemainingDays : (decimal?)null;
         _carriedOverDays = balances.Count > 0 ? balances[0].CarriedOverDays : (decimal?)null;
+
+        _carryOverExpiryDate = null;
+        if (_carriedOverDays > 0)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var policy = await context.Lve_LeavePolicies.FirstOrDefaultAsync(p =>
+                p.CompanyId == _selectedEmployee.companyid && p.LeaveTypeId == _leaveTypeId);
+            if (policy?.CarryOverExpiryMonths is int months)
+                _carryOverExpiryDate = new DateOnly(DateTime.Today.Year, 1, 1).AddMonths(months);
+        }
     }
 
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
@@ -388,6 +407,22 @@ else
         catch (InvalidOperationException ex)
         {
             _error = "ส่งขออนุมัติไม่สำเร็จ: " + ex.Message;
+        }
+    }
+
+    private async Task CancelAsync(long requestId)
+    {
+        _error = null;
+        _info = null;
+        try
+        {
+            await LeaveRequestSvc.CancelAsync(requestId, _actorUserId, _isAdmin, reason: null);
+            _info = "ยกเลิกคำขอลาเรียบร้อย";
+            await RefreshAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = "ยกเลิกไม่สำเร็จ: " + ex.Message;
         }
     }
 }

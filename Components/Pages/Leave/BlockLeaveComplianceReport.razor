@@ -1,0 +1,85 @@
+@page "/leave-requests/block-leave-compliance"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Leave
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject BlockLeaveComplianceService ComplianceSvc
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>รายงาน Block Leave</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">รายงานการปฏิบัติตามนโยบาย Block Leave</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1" Color="Color.Secondary">
+        ช่วงลาต่อเนื่องที่ยาวที่สุดของแต่ละคนในปีที่เลือก (นับเฉพาะคำขอที่อนุมัติแล้ว, นับเป็นวันทำการ) — ไม่นับเฉพาะประเภทลาใดประเภทหนึ่ง
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudNumericField T="int" @bind-Value="_year" @bind-Value:after="LoadAsync" Label="ปี (ค.ศ.)" Min="2020" Max="2100" Class="mt-3" Style="max-width:200px" />
+
+    @if (!_policyEnabled)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">
+            ยังไม่ได้เปิดใช้งานนโยบาย Block Leave สำหรับบริษัทนี้ — ไปตั้งค่าที่หน้า <MudLink Href="/leave-requests/block-leave-policy">นโยบาย Block Leave</MudLink> ก่อน (ตารางด้านล่างยังคำนวณให้ดูล่วงหน้าได้)
+        </MudAlert>
+    }
+
+    <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>รหัสพนักงาน</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>ช่วงลาต่อเนื่องยาวที่สุด (วันทำการ)</MudTh>
+            <MudTh>สถานะ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@context.EmployeeName</MudTd>
+            <MudTd>@context.LongestConsecutiveWorkingDays.ToString("0.#")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsCompliant ? Color.Success : Color.Error)">
+                    @(context.IsCompliant ? "ผ่าน" : "ยังไม่ผ่าน")
+                </MudChip>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีพนักงานในบริษัทนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private int _year = DateTime.Today.Year;
+    private bool _policyEnabled;
+    private List<BlockLeaveComplianceService.ComplianceRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var policy = await context.Lve_BlockLeavePolicies.FirstOrDefaultAsync(p => p.CompanyId == _companyId);
+        _policyEnabled = policy?.IsEnabled ?? false;
+
+        _rows = await ComplianceSvc.GetComplianceAsync(_companyId, _year);
+    }
+}

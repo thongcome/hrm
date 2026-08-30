@@ -1,6 +1,7 @@
 namespace HRM.Services.Leave;
 
 using HRM.Models;
+using HRM.Services.Shared;
 using Microsoft.EntityFrameworkCore;
 
 // Extracted from LeaveRequestList.razor's RecomputeBalanceAsync once the
@@ -26,13 +27,20 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
 
         var workDate = (await context.Hremployee.Where(e => e.id == hremployeeId).Select(e => e.WorkDate).FirstOrDefaultAsync(ct));
         var targetYear = year ?? DateTime.Today.Year;
+        var monthsOfService = TenureHelper.MonthsOfService(workDate, DateOnly.FromDateTime(DateTime.Today));
 
         var rows = new List<LeaveBalanceRow>();
         foreach (var policy in policies)
         {
-            var entitlementThisYear = ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, targetYear);
+            // Not yet eligible for this leave type at all — MinServiceMonths
+            // gates the whole entitlement (and any carry-over) to zero, not
+            // just a partial reduction. Null MinServiceMonths (the default)
+            // never gates anything, matching prior behavior exactly.
+            var isEligible = policy.MinServiceMonths is null || (monthsOfService ?? 0) >= policy.MinServiceMonths.Value;
+
+            var entitlementThisYear = isEligible ? ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, targetYear) : 0m;
             var usedThisYear = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveTypeId, targetYear, ct);
-            var carriedOver = await ComputeCarryOverAsync(context, hremployeeId, policy, workDate, targetYear, ct);
+            var carriedOver = isEligible ? await ComputeCarryOverAsync(context, hremployeeId, policy, workDate, targetYear, ct) : 0m;
 
             rows.Add(new LeaveBalanceRow(policy.LeaveTypeId, policy.Lve_LeaveType.Code, entitlementThisYear, carriedOver, usedThisYear, entitlementThisYear + carriedOver - usedThisYear));
         }
@@ -65,6 +73,17 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
     private static async Task<decimal> ComputeCarryOverAsync(HRMContext context, long hremployeeId, Lve_LeavePolicy policy, DateTime? workDate, int targetYear, CancellationToken ct)
     {
         if (policy.CarryOverMode == LeaveCarryOverMode.None) return 0m;
+
+        // Carried-over days expire CarryOverExpiryMonths into the target
+        // year — once today is past that cutoff, the balance shown reverts
+        // to 0 going forward (days already used before expiry are unaffected,
+        // since this only changes what's reported as REMAINING today).
+        if (policy.CarryOverExpiryMonths is int expiryMonths)
+        {
+            var cutoff = new DateOnly(targetYear, 1, 1).AddMonths(expiryMonths);
+            if (DateOnly.FromDateTime(DateTime.Today) > cutoff)
+                return 0m;
+        }
 
         var priorYear = targetYear - 1;
         var priorYearEntitlement = ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, priorYear);

@@ -2,6 +2,7 @@ namespace HRM.Services.Leave;
 
 using HRM.Models;
 using HRM.Services.Pay;
+using HRM.Services.Shared;
 using HRM.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +15,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
 {
     private const string WorkflowCode = "LEAVE_APPROVAL";
     private const string UnpaidLeavePayItemCode = "LEAVE_UNPAID";
-    private static readonly string[] NonBlockingStatuses = ["REJECTED", "RETURNED"];
+    private static readonly string[] NonBlockingStatuses = ["REJECTED", "RETURNED", WorkflowEngineService.StatusCancelled];
 
     public async Task<long> CreateDraftAsync(long hremployeeId, int leaveTypeId, DateOnly start, DateOnly end,
         bool isHalfDay, HalfDayPeriod? halfDayPeriod, string? reason, CancellationToken ct = default)
@@ -22,6 +23,18 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct)
             ?? throw new InvalidOperationException("ไม่พบพนักงาน");
+
+        var policy = await context.Lve_LeavePolicies
+            .FirstOrDefaultAsync(p => p.CompanyId == emp.companyid && p.LeaveTypeId == leaveTypeId, ct);
+        if (policy?.MinServiceMonths is int minMonths)
+        {
+            var monthsOfService = TenureHelper.MonthsOfService(emp.WorkDate, DateOnly.FromDateTime(DateTime.Today));
+            if ((monthsOfService ?? 0) < minMonths)
+            {
+                var eligibleDate = DateOnly.FromDateTime(emp.WorkDate ?? DateTime.Today).AddMonths(minMonths);
+                throw new InvalidOperationException($"ประเภทการลานี้ต้องมีอายุงานอย่างน้อย {minMonths} เดือน — จะมีสิทธิ์วันที่ {eligibleDate:dd/MM/yyyy}");
+            }
+        }
 
         if (isHalfDay)
             end = start;
@@ -146,6 +159,28 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         request.AdhocPayItemId = adhocItem.Id;
         await context.SaveChangesAsync(ct);
         return adhocItem.Id;
+    }
+
+    // Draft (never submitted) is hard-deleted — no approval history exists to
+    // preserve. A submitted-but-still-open request is closed via the shared
+    // WorkflowEngineService.CancelAsync primitive instead (see that method's
+    // comment) and the Lve_LeaveRequest row itself is left untouched — its
+    // "status" was always derived from job_master.status, so CANCELLED just
+    // becomes one more value that flows through automatically.
+    public async Task CancelAsync(long requestId, long actorUserId, bool isAdmin, string? reason, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var request = await context.Lve_LeaveRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct)
+            ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
+
+        if (request.JobMasterId is null)
+        {
+            context.Lve_LeaveRequests.Remove(request);
+            await context.SaveChangesAsync(ct);
+            return;
+        }
+
+        await engine.CancelAsync(request.JobMasterId.Value, actorUserId, isAdmin, reason, ct);
     }
 
     public async Task EnsureNoOverlapAsync(HRMContext context, long hremployeeId, DateOnly start, DateOnly end, long? excludeRequestId, CancellationToken ct)

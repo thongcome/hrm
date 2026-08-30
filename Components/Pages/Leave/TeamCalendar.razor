@@ -1,0 +1,173 @@
+@page "/leave-requests/team-calendar"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:LEAVE_ACCESS")]
+
+<PageTitle>ปฏิทินทีม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ปฏิทินทีม</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
+        @(_isAdmin
+            ? "เลือกพนักงานเพื่อดูปฏิทินการลาของหน่วยงานที่พนักงานคนนั้นสังกัด (รวมหน่วยงานย่อย)"
+            : "ปฏิทินการลาของหน่วยงานคุณ (รวมหน่วยงานย่อย)")
+    </MudText>
+
+    @if (_isAdmin)
+    {
+        <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync" SearchFunc="SearchEmployeesAsync"
+            ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" Class="mb-3" Style="max-width:400px" />
+    }
+
+    @if (_selectedEmployee is null)
+    {
+        <MudAlert Severity="Severity.Warning">@(_isAdmin ? "เลือกพนักงานก่อนเพื่อดูปฏิทิน" : "บัญชีของคุณยังไม่ได้ผูกกับข้อมูลพนักงาน — ติดต่อแอดมิน")</MudAlert>
+    }
+    else if (_orgId is null)
+    {
+        <MudAlert Severity="Severity.Warning">พนักงานคนนี้ยังไม่ได้ผูกกับหน่วยงานใดๆ — ไม่สามารถแสดงปฏิทินทีมได้</MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="@(() => ChangeMonthAsync(-1))" />
+            <MudText Typo="Typo.h6">@_visibleMonth.ToString("MMMM yyyy")</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="@(() => ChangeMonthAsync(1))" />
+        </MudStack>
+
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+            @foreach (var label in _weekDayLabels)
+            {
+                <div style="text-align:center;font-weight:bold;padding:4px;">@label</div>
+            }
+            @for (var i = 0; i < _leadingBlanks; i++)
+            {
+                <div></div>
+            }
+            @foreach (var day in _days)
+            {
+                <div style="min-height:90px;border:1px solid var(--mud-palette-lines-default);border-radius:4px;padding:4px;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@day.Date.Day</MudText>
+                    @foreach (var entry in day.Entries)
+                    {
+                        <MudTooltip Text="@($"{entry.EmployeeName} — {entry.LeaveTypeName} ({entry.StatusLabel})")">
+                            <MudChip T="string" Size="Size.Small" Color="@(entry.IsCompleted ? Color.Success : Color.Warning)" Class="mb-1" Style="width:100%;">
+                                @entry.EmployeeShortName
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                </div>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private record CalendarEntry(string EmployeeName, string EmployeeShortName, string LeaveTypeName, bool IsCompleted, string StatusLabel);
+    private record CalendarDay(DateOnly Date, List<CalendarEntry> Entries);
+
+    private bool _isAdmin;
+    private Hremployee? _selectedEmployee;
+    private long? _orgId;
+    private DateOnly _visibleMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private List<CalendarDay> _days = new();
+    private int _leadingBlanks;
+
+    private static readonly string[] _weekDayLabels = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
+
+        if (!_isAdmin)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var self = await EssEmployeeResolver.ResolveAsync(context, state.User);
+            if (self is not null)
+                await OnEmployeeChangedAsync(self);
+        }
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnEmployeeChangedAsync(Hremployee? employee)
+    {
+        _selectedEmployee = employee;
+        _orgId = employee?.OrganizationId;
+        await LoadMonthAsync();
+    }
+
+    private async Task ChangeMonthAsync(int delta)
+    {
+        _visibleMonth = _visibleMonth.AddMonths(delta);
+        await LoadMonthAsync();
+    }
+
+    private async Task LoadMonthAsync()
+    {
+        _days = new();
+        if (_selectedEmployee is null || _orgId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var teamEmployees = await OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, _selectedEmployee.companyid, _orgId.Value);
+        var empLookup = teamEmployees.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname} ({e.EmpNo})");
+        var empIds = teamEmployees.Select(e => e.id).ToList();
+
+        var monthStart = _visibleMonth;
+        var monthEnd = _visibleMonth.AddMonths(1).AddDays(-1);
+
+        var requests = await context.Lve_LeaveRequests
+            .Include(r => r.Lve_LeaveType)
+            .Where(r => empIds.Contains(r.HremployeeId) && r.JobMasterId != null
+                && r.StartDate <= monthEnd && r.EndDate >= monthStart)
+            .ToListAsync();
+
+        var jobIds = requests.Select(r => r.JobMasterId!.Value).ToList();
+        var jobStatuses = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid))
+            .ToDictionaryAsync(j => j.jobmasterid, j => j.status);
+
+        // Only visible if still meaningfully "on leave" — excludes rejected/
+        // returned/cancelled requests, same non-blocking-status set as
+        // LeaveRequestService.EnsureNoOverlapAsync uses for date conflicts.
+        var nonBlocking = new HashSet<string> { "REJECTED", "RETURNED", HRM.Services.Workflow.WorkflowEngineService.StatusCancelled };
+        var visible = requests.Where(r => !nonBlocking.Contains(jobStatuses.GetValueOrDefault(r.JobMasterId!.Value, "-"))).ToList();
+
+        var entriesByDate = new Dictionary<DateOnly, List<CalendarEntry>>();
+        foreach (var r in visible)
+        {
+            var status = jobStatuses.GetValueOrDefault(r.JobMasterId!.Value, "-");
+            var isCompleted = status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted;
+            var empName = empLookup.GetValueOrDefault(r.HremployeeId, r.EmpNo);
+            var entry = new CalendarEntry(empName, r.EmpNo, r.Lve_LeaveType.NameTh, isCompleted, status);
+
+            for (var d = r.StartDate < monthStart ? monthStart : r.StartDate; d <= (r.EndDate > monthEnd ? monthEnd : r.EndDate); d = d.AddDays(1))
+            {
+                if (!entriesByDate.TryGetValue(d, out var list))
+                    entriesByDate[d] = list = new();
+                list.Add(entry);
+            }
+        }
+
+        _days = new();
+        for (var d = monthStart; d <= monthEnd; d = d.AddDays(1))
+            _days.Add(new CalendarDay(d, entriesByDate.GetValueOrDefault(d, new())));
+
+        // ISO-8601 week: Monday = 1 ... Sunday = 7, matching _weekDayLabels order.
+        _leadingBlanks = (int)monthStart.DayOfWeek == 0 ? 6 : (int)monthStart.DayOfWeek - 1;
+    }
+}
