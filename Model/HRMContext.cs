@@ -255,6 +255,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<sc_program_group> sc_program_groups { get; set; }
 
     public virtual DbSet<sc_role> sc_roles { get; set; }
+    // AD.CRUDManage per-action page rights — see Model/sc_program_role.cs.
+    public virtual DbSet<sc_program_role> sc_program_roles { get; set; }
 
     public virtual DbSet<sc_role_menu> sc_role_menus { get; set; }
 

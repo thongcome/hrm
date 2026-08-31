@@ -268,6 +268,12 @@ builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HRM.Services.Login.UserProvisioningService>();
 
+// AD.CRUDManage — per-action page rights read through a ~60s memory cache
+// (never login-cookie claims, so grants apply within a minute). See
+// Model/sc_program_role.cs and Services/Security/ProgramRoleService.cs.
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<HRM.Services.Security.ProgramRoleService>();
+
 // Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
 // resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
 // both login paths already attach — see MenuAuthorization.cs.
@@ -670,5 +676,16 @@ if (app.Environment.IsDevelopment())
 {
     await HRM.Services.Dev.DevAuthSeeder.EnsureKnownDevPasswordAsync(app.Services);
 }
+
+// AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike
+// the dev-login block above): scans all @page routes and (1) registers
+// every page URL in the legacy sc_program table, (2) inserts any missing
+// (role × path) permission rows — so nobody registers pages by hand.
+// Both idempotent; neither touches existing rows.
+await HRM.Services.Security.ScProgramRouteSeeder.SeedAsync(app.Services);
+await HRM.Services.Security.ProgramRoleService.SeedAsync(app.Services);
+// Access-menu step: complete drawer nav registered as sc_menu rows
+// (dup-checked by url/GRP code) — see ScMenuNavSeeder.cs.
+await HRM.Services.Security.ScMenuNavSeeder.SeedAsync(app.Services);
 
 app.Run();

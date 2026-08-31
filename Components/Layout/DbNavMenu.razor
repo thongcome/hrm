@@ -1,0 +1,198 @@
+@* DbNavMenu — database-driven drawer navigation.
+   Renders the sidebar from sc_menu rows (isactive && isshow), gated by the
+   "menu" claims that ScUserClaimsPrincipalFactory stamps at sign-in from
+   sc_role_menu. Same claim set [Authorize(Policy = "Menu:XXX")] checks on
+   every page, so the drawer never shows a link the click itself would block.
+
+   Lifecycle note: this component initializes once per circuit, and a circuit
+   is always created AFTER login (the /login endpoint does a full HTTP
+   redirect, which tears down the old circuit), so no re-query on auth-state
+   change is needed — a fresh login always gets a fresh OnInitializedAsync. *@
+@using System.Reflection
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@using HRM.Services
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject JsonLocalizationService L
+@inject LanguageState LangState
+@implements IDisposable
+
+@if (_isAuthenticated)
+{
+    <MudNavMenu>
+        @foreach (var node in _tree)
+        {
+            @if (node.Children.Count > 0)
+            {
+                @* Group row: rendered as a MudNavGroup. If the row also has a
+                   url it is ignored — a row with children is always a group. *@
+                @if (node.Children.Any(IsLeafVisible))
+                {
+                    <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false">
+                        @foreach (var child in node.Children.Where(IsLeafVisible))
+                        {
+                            <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
+                        }
+                    </MudNavGroup>
+                }
+            }
+            else if (IsLeafVisible(node))
+            {
+                <MudNavLink Href="@node.Row.url" Icon="@ResolveIcon(node.Row.icon)">@DisplayName(node.Row)</MudNavLink>
+            }
+        }
+    </MudNavMenu>
+}
+
+@code {
+    private bool _isAuthenticated;
+    private HashSet<string> _allowedMenuCodes = new();
+    private List<MenuNode> _tree = new();
+
+    private sealed class MenuNode
+    {
+        public required sc_menu Row { get; init; }
+        public List<MenuNode> Children { get; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Live language switch (th <-> en) only needs a re-render, not a
+        // re-query — DisplayName() picks the right column at render time.
+        LangState.OnLanguageChangedAsync += HandleLanguageChangedAsync;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+        if (!_isAuthenticated)
+            return; // fail closed: no auth, no menu, no DB query
+
+        _allowedMenuCodes = user.FindAll("menu").Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rows = await db.sc_menus
+            .AsNoTracking()
+            .Where(m => m.isactive && m.isshow)
+            .OrderBy(m => m.menuorder)
+            .ThenBy(m => m.menuid)
+            .ToListAsync();
+
+        _tree = BuildTree(rows);
+    }
+
+    // ---- tree building -------------------------------------------------
+
+    private static List<MenuNode> BuildTree(List<sc_menu> rows)
+    {
+        // Multiple rows may legitimately share a menucode (menucode is the
+        // permission gate, not a unique key). For parent resolution we take
+        // the FIRST row (in menuorder) carrying each menucode.
+        var byCode = new Dictionary<string, MenuNode>(StringComparer.OrdinalIgnoreCase);
+        var nodes = new List<MenuNode>();
+        foreach (var row in rows)
+        {
+            var node = new MenuNode { Row = row };
+            nodes.Add(node);
+            if (!string.IsNullOrWhiteSpace(row.menucode) && !byCode.ContainsKey(row.menucode))
+                byCode[row.menucode] = node;
+        }
+
+        var topLevel = new List<MenuNode>();
+        foreach (var node in nodes)
+        {
+            if (string.IsNullOrWhiteSpace(node.Row.uppermenucode))
+            {
+                topLevel.Add(node);
+                continue;
+            }
+
+            // One level of nesting is enough for the drawer: rows deeper than
+            // level 2 are FLATTENED under their nearest top-level ancestor
+            // (walk the uppermenucode chain up until a root is found).
+            var ancestor = FindTopLevelAncestor(node, byCode);
+            if (ancestor is not null)
+                ancestor.Children.Add(node);
+            else
+                topLevel.Add(node); // orphan (parent missing/hidden): show at top level rather than silently dropping it
+        }
+
+        return topLevel;
+    }
+
+    private static MenuNode? FindTopLevelAncestor(MenuNode node, Dictionary<string, MenuNode> byCode)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // cycle guard on bad data
+        var current = node;
+        while (!string.IsNullOrWhiteSpace(current.Row.uppermenucode))
+        {
+            if (!visited.Add(current.Row.uppermenucode))
+                return null;
+            if (!byCode.TryGetValue(current.Row.uppermenucode, out var parent) || ReferenceEquals(parent, node))
+                return null;
+            if (string.IsNullOrWhiteSpace(parent.Row.uppermenucode))
+                return parent; // reached a top-level row
+            current = parent;
+        }
+        return null;
+    }
+
+    // ---- visibility (fail-closed, claim-based, no per-check DB query) ---
+
+    // A LEAF is visible when it has a url to go to AND either its menucode
+    // is empty (open to any logged-in user) or the user holds the matching
+    // "menu" claim. Rows with neither url nor children render nothing.
+    private bool IsLeafVisible(MenuNode node)
+        => !string.IsNullOrWhiteSpace(node.Row.url)
+           && (string.IsNullOrWhiteSpace(node.Row.menucode) || _allowedMenuCodes.Contains(node.Row.menucode));
+
+    // ---- display name (th/en) ------------------------------------------
+
+    // Same language source the rest of the app uses: JsonLocalizationService
+    // reads the hrm_lang cookie per circuit and updates on live switch.
+    private string DisplayName(sc_menu row)
+        => L.CurrentLanguage == "en" && !string.IsNullOrWhiteSpace(row.menuname_en)
+            ? row.menuname_en
+            : row.menuname;
+
+    // ---- icon resolution ------------------------------------------------
+
+    // sc_menu.icon stores strings like "Icons.Material.Filled.EventBusy".
+    // Reflect once over MudBlazor's Icons.Material.Filled constants into a
+    // static dictionary keyed by the final name segment.
+    private static readonly Dictionary<string, string> _iconLookup = BuildIconLookup();
+
+    private static Dictionary<string, string> BuildIconLookup()
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var field in typeof(Icons.Material.Filled).GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (field.FieldType == typeof(string) && field.GetValue(null) is string svg)
+                dict[field.Name] = svg;
+        }
+        return dict;
+    }
+
+    private static string ResolveIcon(string? icon)
+    {
+        if (string.IsNullOrWhiteSpace(icon))
+            return Icons.Material.Filled.Circle;
+        var name = icon.Trim();
+        var lastDot = name.LastIndexOf('.');
+        if (lastDot >= 0)
+            name = name[(lastDot + 1)..];
+        return _iconLookup.TryGetValue(name, out var svg) ? svg : Icons.Material.Filled.Circle;
+    }
+
+    // ---- language change re-render --------------------------------------
+
+    private Task HandleLanguageChangedAsync() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        LangState.OnLanguageChangedAsync -= HandleLanguageChangedAsync;
+    }
+}
