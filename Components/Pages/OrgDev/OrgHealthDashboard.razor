@@ -10,6 +10,7 @@
 @inject WorkforcePlanService WorkforcePlanService
 @inject ChangeInitiativeService ChangeInitiativeService
 @inject CultureAssessmentService CultureAssessmentService
+@inject HRM.Services.Engagement.SurveyService SurveyService
 @inject SuccessionService SuccessionService
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
@@ -43,15 +44,20 @@ else
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Class="pa-4">
                 <MudText Typo="Typo.body2">@L.Translate("LatestCultureScoreLabel")</MudText>
-                @if (_latestCulture is null)
+                @if (_cultureCampaignAvg is not null)
                 {
-                    <MudText Typo="Typo.h4">-</MudText>
-                    <MudText Typo="Typo.caption">@L.Translate("NoAssessmentsYetMessage")</MudText>
+                    <MudText Typo="Typo.h4">@_cultureCampaignAvg.Value.ToString("0.0") / 5</MudText>
+                    <MudText Typo="Typo.caption">จากแบบสำรวจวัฒนธรรม (Engagement) ปิดรับ @(_cultureCampaignCloseDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+                }
+                else if (_latestCulture is not null)
+                {
+                    <MudText Typo="Typo.h4">@(((_latestCulture.CommunicationScore + _latestCulture.TrustScore + _latestCulture.CollaborationScore + _latestCulture.LeadershipScore) / 4.0).ToString("0.0")) / 5</MudText>
+                    <MudText Typo="Typo.caption">@string.Format(L.Translate("AssessedOnTemplate"), _latestCulture.AssessmentDate.ToString("dd/MM/yyyy")) (บันทึกแบบเดิม)</MudText>
                 }
                 else
                 {
-                    <MudText Typo="Typo.h4">@(((_latestCulture.CommunicationScore + _latestCulture.TrustScore + _latestCulture.CollaborationScore + _latestCulture.LeadershipScore) / 4.0).ToString("0.0")) / 5</MudText>
-                    <MudText Typo="Typo.caption">@string.Format(L.Translate("AssessedOnTemplate"), _latestCulture.AssessmentDate.ToString("dd/MM/yyyy"))</MudText>
+                    <MudText Typo="Typo.h4">-</MudText>
+                    <MudText Typo="Typo.caption">@L.Translate("NoAssessmentsYetMessage")</MudText>
                 }
             </MudPaper>
         </MudItem>
@@ -123,6 +129,8 @@ else
     private List<WorkforcePlanService.PlanRow> _workforcePlans = new();
     private List<ChangeInitiativeService.InitiativeRow> _initiatives = new();
     private OrgDev_CultureAssessment? _latestCulture;
+    private double? _cultureCampaignAvg;
+    private DateOnly? _cultureCampaignCloseDate;
     private List<SuccessionService.BenchStrengthRow> _benchStrength = new();
 
     protected override async Task OnInitializedAsync()
@@ -134,6 +142,35 @@ else
         _workforcePlans = await WorkforcePlanService.GetPlansAsync(_companyId, _currentYear);
         _initiatives = await ChangeInitiativeService.GetInitiativesAsync(_companyId);
         _latestCulture = await CultureAssessmentService.GetLatestAsync(_companyId);
+        await LoadCultureCampaignScoreAsync(_companyId);
         _benchStrength = await SuccessionService.GetBenchStrengthAsync(_companyId);
+    }
+
+    // Culture score now prefers the newest closed Culture-type Engagement
+    // campaign (anonymous survey), falling back to the legacy manual
+    // OrgDev_CultureAssessment row when no such campaign has scores yet.
+    // Overall score = mean of the engine's per-question rating averages,
+    // matching the legacy "average of the 4 dimension scores" semantics.
+    private async Task LoadCultureCampaignScoreAsync(string companyId)
+    {
+        var campaigns = await SurveyService.GetCampaignsForAdminAsync(companyId);
+        var closedCulture = campaigns
+            .Where(c => c.CampaignType == Eng_CampaignType.Culture && c.Status == Eng_CampaignStatus.Closed)
+            .OrderByDescending(c => c.CloseDate)
+            .ThenByDescending(c => c.CreatedDate);
+
+        foreach (var campaign in closedCulture)
+        {
+            var results = await SurveyService.GetResultsAsync(campaign.Id);
+            var dimensionAverages = results.Questions
+                .Where(q => q.QuestionType == Eng_QuestionType.Rating && q.AverageRating != null)
+                .Select(q => q.AverageRating!.Value)
+                .ToList();
+            if (dimensionAverages.Count == 0) continue; // closed but no rating answers — keep looking
+
+            _cultureCampaignAvg = Math.Round(dimensionAverages.Average(), 2);
+            _cultureCampaignCloseDate = campaign.CloseDate;
+            break;
+        }
     }
 }

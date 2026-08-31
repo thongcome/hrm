@@ -433,6 +433,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Talent_PotentialRating> Talent_PotentialRatings { get; set; }
     public virtual DbSet<Talent_NineBoxSettings> Talent_NineBoxSettingsList { get; set; }
     public virtual DbSet<Talent_PoolEntry> Talent_PoolEntries { get; set; }
+    public virtual DbSet<Talent_RetentionRiskSettings> Talent_RetentionRiskSettingsList { get; set; }
+    public virtual DbSet<Career_PathTransition> Career_PathTransitions { get; set; }
     // ----- end Talent_* module -----
 
     // ----- Succ_* module (Succession Planning) -----

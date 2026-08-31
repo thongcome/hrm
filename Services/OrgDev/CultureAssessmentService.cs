@@ -3,32 +3,14 @@ namespace HRM.Services.OrgDev;
 using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 
-// Culture Assessment: a manual, periodic HR-entered org-health snapshot
-// (4 fixed 1-5 dimensions) — deliberately not a survey/response engine, see
-// the comment on OrgDev_CultureAssessment.cs for why.
+// Read-only access to the legacy manual culture-assessment snapshots
+// (4 fixed 1-5 dimensions HR used to type in). Culture assessment now runs
+// as anonymous Culture-type campaigns on the Engagement survey engine
+// (Eng_CampaignType.Culture / SurveyService) — the write path here was
+// removed with the entry form; existing rows are kept as read-only history
+// on CultureAssessmentAdmin and as a fallback for the OrgHealthDashboard tile.
 public class CultureAssessmentService(IDbContextFactory<HRMContext> dbFactory)
 {
-    public async Task<long> RecordAsync(string companyId, long? organizationId, DateOnly assessmentDate,
-        int communicationScore, int trustScore, int collaborationScore, int leadershipScore, string? note, long actorUserId, CancellationToken ct = default)
-    {
-        await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var assessment = new OrgDev_CultureAssessment
-        {
-            CompanyId = companyId,
-            OrganizationId = organizationId,
-            AssessmentDate = assessmentDate,
-            CommunicationScore = communicationScore,
-            TrustScore = trustScore,
-            CollaborationScore = collaborationScore,
-            LeadershipScore = leadershipScore,
-            Note = note,
-            ConductedByUserId = actorUserId,
-        };
-        context.OrgDev_CultureAssessments.Add(assessment);
-        await context.SaveChangesAsync(ct);
-        return assessment.Id;
-    }
-
     public async Task<List<OrgDev_CultureAssessment>> GetHistoryAsync(string companyId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);

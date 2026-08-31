@@ -1,11 +1,13 @@
 @page "/talent/settings"
 @using System.Security.Claims
+@using HRM.Models
 @using HRM.Services.Talent
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 @inject AuthenticationStateProvider AuthProvider
 @inject TalentGridService GridService
+@inject RetentionRiskService RiskService
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:TALENT_ADMIN")]
 
@@ -33,6 +35,28 @@ else
 
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" OnClick="SaveAsync">บันทึก</MudButton>
     </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" Style="max-width:600px">
+        <MudText Typo="Typo.h5">ตัวชี้วัดความเสี่ยงการลาออก (Retention Risk)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            คะแนนความเสี่ยงเป็นแบบบวกสะสมโปร่งใส — สัญญาณไหนเข้าเงื่อนไขก็บวกน้ำหนักของสัญญาณนั้น
+            และระบบแสดงเหตุผลกำกับเสมอ ไม่ใช่การทำนายแบบกล่องดำ ปิดไว้เป็นค่าเริ่มต้น เปิดใช้เมื่อพร้อมเท่านั้น
+        </MudText>
+
+        <MudSwitch T="bool" @bind-Value="_risk.IsEnabled" Label="เปิดใช้ตัวชี้วัดความเสี่ยงการลาออก" Color="Color.Primary" />
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="8"><MudNumericField T="int" @bind-Value="_risk.NewHireMonthsThreshold" Label="พนักงานใหม่: อายุงานไม่เกิน (เดือน)" Min="1" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="int" @bind-Value="_risk.NewHireWeight" Label="น้ำหนัก" Min="0" Max="100" /></MudItem>
+            <MudItem xs="8"><MudNumericField T="int" @bind-Value="_risk.StagnationMonthsThreshold" Label="ไม่เปลี่ยนตำแหน่งเกิน (เดือน)" Min="1" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="int" @bind-Value="_risk.StagnationWeight" Label="น้ำหนัก" Min="0" Max="100" /></MudItem>
+            <MudItem xs="8"><MudNumericField T="int" @bind-Value="_risk.HighPerformerScorePercent" Label="ผลงานระดับสูงตั้งแต่ (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="int" @bind-Value="_risk.HighPerformerWeight" Label="น้ำหนัก" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12"><MudNumericField T="int" @bind-Value="_risk.HighRiskScoreThreshold" Label="คะแนนรวมตั้งแต่เท่านี้ = เสี่ยงสูง" Min="1" /></MudItem>
+        </MudGrid>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" OnClick="SaveRiskAsync">บันทึกการตั้งค่าความเสี่ยง</MudButton>
+    </MudPaper>
 }
 
 @code {
@@ -50,6 +74,18 @@ else
         var settings = await GridService.GetNineBoxSettingsAsync(_companyId);
         _lowMax = settings.PerformanceLowMaxPercent;
         _highMin = settings.PerformanceHighMinPercent;
+
+        _risk = await RiskService.GetSettingsAsync(_companyId);
+    }
+
+    private Talent_RetentionRiskSettings _risk = new() { CompanyId = "" };
+
+    private async Task SaveRiskAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _risk.CompanyId = _companyId;
+        await RiskService.SaveSettingsAsync(_risk);
+        Snackbar.Add("บันทึกการตั้งค่าความเสี่ยงเรียบร้อย", Severity.Success);
     }
 
     private async Task SaveAsync()

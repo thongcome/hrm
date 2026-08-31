@@ -41,6 +41,57 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
         return await context.Eng_CampaignTargets.Where(t => t.CampaignId == campaignId).ToListAsync(ct);
     }
 
+    public record CultureDimension(string Code, string Text);
+
+    // The 4 standard culture dimensions the old OrgDev_CultureAssessment manual
+    // form scored — now question-bank templates for Culture-type campaigns.
+    public static readonly IReadOnlyList<CultureDimension> CultureDimensions = new List<CultureDimension>
+    {
+        new("CULTURE-COMM", "การสื่อสารในองค์กร (Communication)"),
+        new("CULTURE-TRUST", "ความไว้วางใจ (Trust)"),
+        new("CULTURE-COLLAB", "การทำงานร่วมกัน (Collaboration)"),
+        new("CULTURE-LEAD", "ภาวะผู้นำ (Leadership)"),
+    };
+
+    // Idempotent add-missing seeding (matched by Code, falling back to exact
+    // Text for rows created before codes existed) of the 4 standard culture
+    // dimensions into the company's question bank, following the house
+    // "idempotent catalog seeding, add-missing by code" convention. Runtime
+    // seeding instead of a migration because question templates are
+    // company-scoped, user-editable catalog data — not global schema — and
+    // each company opts in from the Culture Assessment page. Returns how many
+    // templates were newly created (0 = everything already existed).
+    // actorUserId identifies who triggered the seeding; the write itself is
+    // audit-logged automatically by HRMContext.Audit's SaveChangesAsync hook.
+    public async Task<int> EnsureCultureQuestionTemplatesAsync(string companyId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var codes = CultureDimensions.Select(d => d.Code).ToList();
+        var texts = CultureDimensions.Select(d => d.Text).ToList();
+        var existing = await context.Eng_QuestionTemplates
+            .Where(t => t.CompanyId == companyId
+                && ((t.Code != null && codes.Contains(t.Code)) || texts.Contains(t.Text)))
+            .ToListAsync(ct);
+
+        var created = 0;
+        foreach (var dim in CultureDimensions)
+        {
+            if (existing.Any(t => t.Code == dim.Code || t.Text == dim.Text)) continue;
+            context.Eng_QuestionTemplates.Add(new Eng_QuestionTemplate
+            {
+                Code = dim.Code,
+                CompanyId = companyId,
+                Text = dim.Text,
+                QuestionType = Eng_QuestionType.Rating,
+                IsActive = true,
+            });
+            created++;
+        }
+        if (created > 0) await context.SaveChangesAsync(ct);
+        return created;
+    }
+
     public async Task<Eng_SurveyCampaign> CreateDraftAsync(string companyId, string title, string? description,
         Eng_CampaignType campaignType, long actorUserId, CancellationToken ct = default)
     {

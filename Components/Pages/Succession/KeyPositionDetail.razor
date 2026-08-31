@@ -1,6 +1,7 @@
 @page "/succession/key-positions/{Id:long}"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Career
 @using HRM.Services.Idp
 @using HRM.Services.Succession
 @using Microsoft.EntityFrameworkCore
@@ -10,6 +11,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject SuccessionService SuccService
+@inject CareerPathService PathService
 @inject IdpAssessmentService IdpService
 @inject IdpPlanService IdpPlanSvc
 @inject ISnackbar Snackbar
@@ -43,6 +45,21 @@ else
                 <text>&nbsp;|&nbsp; ประสบการณ์ขั้นต่ำ: @minYears ปี</text>
             }
         </MudText>
+        @if (_transitionSources.Count > 0)
+        {
+            @* Career-lattice link (display-only): positions HR mapped as
+               leading into this key position — natural sourcing pools when
+               looking for successors. *@
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-2 flex-wrap">
+                <MudText Typo="Typo.caption">ตำแหน่งต้นทางตามเส้นทางอาชีพ:</MudText>
+                @foreach (var source in _transitionSources)
+                {
+                    <MudTooltip Text="@(source.Note ?? "")">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.TrendingUp">@source.FromPosExecTypeName</MudChip>
+                    </MudTooltip>
+                }
+            </MudStack>
+        }
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
@@ -298,6 +315,8 @@ else
     private bool _eligibleSearched;
     private List<SuccessionService.EligibleCandidateRow> _eligibleCandidates = new();
 
+    private List<CareerPathService.TransitionSourceRow> _transitionSources = new();
+
     private List<SuccessionService.SuggestedCandidateRow> VisibleSuggestions =>
         _suggestedCandidates.Where(s => !_nominations.Any(n => n.HremployeeId == s.HremployeeId)).ToList();
 
@@ -318,7 +337,10 @@ else
         _posExecTypeName = execType?.Name ?? $"#{_keyPosition.PosExecTypeId}";
 
         if (!string.IsNullOrEmpty(_companyId))
+        {
             _suggestedCandidates = await SuccService.GetSuggestedCandidatesAsync(_companyId);
+            _transitionSources = await PathService.GetTransitionsIntoAsync(_companyId, _keyPosition.PosExecTypeId);
+        }
 
         await LoadNominationsAsync();
     }

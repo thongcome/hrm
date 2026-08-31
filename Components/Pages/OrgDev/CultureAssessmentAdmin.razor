@@ -1,15 +1,23 @@
 @page "/orgdev/culture-assessment"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Engagement
 @using HRM.Services.OrgDev
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 @inject AuthenticationStateProvider AuthProvider
 @inject CultureAssessmentService AssessmentService
+@inject SurveyService SurveyService
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ORGDEV_ADMIN")]
+
+@* Culture assessment now runs as anonymous Culture-type campaigns on the
+   Engagement survey engine (one survey engine, per the HRD maturity audit) —
+   this page seeds the standard question bank, lists Culture campaigns with
+   their aggregate scores, and keeps the old manual entries as read-only
+   history. *@
 
 <PageTitle>@L.Translate("CultureAssessmentPageTitle")</PageTitle>
 
@@ -22,34 +30,54 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">@L.Translate("CultureAssessmentHeading")</MudText>
         <MudText Typo="Typo.body2" Class="mt-1 mb-3">
-            @L.Translate("CultureAssessmentDesc")
+            การประเมินวัฒนธรรมองค์กรเปลี่ยนมาใช้ระบบแบบสำรวจนิรนามของโมดูล Employee Engagement แล้ว —
+            สร้างแคมเปญประเภท "ประเมินวัฒนธรรมองค์กร (Culture)" ให้พนักงานตอบเอง แทนการที่ HR กรอกคะแนนเอง
+            เริ่มจากสร้างชุดคำถามมาตรฐาน 4 ด้าน (การสื่อสาร / ความไว้วางใจ / การทำงานร่วมกัน / ภาวะผู้นำ)
+            เข้าคลังคำถาม แล้วไปสร้างแคมเปญจากหน้าแคมเปญของ Engagement
         </MudText>
-
-        @if (!_showForm)
-        {
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">@L.Translate("SaveAssessmentButton")</MudButton>
-        }
-        else
-        {
-            <MudGrid>
-                <MudItem xs="12" sm="3"><MudDatePicker Label="@L.Translate("AssessmentDateLabel")" @bind-Date="_assessmentDate" /></MudItem>
-                <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_communication" Label="@L.Translate("CommunicationScoreLabel")" Min="1" Max="5" /></MudItem>
-                <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_trust" Label="@L.Translate("TrustScoreLabel")" Min="1" Max="5" /></MudItem>
-                <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_collaboration" Label="@L.Translate("CollaborationScoreLabel")" Min="1" Max="5" /></MudItem>
-                <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_leadership" Label="@L.Translate("LeadershipScoreLabel")" Min="1" Max="5" /></MudItem>
-                <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="@L.Translate("ColRemark")" Lines="3" /></MudItem>
-                <MudItem xs="12">
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("SaveAssessmentButton")</MudButton>
-                        <MudButton Variant="Variant.Text" OnClick="CancelForm">@L.Translate("CancelButton")</MudButton>
-                    </MudStack>
-                </MudItem>
-            </MudGrid>
-        }
+        <MudStack Row="true" Spacing="2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlaylistAdd"
+                       Disabled="_seeding" OnClick="SeedTemplatesAsync">สร้างชุดคำถามวัฒนธรรมมาตรฐาน</MudButton>
+            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Campaign"
+                       Href="/eng/campaigns">ไปสร้าง/จัดการแคมเปญ (Engagement)</MudButton>
+        </MudStack>
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("AssessmentHistoryHeading")</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">แคมเปญประเมินวัฒนธรรมองค์กร</MudText>
+        <MudTable Items="_cultureCampaigns" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ชื่อแคมเปญ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>ช่วงเปิดรับ</MudTh>
+                <MudTh>จำนวนคำตอบ</MudTh>
+                <MudTh>คะแนนเฉลี่ย (1-5)</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd>@(context.OpenDate?.ToString("dd/MM/yyyy") ?? "-") — @(context.CloseDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd>@context.ResponseCount / @context.InvitedCount</MudTd>
+                <MudTd>@(_avgByCampaign.TryGetValue(context.Id, out var avg) && avg is not null ? avg.Value.ToString("0.00") : "-")</MudTd>
+                <MudTd>
+                    @if (context.Status == Eng_CampaignStatus.Draft)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/eng/campaigns/{context.Id}")">จัดการ</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/eng/campaigns/{context.Id}/results")">ผลลัพธ์</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแคมเปญประเมินวัฒนธรรม — สร้างได้จากหน้าแคมเปญ Engagement</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการประเมินแบบเดิม (อ่านอย่างเดียว)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">คะแนนที่ HR เคยบันทึกเองก่อนย้ายมาใช้แบบสำรวจนิรนาม — เก็บไว้เป็นประวัติ ไม่รับข้อมูลใหม่แล้ว</MudText>
         <MudTable Items="_history" Dense="true" Hover="true">
             <HeaderContent>
                 <MudTh>@L.Translate("ColDate")</MudTh>
@@ -75,14 +103,9 @@ else
 @code {
     private string? _companyId;
     private List<OrgDev_CultureAssessment> _history = new();
-    private bool _showForm;
-
-    private DateTime? _assessmentDate = DateTime.Today;
-    private int _communication = 3;
-    private int _trust = 3;
-    private int _collaboration = 3;
-    private int _leadership = 3;
-    private string? _note;
+    private List<Eng_SurveyCampaign> _cultureCampaigns = new();
+    private readonly Dictionary<long, double?> _avgByCampaign = new();
+    private bool _seeding;
 
     protected override async Task OnInitializedAsync()
     {
@@ -97,37 +120,58 @@ else
     {
         if (string.IsNullOrEmpty(_companyId)) return;
         _history = await AssessmentService.GetHistoryAsync(_companyId);
+
+        var all = await SurveyService.GetCampaignsForAdminAsync(_companyId);
+        _cultureCampaigns = all.Where(c => c.CampaignType == Eng_CampaignType.Culture).ToList();
+
+        // Overall campaign score = mean of the per-dimension (per rating
+        // question) averages from the engine's own aggregation — same
+        // semantics as the legacy "average of the 4 dimension scores".
+        _avgByCampaign.Clear();
+        foreach (var campaign in _cultureCampaigns.Where(c => c.Status != Eng_CampaignStatus.Draft))
+        {
+            var results = await SurveyService.GetResultsAsync(campaign.Id);
+            var dimensionAverages = results.Questions
+                .Where(q => q.QuestionType == Eng_QuestionType.Rating && q.AverageRating != null)
+                .Select(q => q.AverageRating!.Value)
+                .ToList();
+            _avgByCampaign[campaign.Id] = dimensionAverages.Count > 0 ? Math.Round(dimensionAverages.Average(), 2) : null;
+        }
     }
 
-    private void StartCreate()
+    private async Task SeedTemplatesAsync()
     {
-        _assessmentDate = DateTime.Today;
-        _communication = 3;
-        _trust = 3;
-        _collaboration = 3;
-        _leadership = 3;
-        _note = null;
-        _showForm = true;
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _seeding = true;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+            var created = await SurveyService.EnsureCultureQuestionTemplatesAsync(_companyId, userId);
+            Snackbar.Add(created > 0
+                ? $"เพิ่มคำถามวัฒนธรรมมาตรฐานเข้าคลังคำถามแล้ว {created} ข้อ"
+                : "คลังคำถามมีชุดคำถามวัฒนธรรมมาตรฐานครบแล้ว", Severity.Success);
+        }
+        finally
+        {
+            _seeding = false;
+        }
     }
 
-    private void CancelForm()
+    private static string StatusLabel(Eng_CampaignStatus s) => s switch
     {
-        _showForm = false;
-    }
+        Eng_CampaignStatus.Draft => "ฉบับร่าง",
+        Eng_CampaignStatus.Open => "เปิดรับคำตอบ",
+        Eng_CampaignStatus.Closed => "ปิดแล้ว",
+        _ => "-",
+    };
 
-    private async Task SaveAsync()
+    private static Color StatusColor(Eng_CampaignStatus s) => s switch
     {
-        if (string.IsNullOrEmpty(_companyId) || _assessmentDate is null) return;
-
-        var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
-
-        await AssessmentService.RecordAsync(_companyId, null, DateOnly.FromDateTime(_assessmentDate.Value),
-            _communication, _trust, _collaboration, _leadership, _note, userId);
-
-        Snackbar.Add(L.Translate("AssessmentSavedSuccess"), Severity.Success);
-        _note = null;
-        _showForm = false;
-        await LoadAsync();
-    }
+        Eng_CampaignStatus.Draft => Color.Default,
+        Eng_CampaignStatus.Open => Color.Success,
+        Eng_CampaignStatus.Closed => Color.Info,
+        _ => Color.Default,
+    };
 }

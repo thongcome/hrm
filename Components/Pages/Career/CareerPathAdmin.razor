@@ -77,6 +77,57 @@ else
             }
         </MudPaper>
     }
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">เส้นทางแบบแตกสาย (Transitions)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+            กำหนดว่าจากตำแหน่งหนึ่ง สามารถก้าวไปตำแหน่งใดได้บ้าง (ได้หลายตำแหน่ง รวมถึงข้ามสายงาน) — ถ้าตำแหน่งใดมี transition กำหนดไว้ หน้า "เส้นทางอาชีพของฉัน" จะใช้แทนขั้นถัดไปตามลำดับสายงาน
+        </MudText>
+
+        <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่งต้นทาง" Value="_transitionFromExecType"
+            ValueChanged="OnTransitionFromChangedAsync"
+            SearchFunc="SearchExecTypesAsync"
+            ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+            ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+
+        @if (_transitionFromExecType is not null)
+        {
+            <MudTable Items="_transitions" Dense="true" Hover="true" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>ตำแหน่งปลายทาง</MudTh>
+                    <MudTh>หมายเหตุ/เงื่อนไข</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ToPosExecTypeName</MudTd>
+                    <MudTd>@(context.Note ?? "-")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveTransitionAsync(context.TransitionId))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">ตำแหน่งนี้ยังไม่มีเส้นทางแตกสาย — เพิ่มตำแหน่งปลายทางด้านล่าง</MudText></NoRecordsContent>
+            </MudTable>
+
+            <MudGrid Class="mt-2">
+                <MudItem xs="12" sm="5">
+                    <MudAutocomplete T="Pos_ExecType" Label="ตำแหน่งปลายทาง" @bind-Value="_transitionToExecType"
+                        SearchFunc="SearchExecTypesAsync"
+                        ToStringFunc="@(t => t == null ? null : $"{t.Code} — {t.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField T="string" @bind-Value="_transitionNote" Label="หมายเหตุ/เงื่อนไข (ถ้ามี)" MaxLength="500" />
+                </MudItem>
+                <MudItem xs="12" sm="3" Class="d-flex align-center">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddTransitionAsync" Disabled="@(_transitionToExecType is null)">เพิ่มเส้นทาง</MudButton>
+                </MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_transitionError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_transitionError</MudAlert>
+            }
+        }
+    </MudPaper>
 }
 
 @code {
@@ -145,5 +196,59 @@ else
         await PathService.RemoveStepAsync(stepId);
         Snackbar.Add(L.Translate("StepRemovedSuccess"), Severity.Success);
         await LoadStepsAsync();
+    }
+
+    // ----- Transitions (career lattice) -----
+
+    private Pos_ExecType? _transitionFromExecType;
+    private Pos_ExecType? _transitionToExecType;
+    private string? _transitionNote;
+    private string? _transitionError;
+    private List<CareerPathService.TransitionRow> _transitions = new();
+
+    private async Task OnTransitionFromChangedAsync(Pos_ExecType? execType)
+    {
+        _transitionFromExecType = execType;
+        _transitionError = null;
+        await LoadTransitionsAsync();
+    }
+
+    private async Task LoadTransitionsAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId) || _transitionFromExecType is null)
+        {
+            _transitions = new();
+            return;
+        }
+        _transitions = await PathService.GetTransitionsFromAsync(_companyId, _transitionFromExecType.Id);
+    }
+
+    private async Task AddTransitionAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId) || _transitionFromExecType is null || _transitionToExecType is null) return;
+        _transitionError = null;
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+
+        try
+        {
+            await PathService.AddTransitionAsync(_companyId, _transitionFromExecType.Id, _transitionToExecType.Id, _transitionNote, userId);
+            Snackbar.Add("เพิ่มเส้นทางแล้ว", Severity.Success);
+            _transitionToExecType = null;
+            _transitionNote = null;
+            await LoadTransitionsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _transitionError = ex.Message;
+        }
+    }
+
+    private async Task RemoveTransitionAsync(long transitionId)
+    {
+        await PathService.RemoveTransitionAsync(transitionId);
+        Snackbar.Add("ลบเส้นทางแล้ว", Severity.Success);
+        await LoadTransitionsAsync();
     }
 }

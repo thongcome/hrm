@@ -453,6 +453,7 @@ builder.Services.AddScoped<HRM.Services.Km.KmArticleService>();
 
 // ----- Talent_* module (Talent Management / 9-Box) -----
 builder.Services.AddScoped<HRM.Services.Talent.TalentGridService>();
+builder.Services.AddScoped<HRM.Services.Talent.RetentionRiskService>();
 builder.Services.AddScoped<HRM.Services.Succession.SuccessionService>();
 builder.Services.AddScoped<HRM.Services.Career.CareerPathService>();
 builder.Services.AddScoped<HRM.Services.OrgDev.WorkforcePlanService>();

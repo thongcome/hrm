@@ -30,41 +30,116 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">@L.Translate("MyCareerPathHeading")</MudText>
 
+        @if (_successionInfo is not null)
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3" Icon="@Icons.Material.Filled.Stars">
+                คุณอยู่ในแผนสืบทอดตำแหน่ง: @_successionInfo.PositionName (ระดับความพร้อม: @ReadinessLabel(_successionInfo.Readiness))
+            </MudAlert>
+        }
+
         @if (_result.CurrentPosExecTypeName is null)
         {
             <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("NoPositionSlotLinkedInfo")</MudAlert>
         }
-        else if (_result.JobFamilyId is null)
-        {
-            <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("CurrentPositionNoJobFamilyTemplate"), _result.CurrentPosExecTypeName)</MudAlert>
-        }
-        else if (_result.Steps.Count == 0)
-        {
-            <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("JobFamilyNoPathTemplate"), _result.JobFamilyName)</MudAlert>
-        }
         else
         {
-            <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("JobFamilyLabelPrefix") @_result.JobFamilyName</MudText>
-            <MudStack Row="true" Spacing="2" Class="flex-wrap">
-                @foreach (var step in _result.Steps)
+            var hasTransitions = _result.NextTransitions.Count > 0;
+
+            @* Family-ladder overview stays as a display even in lattice mode;
+               the "next step" highlight only follows the ladder when no
+               transitions are defined (transitions win, see CareerPathService). *@
+            @if (_result.JobFamilyId is not null && _result.Steps.Count > 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-1 mb-3">@L.Translate("JobFamilyLabelPrefix") @_result.JobFamilyName</MudText>
+                <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                    @foreach (var step in _result.Steps)
+                    {
+                        var isCurrent = _result.CurrentStep?.StepId == step.StepId;
+                        var isNext = !hasTransitions && _result.NextStep?.StepId == step.StepId;
+                        <MudPaper Class="pa-3" Outlined="true" Style="@(isCurrent ? "border-color:var(--mud-palette-primary);border-width:2px" : isNext ? "border-color:var(--mud-palette-info);border-width:2px" : "")">
+                            <MudText Typo="Typo.body2">@step.PosExecTypeName</MudText>
+                            @if (isCurrent)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@L.Translate("CurrentPositionChip")</MudChip>
+                            }
+                            @if (isNext)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@L.Translate("NextStepChip")</MudChip>
+                            }
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
+            else if (!hasTransitions)
+            {
+                @if (_result.JobFamilyId is null)
                 {
-                    var isCurrent = _result.CurrentStep?.StepId == step.StepId;
-                    var isNext = _result.NextStep?.StepId == step.StepId;
-                    <MudPaper Class="pa-3" Outlined="true" Style="@(isCurrent ? "border-color:var(--mud-palette-primary);border-width:2px" : isNext ? "border-color:var(--mud-palette-info);border-width:2px" : "")">
-                        <MudText Typo="Typo.body2">@step.PosExecTypeName</MudText>
-                        @if (isCurrent)
+                    <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("CurrentPositionNoJobFamilyTemplate"), _result.CurrentPosExecTypeName)</MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-3">@string.Format(L.Translate("JobFamilyNoPathTemplate"), _result.JobFamilyName)</MudAlert>
+                }
+            }
+
+            @if (hasTransitions)
+            {
+                @* Lattice mode: every outgoing transition from the current
+                   position is a possible next move, each with its own gap
+                   analysis (same shared engine as the legacy single step). *@
+                <MudText Typo="Typo.h6" Class="mt-4 mb-2">ตำแหน่งถัดไปที่เป็นไปได้ (@_result.NextTransitions.Count เส้นทาง)</MudText>
+                @foreach (var transition in _result.NextTransitions)
+                {
+                    var transitionGaps = _transitionGapRows.TryGetValue(transition.TransitionId, out var rows) ? rows : new List<IdpAssessmentService.CompetencyGapRow>();
+                    <MudPaper Class="pa-3 mb-3" Outlined="true" Style="border-color:var(--mud-palette-info)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" />
+                            <MudText Typo="Typo.subtitle1">@transition.ToPosExecTypeName</MudText>
+                        </MudStack>
+                        @if (!string.IsNullOrWhiteSpace(transition.Note))
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@L.Translate("CurrentPositionChip")</MudChip>
+                            <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.8;">@transition.Note</MudText>
                         }
-                        @if (isNext)
+                        @if (transitionGaps.Count == 0)
                         {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@L.Translate("NextStepChip")</MudChip>
+                            <MudAlert Severity="Severity.Info" Class="mt-2">@L.Translate("NoNextStepRequirementsMessage")</MudAlert>
+                        }
+                        else
+                        {
+                            <MudTable Items="transitionGaps" Dense="true" Hover="true" Class="mt-2">
+                                <HeaderContent>
+                                    <MudTh>@L.Translate("ColCompetency")</MudTh>
+                                    <MudTh>@L.Translate("RequiredLevelColLabel")</MudTh>
+                                    <MudTh>@L.Translate("CurrentLevelColLabel")</MudTh>
+                                    <MudTh>@L.Translate("GapColLabel")</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        @context.CompetencyName
+                                        @if (context.IsCritical)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@L.Translate("CriticalChip")</MudChip>
+                                        }
+                                    </MudTd>
+                                    <MudTd>@context.RequiredLevel</MudTd>
+                                    <MudTd>@(context.EffectiveLevel?.ToString() ?? L.Translate("NotYetAssessedText"))</MudTd>
+                                    <MudTd>
+                                        @if (context.Gap is int gap)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="@(gap > 0 ? Color.Error : Color.Success)">@gap</MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.body2">-</MudText>
+                                        }
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
                         }
                     </MudPaper>
                 }
-            </MudStack>
-
-            @if (_result.NextStep is not null)
+            }
+            else if (_result.NextStep is not null)
             {
                 <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("GapAnalysisNextStepHeadingPrefix") (@_result.NextStep.PosExecTypeName)</MudText>
                 @if (_gapRows.Count == 0)
@@ -118,6 +193,13 @@ else
     private CareerPathService.MyPathResult? _result;
     private List<IdpAssessmentService.CompetencyGapRow> _gapRows = new();
 
+    // Lattice mode: one gap analysis per outgoing transition, keyed by
+    // TransitionId — same shared engine call as the legacy single next step.
+    private Dictionary<long, List<IdpAssessmentService.CompetencyGapRow>> _transitionGapRows = new();
+
+    private record SuccessionInfo(string PositionName, ReadinessLevel Readiness);
+    private SuccessionInfo? _successionInfo;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -130,7 +212,45 @@ else
         }
 
         _result = await PathService.GetMyPathAsync(_employee.id);
-        if (_result.NextStep is not null)
+        if (_result.NextTransitions.Count > 0)
+        {
+            foreach (var transition in _result.NextTransitions)
+                _transitionGapRows[transition.TransitionId] = await IdpService.GetGapAnalysisForTargetPositionAsync(_employee.id, transition.ToPosExecTypeId);
+        }
+        else if (_result.NextStep is not null)
+        {
             _gapRows = await IdpService.GetGapAnalysisForTargetPositionAsync(_employee.id, _result.NextStep.PosExecTypeId);
+        }
+
+        await LoadSuccessionInfoAsync(context);
     }
+
+    // Succession link: show the viewer they're on an APPROVED successor
+    // slate. Same filter SuccessionService.GetBenchStrengthAsync uses for a
+    // "real" successor (IsActive + Status=Approved, key position active) —
+    // status here is read as last synced by the succession pages' lazy
+    // apply-on-read; no sync attempted from this ESS page.
+    private async Task LoadSuccessionInfoAsync(HRMContext context)
+    {
+        var nomination = await context.Succ_SuccessorNominations
+            .Where(n => n.HremployeeId == _employee!.id && n.IsActive && n.Status == SuccessionNominationStatus.Approved)
+            .OrderBy(n => n.ReadinessLevel)
+            .FirstOrDefaultAsync();
+        if (nomination is null) return;
+
+        var keyPosition = await context.Succ_KeyPositions.FirstOrDefaultAsync(k => k.Id == nomination.KeyPositionId && k.IsActive);
+        if (keyPosition is null) return;
+
+        var posName = await context.Pos_ExecTypes.Where(p => p.Id == keyPosition.PosExecTypeId).Select(p => p.Name).FirstOrDefaultAsync();
+        _successionInfo = new(posName ?? $"#{keyPosition.PosExecTypeId}", nomination.ReadinessLevel);
+    }
+
+    private string ReadinessLabel(ReadinessLevel v) => v switch
+    {
+        ReadinessLevel.ReadyNow => L.Translate("ReadinessReadyNow"),
+        ReadinessLevel.Ready1To2Years => L.Translate("ReadinessReady1To2Years"),
+        ReadinessLevel.Ready3To5Years => L.Translate("ReadinessReady3To5Years"),
+        ReadinessLevel.DevelopmentNeeded => L.Translate("ReadinessDevelopmentNeeded"),
+        _ => v.ToString(),
+    };
 }

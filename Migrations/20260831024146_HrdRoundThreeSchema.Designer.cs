@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260831024146_HrdRoundThreeSchema")]
+    partial class HrdRoundThreeSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -11650,7 +11653,7 @@ namespace HRM.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Talent_RetentionRiskSettings");
+                    b.ToTable("Talent_RetentionRiskSettingsList");
                 });
 
             modelBuilder.Entity("HRM.Models.WorkflowDesignTable", b =>

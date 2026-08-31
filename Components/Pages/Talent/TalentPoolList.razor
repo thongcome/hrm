@@ -9,6 +9,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject TalentGridService GridService
+@inject RetentionRiskService RiskService
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:TALENT_ADMIN")]
 
@@ -61,11 +62,39 @@ else
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีพนักงานใน Talent Pool</MudText></NoRecordsContent>
         </MudTable>
     </MudPaper>
+
+    @if (_riskRows.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h5">ความเสี่ยงการลาออก (Retention Risk)</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1 mb-3">
+                คะแนนบวกสะสมจากสัญญาณที่ตั้งค่าไว้ (ดู/ปรับเกณฑ์ที่หน้า <MudLink Href="/talent/settings">ตั้งค่า</MudLink>) —
+                แสดงพร้อมเหตุผลเสมอ ใช้เป็นจุดเริ่มบทสนทนา ไม่ใช่คำตัดสิน
+            </MudText>
+            <MudTable Items="_riskRows" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>พนักงาน</MudTh>
+                    <MudTh>คะแนน</MudTh>
+                    <MudTh>เหตุผล</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.EmployeeName (@context.EmpNo)</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.IsHighRisk ? Color.Error : Color.Warning)">
+                            @context.Score @(context.IsHighRisk ? "— เสี่ยงสูง" : "")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@string.Join(" · ", context.Reasons)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
 }
 
 @code {
     private string? _companyId;
     private List<Talent_PoolEntry> _entries = new();
+    private List<RetentionRiskService.RiskRow> _riskRows = new();
     private Dictionary<long, string> _employeeNames = new();
     private Hremployee? _selectedEmployee;
     private string? _reason;
@@ -84,6 +113,7 @@ else
         if (string.IsNullOrEmpty(_companyId)) return;
 
         _entries = await GridService.GetPoolEntriesAsync(_companyId);
+        _riskRows = await RiskService.ComputeAsync(_companyId); // empty unless the company opted in
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var employeeIds = _entries.Select(e => e.HremployeeId).ToList();
@@ -97,7 +127,14 @@ else
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
     {
         await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        // Same semantics as EmployeeStatusHelper.CanTransact, inlined so it
+        // stays SQL-translatable ahead of Take(20) — a raw ResignDate==null
+        // here silently hid notice-period employees who are still working
+        // (the recurring bug this codebase already fixed in OrgEmployee
+        // ResolverHelper and BlockLeaveComplianceService).
+        var today = DateTime.Today;
+        var query = context.Hremployee.Where(e => e.companyid == _companyId && e.IsActive
+            && (e.ResignDate == null || e.ResignDate >= today));
         if (!string.IsNullOrWhiteSpace(search))
         {
             query = query.Where(e => e.EmpNo.Contains(search)
