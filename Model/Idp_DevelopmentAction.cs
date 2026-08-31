@@ -27,6 +27,11 @@ public class Idp_DevelopmentAction
 
     public IdpActionStatus Status { get; set; } = IdpActionStatus.NotStarted;
 
+    // 70-20-10 classification. Nullable — rows created before this field
+    // existed, and quick-created succession-gap actions (KeyPositionDetail),
+    // have no method; "ยังไม่ระบุ" is a valid state, not an error.
+    public IdpDevelopmentMethod? Method { get; set; }
+
     public DateTime? CompletedDate { get; set; }
 
     [StringLength(500)]

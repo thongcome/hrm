@@ -102,12 +102,19 @@ else
                                 <HeaderContent>
                                     <MudTh>รหัส</MudTh>
                                     <MudTh>ชื่อตัวชี้วัด</MudTh>
+                                    <MudTh>Competency</MudTh>
                                     <MudTh>น้ำหนัก</MudTh>
                                     <MudTh></MudTh>
                                 </HeaderContent>
                                 <RowTemplate>
                                     <MudTd>@context.Code</MudTd>
                                     <MudTd>@context.Name</MudTd>
+                                    <MudTd>
+                                        @if (context.CompetencyId is long compId && _competencyNames.TryGetValue(compId, out var compName))
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@compName</MudChip>
+                                        }
+                                    </MudTd>
                                     <MudTd>@context.Weight.ToString("0.#")%</MudTd>
                                     <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveIndicatorAsync(context.Id))">ลบ</MudButton></MudTd>
                                 </RowTemplate>
@@ -122,9 +129,17 @@ else
                             {
                                 <MudGrid Class="mt-2">
                                     <MudItem xs="6" sm="2"><MudTextField @bind-Value="_newIndicatorCode" Label="รหัส" /></MudItem>
-                                    <MudItem xs="6" sm="4"><MudTextField @bind-Value="_newIndicatorName" Label="ชื่อตัวชี้วัด" /></MudItem>
-                                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newIndicatorTarget" Label="คำอธิบายเกณฑ์เต็มคะแนน" /></MudItem>
-                                    <MudItem xs="8" sm="2"><MudNumericField T="decimal" @bind-Value="_newIndicatorWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
+                                    <MudItem xs="6" sm="3"><MudTextField @bind-Value="_newIndicatorName" Label="ชื่อตัวชี้วัด" /></MudItem>
+                                    <MudItem xs="12" sm="3">
+                                        <MudSelect T="long?" @bind-Value="_newIndicatorCompetencyId" Label="ผูก Competency (ถ้ามี)" Clearable="true">
+                                            @foreach (var comp in _competencies)
+                                            {
+                                                <MudSelectItem T="long?" Value="comp.Id">@comp.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newIndicatorTarget" Label="คำอธิบายเกณฑ์เต็มคะแนน" /></MudItem>
+                                    <MudItem xs="8" sm="1"><MudNumericField T="decimal" @bind-Value="_newIndicatorWeight" Label="น้ำหนัก (%)" Min="0" Max="100" /></MudItem>
                                     <MudItem xs="4" sm="1">
                                         <MudStack Row="true" Spacing="2">
                                             <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="@(() => AddIndicatorAsync(subTopic.Id))">เพิ่ม</MudButton>
@@ -161,6 +176,9 @@ else
     private string _newTopicCode = ""; private string _newTopicName = ""; private decimal _newTopicWeight;
     private string _newSubTopicCode = ""; private string _newSubTopicName = ""; private decimal _newSubTopicWeight;
     private string _newIndicatorCode = ""; private string _newIndicatorName = ""; private string _newIndicatorTarget = ""; private decimal _newIndicatorWeight;
+    private long? _newIndicatorCompetencyId;
+    private List<Comp_Competency> _competencies = new();
+    private Dictionary<long, string> _competencyNames = new();
 
     private void OpenTopicForm()
     {
@@ -190,7 +208,7 @@ else
 
     private void OpenIndicatorForm(long subTopicId)
     {
-        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0;
+        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0; _newIndicatorCompetencyId = null;
         _error = null;
         _showIndicatorFormForSubTopicId = subTopicId;
     }
@@ -214,6 +232,9 @@ else
         _subTopics = await context.Perf_SubTopics.Where(s => topicIds.Contains(s.TopicId) && s.IsActive).OrderBy(s => s.SortOrder).ToListAsync();
         var subTopicIds = _subTopics.Select(s => s.Id).ToList();
         _indicators = await context.Perf_Indicators.Where(i => subTopicIds.Contains(i.SubTopicId) && i.IsActive).OrderBy(i => i.Code).ToListAsync();
+
+        _competencies = await context.Comp_Competencies.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        _competencyNames = _competencies.ToDictionary(c => c.Id, c => c.Name);
     }
 
     private decimal SubTopicWeightTotal(long topicId) => _subTopics.Where(s => s.TopicId == topicId).Sum(s => s.Weight);
@@ -295,10 +316,11 @@ else
             Name = _newIndicatorName,
             TargetDescription = string.IsNullOrWhiteSpace(_newIndicatorTarget) ? null : _newIndicatorTarget,
             Weight = _newIndicatorWeight,
+            CompetencyId = _newIndicatorCompetencyId,
             IsActive = true,
         });
         await context.SaveChangesAsync();
-        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0;
+        _newIndicatorCode = ""; _newIndicatorName = ""; _newIndicatorTarget = ""; _newIndicatorWeight = 0; _newIndicatorCompetencyId = null;
         _showIndicatorFormForSubTopicId = null;
         await LoadAsync();
     }

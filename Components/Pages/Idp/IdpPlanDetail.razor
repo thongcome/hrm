@@ -73,10 +73,16 @@ else
 
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">รายการพัฒนา</MudText>
+        @* สัดส่วน 70-20-10 เป็นแนวทาง (guidance) ไม่ใช่กติกาบังคับ — แสดงเป็น
+           จำนวนเฉย ๆ ไม่มีการเตือนหรือตัดสินว่าสัดส่วนถูกหรือผิด *@
+        <MudText Typo="Typo.body2" Class="mt-1">
+            สัดส่วนการพัฒนา: งานจริง @MethodCount(IdpDevelopmentMethod.OnTheJob) · โค้ช @MethodCount(IdpDevelopmentMethod.Coaching) · อบรม @MethodCount(IdpDevelopmentMethod.FormalTraining) · ยังไม่ระบุ @(_actions.Count(a => a.Method is null))
+        </MudText>
         <MudTable Items="_actions" Dense="true" Class="mt-2">
             <HeaderContent>
                 <MudTh>รายการ</MudTh>
                 <MudTh>สมรรถนะที่เกี่ยวข้อง</MudTh>
+                <MudTh>วิธีพัฒนา</MudTh>
                 <MudTh>กำหนดเสร็จ</MudTh>
                 <MudTh>สถานะ</MudTh>
                 <MudTh></MudTh>
@@ -84,6 +90,12 @@ else
             <RowTemplate>
                 <MudTd>@context.Title</MudTd>
                 <MudTd>@(context.Competency?.Name ?? "-")</MudTd>
+                <MudTd>
+                    @if (context.Method is IdpDevelopmentMethod method)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@MethodColor(method)">@MethodLabel(method)</MudChip>
+                    }
+                </MudTd>
                 <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
                 <MudTd>@ActionStatusLabel(context.Status)</MudTd>
                 <MudTd>
@@ -162,5 +174,23 @@ else
         IdpActionStatus.Completed => "เสร็จแล้ว",
         IdpActionStatus.Cancelled => "ยกเลิก",
         _ => status.ToString(),
+    };
+
+    private int MethodCount(IdpDevelopmentMethod method) => _actions.Count(a => a.Method == method);
+
+    private static string MethodLabel(IdpDevelopmentMethod method) => method switch
+    {
+        IdpDevelopmentMethod.OnTheJob => "เรียนรู้จากงานจริง (70)",
+        IdpDevelopmentMethod.Coaching => "โค้ช/พี่เลี้ยง (20)",
+        IdpDevelopmentMethod.FormalTraining => "อบรมทางการ (10)",
+        _ => method.ToString(),
+    };
+
+    private static Color MethodColor(IdpDevelopmentMethod method) => method switch
+    {
+        IdpDevelopmentMethod.OnTheJob => Color.Info,
+        IdpDevelopmentMethod.Coaching => Color.Tertiary,
+        IdpDevelopmentMethod.FormalTraining => Color.Secondary,
+        _ => Color.Default,
     };
 }

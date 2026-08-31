@@ -54,7 +54,17 @@
             <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
             <MudTd>@(context.ProjectId is not null ? "ใช่" : "-")</MudTd>
             <MudTd>@context.ViewCount</MudTd>
-            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(context))">แก้ไข</MudButton></MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAsync(context))">แก้ไข</MudButton>
+                @if (context.Status == ArticleStatus.Draft)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => SubmitForApprovalAsync(context.Id))">ส่งขออนุมัติเผยแพร่</MudButton>
+                }
+                else if (context.Status == ArticleStatus.Published)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => ArchiveAsync(context.Id))">เลิกเผยแพร่</MudButton>
+                }
+            </MudTd>
         </RowTemplate>
         <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีบทความ</MudText></NoRecordsContent>
     </MudTable>
@@ -95,11 +105,11 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudSelect T="ArticleStatus" @bind-Value="_form!.Status" Label="สถานะ">
-                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Draft">ร่าง (Draft)</MudSelectItem>
-                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Published">เผยแพร่ (Published)</MudSelectItem>
-                    <MudSelectItem T="ArticleStatus" Value="ArticleStatus.Archived">เก็บถาวร (Archived)</MudSelectItem>
-                </MudSelect>
+                <MudText Typo="Typo.caption">สถานะ</MudText>
+                <div>
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(_form!.Status)">@StatusLabel(_form!.Status)</MudChip>
+                </div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">การเผยแพร่ต้องส่งขออนุมัติจากปุ่มในหน้ารายการ — ไม่สามารถเปลี่ยนสถานะตรงนี้ได้</MudText>
             </MudItem>
         </MudGrid>
 
@@ -156,6 +166,18 @@
 
     private async Task LoadAsync()
     {
+        // Lazy apply-on-read: pick up any workflow jobs that closed since
+        // the last load (no scheduler exists anywhere in this codebase).
+        await using (var context = await DbFactory.CreateDbContextAsync())
+        {
+            var pendingIds = await context.Km_Articles
+                .Where(a => a.CompanyId == _companyId && a.Status == ArticleStatus.PendingApproval)
+                .Select(a => a.Id)
+                .ToListAsync();
+            foreach (var id in pendingIds)
+                await ArticleService.SyncStatusFromJobAsync(id);
+        }
+
         _articles = await ArticleService.GetAllForAdminAsync(_companyId!, _searchTerm);
     }
 
@@ -219,7 +241,8 @@
             existing.Content = _form.Content;
             existing.CategoryId = _form.CategoryId;
             existing.Tags = _form.Tags;
-            existing.Status = _form.Status;
+            // สถานะไม่แก้จากฟอร์ม — เผยแพร่ต้องผ่านการอนุมัติ (SubmitForApprovalAsync)
+            // และเลิกเผยแพร่ผ่านปุ่ม Archive เท่านั้น
             existing.ProjectId = _form.ProjectId;
             existing.ModifiedDate = DateTime.Now;
         }
@@ -257,9 +280,40 @@
         Snackbar.Add("แนบไฟล์เรียบร้อย", Severity.Success);
     }
 
+    private async Task SubmitForApprovalAsync(long articleId)
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+            var empId = state.User.FindFirst("empno")?.Value;
+            await ArticleService.SubmitForApprovalAsync(articleId, userId, empId);
+            Snackbar.Add("ส่งขออนุมัติเผยแพร่แล้ว", Severity.Success);
+            _showForm = false;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    // เลิกเผยแพร่ (Archive) ทำได้ทันทีโดยไม่ต้องผ่านการอนุมัติ —
+    // การอนุมัติคุมเฉพาะขา "เผยแพร่" เท่านั้น
+    private async Task ArchiveAsync(long articleId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var article = await context.Km_Articles.FirstOrDefaultAsync(a => a.Id == articleId && a.CompanyId == _companyId);
+        if (article is null || article.Status != ArticleStatus.Published) return;
+        article.Status = ArticleStatus.Archived;
+        article.ModifiedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+        Snackbar.Add("เลิกเผยแพร่บทความแล้ว", Severity.Success);
+        _showForm = false;
+        await LoadAsync();
+    }
+
     private static Color StatusColor(ArticleStatus s) => s switch
     {
         ArticleStatus.Draft => Color.Warning,
+        ArticleStatus.PendingApproval => Color.Warning,
         ArticleStatus.Published => Color.Success,
         ArticleStatus.Archived => Color.Default,
         _ => Color.Default,
@@ -268,6 +322,7 @@
     private static string StatusLabel(ArticleStatus s) => s switch
     {
         ArticleStatus.Draft => "ร่าง",
+        ArticleStatus.PendingApproval => "รออนุมัติเผยแพร่",
         ArticleStatus.Published => "เผยแพร่แล้ว",
         ArticleStatus.Archived => "เก็บถาวร",
         _ => s.ToString(),

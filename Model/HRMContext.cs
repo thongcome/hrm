@@ -445,7 +445,8 @@ public partial class HRMContext : DbContext
     // ----- end Career_* module -----
 
     // ----- OrgDev_* module (Organization Development) -----
-    public virtual DbSet<OrgDev_WorkforcePlan> OrgDev_WorkforcePlans { get; set; }
+    // OrgDev_WorkforcePlans removed 2026-08-31 — workforce-plan targets now
+    // live in Pos_HeadcountBudgets (see WorkforcePlanService.cs header).
     public virtual DbSet<OrgDev_LeadershipPlan> OrgDev_LeadershipPlans { get; set; }
     public virtual DbSet<OrgDev_LeadershipMilestone> OrgDev_LeadershipMilestones { get; set; }
     public virtual DbSet<OrgDev_ChangeInitiative> OrgDev_ChangeInitiatives { get; set; }
@@ -1870,6 +1871,17 @@ public partial class HRMContext : DbContext
             .HasOne(i => i.EvaluationType)
             .WithMany()
             .HasForeignKey(i => i.EvaluationTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Explicit HasForeignKey per house rule (shadow-FK lesson from
+        // Pay_EmployeeTaxDeductionElection.DeductionTypeId). Restrict so a
+        // competency referenced by a live evaluation form can't be deleted
+        // out from under it — same protection direction as the
+        // EvaluationType edge above.
+        modelBuilder.Entity<Perf_Indicator>()
+            .HasOne(i => i.Competency)
+            .WithMany()
+            .HasForeignKey(i => i.CompetencyId)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Pay_PayrollPeriod>().HasData(

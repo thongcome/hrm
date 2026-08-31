@@ -57,7 +57,15 @@ else
                         <MudTh>คำตอบ/เชิญ</MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd><MudLink Href="@($"/eng/campaigns/{context.Id}")">@context.Title</MudLink></MudTd>
+                        <MudTd>
+                            <MudLink Href="@($"/eng/campaigns/{context.Id}")">@context.Title</MudLink>
+                            @if (IsPartOfSeries(context))
+                            {
+                                <MudTooltip Text="เป็นชุดแบบสำรวจที่เปิดซ้ำหลายรอบ">
+                                    <MudIcon Icon="@Icons.Material.Filled.Repeat" Size="Size.Small" Style="vertical-align:middle;opacity:.6;" Class="ml-1" />
+                                </MudTooltip>
+                            }
+                        </MudTd>
                         <MudTd>@StatusLabel(context.Status)</MudTd>
                         <MudTd>@context.ResponseCount / @context.InvitedCount</MudTd>
                     </RowTemplate>
@@ -103,11 +111,21 @@ else
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         _campaigns = await SurveyService.GetCampaignsForAdminAsync(_companyId);
+        _relaunchParentIds = _campaigns.Where(c => c.RelaunchedFromCampaignId != null)
+            .Select(c => c.RelaunchedFromCampaignId!.Value).ToHashSet();
         _actionPlans = await ActionPlanService.GetActionPlansAsync(_companyId);
         _recognitionFeed = await RecognitionService.GetFeedAsync(_companyId);
     }
 
     private int CampaignCountByStatus(Eng_CampaignStatus status) => _campaigns.Count(c => c.Status == status);
+
+    // A campaign is part of a relaunch series if it points at a parent, or if
+    // another campaign points at it. _campaigns already holds every campaign
+    // for the company, so this is a pure in-memory check.
+    private HashSet<long> _relaunchParentIds = new();
+
+    private bool IsPartOfSeries(Eng_SurveyCampaign c)
+        => c.RelaunchedFromCampaignId != null || _relaunchParentIds.Contains(c.Id);
 
     private static string StatusLabel(Eng_CampaignStatus s) => s switch
     {

@@ -59,7 +59,8 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
     public record IndicatorForScoring(
         long IndicatorId, string IndicatorCode, string IndicatorName, string? TargetDescription,
         decimal IndicatorWeight, long SubTopicId, string SubTopicName, decimal SubTopicWeight,
-        long TopicId, string TopicName, decimal TopicWeight, decimal? ExistingScore, string? ExistingComment);
+        long TopicId, string TopicName, decimal TopicWeight, decimal? ExistingScore, string? ExistingComment,
+        string? CompetencyName = null, List<Comp_ProficiencyLevel>? CompetencyLevels = null);
 
     public record ScoringFormData(
         Perf_RaterAssignment RaterAssignment, Perf_EvaluationInstance Instance,
@@ -86,14 +87,30 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
             .Where(s => s.RaterAssignmentId == raterAssignmentId)
             .ToDictionaryAsync(s => s.IndicatorId, ct);
 
+        // BARS anchors for competency-linked indicators — one batched load,
+        // then attached per indicator so the scoring form can show "what a
+        // level-3 vs level-5 of THIS competency actually looks like" next to
+        // the score field, instead of leaving raters to interpret the
+        // indicator name alone.
+        var competencyIds = indicators.Where(i => i.CompetencyId is not null).Select(i => i.CompetencyId!.Value).Distinct().ToList();
+        var competencyNames = await context.Comp_Competencies.Where(c => competencyIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+        var proficiencyLevels = await context.Comp_ProficiencyLevels
+            .Where(p => competencyIds.Contains(p.CompetencyId))
+            .OrderBy(p => p.Level)
+            .ToListAsync(ct);
+
         var rows = new List<IndicatorForScoring>();
         foreach (var ind in indicators)
         {
             var st = subTopics.First(x => x.Id == ind.SubTopicId);
             var t = topics.First(x => x.Id == st.TopicId);
             existingScores.TryGetValue(ind.Id, out var existing);
+            var competencyName = ind.CompetencyId is long compId ? competencyNames.GetValueOrDefault(compId) : null;
+            var levels = ind.CompetencyId is long compId2 ? proficiencyLevels.Where(p => p.CompetencyId == compId2).ToList() : null;
             rows.Add(new IndicatorForScoring(ind.Id, ind.Code, ind.Name, ind.TargetDescription, ind.Weight,
-                st.Id, st.Name, st.Weight, t.Id, t.Name, t.Weight, existing?.ScorePoint, existing?.Comment));
+                st.Id, st.Name, st.Weight, t.Id, t.Name, t.Weight, existing?.ScorePoint, existing?.Comment,
+                competencyName, levels));
         }
 
         var scaleDescriptions = await context.Perf_RatingScaleDescriptions

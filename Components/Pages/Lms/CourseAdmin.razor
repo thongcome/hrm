@@ -92,6 +92,14 @@
             <MudItem xs="12" sm="6">
                 <MudNumericField T="int?" @bind-Value="_form.PassingScorePercent" Label="เกณฑ์ผ่านแบบทดสอบ (%) — ปล่อยว่าง = ไม่มีแบบทดสอบ" Min="0" Max="100" />
             </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_form.CompetencyId" Label="Competency ที่หลักสูตรนี้พัฒนา (ถ้ามี)" Clearable="true">
+                    @foreach (var comp in _competencies)
+                    {
+                        <MudSelectItem T="long?" Value="comp.Id">@comp.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12"><MudCheckBox T="bool" @bind-Value="_form.IsActive" Label="ใช้งาน" /></MudItem>
         </MudGrid>
 
@@ -189,6 +197,7 @@
     private List<doc_center> _materials = new();
     private List<Lms_QuizQuestion> _questions = new();
     private List<LmsMandatoryTrainingService.RequirementRow> _requirements = new();
+    private List<Comp_Competency> _competencies = new();
     private Pos_ExecType? _newReqPosition;
     private bool _showForm;
     private long? _editingId;
@@ -205,6 +214,7 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _categories = await context.Lms_CourseCategories.Where(c => c.CompanyId == _companyId && c.IsActive).ToListAsync();
+        _competencies = await context.Comp_Competencies.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         await LoadAsync();
     }
 
@@ -299,6 +309,7 @@
             existing.InstructorName = _form.InstructorName;
             existing.RequiresApproval = _form.RequiresApproval;
             existing.PassingScorePercent = _form.PassingScorePercent;
+            existing.CompetencyId = _form.CompetencyId;
             existing.IsActive = _form.IsActive;
         }
         else

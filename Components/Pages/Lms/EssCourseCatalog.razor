@@ -12,6 +12,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject LmsEnrollmentService EnrollmentService
 @inject IdpPlanService IdpPlan
+@inject IdpAssessmentService IdpAssessment
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
 
@@ -53,7 +54,15 @@ else
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@context.Course.Title</MudTd>
+                <MudTd>
+                    @context.Course.Title
+                    @if (context.Course.CompetencyId is long compId && _myGapCompetencyIds.Contains(compId))
+                    {
+                        <MudTooltip Text="หลักสูตรนี้พัฒนา competency ที่คุณยังมีช่องว่างอยู่ (จากผลประเมิน Self/Manager เทียบกับตำแหน่งของคุณ)">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.TrendingUp" Class="ml-1">ปิด gap ของคุณ</MudChip>
+                        </MudTooltip>
+                    }
+                </MudTd>
                 <MudTd>@context.Course.DeliveryType</MudTd>
                 <MudTd>@context.Session.StartDate.ToString("dd/MM/yyyy") - @context.Session.EndDate.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@(context.Session.Location ?? context.Session.OnlineLink ?? "-")</MudTd>
@@ -78,6 +87,7 @@ else
     private long _actorUserId;
     private string? _actorEmpId;
     private Idp_DevelopmentAction? _sourceAction;
+    private HashSet<long> _myGapCompetencyIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,6 +108,13 @@ else
                 .FirstOrDefaultAsync(a => a.Id == actionId && a.Plan.HremployeeId == _employee.id);
             _sourceAction = action;
         }
+
+        // Competencies where the viewer still has a positive gap — used to
+        // flag catalog courses tagged with one of them ("ปิด gap ของคุณ").
+        // Empty (no chips) when the employee has no position or no
+        // assessments yet; the catalog itself never filters on this.
+        var gaps = await IdpAssessment.GetGapAnalysisAsync(_employee.id);
+        _myGapCompetencyIds = gaps.Where(g => g.Gap is > 0).Select(g => g.CompetencyId).ToHashSet();
 
         await LoadAsync();
     }

@@ -100,17 +100,61 @@
     <MudButton Variant="Variant.Text" Href="@($"/eng/campaigns/{Id}")">กลับไปหน้าจัดการแคมเปญ</MudButton>
 </MudPaper>
 
+@if (_seriesTrend.Count > 1)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">แนวโน้มข้ามรอบ (Trend)</MudText>
+        <MudText Typo="Typo.body2" Style="opacity:.7;">แบบสำรวจนี้เป็นชุดที่เปิดซ้ำหลายรอบ — เปรียบเทียบภาพรวมแต่ละรอบ เรียงจากรอบเก่าสุดไปรอบล่าสุด</MudText>
+        <MudTable Items="_seriesTrend" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>รอบ</MudTh>
+                <MudTh>ผู้ตอบ</MudTh>
+                <MudTh>eNPS</MudTh>
+                <MudTh>คะแนนเฉลี่ย</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    @if (context.CampaignId == Id)
+                    {
+                        <b>@context.Title</b>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">รอบนี้</MudChip>
+                    }
+                    else
+                    {
+                        <MudLink Href="@($"/eng/campaigns/{context.CampaignId}/results")">@context.Title</MudLink>
+                    }
+                    <MudText Typo="Typo.caption" Style="opacity:.7;">เปิด @(context.OpenDate?.ToString("dd/MM/yyyy") ?? "-")</MudText>
+                </MudTd>
+                <MudTd>@context.ResponseCount</MudTd>
+                <MudTd>
+                    @if (context.NpsScore is double nps)
+                    {
+                        <MudText Typo="Typo.body2" Color="@(nps > 0 ? Color.Success : nps < 0 ? Color.Error : Color.Default)">@nps.ToString("+0.0;-0.0;0.0")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Style="opacity:.5;">-</MudText>
+                    }
+                </MudTd>
+                <MudTd>@(context.AverageRating?.ToString("0.00") ?? "-")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
 @code {
     [Parameter] public long Id { get; set; }
 
     private Eng_SurveyCampaign? _campaign;
     private SurveyService.CampaignResults? _results;
+    private List<SurveyService.SeriesTrendRow> _seriesTrend = new();
 
     protected override async Task OnInitializedAsync()
     {
         _campaign = await SurveyService.GetCampaignAsync(Id);
         if (_campaign is null) return;
         _results = await SurveyService.GetResultsAsync(Id);
+        _seriesTrend = await SurveyService.GetSeriesTrendAsync(Id);
     }
 
     private string ResponseRateLabel()

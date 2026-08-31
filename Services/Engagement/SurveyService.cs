@@ -362,12 +362,12 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
         if (campaign.CampaignType == Eng_CampaignType.ENPS)
         {
             var scores = responses.Where(r => r.NpsScore != null).Select(r => r.NpsScore!.Value).ToList();
-            if (scores.Count > 0)
+            if (ComputeEnps(scores) is { } enps)
             {
-                promoters = scores.Count(s => s >= 9);
-                detractors = scores.Count(s => s <= 6);
-                passives = scores.Count - promoters.Value - detractors.Value;
-                npsScore = Math.Round((promoters.Value - detractors.Value) * 100.0 / scores.Count, 1);
+                promoters = enps.Promoters;
+                passives = enps.Passives;
+                detractors = enps.Detractors;
+                npsScore = enps.Score;
             }
         }
 
@@ -405,5 +405,108 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
         }
 
         return new CampaignResults(campaign.ResponseCount, campaign.InvitedCount, npsScore, promoters, passives, detractors, questionResults);
+    }
+
+    // The one eNPS formula, shared by GetResultsAsync and GetSeriesTrendAsync:
+    // promoter = score >= 9, detractor = score <= 6, eNPS = (P - D) * 100 / total.
+    private static (double Score, int Promoters, int Passives, int Detractors)? ComputeEnps(List<int> scores)
+    {
+        if (scores.Count == 0) return null;
+        var promoters = scores.Count(s => s >= 9);
+        var detractors = scores.Count(s => s <= 6);
+        var passives = scores.Count - promoters - detractors;
+        var score = Math.Round((promoters - detractors) * 100.0 / scores.Count, 1);
+        return (score, promoters, passives, detractors);
+    }
+
+    public record SeriesTrendRow(long CampaignId, string Title, DateOnly? OpenDate, DateOnly? CloseDate,
+        int ResponseCount, double? NpsScore, double? AverageRating);
+
+    // Trend across a recurring pulse series. A "series" is every campaign whose
+    // RelaunchedFromCampaignId chain reaches the same root campaign as the one
+    // given. Returns one row per Open/Closed campaign in the series, ordered
+    // oldest -> newest; a standalone campaign yields a single row, which callers
+    // treat as "no series". Aggregate-only, same anonymity rules as GetResultsAsync.
+    public async Task<List<SeriesTrendRow>> GetSeriesTrendAsync(long campaignId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var campaign = await context.Eng_SurveyCampaigns.FirstOrDefaultAsync(c => c.Id == campaignId, ct);
+        if (campaign is null) return new();
+
+        // Series resolution: campaign counts per company are small (tens, not
+        // thousands), so load them all once and walk each chain in memory
+        // instead of a recursive SQL query.
+        var all = await context.Eng_SurveyCampaigns
+            .Where(c => c.CompanyId == campaign.CompanyId)
+            .ToListAsync(ct);
+        var byId = all.ToDictionary(c => c.Id);
+
+        long RootOf(Eng_SurveyCampaign c)
+        {
+            var seen = new HashSet<long> { c.Id }; // cycle guard, in case of bad data
+            while (c.RelaunchedFromCampaignId is long parentId
+                   && byId.TryGetValue(parentId, out var parent)
+                   && seen.Add(parentId))
+                c = parent;
+            return c.Id;
+        }
+
+        var rootId = RootOf(campaign);
+        var series = all
+            .Where(c => RootOf(c) == rootId)
+            .Where(c => c.Status is Eng_CampaignStatus.Open or Eng_CampaignStatus.Closed)
+            .OrderBy(c => c.OpenDate ?? DateOnly.FromDateTime(c.CreatedDate))
+            .ThenBy(c => c.CreatedDate)
+            .ToList();
+        if (series.Count == 0) return new();
+
+        var seriesIds = series.Select(c => c.Id).ToList();
+
+        // Batched aggregate lookups for the whole series (no per-round queries).
+        var responses = await context.Eng_SurveyResponses
+            .Where(r => seriesIds.Contains(r.CampaignId))
+            .Select(r => new { r.Id, r.CampaignId, r.NpsScore })
+            .ToListAsync(ct);
+        var campaignByResponseId = responses.ToDictionary(r => r.Id, r => r.CampaignId);
+
+        var ratingQuestionIds = await context.Eng_CampaignQuestions
+            .Where(q => seriesIds.Contains(q.CampaignId) && q.QuestionType == Eng_QuestionType.Rating)
+            .Select(q => q.Id)
+            .ToListAsync(ct);
+
+        var ratingsByCampaign = new Dictionary<long, List<int>>();
+        if (ratingQuestionIds.Count > 0)
+        {
+            var ratingAnswers = await context.Eng_SurveyAnswers
+                .Where(a => ratingQuestionIds.Contains(a.CampaignQuestionId) && a.RatingValue != null)
+                .Select(a => new { a.ResponseId, RatingValue = a.RatingValue!.Value })
+                .ToListAsync(ct);
+            foreach (var a in ratingAnswers)
+            {
+                if (!campaignByResponseId.TryGetValue(a.ResponseId, out var cid)) continue;
+                if (!ratingsByCampaign.TryGetValue(cid, out var list))
+                    ratingsByCampaign[cid] = list = new();
+                list.Add(a.RatingValue);
+            }
+        }
+
+        var rows = new List<SeriesTrendRow>();
+        foreach (var c in series)
+        {
+            double? enps = null;
+            if (c.CampaignType == Eng_CampaignType.ENPS)
+            {
+                var scores = responses.Where(r => r.CampaignId == c.Id && r.NpsScore != null)
+                    .Select(r => r.NpsScore!.Value).ToList();
+                enps = ComputeEnps(scores)?.Score;
+            }
+
+            double? avgRating = ratingsByCampaign.TryGetValue(c.Id, out var ratings) && ratings.Count > 0
+                ? Math.Round(ratings.Average(), 2)
+                : null;
+
+            rows.Add(new SeriesTrendRow(c.Id, c.Title, c.OpenDate, c.CloseDate, c.ResponseCount, enps, avgRating));
+        }
+        return rows;
     }
 }

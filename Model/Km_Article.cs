@@ -34,6 +34,12 @@ public class Km_Article
 
     public ArticleStatus Status { get; set; } = ArticleStatus.Draft;
 
+    // Soft-link to job_master.jobmasterid for the KM_ARTICLE_APPROVAL publish
+    // workflow (same pattern as Idp_Plan.JobMasterId) — no nav property, and
+    // status is pulled lazily on read via KmArticleService.SyncStatusFromJobAsync.
+    public long? JobMasterId { get; set; }
+    public DateTime? SubmittedDate { get; set; }
+
     public long? ProjectId { get; set; }
 
     public long AuthorHremployeeId { get; set; }

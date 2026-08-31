@@ -40,5 +40,15 @@ public class Lms_Course
 
     public int? PassingScorePercent { get; set; }
 
+    // Competency this course develops (nullable soft-link to
+    // Comp_Competency, same idiom as Perf_Indicator.CompetencyId) — lets
+    // the ESS catalog surface "หลักสูตรนี้ช่วยปิด gap ของคุณ" against the
+    // viewer's own computed competency gaps (IdpAssessmentService), instead
+    // of the catalog being a flat undifferentiated list. One competency per
+    // course by design: a course genuinely targeting several competencies
+    // is rare enough in practice that a join table isn't worth its weight
+    // yet — extract one when a real second-competency case shows up.
+    public long? CompetencyId { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

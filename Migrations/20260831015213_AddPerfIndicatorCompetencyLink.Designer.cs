@@ -4,6 +4,7 @@ using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HRM.Migrations
 {
     [DbContext(typeof(HRMContext))]
-    partial class HRMContextModelSnapshot : ModelSnapshot
+    [Migration("20260831015213_AddPerfIndicatorCompetencyLink")]
+    partial class AddPerfIndicatorCompetencyLink
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4805,9 +4808,6 @@ namespace HRM.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<int?>("Method")
-                        .HasColumnType("int");
-
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -5274,9 +5274,6 @@ namespace HRM.Migrations
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<long?>("JobMasterId")
-                        .HasColumnType("bigint");
-
                     b.Property<DateTime?>("ModifiedDate")
                         .HasColumnType("datetime2");
 
@@ -5285,9 +5282,6 @@ namespace HRM.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
-
-                    b.Property<DateTime?>("SubmittedDate")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("Tags")
                         .HasMaxLength(500)
@@ -5955,9 +5949,6 @@ namespace HRM.Migrations
                         .IsRequired()
                         .HasMaxLength(6)
                         .HasColumnType("nvarchar(6)");
-
-                    b.Property<long?>("CompetencyId")
-                        .HasColumnType("bigint");
 
                     b.Property<int>("DeliveryType")
                         .HasColumnType("int");
@@ -7149,6 +7140,47 @@ namespace HRM.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("OrgDev_LeadershipPlans");
+                });
+
+            modelBuilder.Entity("HRM.Models.OrgDev_WorkforcePlan", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<long>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<long>("OrganizationId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("PlanYear")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetHeadcount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OrgDev_WorkforcePlan");
                 });
 
             modelBuilder.Entity("HRM.Models.Org_OrganizationChangeRequest", b =>

@@ -128,6 +128,7 @@ else
                 <HeaderContent>
                     <MudTh>รายการ</MudTh>
                     <MudTh>สมรรถนะที่เกี่ยวข้อง</MudTh>
+                    <MudTh>วิธีพัฒนา</MudTh>
                     <MudTh>กำหนดเสร็จ</MudTh>
                     <MudTh>สถานะ</MudTh>
                     <MudTh></MudTh>
@@ -135,6 +136,12 @@ else
                 <RowTemplate>
                     <MudTd>@context.Title</MudTd>
                     <MudTd>@(context.Competency?.Name ?? "-")</MudTd>
+                    <MudTd>
+                        @if (context.Method is IdpDevelopmentMethod method)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@MethodColor(method)">@MethodLabel(method)</MudChip>
+                        }
+                    </MudTd>
                     <MudTd>@(context.TargetDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
                     <MudTd>
                         <MudSelect T="IdpActionStatus" Value="context.Status" ValueChanged="@(v => UpdateActionStatusAsync(context.Id, v))" Dense="true">
@@ -157,6 +164,15 @@ else
                 </MudItem>
                 <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newActionTitle" Label="ชื่อรายการ" /></MudItem>
                 <MudItem xs="12" sm="4"><MudDatePicker Label="กำหนดเสร็จ" @bind-Date="_newActionTargetDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="IdpDevelopmentMethod?" @bind-Value="_newActionMethod" Label="วิธีพัฒนา (70-20-10)">
+                        <MudSelectItem T="IdpDevelopmentMethod?" Value="null">ยังไม่ระบุ</MudSelectItem>
+                        @foreach (IdpDevelopmentMethod m in Enum.GetValues<IdpDevelopmentMethod>())
+                        {
+                            <MudSelectItem T="IdpDevelopmentMethod?" Value="@((IdpDevelopmentMethod?)m)">@MethodLabel(m)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
                 <MudItem xs="12"><MudTextField @bind-Value="_newActionDescription" Label="รายละเอียด" Lines="2" /></MudItem>
                 <MudItem xs="12"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddActionAsync">เพิ่มรายการ</MudButton></MudItem>
             </MudGrid>
@@ -182,6 +198,7 @@ else
     private List<Idp_DevelopmentAction> _selectedPlanActions = new();
     private List<Comp_Competency> _allCompetencies = new();
     private Comp_Competency? _newActionCompetency;
+    private IdpDevelopmentMethod? _newActionMethod;
     private string _newActionTitle = "";
     private string? _newActionDescription;
     private DateTime? _newActionTargetDate;
@@ -276,8 +293,9 @@ else
         {
             var (userId, _) = await GetActorAsync();
             var targetDate = _newActionTargetDate is null ? (DateOnly?)null : DateOnly.FromDateTime(_newActionTargetDate.Value);
-            await PlanService.AddActionAsync(_selectedPlan!.Id, _newActionCompetency?.Id, _newActionTitle, _newActionDescription, targetDate, userId);
+            await PlanService.AddActionAsync(_selectedPlan!.Id, _newActionCompetency?.Id, _newActionTitle, _newActionDescription, targetDate, userId, _newActionMethod);
             _newActionCompetency = null;
+            _newActionMethod = null;
             _newActionTitle = "";
             _newActionDescription = null;
             _newActionTargetDate = null;
@@ -342,5 +360,21 @@ else
         IdpActionStatus.Completed => "เสร็จแล้ว",
         IdpActionStatus.Cancelled => "ยกเลิก",
         _ => status.ToString(),
+    };
+
+    private static string MethodLabel(IdpDevelopmentMethod method) => method switch
+    {
+        IdpDevelopmentMethod.OnTheJob => "เรียนรู้จากงานจริง (70)",
+        IdpDevelopmentMethod.Coaching => "โค้ช/พี่เลี้ยง (20)",
+        IdpDevelopmentMethod.FormalTraining => "อบรมทางการ (10)",
+        _ => method.ToString(),
+    };
+
+    private static Color MethodColor(IdpDevelopmentMethod method) => method switch
+    {
+        IdpDevelopmentMethod.OnTheJob => Color.Info,
+        IdpDevelopmentMethod.Coaching => Color.Tertiary,
+        IdpDevelopmentMethod.FormalTraining => Color.Secondary,
+        _ => Color.Default,
     };
 }

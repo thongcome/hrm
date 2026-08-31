@@ -66,6 +66,22 @@
                             {
                                 <MudText Typo="Typo.caption">@ind.TargetDescription</MudText>
                             }
+                            @if (ind.CompetencyLevels is { Count: > 0 })
+                            {
+                                <MudTooltip>
+                                    <ChildContent>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Psychology">@ind.CompetencyName</MudChip>
+                                    </ChildContent>
+                                    <TooltipContent>
+                                        <div style="max-width:420px;text-align:left;">
+                                            @foreach (var lvl in ind.CompetencyLevels)
+                                            {
+                                                <MudText Typo="Typo.caption" Style="display:block;"><b>ระดับ @lvl.Level:</b> @lvl.Description</MudText>
+                                            }
+                                        </div>
+                                    </TooltipContent>
+                                </MudTooltip>
+                            }
                         </MudItem>
                         <MudItem xs="6" sm="2">
                             <MudNumericField T="decimal" Value="@GetScore(ind.IndicatorId)" ValueChanged="@(v => SetScore(ind.IndicatorId, v))"

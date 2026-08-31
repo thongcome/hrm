@@ -37,8 +37,17 @@ public class Perf_Indicator
     // เมื่อผูกแล้ว หน้าให้คะแนนจะโชว์ความคืบหน้าของเป้านั้นประกอบการให้คะแนนได้
     public long? OkrGoalId { get; set; }
 
+    // ผูกกับ competency ในไลบรารีกลาง (nullable, ทรงเดียวกับ OkrGoalId ข้างบน)
+    // — สะพานเชื่อม Performance เข้ากับ Competency Library ที่ IDP/Career/
+    // Succession/Recruitment ใช้ร่วมกันอยู่แล้ว เมื่อผูกแล้วหน้าให้คะแนน
+    // (PerfScore.razor) จะแสดงคำอธิบายพฤติกรรมรายระดับ (BARS จาก
+    // Comp_ProficiencyLevel) ของ competency นั้นให้ผู้ประเมินยึดเป็นหลัก
+    // แทนที่จะตัดสินจากชื่อตัวชี้วัดลอยๆ
+    public long? CompetencyId { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public virtual Perf_SubTopic SubTopic { get; set; } = null!;
     public virtual Perf_Goal? OkrGoal { get; set; }
+    public virtual Comp_Competency? Competency { get; set; }
 }

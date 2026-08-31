@@ -25,7 +25,10 @@ public class IdpPlanService(IDbContextFactory<HRMContext> dbFactory, WorkflowEng
         return plan.Id;
     }
 
-    public async Task AddActionAsync(long planId, long? competencyId, string title, string? description, DateOnly? targetDate, long actorUserId, CancellationToken ct = default)
+    // `method` (70-20-10) is optional and placed after actorUserId so existing
+    // callers that don't classify (e.g. Succession's quick gap-to-action) keep
+    // compiling unchanged and simply leave it null ("ยังไม่ระบุ").
+    public async Task AddActionAsync(long planId, long? competencyId, string title, string? description, DateOnly? targetDate, long actorUserId, IdpDevelopmentMethod? method = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
@@ -42,6 +45,7 @@ public class IdpPlanService(IDbContextFactory<HRMContext> dbFactory, WorkflowEng
             Title = title,
             Description = description,
             TargetDate = targetDate,
+            Method = method,
             SortOrder = sortOrder,
         });
         await context.SaveChangesAsync(ct);
