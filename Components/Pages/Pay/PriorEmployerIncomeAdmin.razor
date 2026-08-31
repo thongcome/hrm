@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject IAuditLogger AuditLogger
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>เงินได้จากนายจ้างเดิม</PageTitle>
@@ -23,6 +24,8 @@
         กรอกจากหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ของนายจ้างเดิมที่พนักงานนำมายื่นตอนเข้างาน — ใช้เพื่อคำนวณภาษีหัก ณ ที่จ่ายรายเดือนให้ตรงกับเงินได้สะสมทั้งปีจริงเท่านั้น
         <b>ไม่นำไปออกหนังสือรับรองฯ ของบริษัทนี้</b> (แต่ละนายจ้างต้องออกแยกตามที่กฎหมายกำหนด)
     </MudText>
+
+    <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("PriorIncomeLateEntryInfo")</MudAlert>
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="6">
@@ -76,18 +79,45 @@
 
         <MudDivider Class="my-4" />
         <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มข้อมูลเงินได้จากนายจ้างเดิม</MudText>
-        <MudGrid>
-            <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_newEmployerName" Label="ชื่อนายจ้างเดิม" /></MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newIncome" Label="เงินได้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField T="decimal" @bind-Value="_newDeduction" Label="ค่าลดหย่อนที่หักไปแล้ว (บาท, ถ้าทราบ)" Format="N2" Min="0" />
-            </MudItem>
-            <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newTaxWithheld" Label="ภาษีที่หักไว้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
-            <MudItem xs="12"><MudTextField T="string" @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
-            <MudItem xs="12">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddRecordAsync">+ เพิ่มข้อมูล</MudButton>
-            </MudItem>
-        </MudGrid>
+
+        @if (_workDate is null)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                @L.Translate("PriorIncomeNoWorkDatePrefix")
+                <MudLink Href="@($"/employee/{_selectedEmployee.id}")">@L.Translate("PriorIncomeNoWorkDateLinkText")</MudLink>
+                @L.Translate("PriorIncomeNoWorkDateSuffix")
+            </MudAlert>
+        }
+        else if (_workDate.Value.Year < _selectedYear)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                @string.Format(L.Translate("PriorIncomeFullYearTemplate"), _workDate.Value.ToString("dd/MM/yyyy"), _selectedYear)
+            </MudAlert>
+        }
+        else if (_workDate.Value.Year > _selectedYear)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                @string.Format(L.Translate("PriorIncomeJoinedLaterTemplate"), _workDate.Value.ToString("dd/MM/yyyy"), _selectedYear)
+            </MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">
+                @string.Format(L.Translate("PriorIncomeStartDateInfoTemplate"), _workDate.Value.ToString("dd/MM/yyyy"), _selectedYear)
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_newEmployerName" Label="ชื่อนายจ้างเดิม" /></MudItem>
+                <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newIncome" Label="เงินได้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_newDeduction" Label="ค่าลดหย่อนที่หักไปแล้ว (บาท, ถ้าทราบ)" Format="N2" Min="0" />
+                </MudItem>
+                <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newTaxWithheld" Label="ภาษีที่หักไว้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
+                <MudItem xs="12"><MudTextField T="string" @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddRecordAsync">+ เพิ่มข้อมูล</MudButton>
+                </MudItem>
+            </MudGrid>
+        }
     }
 </MudPaper>
 
@@ -96,6 +126,7 @@
     private int _selectedYear = DateTime.Today.Year;
 
     private List<Pay_EmployeePriorEmployerIncome> _records = new();
+    private DateTime? _workDate;
 
     private string? _newEmployerName;
     private decimal _newIncome;
@@ -132,9 +163,14 @@
     private async Task LoadAsync()
     {
         _error = null;
+        _workDate = null;
         if (_selectedEmployee is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
+        _workDate = await context.Hremployee
+            .Where(e => e.id == _selectedEmployee.id)
+            .Select(e => e.WorkDate)
+            .FirstOrDefaultAsync();
         _records = await context.Pay_EmployeePriorEmployerIncomes
             .Where(p => p.HremployeeId == _selectedEmployee.id && p.TaxYear == _selectedYear)
             .OrderByDescending(p => p.EnteredDate)
@@ -159,6 +195,31 @@
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Server-side re-check of the mid-year-hire rule — never trust the UI gate alone.
+        // Only an employee whose WorkDate falls inside the selected tax (calendar) year
+        // can have prior-employer income for that year.
+        var workDate = await context.Hremployee
+            .Where(e => e.id == _selectedEmployee.id)
+            .Select(e => e.WorkDate)
+            .FirstOrDefaultAsync();
+        _workDate = workDate;
+        if (workDate is null)
+        {
+            _error = L.Translate("PriorIncomeNoWorkDateError");
+            return;
+        }
+        if (workDate.Value.Year < _selectedYear)
+        {
+            _error = string.Format(L.Translate("PriorIncomeFullYearTemplate"), workDate.Value.ToString("dd/MM/yyyy"), _selectedYear);
+            return;
+        }
+        if (workDate.Value.Year > _selectedYear)
+        {
+            _error = string.Format(L.Translate("PriorIncomeJoinedLaterTemplate"), workDate.Value.ToString("dd/MM/yyyy"), _selectedYear);
+            return;
+        }
+
         var duplicate = await context.Pay_EmployeePriorEmployerIncomes
             .AnyAsync(p => p.HremployeeId == _selectedEmployee.id && p.TaxYear == _selectedYear && p.IsActive);
         if (duplicate)

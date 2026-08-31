@@ -72,15 +72,25 @@
 
     private async Task<IEnumerable<sc_user>> SearchScUsersAsync(string search, CancellationToken ct)
     {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.sc_users.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(search))
+        try
         {
-            query = query.Where(u => u.loginname.Contains(search)
-                || u.firstname.Contains(search)
-                || u.lastname.Contains(search));
+            await using var context = await DbFactory.CreateDbContextAsync(ct);
+            var query = context.sc_users.AsQueryable();
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                query = query.Where(u => u.loginname.Contains(search)
+                    || u.firstname.Contains(search)
+                    || u.lastname.Contains(search));
+            }
+            return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
         }
-        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+        catch (OperationCanceledException)
+        {
+            // MudAutocomplete cancels the in-flight search on every further
+            // keystroke — that cancellation is routine, not an error worth
+            // surfacing (it used to scare people as a console stack trace).
+            return Enumerable.Empty<sc_user>();
+        }
     }
 
     private async Task CheckExistingLinkAsync()

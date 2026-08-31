@@ -1,12 +1,24 @@
 @page "/leave-requests/leave-types"
 @using HRM.Models
 @using HRM.Services.Leave
+@using HRM.Services.Security
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
-@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@* Shape B master-detail reference page (see .claude/skills/CRUD/SKILL.md
+   rule 7): this list is the master; clicking a row drills into
+   LeaveTypeDetail.razor (/leave-requests/leave-types/{Id}) for the full
+   grouped edit form. Id=0 on that route = create mode, so the whole pair
+   shares one AD.CRUDManage program path ("/leave-requests/leave-types"). *@
 
 <PageTitle>ตั้งค่าประเภทการลา</PageTitle>
 
@@ -15,46 +27,37 @@
     <MudText Typo="Typo.body2" Class="mt-1">
         รายการประเภทการลาที่ระบบรองรับ (ใช้ร่วมกันทุกบริษัท) — HR เพิ่ม/แก้ไข/ปิดใช้งานเองได้โดยไม่ต้องแก้โค้ด
         แต่ละบริษัทยังต้องไปเปิดใช้และตั้งจำนวนวันของตัวเองที่หน้า <MudLink Href="/leave-requests/policy">สิทธิการลา</MudLink> อีกครั้งหนึ่ง
+        — คลิกที่รายการเพื่อดู/แก้ไขกติกาทั้งหมดของประเภทนั้น
     </MudText>
 
-    @if (!string.IsNullOrEmpty(_error))
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
     {
-        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L.Translate("LeaveTypeNoWriteAccess")</MudAlert>
     }
 
-    <MudTable Items="_types" Dense="true" Hover="true" Class="mt-3">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-3">
+        <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+            DebounceInterval="300" ValueChanged="OnSearchChanged" Style="max-width:360px;"
+            AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" />
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="@(() => Nav.NavigateTo("/leave-requests/leave-types/0"))">@L.Translate("LeaveTypeAddNew")</MudButton>
+        }
+    </MudStack>
+
+    <MudTable Items="_types" Dense="true" Hover="true" Class="mt-3"
+        T="Lve_LeaveType" OnRowClick="OnRowClick" RowClass="cursor-pointer">
         <HeaderContent>
             <MudTh>ไอคอน</MudTh>
             <MudTh>รหัส</MudTh>
             <MudTh>ชื่อ (ไทย / อังกฤษ)</MudTh>
-            <MudTh>กฎหมาย</MudTh>
-            <MudTh>ขั้นต่ำ/ปี</MudTh>
-            <MudTh>เพศ</MudTh>
-            <MudTh>ประเทศ</MudTh>
-            <MudTh>ใบรับรองแพทย์</MudTh>
-            <MudTh>ลาครึ่งวันได้</MudTh>
+            <MudTh>@L.Translate("LeaveTypeColRuleSummary")</MudTh>
             <MudTh>ลำดับ</MudTh>
             <MudTh>สถานะ</MudTh>
-            <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudSelect T="string" @bind-Value="_editIconName" Dense="true" Style="width:170px">
-                        @foreach (var opt in LeaveIconCatalog.Options)
-                        {
-                            <MudSelectItem T="string" Value="@opt.Name">
-                                <MudIcon Icon="@opt.Icon" Size="Size.Small" Class="mr-1" />@opt.LabelTh
-                            </MudSelectItem>
-                        }
-                    </MudSelect>
-                }
-                else
-                {
-                    <MudIcon Icon="@LeaveIconCatalog.Resolve(context.IconName)" />
-                }
-            </MudTd>
+            <MudTd><MudIcon Icon="@LeaveIconCatalog.Resolve(context.IconName)" /></MudTd>
             <MudTd>
                 @context.Code
                 @if (context.IsStatutory)
@@ -65,292 +68,103 @@
                 }
             </MudTd>
             <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudStack Spacing="1">
-                        <MudTextField T="string" @bind-Value="_editNameTh" Label="ไทย" Margin="Margin.Dense" />
-                        <MudTextField T="string" @bind-Value="_editNameEn" Label="อังกฤษ" Margin="Margin.Dense" />
-                    </MudStack>
-                }
-                else
-                {
-                    @context.NameTh <MudText Typo="Typo.caption" Color="Color.Secondary">@context.NameEn</MudText>
-                }
+                @context.NameTh <MudText Typo="Typo.caption" Color="Color.Secondary">@context.NameEn</MudText>
             </MudTd>
             <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudTextField T="string" @bind-Value="_editLawReference" Label="มาตรา" Margin="Margin.Dense" Style="width:120px" />
-                }
-                else
-                {
-                    @(context.LawReference ?? "-")
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudNumericField T="decimal?" @bind-Value="_editStatutoryMinDays" Format="0.#" Min="0" Style="width:100px" />
-                }
-                else
-                {
-                    @(context.StatutoryMinDaysPerYear?.ToString("0.#") ?? "-")
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudSelect T="string" @bind-Value="_editApplicableGender" Clearable="true" Style="width:110px">
-                        <MudSelectItem T="string" Value="@("F")">หญิงเท่านั้น</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("M")">ชายเท่านั้น</MudSelectItem>
-                    </MudSelect>
-                }
-                else
-                {
-                    @(context.ApplicableGender switch { "F" => "หญิง", "M" => "ชาย", _ => "ทุกเพศ" })
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudSelect T="string" @bind-Value="_editApplicableCountryCode" Clearable="true" Style="width:140px">
-                        @foreach (var c in LeaveCountryHelper.CommonCountries)
-                        {
-                            <MudSelectItem T="string" Value="@c.Code">@c.Label</MudSelectItem>
-                        }
-                    </MudSelect>
-                }
-                else
-                {
-                    @(context.ApplicableCountryCode ?? "ทุกประเทศ")
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudCheckBox T="bool" @bind-Value="_editRequiresMedicalCert" Dense="true" />
-                }
-                else
-                {
-                    @(context.RequiresMedicalCert ? "ต้องแนบ" : "-")
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudCheckBox T="bool" @bind-Value="_editAllowHalfDay" Dense="true" />
-                }
-                else
-                {
-                    @(context.AllowHalfDay ? "ได้" : "ไม่ได้")
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudNumericField T="int" @bind-Value="_editSortOrder" Style="width:70px" />
-                }
-                else
-                {
-                    @context.SortOrder
-                }
-            </MudTd>
-            <MudTd>
-                @if (_editingId == context.Id)
-                {
-                    <MudCheckBox T="bool" @bind-Value="_editIsActive" Dense="true" />
-                    @if (context.IsStatutory && !_editIsActive)
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                    @foreach (var chip in RuleChips(context))
                     {
-                        <MudText Typo="Typo.caption" Color="Color.Warning">ประเภทนี้เป็นสิทธิ์ขั้นต่ำตามกฎหมายแรงงานไทย ปิดใช้งานอาจขัดกับกฎหมาย</MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@chip.Color">@chip.Label</MudChip>
                     }
-                }
-                else
-                {
-                    @(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")
-                }
+                </MudStack>
             </MudTd>
+            <MudTd>@context.SortOrder</MudTd>
             <MudTd>
-                @if (_editingId == context.Id)
+                @if (context.IsActive)
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">ใช้งาน</MudChip>
                 }
                 else
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">ปิดใช้งาน</MudChip>
                 }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
             <MudText Typo="Typo.body2">ยังไม่มีประเภทการลาในระบบ</MudText>
         </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
     </MudTable>
-
-    <MudDivider Class="my-4" />
-    <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มประเภทการลาใหม่</MudText>
-    <MudGrid>
-        <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_newCode" Label="รหัส (Code, ไม่ซ้ำ)" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newNameTh" Label="ชื่อ (ไทย)" /></MudItem>
-        <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newNameEn" Label="Name (English)" /></MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" @bind-Value="_newApplicableCountryCode" Label="เฉพาะประเทศ (เว้นว่าง = ทุกประเทศ)" Clearable="true">
-                @foreach (var c in LeaveCountryHelper.CommonCountries)
-                {
-                    <MudSelectItem T="string" Value="@c.Code">@c.Label</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="string" @bind-Value="_newIconName" Label="ไอคอน">
-                @foreach (var opt in LeaveIconCatalog.Options)
-                {
-                    <MudSelectItem T="string" Value="@opt.Name">
-                        <MudIcon Icon="@opt.Icon" Size="Size.Small" Class="mr-1" />@opt.LabelTh
-                    </MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="_newRequiresMedicalCert" Label="ต้องแนบใบรับรองแพทย์" /></MudItem>
-        <MudItem xs="12" sm="4"><MudCheckBox T="bool" @bind-Value="_newAllowHalfDay" Label="ลาครึ่งวันได้" /></MudItem>
-        <MudItem xs="12">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddTypeAsync">+ เพิ่มประเภทการลา</MudButton>
-        </MudItem>
-    </MudGrid>
 </MudPaper>
 
 @code {
     private List<Lve_LeaveType> _types = new();
-    private string? _error;
+    private string? _searchTerm;
+    private ProgramRoleService.ProgramRights? _rights;
 
-    private int? _editingId;
-    private string? _editNameTh;
-    private string? _editNameEn;
-    private string? _editLawReference;
-    private decimal? _editStatutoryMinDays;
-    private string? _editApplicableGender;
-    private string? _editApplicableCountryCode;
-    private bool _editRequiresMedicalCert;
-    private bool _editAllowHalfDay;
-    private int _editSortOrder;
-    private bool _editIsActive;
-    private string? _editIconName;
+    private record RuleChip(string Label, Color Color);
 
-    private string? _newCode;
-    private string? _newNameTh;
-    private string? _newNameEn;
-    private string? _newApplicableCountryCode;
-    private bool _newRequiresMedicalCert;
-    private bool _newAllowHalfDay = true;
-    private string _newIconName = LeaveIconCatalog.DefaultIconName;
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, "/leave-requests/leave-types");
+        await LoadAsync();
+    }
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-
+    // Bounded catalog table (14 rows today, grows one row per new HR
+    // category) — debounced live search per the CRUD skill's small-lookup
+    // allowance, no explicit search gate needed.
     private async Task LoadAsync()
     {
-        _error = null;
         await using var context = await DbFactory.CreateDbContextAsync();
-        _types = await context.Lve_LeaveTypes.OrderBy(t => t.SortOrder).ThenBy(t => t.Code).ToListAsync();
+        var query = context.Lve_LeaveTypes.AsQueryable();
+        query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+            nameof(Lve_LeaveType.Code), nameof(Lve_LeaveType.NameTh), nameof(Lve_LeaveType.NameEn),
+            nameof(Lve_LeaveType.LawReference), nameof(Lve_LeaveType.AttachmentDocName));
+        _types = await query.OrderBy(t => t.SortOrder).ThenBy(t => t.Code).ToListAsync();
     }
 
-    private void StartEdit(Lve_LeaveType type)
+    private async Task OnSearchChanged(string value)
     {
-        _editingId = type.Id;
-        _editNameTh = type.NameTh;
-        _editNameEn = type.NameEn;
-        _editLawReference = type.LawReference;
-        _editStatutoryMinDays = type.StatutoryMinDaysPerYear;
-        _editApplicableGender = type.ApplicableGender;
-        _editApplicableCountryCode = type.ApplicableCountryCode;
-        _editRequiresMedicalCert = type.RequiresMedicalCert;
-        _editAllowHalfDay = type.AllowHalfDay;
-        _editSortOrder = type.SortOrder;
-        _editIsActive = type.IsActive;
-        _editIconName = type.IconName ?? LeaveIconCatalog.DefaultIconName;
-        _error = null;
-    }
-
-    private void CancelEdit()
-    {
-        _editingId = null;
-        _error = null;
-    }
-
-    private async Task SaveAsync()
-    {
-        if (_editingId is not int id) return;
-        if (string.IsNullOrWhiteSpace(_editNameTh) || string.IsNullOrWhiteSpace(_editNameEn))
-        {
-            _error = "กรุณากรอกชื่อไทยและอังกฤษให้ครบ";
-            return;
-        }
-
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.Lve_LeaveTypes.FirstOrDefaultAsync(t => t.Id == id);
-        if (existing is null)
-        {
-            _error = "ไม่พบประเภทการลาที่ต้องการแก้ไข";
-            return;
-        }
-
-        existing.NameTh = _editNameTh;
-        existing.NameEn = _editNameEn;
-        existing.LawReference = string.IsNullOrWhiteSpace(_editLawReference) ? null : _editLawReference;
-        existing.StatutoryMinDaysPerYear = _editStatutoryMinDays;
-        existing.ApplicableGender = _editApplicableGender;
-        existing.ApplicableCountryCode = _editApplicableCountryCode;
-        existing.RequiresMedicalCert = _editRequiresMedicalCert;
-        existing.AllowHalfDay = _editAllowHalfDay;
-        existing.SortOrder = _editSortOrder;
-        existing.IsActive = _editIsActive;
-        existing.IconName = _editIconName;
-        await context.SaveChangesAsync();
-
-        Snackbar.Add("บันทึกประเภทการลาเรียบร้อย", Severity.Success);
-        _editingId = null;
+        _searchTerm = value;
         await LoadAsync();
     }
 
-    private async Task AddTypeAsync()
+    private void OnRowClick(TableRowClickEventArgs<Lve_LeaveType> args)
     {
-        _error = null;
-        if (string.IsNullOrWhiteSpace(_newCode) || string.IsNullOrWhiteSpace(_newNameTh) || string.IsNullOrWhiteSpace(_newNameEn))
-        {
-            _error = "กรุณากรอกรหัสและชื่อให้ครบ";
-            return;
-        }
+        if (args.Item is not null)
+            Nav.NavigateTo($"/leave-requests/leave-types/{args.Item.Id}");
+    }
 
-        var code = _newCode.Trim();
-        await using var context = await DbFactory.CreateDbContextAsync();
-        if (await context.Lve_LeaveTypes.AnyAsync(t => t.Code == code))
-        {
-            _error = $"มีรหัส '{code}' อยู่แล้ว";
-            return;
-        }
-
-        var nextSortOrder = (await context.Lve_LeaveTypes.MaxAsync(t => (int?)t.SortOrder) ?? 0) + 1;
-        context.Lve_LeaveTypes.Add(new Lve_LeaveType
-        {
-            Code = code,
-            NameTh = _newNameTh,
-            NameEn = _newNameEn,
-            IsStatutory = false,
-            ApplicableCountryCode = _newApplicableCountryCode,
-            RequiresMedicalCert = _newRequiresMedicalCert,
-            AllowHalfDay = _newAllowHalfDay,
-            IconName = _newIconName,
-            SortOrder = nextSortOrder,
-            IsActive = true,
-        });
-        await context.SaveChangesAsync();
-
-        Snackbar.Add("เพิ่มประเภทการลาใหม่เรียบร้อย", Severity.Success);
-        _newCode = null;
-        _newNameTh = null;
-        _newNameEn = null;
-        _newApplicableCountryCode = null;
-        _newRequiresMedicalCert = false;
-        _newAllowHalfDay = true;
-        _newIconName = LeaveIconCatalog.DefaultIconName;
-        await LoadAsync();
+    // Compact summary of the non-default rules on a row — the full editable
+    // set lives on the detail page.
+    private List<RuleChip> RuleChips(Lve_LeaveType t)
+    {
+        var chips = new List<RuleChip>();
+        if (t.AllowHalfDay)
+            chips.Add(new(L.Translate("LeaveTypeChipHalfDay"), Color.Default));
+        if (t.MustBeConsecutive)
+            chips.Add(new(L.Translate("LeaveTypeChipConsecutive"), Color.Warning));
+        if (!t.AllowRetroactive)
+            chips.Add(new(L.Translate("LeaveTypeChipNoRetro"), Color.Warning));
+        if (t.AdvanceNoticeDays is int notice && notice > 0)
+            chips.Add(new(string.Format(L.Translate("LeaveTypeChipNotice"), notice), Color.Info));
+        if (!string.IsNullOrWhiteSpace(t.AttachmentDocName))
+            chips.Add(new(t.AttachmentMinDays is decimal min && min > 0
+                ? string.Format(L.Translate("LeaveTypeChipAttachMin"), t.AttachmentDocName, min.ToString("0.#"))
+                : string.Format(L.Translate("LeaveTypeChipAttach"), t.AttachmentDocName), Color.Secondary));
+        if (t.DayCountMethod == LeaveDayCountMethod.CalendarDays)
+            chips.Add(new(L.Translate("LeaveTypeChipCalendarDays"), Color.Info));
+        if (t.EntitlementFrequency == LeaveEntitlementFrequency.PerEvent)
+            chips.Add(new(L.Translate("LeaveTypeFreqPerEvent"), Color.Tertiary));
+        else if (t.EntitlementFrequency == LeaveEntitlementFrequency.OncePerEmployment)
+            chips.Add(new(L.Translate("LeaveTypeFreqOncePerEmployment"), Color.Tertiary));
+        if (t.ApplicableGender == "F")
+            chips.Add(new("เฉพาะหญิง", Color.Default));
+        else if (t.ApplicableGender == "M")
+            chips.Add(new("เฉพาะชาย", Color.Default));
+        return chips;
     }
 }

@@ -1,0 +1,275 @@
+@page "/wf/my-inbox/{JobMasterId:long}"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using HRM.Services.Pay
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject PrivateFileStorage FileStorage
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject JsonLocalizationService L
+@attribute [Authorize]
+
+@* ESS-personalized page (self-scoped by the logged-in user's job_user_list
+   assignment) — bare [Authorize] on purpose, no Menu:XXX policy. *@
+
+<PageTitle>@string.Format(L.Translate("WfInboxDetailPageTitle"), JobMasterId)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Nav.NavigateTo("/wf/my-inbox"))">
+        @L.Translate("WfBackToInboxButton")
+    </MudButton>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-3" />
+    }
+    else if (_notMine || _job is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">@L.Translate("WfJobNotInInboxAlert")</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h5" Class="mt-3">@string.Format(L.Translate("WfInboxDetailHeadingTemplate"), _job.jobmasterid) — @_job.subject</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("WfWorkflowLabel"): @_job.wname</MudText>
+        <MudText Typo="Typo.body2">@L.Translate("WfRequesterLabel"): @(_job.createusername ?? _job.createby ?? "-") @(_job.createdate is not null ? $"({_job.createdate:dd/MM/yyyy HH:mm})" : "")</MudText>
+        <MudText Typo="Typo.body2">@string.Format(L.Translate("WfJobStatusLevelLine"), _job.status, _job.lastLevel, _job.maxlevel)</MudText>
+        var docLink = BuildDocumentLink(_job);
+        @if (docLink is not null)
+        {
+            <MudLink Href="@docLink" Target="_blank" Class="mt-1">@L.Translate("WfSourceDocLink") (@_job.reftable #@_job.refid)</MudLink>
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+        }
+
+        @if (_myPendingRow is not null)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mt-3">
+                <MudText Typo="Typo.h6">@L.Translate("WfMyActionHeading")</MudText>
+                <MudTextField T="string" @bind-Value="_comment" Placeholder="@L.Translate("WfCommentPlaceholder")" Immediate="true" Class="mt-1" />
+                <MudStack Row="true" Spacing="1" Class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy" OnClick="ApproveAsync">@L.Translate("ApproveButton")</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy" OnClick="RejectAsync">@L.Translate("RejectButton")</MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Normal" Class="mt-3">@L.Translate("WfNoPendingActionNote")</MudAlert>
+        }
+
+        <MudTable Items="_job.job_user_lists" Dense="true" Class="mt-3">
+            <HeaderContent>
+                <MudTh>@L.Translate("WfLevelHeader")</MudTh>
+                <MudTh>@L.Translate("WfApproverHeader")</MudTh>
+                <MudTh>@L.Translate("WfStatusHeader")</MudTh>
+                <MudTh>@L.Translate("WfApproveDateHeader")</MudTh>
+                <MudTh>@L.Translate("WfCommentHeader")</MudTh>
+                <MudTh>@L.Translate("WfAttachmentHeader")</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.wlevel</MudTd>
+                <MudTd>@context.userid</MudTd>
+                <MudTd>@context.jobstatus</MudTd>
+                <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.comment</MudTd>
+                <MudTd>
+                    @if (_attachments.TryGetValue(context.jobapproverid, out var files) && files.Count > 0)
+                    {
+                        <MudStack Spacing="0">
+                            @foreach (var f in files)
+                            {
+                                <MudLink Href="@($"/wf/files/attachment/{f.id}")" Target="_blank">@f.files</MudLink>
+                            }
+                        </MudStack>
+                    }
+                    <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(context.jobapproverid, file))">
+                        <ActivatorContent>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">@L.Translate("WfAttachFileButton")</MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long JobMasterId { get; set; }
+
+    private job_master? _job;
+    private job_user_list? _myPendingRow;
+    private Dictionary<long, List<doc_center>> _attachments = new();
+    private string? _comment;
+    private bool _loading = true;
+    private bool _notMine;
+    private bool _busy;
+    private string? _error;
+    private string? _info;
+
+    private long _actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            // Same scoping the inbox list uses: the user's pending job_user_list
+            // rows via the engine's inbox query. A job is visible here only if
+            // the current user has an assignment row on it (pending or already
+            // acted on) — never anyone else's jobs.
+            var inbox = await Engine.GetMyInboxAsync(_actorUserId);
+            _myPendingRow = inbox.FirstOrDefault(r => r.jobmasterid == JobMasterId);
+
+            var job = await Engine.GetJobDetailAsync(JobMasterId);
+            if (job is null || (_myPendingRow is null && !job.job_user_lists.Any(a => a.userid == _actorUserId)))
+            {
+                _notMine = true;
+                _job = null;
+                return;
+            }
+
+            _job = job;
+            await LoadAttachmentsAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (_myPendingRow is null) return;
+        _error = null;
+        _info = null;
+        _busy = true;
+        try
+        {
+            await Engine.ApproveAsync(_myPendingRow.jobapproverid, _actorUserId, _comment);
+            Snackbar.Add(L.Translate("ApprovedSuccess"), Severity.Success);
+            Nav.NavigateTo("/wf/my-inbox");
+        }
+        catch (Exception ex)
+        {
+            // Includes the engine's stale-level guard (e.g. "งานนี้เลื่อนผ่านระดับนี้ไปแล้ว")
+            _error = L.Translate("WfApproveFailedPrefix") + ex.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RejectAsync()
+    {
+        if (_myPendingRow is null) return;
+        _error = null;
+        _info = null;
+        _busy = true;
+        try
+        {
+            await Engine.RejectAsync(_myPendingRow.jobapproverid, _actorUserId, _comment);
+            Snackbar.Add(L.Translate("RejectedSuccess"), Severity.Success);
+            Nav.NavigateTo("/wf/my-inbox");
+        }
+        catch (Exception ex)
+        {
+            _error = L.Translate("WfRejectFailedPrefix") + ex.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Block 8: attachments per approval level — doc_center rows keyed by
+    // refid = job_user_list.jobapproverid (see WorkflowFileEndpoints.cs for
+    // why that's a sufficient key without a reftable discriminator column).
+    private async Task LoadAttachmentsAsync()
+    {
+        _attachments = new();
+        if (_job is null) return;
+
+        var approverIds = _job.job_user_lists.Select(a => a.jobapproverid).ToList();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var docs = await context.doc_centers
+            .Where(d => d.doctypecode == "WF_ATTACHMENT" && d.refid != null && approverIds.Contains(d.refid.Value) && d.isActive != false)
+            .ToListAsync();
+        _attachments = docs.GroupBy(d => d.refid!.Value).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private async Task UploadAttachmentAsync(long jobApproverId, IBrowserFile file)
+    {
+        _error = null;
+        _info = null;
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024; // 10 MB
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var storedFileName = $"{jobApproverId}_{Guid.NewGuid():N}_{file.Name}";
+            var (relativePath, _) = await FileStorage.SaveAsync("wf-attachments", storedFileName, bytes);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            context.doc_centers.Add(new doc_center
+            {
+                refid = jobApproverId,
+                doctypecode = "WF_ATTACHMENT",
+                files = file.Name,
+                path = relativePath,
+                isActive = true,
+                moddate = DateTime.Now,
+            });
+            await context.SaveChangesAsync();
+
+            _info = string.Format(L.Translate("WfAttachSuccessTemplate"), file.Name);
+            await LoadAttachmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = L.Translate("WfAttachFailedPrefix") + ex.Message;
+        }
+    }
+
+    // Block 7 (generic document-type routing): wf_workflow.url is an
+    // admin-configured route template (e.g. "/pay/adhoc-detail/{refid}")
+    // for whichever page shows the document that started this job —
+    // job_master.reftable/refid are the generic (table, id) pair recorded
+    // at StartJobAsync time. No {refid} placeholder in the template means
+    // the workflow hasn't been configured for routing yet (null link).
+    private static string? BuildDocumentLink(job_master? job)
+    {
+        var template = job?.workflow?.url;
+        if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(job?.refid))
+            return null;
+        return template.Contains("{refid}") ? template.Replace("{refid}", job.refid) : template;
+    }
+}

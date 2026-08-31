@@ -685,7 +685,10 @@ if (app.Environment.IsDevelopment())
 await HRM.Services.Security.ScProgramRouteSeeder.SeedAsync(app.Services);
 await HRM.Services.Security.ProgramRoleService.SeedAsync(app.Services);
 // Access-menu step: complete drawer nav registered as sc_menu rows
-// (dup-checked by url/GRP code) — see ScMenuNavSeeder.cs.
+// (dup-checked per (group, url) / GRP code) — see ScMenuNavSeeder.cs.
 await HRM.Services.Security.ScMenuNavSeeder.SeedAsync(app.Services);
+// Standard employee-document types (สัญญาจ้าง ฯลฯ) into legacy mas_doc_type —
+// add-missing-by-code, never touches existing rows.
+await HRM.Services.Hr.EmployeeDocTypeSeeder.SeedAsync(app.Services);
 
 app.Run();

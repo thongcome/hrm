@@ -110,6 +110,9 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "ESS_ACCESS", "/ess/my-recurring-items", "เงินได้เงินหักประจำของฉัน", "My Recurring Pay Items", "Icons.Material.Filled.Repeat", 50),
         new("GRP_ESS", "ESS_ACCESS", "/ess/attendance-checkin", "เช็คอิน/เช็คเอาท์ (GPS)", "Check-in/Check-out (GPS)", "Icons.Material.Filled.MyLocation", 60),
         new("GRP_ESS", "ESS_ACCESS", "/att/my-timesheet", "Timesheet ของฉัน", "My Timesheet", "Icons.Material.Filled.Schedule", 70),
+        // CEO order 31 ส.ค. 2569: the approval inbox also lives in ESS ("เอาไปอยู่ใน ESS ด้วย").
+        // Same Url also listed under GRP_WF_ENGINE — the seeder keys เช็คซ้ำ by (group, url).
+        new("GRP_ESS", null, "/wf/my-inbox", "งานอนุมัติของฉัน", "My Approvals", "Icons.Material.Filled.Inbox", 75), // ungated: ESS-personalized, self-scoped by userid
         new("GRP_ESS", "LEAVE_ACCESS", "/leave-requests", "คำขอลางาน", "Leave Requests", "Icons.Material.Filled.EventBusy", 80),
         new("GRP_ESS", "LEAVE_ACCESS", "/leave-requests/team-calendar", "ปฏิทินทีม", "ปฏิทินทีม", "Icons.Material.Filled.CalendarViewMonth", 90), // literal Thai label, no Translate key
         new("GRP_ESS", "OKR_ACCESS", "/ess/my-okr", "OKR ของฉัน", "My OKR", "Icons.Material.Filled.TrackChanges", 100),

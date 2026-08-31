@@ -1,5 +1,6 @@
 namespace HRM.Services.Leave;
 
+using System.Globalization;
 using HRM.Models;
 using HRM.Services.Pay;
 using HRM.Services.Shared;
@@ -15,6 +16,11 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
 {
     private const string WorkflowCode = "LEAVE_APPROVAL";
     private const string UnpaidLeavePayItemCode = "LEAVE_UNPAID";
+    // Historic code kept verbatim (rows + Endpoints/LeaveFileEndpoints.cs
+    // depend on it) even though it now stores ANY required leave attachment
+    // (หมายเรียก, ใบฎีกา, ...) — the human-facing name lives in
+    // Lve_LeaveType.AttachmentDocName.
+    public const string AttachmentDocTypeCode = "LEAVE_MEDCERT";
     private static readonly string[] NonBlockingStatuses = ["REJECTED", "RETURNED", WorkflowEngineService.StatusCancelled];
 
     public async Task<long> CreateDraftAsync(long hremployeeId, int leaveTypeId, DateOnly start, DateOnly end,
@@ -23,6 +29,60 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct)
             ?? throw new InvalidOperationException("ไม่พบพนักงาน");
+
+        var leaveType = await context.Lve_LeaveTypes.FirstOrDefaultAsync(t => t.Id == leaveTypeId && t.IsActive, ct)
+            ?? throw new InvalidOperationException("ไม่พบประเภทการลานี้ หรือประเภทการลาถูกปิดใช้งานแล้ว");
+
+        // --- Catalog-rule enforcement (service layer — never trust the UI alone) ---
+
+        // ApplicableGender: "M"/"F"/null, same single-char convention as Hremployee.Sex.
+        if (!string.IsNullOrWhiteSpace(leaveType.ApplicableGender)
+            && !string.Equals(emp.Sex, leaveType.ApplicableGender, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(leaveType.ApplicableGender == "F"
+                ? $"{leaveType.NameTh}ใช้ได้เฉพาะพนักงานหญิงเท่านั้น"
+                : $"{leaveType.NameTh}ใช้ได้เฉพาะพนักงานชายเท่านั้น");
+        }
+
+        // Half-day: blocked both when the type disallows it outright and when
+        // the type must be taken as one consecutive block (MustBeConsecutive
+        // types are all AllowHalfDay=false by seed data, but guard both flags
+        // so a misconfigured row still fails safe).
+        if (isHalfDay && (!leaveType.AllowHalfDay || leaveType.MustBeConsecutive))
+            throw new InvalidOperationException($"{leaveType.NameTh}ไม่สามารถลาครึ่งวันได้ ต้องลาเต็มวัน");
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        if (!leaveType.AllowRetroactive && start < today)
+            throw new InvalidOperationException($"{leaveType.NameTh}ไม่สามารถลาย้อนหลังได้ — วันที่เริ่มลาต้องไม่ก่อนวันนี้");
+
+        if (leaveType.AdvanceNoticeDays is int noticeDays && noticeDays > 0)
+        {
+            var earliestAllowed = today.AddDays(noticeDays);
+            if (start < earliestAllowed)
+                throw new InvalidOperationException(
+                    $"{leaveType.NameTh}ต้องแจ้งล่วงหน้าอย่างน้อย {noticeDays} วัน — วันที่เริ่มลาที่เร็วที่สุดคือ {earliestAllowed:dd/MM/yyyy}");
+        }
+
+        // OncePerEmployment: any earlier request of this type that wasn't
+        // rejected/returned/cancelled uses up the once-in-a-lifetime right.
+        if (leaveType.EntitlementFrequency == LeaveEntitlementFrequency.OncePerEmployment)
+        {
+            var priorRequests = await context.Lve_LeaveRequests
+                .Where(r => r.HremployeeId == hremployeeId && r.LeaveTypeId == leaveTypeId)
+                .Select(r => new { r.Id, r.JobMasterId })
+                .ToListAsync(ct);
+            if (priorRequests.Count > 0)
+            {
+                var priorJobIds = priorRequests.Where(r => r.JobMasterId is not null).Select(r => r.JobMasterId!.Value).ToList();
+                var priorStatuses = await context.job_masters.Where(j => priorJobIds.Contains(j.jobmasterid))
+                    .ToDictionaryAsync(j => j.jobmasterid, j => j.status, ct);
+                var stillCounts = priorRequests.Any(r =>
+                    r.JobMasterId is null || !NonBlockingStatuses.Contains(priorStatuses.GetValueOrDefault(r.JobMasterId.Value)));
+                if (stillCounts)
+                    throw new InvalidOperationException($"{leaveType.NameTh}: สิทธิ์นี้ใช้ได้ครั้งเดียวตลอดอายุงาน — คุณเคยยื่นคำขอประเภทนี้ไปแล้ว");
+            }
+        }
 
         var policy = await context.Lve_LeavePolicies
             .FirstOrDefaultAsync(p => p.CompanyId == emp.companyid && p.LeaveTypeId == leaveTypeId, ct);
@@ -43,7 +103,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
 
         await EnsureNoOverlapAsync(context, hremployeeId, start, end, excludeRequestId: null, ct);
 
-        var totalDays = isHalfDay ? 0.5m : await CalculateWorkingDaysAsync(context, emp.companyid, start, end, ct);
+        var totalDays = isHalfDay ? 0.5m : await CalculateDurationAsync(context, leaveType.DayCountMethod, emp.companyid, start, end, ct);
 
         var request = new Lve_LeaveRequest
         {
@@ -71,6 +131,24 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         if (request.JobMasterId is not null)
             throw new InvalidOperationException("คำขอนี้ถูกส่งเข้าสู่กระบวนการอนุมัติไปแล้ว");
 
+        // Required-attachment gate: when the catalog names a document and the
+        // request's duration reaches the threshold (AttachmentMinDays, null =
+        // from day 1), submission is blocked until a doc_center row exists.
+        // Generalizes the old sick-leave-only medical-certificate hint —
+        // doctypecode stays "LEAVE_MEDCERT" so existing rows/endpoints keep
+        // working, but the document's NAME now comes from the catalog.
+        var leaveType = request.Lve_LeaveType;
+        if (!string.IsNullOrWhiteSpace(leaveType.AttachmentDocName)
+            && request.TotalDays >= (leaveType.AttachmentMinDays ?? 0m))
+        {
+            var hasAttachment = request.MedCertDocCenterId is not null
+                || await context.doc_centers.AnyAsync(d => d.refid == requestId && d.doctypecode == AttachmentDocTypeCode && d.isActive == true, ct);
+            if (!hasAttachment)
+                throw new InvalidOperationException(leaveType.AttachmentMinDays is decimal minDays && minDays > 0
+                    ? $"การลา{leaveType.NameTh}ตั้งแต่ {minDays:0.#} วันขึ้นไปต้องแนบ{leaveType.AttachmentDocName}ก่อนส่งขออนุมัติ"
+                    : $"ต้องแนบ{leaveType.AttachmentDocName}ก่อนส่งขออนุมัติ");
+        }
+
         var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == WorkflowCode, ct)
             ?? throw new InvalidOperationException($"ไม่พบ workflow '{WorkflowCode}' — ตรวจสอบว่า migration ถูก apply แล้ว");
 
@@ -92,7 +170,7 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         var doc = new doc_center
         {
             refid = requestId,
-            doctypecode = "LEAVE_MEDCERT",
+            doctypecode = AttachmentDocTypeCode,
             files = fileName,
             path = relativePath,
             isActive = true,
@@ -144,7 +222,10 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
         {
             HremployeeId = emp.id,
             PayItemTypeId = payItemType.Id,
-            TargetPeriod = request.StartDate.ToString("yyyyMM"),
+            // InvariantCulture is load-bearing: on a Thai-locale OS the
+            // default calendar renders the Buddhist year ("2569xx"), which
+            // never matches any Gregorian "yyyyMM" payroll period.
+            TargetPeriod = request.StartDate.ToString("yyyyMM", CultureInfo.InvariantCulture),
             Amount = amount,
             IsTaxable = false,
             Reason = $"หักเงินลาไม่รับค่าจ้าง ({request.Lve_LeaveType.NameTh} {request.StartDate:dd/MM/yyyy}-{request.EndDate:dd/MM/yyyy}, {request.TotalDays:0.#} วัน)",
@@ -202,6 +283,19 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
             r.JobMasterId is null || !NonBlockingStatuses.Contains(statuses.GetValueOrDefault(r.JobMasterId.Value)));
         if (blocking is not null)
             throw new InvalidOperationException($"ช่วงวันที่นี้ทับกับคำขอลา #{blocking.Id} ที่มีอยู่แล้ว");
+    }
+
+    // Duration for a request, honoring the leave type's DayCountMethod:
+    // CalendarDays = plain inclusive calendar count (no holiday/workday
+    // exclusion — Thai-law convention for maternity/ordination/military),
+    // WorkingDays = the existing LeaveDayCalculator path below.
+    public static async Task<decimal> CalculateDurationAsync(HRMContext context, LeaveDayCountMethod dayCountMethod,
+        string? companyId, DateOnly start, DateOnly end, CancellationToken ct = default)
+    {
+        if (end < start) return 0m;
+        return dayCountMethod == LeaveDayCountMethod.CalendarDays
+            ? end.DayNumber - start.DayNumber + 1
+            : await CalculateWorkingDaysAsync(context, companyId, start, end, ct);
     }
 
     public static async Task<decimal> CalculateWorkingDaysAsync(HRMContext context, string? companyId, DateOnly start, DateOnly end, CancellationToken ct = default)

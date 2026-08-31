@@ -246,7 +246,12 @@
     // silently showing every period ever (the old default, which is what
     // prompted this redesign: HR wants the current period front-and-center).
     private bool ViewingAll => string.Equals(Period, "ALL", StringComparison.OrdinalIgnoreCase);
-    private string EffectivePeriod => ViewingAll ? "" : (Period ?? CurrentPeriodCode());
+    private string EffectivePeriod => ViewingAll ? "" : (IsValidPeriod(Period) ? Period! : CurrentPeriodCode());
+
+    private static bool IsValidPeriod(string? period)
+        => period is { Length: 6 }
+           && int.TryParse(period.AsSpan(0, 4), out var year) && year is >= 2000 and <= 2100
+           && int.TryParse(period.AsSpan(4, 2), out var month) && month is >= 1 and <= 12;
     private static string CurrentPeriodCode() => DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
 
     protected override async Task OnParametersSetAsync()
@@ -255,14 +260,23 @@
         await LoadAsync();
     }
 
+    // Year sanity bounds: a period outside this range can only come from the
+    // Buddhist-calendar double-conversion bug (yyyyMM formatted under th-TH
+    // turned 2026 into 2569, then 3112, ... compounding +543 per round trip).
+    // Treating it as garbage and falling back to today self-heals any bad
+    // URL/bookmark left over from before the fix.
     private static DateTime? ParsePeriodToDate(string period)
     {
-        if (period.Length == 6 && int.TryParse(period.AsSpan(0, 4), out var year) && int.TryParse(period.AsSpan(4, 2), out var month) && month is >= 1 and <= 12)
+        if (period.Length == 6 && int.TryParse(period.AsSpan(0, 4), out var year) && int.TryParse(period.AsSpan(4, 2), out var month)
+            && month is >= 1 and <= 12 && year is >= 2000 and <= 2100)
             return new DateTime(year, month, 1);
         return DateTime.Today;
     }
 
-    private void OnPeriodMonthChangedAsync(DateTime? date) => Nav.NavigateTo($"/pay/adhoc/{(date ?? DateTime.Today):yyyyMM}");
+    // InvariantCulture is load-bearing: under th-TH the default calendar is
+    // Buddhist, so culture-sensitive yyyyMM would emit "2569xx" and the
+    // Gregorian parse above would re-add 543 on every round trip.
+    private void OnPeriodMonthChangedAsync(DateTime? date) => Nav.NavigateTo($"/pay/adhoc/{(date ?? DateTime.Today).ToString("yyyyMM", CultureInfo.InvariantCulture)}");
 
     private void ToggleCreateForm()
     {

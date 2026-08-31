@@ -12,13 +12,17 @@ using Microsoft.EntityFrameworkCore;
 // MainLayout nav) at every startup, duplicate-checked per row.
 //
 // เช็คซ้ำ rules:
-//   - LINK identity = url (case-insensitive). A url that already exists in
-//     sc_menu — including the ~60 rows seeded by earlier migrations — is
-//     NEVER inserted again. For those pre-existing rows we DO align the
-//     tree-placement fields (uppermenucode/menuorder/icon/menuname_en)
-//     with the catalog so the drawer groups them properly, but never touch
-//     menucode or isactive: grants in sc_role_menu key off the existing
-//     row and stay exactly as the humans configured them.
+//   - LINK identity = (group, url), case-insensitive. The same url may
+//     legitimately appear in TWO groups (CEO 31 ส.ค. 2569: /wf/my-inbox in
+//     both ESS and Workflow; /hr/announcements in both ESS and Announce) —
+//     each (group, url) pair is one row, and the same pair is never
+//     inserted twice. A pre-existing row (e.g. the ~60 migration-seeded
+//     ones) whose group isn't claimed by any catalog entry for that url is
+//     ADOPTED by the first catalog entry — placement fields aligned
+//     (uppermenucode/menulevel/menuorder/icon/menuname_en-if-empty) — but
+//     its menucode and isactive are never touched: grants in sc_role_menu
+//     key off the existing row and stay exactly as the humans configured
+//     them.
 //   - GROUP identity = menucode (GRP_*).
 public static class ScMenuNavSeeder
 {
@@ -29,12 +33,23 @@ public static class ScMenuNavSeeder
         await using var context = await dbFactory.CreateDbContextAsync();
 
         var all = await context.sc_menus.ToListAsync();
-        var byUrl = new Dictionary<string, sc_menu>(StringComparer.OrdinalIgnoreCase);
+        var byUrl = new Dictionary<string, List<sc_menu>>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in all)
         {
-            if (!string.IsNullOrWhiteSpace(m.url) && !byUrl.ContainsKey(m.url!))
-                byUrl[m.url!] = m;
+            if (string.IsNullOrWhiteSpace(m.url)) continue;
+            if (!byUrl.TryGetValue(m.url!, out var list)) byUrl[m.url!] = list = new List<sc_menu>();
+            list.Add(m);
         }
+
+        // Which groups the catalog claims per url — an existing row in none
+        // of them is a legacy row eligible for adoption (see header).
+        var catalogGroupsByUrl = ScMenuNavCatalog.Links
+            .GroupBy(l => l.Url, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(l => l.GroupCode).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        static bool SameGroup(string? a, string? b) =>
+            string.IsNullOrWhiteSpace(a) ? string.IsNullOrWhiteSpace(b)
+                : string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         var byCode = all.Where(m => !string.IsNullOrWhiteSpace(m.menucode))
             .GroupBy(m => m.menucode!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
@@ -73,16 +88,37 @@ public static class ScMenuNavSeeder
         // 2) Links — level 2 under a group, level 1 when top-level.
         foreach (var l in ScMenuNavCatalog.Links)
         {
-            if (byUrl.TryGetValue(l.Url, out var existing))
+            var candidates = byUrl.TryGetValue(l.Url, out var list) ? list : null;
+
+            // เช็คซ้ำ: this (group, url) pair already has a row — align
+            // placement only; menucode/isactive/grants untouched.
+            var existing = candidates?.FirstOrDefault(m => SameGroup(m.uppermenucode, l.GroupCode));
+            if (existing is not null)
             {
-                // Pre-existing row (old migration seeds): align placement
-                // only — menucode/isactive/grants untouched (see header).
-                existing.uppermenucode = l.GroupCode;
                 existing.menulevel = l.GroupCode is null ? 1 : 2;
                 existing.menuorder = l.Order;
                 existing.icon = l.Icon;
                 if (string.IsNullOrWhiteSpace(existing.menuname_en))
                     existing.menuname_en = l.NameEn;
+                continue;
+            }
+
+            // Adoption: a row with this url sitting in a group NO catalog
+            // entry for this url claims (typically an old migration-seeded
+            // row, or a row placed by the pre-(group,url) version of this
+            // seeder) is moved into this entry's group instead of being
+            // duplicated. Once adopted its group matches the catalog, so a
+            // second entry for the same url can never adopt it again.
+            var claimedGroups = catalogGroupsByUrl[l.Url];
+            var orphan = candidates?.FirstOrDefault(m => !claimedGroups.Any(g => SameGroup(m.uppermenucode, g)));
+            if (orphan is not null)
+            {
+                orphan.uppermenucode = l.GroupCode;
+                orphan.menulevel = l.GroupCode is null ? 1 : 2;
+                orphan.menuorder = l.Order;
+                orphan.icon = l.Icon;
+                if (string.IsNullOrWhiteSpace(orphan.menuname_en))
+                    orphan.menuname_en = l.NameEn;
                 continue;
             }
 
@@ -104,7 +140,7 @@ public static class ScMenuNavSeeder
                 moddate = DateTime.Now,
             };
             context.sc_menus.Add(row);
-            byUrl[l.Url] = row;
+            (candidates ?? (byUrl[l.Url] = new List<sc_menu>())).Add(row);
         }
 
         await context.SaveChangesAsync();

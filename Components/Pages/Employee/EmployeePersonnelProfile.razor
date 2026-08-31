@@ -63,12 +63,21 @@ else
 
     private async Task<IEnumerable<Hremployee>> SearchAsync(string search, CancellationToken ct)
     {
-        await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = EntitySearchHelper.ApplyTextSearch(context.Hremployee.AsQueryable(), search,
-            nameof(Hremployee.EmpNo), nameof(Hremployee.EmpName), nameof(Hremployee.EmpSurname),
-            nameof(Hremployee.EmpNickname), nameof(Hremployee.EmpEname), nameof(Hremployee.EmpEsurname),
-            nameof(Hremployee.IdCard), nameof(Hremployee.DeptgrpCode), nameof(Hremployee.PosCode));
-        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync(ct);
+            var query = EntitySearchHelper.ApplyTextSearch(context.Hremployee.AsQueryable(), search,
+                nameof(Hremployee.EmpNo), nameof(Hremployee.EmpName), nameof(Hremployee.EmpSurname),
+                nameof(Hremployee.EmpNickname), nameof(Hremployee.EmpEname), nameof(Hremployee.EmpEsurname),
+                nameof(Hremployee.IdCard), nameof(Hremployee.DeptgrpCode), nameof(Hremployee.PosCode));
+            return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // MudAutocomplete cancels the in-flight search on every further
+            // keystroke — routine, not an error worth a console stack trace.
+            return Enumerable.Empty<Hremployee>();
+        }
     }
 
     private Task OnPickedAsync(Hremployee? emp)

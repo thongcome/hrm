@@ -14,6 +14,7 @@
 @inject LeaveRequestService LeaveRequestSvc
 @inject PrivateFileStorage FileStorage
 @inject AuthenticationStateProvider AuthProvider
+@inject JsonLocalizationService L
 
 @if (!_isInitialized)
 {
@@ -145,7 +146,18 @@ else
         @if (_selectedEmployee is not null)
         {
             <MudItem xs="12">
-                @if (_remainingBalance is decimal remaining)
+                @if (SelectedType is not null && SelectedType.EntitlementFrequency != LeaveEntitlementFrequency.PerYear)
+                {
+                    @* PerEvent/OncePerEmployment rights are not counted against
+                       any yearly balance — showing the annual-remaining alert
+                       here would be misleading, so show the frequency rule. *@
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        @(SelectedType.EntitlementFrequency == LeaveEntitlementFrequency.OncePerEmployment
+                            ? L.Translate("LeaveOncePerEmploymentInfo")
+                            : L.Translate("LeavePerEventInfo"))
+                    </MudAlert>
+                }
+                else if (_remainingBalance is decimal remaining)
                 {
                     <MudAlert Severity="@(remaining > 0 ? Severity.Info : Severity.Warning)" Dense="true">
                         สิทธิ@(SelectedLeaveTypeName)คงเหลือปีนี้: @remaining.ToString("0.#") วัน
@@ -161,9 +173,23 @@ else
                 }
             </MudItem>
         }
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มลา" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
-        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" Disabled="_isHalfDay" /></MudItem>
-        @if (_startDate is not null && _endDate is not null && _startDate.Value.Date == _endDate.Value.Date)
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มลา" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" MinDate="MinStartDate" /></MudItem>
+        <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่สิ้นสุด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" Disabled="_isHalfDay" MinDate="MinStartDate" /></MudItem>
+        @if (SelectedType?.AdvanceNoticeDays is int noticeDays && noticeDays > 0)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @string.Format(L.Translate("LeaveAdvanceNoticeHint"), noticeDays, DateTime.Today.AddDays(noticeDays).ToString("dd/MM/yyyy"))
+                </MudText>
+            </MudItem>
+        }
+        else if (SelectedType is not null && !SelectedType.AllowRetroactive)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@L.Translate("LeaveNoRetroactiveHint")</MudText>
+            </MudItem>
+        }
+        @if (AllowHalfDaySelection && _startDate is not null && _endDate is not null && _startDate.Value.Date == _endDate.Value.Date)
         {
             <MudItem xs="12" sm="@(_isHalfDay ? 6 : 12)">
                 <MudCheckBox T="bool" @bind-Value="_isHalfDay" Label="ลาครึ่งวัน" />
@@ -179,10 +205,17 @@ else
             }
         }
         <MudItem xs="12"><MudTextField @bind-Value="_reason" Label="เหตุผล" Lines="2" /></MudItem>
-        @if (_availableLeaveTypes.FirstOrDefault(t => t.Id == _leaveTypeId)?.RequiresMedicalCert == true)
+        @if (!string.IsNullOrWhiteSpace(SelectedType?.AttachmentDocName))
         {
             <MudItem xs="12">
-                <MudText Typo="Typo.body2" Class="mb-1">แนบใบรับรองแพทย์ (ไม่บังคับ)</MudText>
+                <MudText Typo="Typo.body2" Class="mb-1">
+                    @string.Format(L.Translate("LeaveAttachDocLabel"), SelectedType!.AttachmentDocName)
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Warning" Class="mb-1" Style="display:block;">
+                    @(SelectedType.AttachmentMinDays is decimal minDays && minDays > 0
+                        ? string.Format(L.Translate("LeaveAttachRequiredFromDays"), minDays.ToString("0.#"))
+                        : L.Translate("LeaveAttachRequired"))
+                </MudText>
                 <InputFile OnChange="OnMedCertSelectedAsync" />
                 @if (_pendingMedCertName is not null)
                 {
@@ -215,7 +248,26 @@ else
     private List<Lve_LeaveType> _availableLeaveTypes = new();
     private int _leaveTypeId;
     private bool _useCardPicker = true;
-    private string SelectedLeaveTypeName => _availableLeaveTypes.FirstOrDefault(t => t.Id == _leaveTypeId)?.NameTh ?? "";
+    private Lve_LeaveType? SelectedType => _availableLeaveTypes.FirstOrDefault(t => t.Id == _leaveTypeId);
+    private string SelectedLeaveTypeName => SelectedType?.NameTh ?? "";
+
+    // Half-day is offered only when the catalog allows it — MustBeConsecutive
+    // types must be taken as one full-day block. Mirrored server-side in
+    // LeaveRequestService.CreateDraftAsync (never UI-only).
+    private bool AllowHalfDaySelection => SelectedType is { AllowHalfDay: true, MustBeConsecutive: false };
+
+    // UI min-date from AllowRetroactive/AdvanceNoticeDays — the service
+    // re-checks both rules on CreateDraftAsync.
+    private DateTime? MinStartDate
+    {
+        get
+        {
+            if (SelectedType is null) return null;
+            if (SelectedType.AdvanceNoticeDays is int notice && notice > 0)
+                return DateTime.Today.AddDays(notice);
+            return SelectedType.AllowRetroactive ? null : DateTime.Today;
+        }
+    }
     private DateTime? _startDate = DateTime.Today;
     private DateTime? _endDate = DateTime.Today;
     private bool _isHalfDay;
@@ -315,19 +367,46 @@ else
             _selectedEmployeeCountryCode = null;
         }
 
-        _availableLeaveTypes = _allLeaveTypes.Where(t => LeaveCountryHelper.IsApplicable(t, _selectedEmployeeCountryCode)).ToList();
+        // Country + gender filter: a type restricted to "M"/"F" is only
+        // offered to employees whose Hremployee.Sex matches (service-side
+        // re-check in LeaveRequestService.CreateDraftAsync).
+        _availableLeaveTypes = _allLeaveTypes
+            .Where(t => LeaveCountryHelper.IsApplicable(t, _selectedEmployeeCountryCode))
+            .Where(t => employee is null || string.IsNullOrWhiteSpace(t.ApplicableGender)
+                || string.Equals(employee.Sex, t.ApplicableGender, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         if (_availableLeaveTypes.All(t => t.Id != _leaveTypeId))
         {
             _leaveTypeId = _availableLeaveTypes.FirstOrDefault()?.Id ?? 0;
         }
 
+        ApplyLeaveTypeRulesToInputs();
         await RecomputeBalanceAsync();
     }
 
     private async Task SelectLeaveTypeAsync(int id)
     {
         _leaveTypeId = id;
+        ApplyLeaveTypeRulesToInputs();
         await RecomputeBalanceAsync();
+    }
+
+    // Snap the current inputs to the newly selected type's rules so the user
+    // never has an invalid combination pre-filled: clear half-day when it
+    // isn't allowed, and push dates forward onto/after the earliest legal
+    // start date.
+    private void ApplyLeaveTypeRulesToInputs()
+    {
+        if (!AllowHalfDaySelection)
+            _isHalfDay = false;
+
+        if (MinStartDate is DateTime min)
+        {
+            if (_startDate is null || _startDate.Value.Date < min)
+                _startDate = min;
+            if (_endDate is null || _endDate.Value.Date < _startDate.Value.Date)
+                _endDate = _startDate;
+        }
     }
 
     private static string LeaveTypeAccentVar(Lve_LeaveType t) => t.IsStatutory ? "var(--mud-palette-info)" : "var(--mud-palette-success)";

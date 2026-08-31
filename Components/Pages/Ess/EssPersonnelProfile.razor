@@ -33,7 +33,14 @@ else if (_myEmployeeId is null)
 }
 else
 {
-    <PersonnelProfileView HremployeeId="@_myEmployeeId.Value" />
+    @* ReadOnlyDocuments: employees see their own ACTIVE documents only — no
+       upload, no active/superseded toggle (CEO order). Downloads go through
+       the ESS self-ownership route in Endpoints/EssFileEndpoints.cs, not the
+       Menu:PAY_ADMIN-gated HR route. PDPA access logging happens inside
+       PersonnelProfileView itself, unchanged. *@
+    <PersonnelProfileView HremployeeId="@_myEmployeeId.Value"
+                          ReadOnlyDocuments="true"
+                          DocumentDownloadRoute="/ess/files/profile-doc" />
 }
 
 @code {

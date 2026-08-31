@@ -37,5 +37,32 @@ public static class EssFileEndpoints
             var fileName = $"payslip_{payslip.Pay_PayrollEmployee.EmpNo}.pdf";
             return Results.File(bytes, "application/pdf", fileName);
         });
+
+        // ESS self-download of the employee's own profile documents
+        // (doc_center, doctypecode="EMPLOYEE_PROFILE_DOC" — same rows HR
+        // manages on /employee/personnel-profile, whose download route
+        // /employee/files/doc/{id} requires Menu:PAY_ADMIN and is therefore
+        // unreachable from ESS). Ownership rule: the doc's refid must be the
+        // caller's own Hremployee.id (resolved via EssEmployeeResolver from
+        // the empno claim), and only ACTIVE documents are served — superseded
+        // versions are HR-only history.
+        group.MapGet("/profile-doc/{docId:long}", async (
+            long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage, IAuditLogger auditLogger) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docId && d.doctypecode == "EMPLOYEE_PROFILE_DOC");
+            if (doc is null || string.IsNullOrWhiteSpace(doc.path) || string.IsNullOrWhiteSpace(doc.files))
+                return Results.NotFound();
+
+            var emp = await HRM.Services.Ess.EssEmployeeResolver.ResolveAsync(context, httpContext.User);
+            if (emp is null || doc.refid != emp.id || doc.isActive != true)
+                return Results.Forbid();
+
+            await auditLogger.LogAccessAsync("Hremployee", emp.id.ToString(), isSensitive: true,
+                note: $"ESS self-download of own profile document ({doc.files})");
+
+            var bytes = await storage.ReadAsync(doc.path);
+            return Results.File(bytes, "application/octet-stream", doc.files);
+        });
     }
 }

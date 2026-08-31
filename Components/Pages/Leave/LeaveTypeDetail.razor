@@ -1,0 +1,352 @@
+@page "/leave-requests/leave-types/{Id:int}"
+@using HRM.Models
+@using HRM.Services.Leave
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@inject JsonLocalizationService L
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@* Detail half of the Shape B master-detail reference pair (master:
+   LeaveTypeAdmin.razor). Id = 0 means create mode — one shared route
+   template keeps a single AD.CRUDManage program path,
+   "/leave-requests/leave-types" (the {Id} segment is stripped by
+   ProgramRoleService.NormalizeRouteTemplate). *@
+
+<PageTitle>ตั้งค่าประเภทการลา</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_notFound)
+    {
+        <MudAlert Severity="Severity.Error">ไม่พบประเภทการลาที่ต้องการแก้ไข</MudAlert>
+        <MudButton Class="mt-3" Variant="Variant.Text" Href="/leave-requests/leave-types">@L.Translate("LeaveTypeBackToList")</MudButton>
+    }
+    else if (_loaded)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">
+                @(IsCreate ? L.Translate("LeaveTypeAddNew") : $"{_nameTh} ({_code})")
+            </MudText>
+            @if (_isStatutory)
+            {
+                <MudTooltip Text="ประเภทตามกฎหมายแรงงาน — ไม่สามารถแก้รหัสได้">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">กฎหมาย</MudChip>
+                </MudTooltip>
+            }
+        </MudStack>
+
+        @if (!CanWrite)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L.Translate("LeaveTypeNoWriteAccess")</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        @* ---------- (1) ข้อมูลทั่วไป ---------- *@
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("LeaveTypeSectionGeneral")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudTextField T="string" @bind-Value="_code" Label="รหัส (Code, ไม่ซ้ำ)"
+                    Disabled="@(!IsCreate && _isStatutory)" ReadOnly="@(!CanWrite)" />
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_nameTh" Label="ชื่อ (ไทย)" ReadOnly="@(!CanWrite)" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField T="string" @bind-Value="_nameEn" Label="Name (English)" ReadOnly="@(!CanWrite)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_iconName" Label="ไอคอน" Disabled="@(!CanWrite)">
+                    @foreach (var opt in LeaveIconCatalog.Options)
+                    {
+                        <MudSelectItem T="string" Value="@opt.Name">
+                            <MudIcon Icon="@opt.Icon" Size="Size.Small" Class="mr-1" />@opt.LabelTh
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="4"><MudNumericField T="int" @bind-Value="_sortOrder" Label="ลำดับ" ReadOnly="@(!CanWrite)" /></MudItem>
+            <MudItem xs="6" sm="4">
+                <MudCheckBox T="bool" @bind-Value="_isActive" Label="ใช้งาน (สถานะ)" Disabled="@(!CanWrite)" />
+                @if (_isStatutory && !_isActive)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning">ประเภทนี้เป็นสิทธิ์ขั้นต่ำตามกฎหมายแรงงานไทย ปิดใช้งานอาจขัดกับกฎหมาย</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+
+        @* ---------- (2) กติกาการยื่น ---------- *@
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("LeaveTypeSectionSubmitRules")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="_allowHalfDay" ValueChanged="OnAllowHalfDayChanged"
+                    Label="@L.Translate("LeaveTypeFieldAllowHalfDay")" Disabled="@(!CanWrite || _mustBeConsecutive)" />
+                @if (_mustBeConsecutive)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@L.Translate("LeaveTypeConsecutiveNoHalfDayHint")</MudText>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="_mustBeConsecutive" ValueChanged="OnMustBeConsecutiveChanged"
+                    Label="@L.Translate("LeaveTypeFieldMustBeConsecutive")" Disabled="@(!CanWrite)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" @bind-Value="_allowRetroactive" Label="@L.Translate("LeaveTypeFieldAllowRetroactive")" Disabled="@(!CanWrite)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="_advanceNoticeDays" Min="0"
+                    Label="@L.Translate("LeaveTypeFieldAdvanceNoticeDays")" ReadOnly="@(!CanWrite)" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField T="string" @bind-Value="_attachmentDocName" MaxLength="100"
+                    Label="@L.Translate("LeaveTypeFieldAttachmentDocName")" ReadOnly="@(!CanWrite)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal?" @bind-Value="_attachmentMinDays" Min="0" Format="0.#"
+                    Label="@L.Translate("LeaveTypeFieldAttachmentMinDays")"
+                    ReadOnly="@(!CanWrite)" Disabled="@string.IsNullOrWhiteSpace(_attachmentDocName)" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="LeaveDayCountMethod" @bind-Value="_dayCountMethod"
+                    Label="@L.Translate("LeaveTypeFieldDayCountMethod")" Disabled="@(!CanWrite)">
+                    <MudSelectItem T="LeaveDayCountMethod" Value="LeaveDayCountMethod.WorkingDays">@L.Translate("LeaveTypeDayCountWorking")</MudSelectItem>
+                    <MudSelectItem T="LeaveDayCountMethod" Value="LeaveDayCountMethod.CalendarDays">@L.Translate("LeaveTypeDayCountCalendar")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        @* ---------- (3) ผู้มีสิทธิ์ ---------- *@
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("LeaveTypeSectionEligibility")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_applicableGender" Label="เพศ (เว้นว่าง = ทุกเพศ)" Clearable="true" Disabled="@(!CanWrite)">
+                    <MudSelectItem T="string" Value="@("F")">หญิงเท่านั้น</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("M")">ชายเท่านั้น</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_applicableCountryCode" Label="เฉพาะประเทศ (เว้นว่าง = ทุกประเทศ)" Clearable="true" Disabled="@(!CanWrite)">
+                    @foreach (var c in LeaveCountryHelper.CommonCountries)
+                    {
+                        <MudSelectItem T="string" Value="@c.Code">@c.Label</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="LeaveEntitlementFrequency" @bind-Value="_entitlementFrequency"
+                    Label="@L.Translate("LeaveTypeFieldEntitlementFrequency")" Disabled="@(!CanWrite)">
+                    <MudSelectItem T="LeaveEntitlementFrequency" Value="LeaveEntitlementFrequency.PerYear">@L.Translate("LeaveTypeFreqPerYear")</MudSelectItem>
+                    <MudSelectItem T="LeaveEntitlementFrequency" Value="LeaveEntitlementFrequency.PerEvent">@L.Translate("LeaveTypeFreqPerEvent")</MudSelectItem>
+                    <MudSelectItem T="LeaveEntitlementFrequency" Value="LeaveEntitlementFrequency.OncePerEmployment">@L.Translate("LeaveTypeFreqOncePerEmployment")</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        @* ---------- (4) อ้างอิงกฎหมาย ---------- *@
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">@L.Translate("LeaveTypeSectionLawRef")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_lawReference" Label="มาตรา" ReadOnly="@(!CanWrite)" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal?" @bind-Value="_statutoryMinDays" Min="0" Format="0.#"
+                    Label="วันขั้นต่ำตามกฎหมาย (ต่อปี)" ReadOnly="@(!CanWrite)" Clearable="true" />
+            </MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-5">
+            @if (CanWrite)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
+            }
+            <MudButton Variant="Variant.Text" Href="/leave-requests/leave-types">@L.Translate("LeaveTypeBackToList")</MudButton>
+        </MudStack>
+    }
+    else
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private const string ProgramPath = "/leave-requests/leave-types";
+
+    private bool IsCreate => Id == 0;
+    private bool CanWrite => IsCreate ? _rights?.CanCreate == true : _rights?.CanEdit == true;
+
+    private ProgramRoleService.ProgramRights? _rights;
+    private bool _loaded;
+    private bool _notFound;
+    private string? _error;
+
+    private string? _code;
+    private string? _nameTh;
+    private string? _nameEn;
+    private bool _isStatutory;
+    private string? _lawReference;
+    private decimal? _statutoryMinDays;
+    private string? _applicableGender;
+    private string? _applicableCountryCode;
+    private bool _allowHalfDay = true;
+    private bool _mustBeConsecutive;
+    private bool _allowRetroactive = true;
+    private int? _advanceNoticeDays;
+    private string? _attachmentDocName;
+    private decimal? _attachmentMinDays;
+    private LeaveDayCountMethod _dayCountMethod = LeaveDayCountMethod.WorkingDays;
+    private LeaveEntitlementFrequency _entitlementFrequency = LeaveEntitlementFrequency.PerYear;
+    private string _iconName = LeaveIconCatalog.DefaultIconName;
+    private int _sortOrder;
+    private bool _isActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+
+        if (IsCreate)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _sortOrder = (await context.Lve_LeaveTypes.MaxAsync(t => (int?)t.SortOrder) ?? 0) + 1;
+            _loaded = true;
+            return;
+        }
+
+        await using var loadContext = await DbFactory.CreateDbContextAsync();
+        var type = await loadContext.Lve_LeaveTypes.FirstOrDefaultAsync(t => t.Id == Id);
+        if (type is null)
+        {
+            _notFound = true;
+            _loaded = true;
+            return;
+        }
+
+        _code = type.Code;
+        _nameTh = type.NameTh;
+        _nameEn = type.NameEn;
+        _isStatutory = type.IsStatutory;
+        _lawReference = type.LawReference;
+        _statutoryMinDays = type.StatutoryMinDaysPerYear;
+        _applicableGender = type.ApplicableGender;
+        _applicableCountryCode = type.ApplicableCountryCode;
+        _allowHalfDay = type.AllowHalfDay;
+        _mustBeConsecutive = type.MustBeConsecutive;
+        _allowRetroactive = type.AllowRetroactive;
+        _advanceNoticeDays = type.AdvanceNoticeDays;
+        _attachmentDocName = type.AttachmentDocName;
+        _attachmentMinDays = type.AttachmentMinDays;
+        _dayCountMethod = type.DayCountMethod;
+        _entitlementFrequency = type.EntitlementFrequency;
+        _iconName = type.IconName ?? LeaveIconCatalog.DefaultIconName;
+        _sortOrder = type.SortOrder;
+        _isActive = type.IsActive;
+        _loaded = true;
+    }
+
+    // ต้องต่อเนื่อง = ลาครึ่งวันไม่ได้ — keep the two flags coherent in the
+    // UI (LeaveRequestService guards the same combination server-side).
+    private void OnMustBeConsecutiveChanged(bool value)
+    {
+        _mustBeConsecutive = value;
+        if (value)
+            _allowHalfDay = false;
+    }
+
+    private void OnAllowHalfDayChanged(bool value) => _allowHalfDay = value;
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_nameTh) || string.IsNullOrWhiteSpace(_nameEn))
+        {
+            _error = "กรุณากรอกรหัสและชื่อไทย/อังกฤษให้ครบ";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_attachmentDocName))
+            _attachmentMinDays = null;
+
+        // Second enforcement layer (AD.CRUDManage, both layers always) — a
+        // hidden button stops nobody who replays the circuit event.
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath,
+                IsCreate ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        try
+        {
+            var code = _code.Trim();
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            if (IsCreate)
+            {
+                if (await context.Lve_LeaveTypes.AnyAsync(t => t.Code == code))
+                {
+                    _error = $"มีรหัส '{code}' อยู่แล้ว";
+                    return;
+                }
+                var created = new Lve_LeaveType { Code = code, NameTh = _nameTh, NameEn = _nameEn, IsStatutory = false };
+                ApplyForm(created, code);
+                context.Lve_LeaveTypes.Add(created);
+                await context.SaveChangesAsync();
+                Snackbar.Add("เพิ่มประเภทการลาใหม่เรียบร้อย", Severity.Success);
+            }
+            else
+            {
+                var existing = await context.Lve_LeaveTypes.FirstOrDefaultAsync(t => t.Id == Id);
+                if (existing is null)
+                {
+                    _error = "ไม่พบประเภทการลาที่ต้องการแก้ไข";
+                    return;
+                }
+                if (existing.Code != code && await context.Lve_LeaveTypes.AnyAsync(t => t.Code == code && t.Id != Id))
+                {
+                    _error = $"มีรหัส '{code}' อยู่แล้ว";
+                    return;
+                }
+                ApplyForm(existing, existing.IsStatutory ? existing.Code : code);
+                await context.SaveChangesAsync();
+                Snackbar.Add("บันทึกประเภทการลาเรียบร้อย", Severity.Success);
+            }
+
+            Nav.NavigateTo("/leave-requests/leave-types");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void ApplyForm(Lve_LeaveType target, string code)
+    {
+        target.Code = code;
+        target.NameTh = _nameTh!;
+        target.NameEn = _nameEn!;
+        target.LawReference = string.IsNullOrWhiteSpace(_lawReference) ? null : _lawReference;
+        target.StatutoryMinDaysPerYear = _statutoryMinDays;
+        target.ApplicableGender = string.IsNullOrWhiteSpace(_applicableGender) ? null : _applicableGender;
+        target.ApplicableCountryCode = string.IsNullOrWhiteSpace(_applicableCountryCode) ? null : _applicableCountryCode;
+        target.AllowHalfDay = !_mustBeConsecutive && _allowHalfDay;
+        target.MustBeConsecutive = _mustBeConsecutive;
+        target.AllowRetroactive = _allowRetroactive;
+        target.AdvanceNoticeDays = _advanceNoticeDays is int n && n > 0 ? n : null;
+        target.AttachmentDocName = string.IsNullOrWhiteSpace(_attachmentDocName) ? null : _attachmentDocName.Trim();
+        target.AttachmentMinDays = target.AttachmentDocName is null ? null : _attachmentMinDays;
+        target.DayCountMethod = _dayCountMethod;
+        target.EntitlementFrequency = _entitlementFrequency;
+        target.IconName = _iconName;
+        target.SortOrder = _sortOrder;
+        target.IsActive = _isActive;
+    }
+}

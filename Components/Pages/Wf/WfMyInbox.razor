@@ -4,14 +4,12 @@
 @using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
-@using HRM.Services.Pay
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
 @inject AuthenticationStateProvider AuthProvider
-@inject PrivateFileStorage FileStorage
+@inject NavigationManager Nav
 @attribute [Authorize]
 
 <PageTitle>งานรออนุมัติของฉัน</PageTitle>
@@ -63,7 +61,7 @@
                 <MudStack Row="true" Spacing="1">
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => ApproveAsync(context.jobapproverid))">อนุมัติ</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => RejectAsync(context.jobapproverid))">ปฏิเสธ</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ViewJobAsync(context.jobmasterid))">ดูรายละเอียด</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">ดูรายละเอียด</MudButton>
                 </MudStack>
             </MudTd>
         </RowTemplate>
@@ -95,61 +93,10 @@
     </MudPaper>
 }
 
-@if (_viewingJob is not null)
-{
-    <MudPaper Class="pa-4 mb-4">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h6">รายละเอียดงาน #@_viewingJob.jobmasterid — @_viewingJob.subject</MudText>
-            <MudButton Variant="Variant.Text" OnClick="@(() => _viewingJob = null)">ปิด</MudButton>
-        </MudStack>
-        <MudText Typo="Typo.body2" Class="mt-1">สถานะ: @_viewingJob.status | ระดับปัจจุบัน: @_viewingJob.lastLevel / @_viewingJob.maxlevel</MudText>
-        @{ var viewingDocLink = BuildDocumentLink(_viewingJob); }
-        @if (viewingDocLink is not null)
-        {
-            <MudLink Href="@viewingDocLink" Target="_blank" Class="mt-1">ดูเอกสารต้นทาง (@_viewingJob.reftable #@_viewingJob.refid)</MudLink>
-        }
-        <MudTable Items="_viewingJob.job_user_lists" Dense="true" Class="mt-3">
-            <HeaderContent>
-                <MudTh>ระดับ</MudTh>
-                <MudTh>ผู้อนุมัติ (userid)</MudTh>
-                <MudTh>สถานะ</MudTh>
-                <MudTh>วันที่อนุมัติ</MudTh>
-                <MudTh>ความเห็น</MudTh>
-                <MudTh>เอกสารแนบ</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.wlevel</MudTd>
-                <MudTd>@context.userid</MudTd>
-                <MudTd>@context.jobstatus</MudTd>
-                <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
-                <MudTd>@context.comment</MudTd>
-                <MudTd>
-                    @if (_attachments.TryGetValue(context.jobapproverid, out var files) && files.Count > 0)
-                    {
-                        <MudStack Spacing="0">
-                            @foreach (var f in files)
-                            {
-                                <MudLink Href="@($"/wf/files/attachment/{f.id}")" Target="_blank">@f.files</MudLink>
-                            }
-                        </MudStack>
-                    }
-                    <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(context.jobapproverid, file))">
-                        <ActivatorContent>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">แนบไฟล์</MudButton>
-                        </ActivatorContent>
-                    </MudFileUpload>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-    </MudPaper>
-}
-
 @code {
     private List<job_user_list> _inbox = new();
     private List<wf_workflow> _workflows = new();
     private Dictionary<long, string> _comments = new();
-    private job_master? _viewingJob;
-    private Dictionary<long, List<doc_center>> _attachments = new();
     private bool _loading;
     private string? _error;
     private string? _info;
@@ -221,64 +168,6 @@
         catch (Exception ex)
         {
             _error = "ปฏิเสธไม่สำเร็จ: " + ex.Message;
-        }
-    }
-
-    private async Task ViewJobAsync(long jobMasterId)
-    {
-        _viewingJob = await Engine.GetJobDetailAsync(jobMasterId);
-        await LoadAttachmentsAsync();
-    }
-
-    // Block 8: attachments per approval level — doc_center rows keyed by
-    // refid = job_user_list.jobapproverid (see WorkflowFileEndpoints.cs for
-    // why that's a sufficient key without a reftable discriminator column).
-    private async Task LoadAttachmentsAsync()
-    {
-        _attachments = new();
-        if (_viewingJob is null) return;
-
-        var approverIds = _viewingJob.job_user_lists.Select(a => a.jobapproverid).ToList();
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var docs = await context.doc_centers
-            .Where(d => d.doctypecode == "WF_ATTACHMENT" && d.refid != null && approverIds.Contains(d.refid.Value) && d.isActive != false)
-            .ToListAsync();
-        _attachments = docs.GroupBy(d => d.refid!.Value).ToDictionary(g => g.Key, g => g.ToList());
-    }
-
-    private async Task UploadAttachmentAsync(long jobApproverId, IBrowserFile file)
-    {
-        _error = null;
-        _info = null;
-        try
-        {
-            const long maxSize = 10 * 1024 * 1024; // 10 MB
-            await using var stream = file.OpenReadStream(maxSize);
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            var bytes = ms.ToArray();
-
-            var storedFileName = $"{jobApproverId}_{Guid.NewGuid():N}_{file.Name}";
-            var (relativePath, _) = await FileStorage.SaveAsync("wf-attachments", storedFileName, bytes);
-
-            await using var context = await DbFactory.CreateDbContextAsync();
-            context.doc_centers.Add(new doc_center
-            {
-                refid = jobApproverId,
-                doctypecode = "WF_ATTACHMENT",
-                files = file.Name,
-                path = relativePath,
-                isActive = true,
-                moddate = DateTime.Now,
-            });
-            await context.SaveChangesAsync();
-
-            _info = $"แนบไฟล์ '{file.Name}' สำเร็จ";
-            await LoadAttachmentsAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = "แนบไฟล์ไม่สำเร็จ: " + ex.Message;
         }
     }
 

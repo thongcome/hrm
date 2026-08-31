@@ -50,10 +50,47 @@ public class Lve_LeaveType
     [StringLength(2)]
     public string? ApplicableCountryCode { get; set; }
 
-    // Drives the medical-certificate-attachment UI in LeaveRequestList.razor.
+    // Superseded by AttachmentDocName/AttachmentMinDays (which name the
+    // required document and let it kick in only from a minimum duration).
+    // Column kept so no data is lost and old migrations stay valid, but no
+    // new logic may read it — the 2026-08-31 rule migration copies its
+    // intent into AttachmentDocName.
+    [Obsolete("Use AttachmentDocName/AttachmentMinDays instead — kept only so the column and historical data survive.")]
     public bool RequiresMedicalCert { get; set; }
 
     public bool AllowHalfDay { get; set; } = true;
+
+    // ต้องลาต่อเนื่องเป็นช่วงเดียว (maternity/ordination/military style).
+    // A single date-range request is inherently consecutive, so the only
+    // enforceable rule is "no half-day" — LeaveRequestService guards that.
+    public bool MustBeConsecutive { get; set; }
+
+    // How often the entitlement renews — see LeaveEntitlementFrequency.
+    // Non-PerYear types are not capped/tracked by the yearly balance.
+    public LeaveEntitlementFrequency EntitlementFrequency { get; set; } = LeaveEntitlementFrequency.PerYear;
+
+    // Working-day count (default, existing LeaveDayCalculator path) vs plain
+    // inclusive calendar-day count — see LeaveDayCountMethod.
+    public LeaveDayCountMethod DayCountMethod { get; set; } = LeaveDayCountMethod.WorkingDays;
+
+    // false = start date must not be before today (ลาย้อนหลังไม่ได้).
+    public bool AllowRetroactive { get; set; } = true;
+
+    // Minimum advance notice in days: submission is rejected when the start
+    // date is earlier than today + N. Null = no notice requirement.
+    public int? AdvanceNoticeDays { get; set; }
+
+    // Name of the document that must be attached before the request can be
+    // submitted, e.g. "ใบรับรองแพทย์", "หมายเรียก". Null = no attachment
+    // requirement. Supersedes RequiresMedicalCert.
+    [StringLength(100)]
+    public string? AttachmentDocName { get; set; }
+
+    // When AttachmentDocName is set: the attachment is only mandatory once
+    // the request's duration reaches this many days (e.g. sick = 3 → a 1-2
+    // day sick leave needs no certificate). Null = required from day 1.
+    [Column(TypeName = "decimal(5,1)")]
+    public decimal? AttachmentMinDays { get; set; }
 
     // MudBlazor icon constant name (e.g. "BeachAccess") — see
     // LeaveIconCatalog.cs for the curated picker list and the fallback used

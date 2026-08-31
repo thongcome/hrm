@@ -1,14 +1,20 @@
 @using HRM.Models
+@using HRM.Services
 @using HRM.Services.Audit
+@using HRM.Services.Hr
 @using HRM.Services.Pay
 @using HRM.Services.Shared
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@inherits HRM.Components.Shared.LocalizedComponentBase
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject IAuditLogger AuditLogger
 @inject PrivateFileStorage FileStorage
 @inject ISnackbar Snackbar
+@inject JsonLocalizationService L
+@inject AuthenticationStateProvider AuthProvider
 
 @* Reusable "ข้อมูลบุคลากร" display — the header + tab body extracted verbatim
    from Components/Pages/Employee/EmployeePersonnelProfile.razor so the same
@@ -250,22 +256,91 @@ else
                 </MudTabPanel>
             }
 
-            <MudTabPanel Text="FILE UPLOAD">
-                <MudFileUpload T="IBrowserFile" FilesChanged="UploadDocAsync">
-                    <ActivatorContent>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">แนบไฟล์</MudButton>
-                    </ActivatorContent>
-                </MudFileUpload>
-                <MudTable Items="_documents" Dense="true" Class="mt-3">
+            <MudTabPanel Text="@L.Translate("EmpDocSectionTitle")">
+                @if (!ReadOnlyDocuments)
+                {
+                    @* Upload form: document type is mandatory (CEO order — every
+                       attachment is classified), remark optional. Picking the file
+                       starts the upload immediately, so the guard lives in
+                       UploadDocAsync rather than a submit button. *@
+                    <MudGrid Class="align-center">
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="long?" @bind-Value="_uploadTypeId" Label="@L.Translate("EmpDocType")" Clearable="true" Dense="true">
+                                @foreach (var t in _docTypes)
+                                {
+                                    <MudSelectItem T="long?" Value="@((long?)t.id)">@DocTypeLabel(t)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="5">
+                            <MudTextField @bind-Value="_uploadRemark" Label="@L.Translate("EmpDocRemark")" />
+                        </MudItem>
+                        <MudItem xs="12" sm="3">
+                            <MudFileUpload T="IBrowserFile" FilesChanged="UploadDocAsync">
+                                <ActivatorContent>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">@L.Translate("EmpDocUpload")</MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+                        </MudItem>
+                    </MudGrid>
+                    <MudDivider Class="my-3" />
+                }
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Class="mb-2" Wrap="Wrap.Wrap">
+                    <MudSelect T="long?" @bind-Value="_filterTypeId" Label="@L.Translate("EmpDocFilterByType")" Clearable="true" Dense="true" Style="max-width: 280px;">
+                        <MudSelectItem T="long?" Value="@((long?)null)">@L.Translate("EmpDocTypeAll")</MudSelectItem>
+                        @foreach (var t in _docTypes)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)t.id)">@DocTypeLabel(t)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    @if (!ReadOnlyDocuments)
+                    {
+                        @* CEO: multiple documents of a type stay active side by side;
+                           deactivation is a manual per-row choice, never automatic.
+                           This switch reveals the superseded versions (history). *@
+                        <MudSwitch T="bool" @bind-Value="_showHistory" Color="Color.Primary" Label="@L.Translate("EmpDocShowHistory")" />
+                    }
+                </MudStack>
+
+                <MudTable Items="VisibleDocuments" Dense="true" Class="mt-1">
                     <HeaderContent>
-                        <MudTh>ไฟล์</MudTh><MudTh>วันที่แนบ</MudTh><MudTh></MudTh>
+                        <MudTh>@L.Translate("EmpDocType")</MudTh>
+                        <MudTh>@L.Translate("EmpDocFile")</MudTh>
+                        <MudTh>@L.Translate("EmpDocAttachedDate")</MudTh>
+                        <MudTh>@L.Translate("EmpDocAttachedBy")</MudTh>
+                        <MudTh>@L.Translate("EmpDocRemark")</MudTh>
+                        <MudTh>@L.Translate("EmpDocStatus")</MudTh>
+                        <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd>@context.files</MudTd>
+                        <MudTd>@(context.mas_doc_type is null ? L.Translate("EmpDocTypeUnspecified") : DocTypeLabel(context.mas_doc_type))</MudTd>
+                        <MudTd><MudLink Href="@($"{DocumentDownloadRoute}/{context.id}")" Target="_blank">@context.files</MudLink></MudTd>
                         <MudTd>@(context.moddate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudTd>
-                        <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/employee/files/doc/{context.id}")" Target="_blank">ดาวน์โหลด</MudButton></MudTd>
+                        <MudTd>@(context.modby ?? "-")</MudTd>
+                        <MudTd>@(context.remark ?? "-")</MudTd>
+                        <MudTd>
+                            @if (context.isActive == true)
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">@L.Translate("EmpDocActive")</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Default" Size="Size.Small">@L.Translate("EmpDocInactive")</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            @if (!ReadOnlyDocuments)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                           Color="@(context.isActive == true ? Color.Warning : Color.Success)"
+                                           OnClick="@(() => ToggleDocActiveAsync(context))">
+                                    @(context.isActive == true ? L.Translate("EmpDocDeactivate") : L.Translate("EmpDocReactivate"))
+                                </MudButton>
+                            }
+                        </MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีไฟล์แนบ</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("EmpDocNoFiles")</MudText></NoRecordsContent>
                 </MudTable>
             </MudTabPanel>
         </MudTabs>
@@ -274,6 +349,16 @@ else
 
 @code {
     [Parameter] public long HremployeeId { get; set; }
+
+    // ESS mode (employee viewing their own record): active documents only,
+    // no upload form, no active/superseded toggle — read-only list per CEO
+    // order. HR mode (default) gets the full manage view.
+    [Parameter] public bool ReadOnlyDocuments { get; set; }
+
+    // Download route prefix for document rows. The default is the HR route
+    // (Menu:PAY_ADMIN); the ESS host page passes "/ess/files/profile-doc"
+    // (Endpoints/EssFileEndpoints.cs), which checks self-ownership instead.
+    [Parameter] public string DocumentDownloadRoute { get; set; } = "/employee/files/doc";
 
     private Hremployee? _emp;
     private bool _notFound;
@@ -291,6 +376,19 @@ else
     private List<Pay_PositionSalaryHistory> _positionHistory = new();
     private List<Hrd_EmploymentHistory> _committeeHistory = new();
     private List<doc_center> _documents = new();
+    private List<mas_doc_type> _docTypes = new();
+    private long? _uploadTypeId;
+    private string? _uploadRemark;
+    private long? _filterTypeId;
+    private bool _showHistory;
+
+    // Filter/history are applied in memory over the already-loaded rows —
+    // the per-employee document count is small, and this keeps the toggle
+    // and filter instant. ESS loads active rows only (see the query below),
+    // so _showHistory can never leak superseded versions there.
+    private IEnumerable<doc_center> VisibleDocuments => _documents
+        .Where(d => _showHistory || d.isActive == true)
+        .Where(d => _filterTypeId == null || d.mas_doc_type_id == _filterTypeId);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -357,15 +455,43 @@ else
                 .OrderByDescending(h => h.EffectiveDate)
                 .ToListAsync();
 
-        _documents = await context.doc_centers
-            .Where(d => d.doctypecode == "EMPLOYEE_PROFILE_DOC" && d.refid == HremployeeId && d.isActive == true)
-            .OrderByDescending(d => d.moddate).ToListAsync();
+        // Employee-document types: legacy mas_doc_type master, rows tagged
+        // group_ref = "EMPLOYEE_PROFILE_DOC" (seeded idempotently at startup
+        // by Services/Hr/EmployeeDocTypeSeeder — standard types per CEO order).
+        _docTypes = await context.mas_doc_types
+            .Where(t => t.group_ref == EmployeeDocTypeSeeder.GroupRef && t.isActive)
+            .OrderBy(t => t.orderTh).ThenBy(t => t.name)
+            .ToListAsync();
+
+        _documents = await LoadDocumentsAsync(context);
 
         await AuditLogger.LogAccessAsync("Hremployee", HremployeeId.ToString(), isSensitive: true, note: "personnel profile view");
     }
 
+    // One query shape for both hosts: ESS (ReadOnlyDocuments) sees active
+    // rows only; HR loads everything and the "ดูของเก่า" switch decides what
+    // renders. doctypecode stays "EMPLOYEE_PROFILE_DOC" for every row (the
+    // download endpoints key on it); the document TYPE rides in
+    // mas_doc_type_id, the FK the legacy table already has.
+    private async Task<List<doc_center>> LoadDocumentsAsync(HRMContext context)
+    {
+        var query = context.doc_centers.Include(d => d.mas_doc_type)
+            .Where(d => d.doctypecode == "EMPLOYEE_PROFILE_DOC" && d.refid == HremployeeId);
+        if (ReadOnlyDocuments)
+            query = query.Where(d => d.isActive == true);
+        return await query.OrderByDescending(d => d.moddate).ToListAsync();
+    }
+
     private async Task UploadDocAsync(IBrowserFile file)
     {
+        if (ReadOnlyDocuments) return; // ESS mode never renders the upload form; belt-and-braces
+
+        if (_uploadTypeId is null)
+        {
+            Snackbar.Add(L.Translate("EmpDocSelectTypeFirst"), Severity.Warning);
+            return;
+        }
+
         try
         {
             const long maxSize = 10 * 1024 * 1024; // 10 MB
@@ -378,27 +504,63 @@ else
             var (relativePath, _) = await FileStorage.SaveAsync("employee-profile-docs", storedFileName, bytes);
 
             await using var context = await DbFactory.CreateDbContextAsync();
+            // doc_center.id is a real IDENTITY column (verified via
+            // sys.columns.is_identity), so plain Add is safe. Note: a new
+            // upload NEVER deactivates older documents of the same type —
+            // CEO explicitly wants several active at once, with a manual
+            // per-row "ปลดเป็นของเก่า" toggle instead.
             context.doc_centers.Add(new doc_center
             {
                 refid = HremployeeId,
                 doctypecode = "EMPLOYEE_PROFILE_DOC",
+                mas_doc_type_id = _uploadTypeId,
                 files = file.Name,
                 path = relativePath,
+                remark = string.IsNullOrWhiteSpace(_uploadRemark) ? null : _uploadRemark.Trim(),
                 isActive = true,
                 moddate = DateTime.Now,
+                modby = await CurrentActorAsync(),
             });
             await context.SaveChangesAsync();
 
-            Snackbar.Add($"แนบไฟล์ '{file.Name}' สำเร็จ", Severity.Success);
-            _documents = await context.doc_centers
-                .Where(d => d.doctypecode == "EMPLOYEE_PROFILE_DOC" && d.refid == HremployeeId && d.isActive == true)
-                .OrderByDescending(d => d.moddate).ToListAsync();
+            Snackbar.Add(string.Format(L.Translate("EmpDocUploadSuccessTemplate"), file.Name), Severity.Success);
+            _uploadRemark = null;
+            _documents = await LoadDocumentsAsync(context);
         }
         catch (Exception ex)
         {
-            Snackbar.Add("แนบไฟล์ไม่สำเร็จ: " + ex.Message, Severity.Error);
+            Snackbar.Add(L.Translate("EmpDocUploadFailed") + ": " + ex.Message, Severity.Error);
         }
     }
+
+    // Manual per-row active/superseded flip — soft state change only, the
+    // row and the stored file are never deleted (version history). The
+    // automatic audit hook in HRMContext.Audit.cs logs the update.
+    private async Task ToggleDocActiveAsync(doc_center doc)
+    {
+        if (ReadOnlyDocuments) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.doc_centers.FirstOrDefaultAsync(d => d.id == doc.id);
+        if (row is null) return;
+
+        row.isActive = row.isActive != true;
+        row.moddate = DateTime.Now;
+        row.modby = await CurrentActorAsync();
+        await context.SaveChangesAsync();
+
+        _documents = await LoadDocumentsAsync(context);
+        Snackbar.Add(L.Translate("EmpDocStatusUpdated"), Severity.Success);
+    }
+
+    private async Task<string> CurrentActorAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return state.User.Identity?.Name ?? "unknown";
+    }
+
+    private string DocTypeLabel(mas_doc_type t)
+        => L.CurrentLanguage == "en" && !string.IsNullOrWhiteSpace(t.name_en) ? t.name_en! : (t.name ?? t.code ?? "-");
 
     private string TenureText()
     {

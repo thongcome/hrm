@@ -1,4 +1,5 @@
 @page "/exp/admin/claims"
+@using System.Globalization
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Exp
@@ -85,7 +86,9 @@
     private string? _error;
 
     private long? _pushingClaimId;
-    private string _targetPeriod = DateTime.Today.ToString("yyyyMM");
+    // InvariantCulture: under a Thai OS locale the default calendar is Buddhist,
+    // so bare yyyyMM would emit "2569xx" and never match any payroll period.
+    private string _targetPeriod = DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
 
     protected override async Task OnInitializedAsync()
     {
@@ -110,7 +113,7 @@
     private void OpenPushDialog(long claimId)
     {
         _pushingClaimId = claimId;
-        _targetPeriod = DateTime.Today.ToString("yyyyMM");
+        _targetPeriod = DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
         _error = null;
     }
 
