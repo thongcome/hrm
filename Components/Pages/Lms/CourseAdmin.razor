@@ -1,6 +1,7 @@
 @page "/lms/courses"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Lms
 @using HRM.Services.Pay
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -10,6 +11,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject PrivateFileStorage FileStorage
+@inject LmsMandatoryTrainingService MandatoryTrainingSvc
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
 
@@ -149,15 +151,45 @@
                 <MudItem xs="12" sm="8"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddQuestionAsync" Class="mt-2">เพิ่มคำถาม</MudButton></MudItem>
             </MudGrid>
         </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">บังคับสำหรับ (Mandatory Training)</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                กำหนดว่าใครต้องเรียนหลักสูตรนี้โดยอัตโนมัติ — ตอนเริ่ม Onboarding หรือตอนได้รับมอบหมายตำแหน่งที่ตรงเงื่อนไข ระบบจะมอบหมายให้ทันที (แค่ติดตามว่าเรียนหรือยัง ไม่บังคับปิดกั้นการทำงานอื่น)
+            </MudText>
+
+            <MudTable Items="_requirements" Dense="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>เงื่อนไข</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(context.PositionName ?? "พนักงานใหม่ทุกคน (ทุกตำแหน่ง)")</MudTd>
+                    <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveRequirementAsync(context.Requirement.Id))" /></MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Typo="Typo.body2">หลักสูตรนี้ยังไม่ถูกตั้งเป็นบังคับสำหรับใคร</MudText></NoRecordsContent>
+            </MudTable>
+
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="8">
+                    <MudAutocomplete T="Pos_ExecType" Label="เฉพาะตำแหน่ง (ปล่อยว่าง = บังคับพนักงานใหม่ทุกคน)" Value="_newReqPosition" ValueChanged="@(p => _newReqPosition = p)"
+                        SearchFunc="SearchPositionsAsync" ToStringFunc="@(p => p?.Name ?? "")" ResetValueOnEmptyText="true" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4"><MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddRequirementAsync" Class="mt-2">เพิ่มเงื่อนไข</MudButton></MudItem>
+            </MudGrid>
+        </MudPaper>
     }
 }
 
 @code {
     private string? _companyId;
+    private long _actorUserId;
     private List<Lms_Course> _courses = new();
     private List<Lms_CourseCategory> _categories = new();
     private List<doc_center> _materials = new();
     private List<Lms_QuizQuestion> _questions = new();
+    private List<LmsMandatoryTrainingService.RequirementRow> _requirements = new();
+    private Pos_ExecType? _newReqPosition;
     private bool _showForm;
     private long? _editingId;
     private string? _error;
@@ -168,6 +200,7 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -185,7 +218,7 @@
     {
         _editingId = null;
         _form = new() { CompanyId = _companyId!, DeliveryType = CourseDeliveryType.Classroom, IsActive = true };
-        _materials = new(); _questions = new();
+        _materials = new(); _questions = new(); _requirements = new();
         _showForm = true;
         _error = null;
     }
@@ -200,8 +233,47 @@
         _form = course;
         _materials = await context.doc_centers.Where(d => d.doctypecode == "LMS_MATERIAL" && d.refid == id && d.isActive == true).ToListAsync();
         _questions = await context.Lms_QuizQuestions.Where(q => q.CourseId == id && q.IsActive).OrderBy(q => q.SortOrder).ToListAsync();
+        await LoadRequirementsAsync();
         _showForm = true;
         _error = null;
+    }
+
+    private async Task LoadRequirementsAsync()
+    {
+        if (_editingId is not long courseId) return;
+        var all = await MandatoryTrainingSvc.GetRequirementsAsync(_companyId!);
+        _requirements = all.Where(r => r.Requirement.CourseId == courseId).ToList();
+    }
+
+    private async Task<IEnumerable<Pos_ExecType>> SearchPositionsAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Pos_ExecTypes.Where(p => p.CompanyId == _companyId && p.IsActive);
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(p => p.Name.Contains(term));
+        return await query.OrderBy(p => p.Name).Take(20).ToListAsync(ct);
+    }
+
+    private async Task AddRequirementAsync()
+    {
+        if (_editingId is not long courseId) return;
+        try
+        {
+            await MandatoryTrainingSvc.AddRequirementAsync(_companyId!, courseId, _newReqPosition?.Id, _actorUserId);
+            _newReqPosition = null;
+            await LoadRequirementsAsync();
+            Snackbar.Add("เพิ่มเงื่อนไขบังคับเรียนเรียบร้อย", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Warning);
+        }
+    }
+
+    private async Task RemoveRequirementAsync(long requirementId)
+    {
+        await MandatoryTrainingSvc.RemoveRequirementAsync(requirementId);
+        await LoadRequirementsAsync();
     }
 
     private async Task SaveAsync()

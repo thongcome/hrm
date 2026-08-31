@@ -27,8 +27,6 @@ public class Lms_TrainingNeed
     [Required, StringLength(250)]
     public string RequestedTopic { get; set; } = null!;
 
-    public long? SourceCompetencyGapId { get; set; }
-
     public TrainingNeedStatus Status { get; set; } = TrainingNeedStatus.Requested;
 
     public long RequestedByUserId { get; set; }

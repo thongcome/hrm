@@ -10,6 +10,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject LmsEnrollmentService EnrollmentService
+@inject LmsMandatoryTrainingService MandatoryTrainingSvc
 @attribute [Authorize(Policy = "Menu:LMS_ACCESS")]
 
 <PageTitle>ประวัติการอบรมของฉัน</PageTitle>
@@ -24,6 +25,30 @@ else if (_employee is null)
 }
 else
 {
+    @if (_mandatory.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h5">คอร์สที่ต้องเรียน (บังคับ)</MudText>
+            <MudTable Items="_mandatory" Dense="true" Hover="true" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>หลักสูตร</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.CourseTitle</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@MandatoryStatusColor(context.Status)">@MandatoryStatusLabel(context.Status)</MudChip></MudTd>
+                    <MudTd>
+                        @if (context.Status == LmsMandatoryTrainingService.MandatoryStatus.NotEnrolled)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Href="/ess/lms/catalog">ลงทะเบียน</MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h5">ประวัติการอบรมของฉัน</MudText>
         <MudButton Href="/ess/lms/catalog" Variant="Variant.Text" Class="mt-1">&larr; ดูรอบอบรมที่เปิดรับสมัคร</MudButton>
@@ -63,6 +88,7 @@ else
     private Hremployee? _employee;
     private bool _notFound;
     private List<Row> _rows = new();
+    private List<LmsMandatoryTrainingService.AssignmentStatusRow> _mandatory = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -95,7 +121,23 @@ else
         var courses = await context.Lms_Courses.Where(c => courseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
 
         _rows = enrollments.Select(e => new Row(e, courses[sessions[e.CourseSessionId].CourseId], sessions[e.CourseSessionId])).ToList();
+
+        _mandatory = await MandatoryTrainingSvc.GetStatusForEmployeeAsync(_employee!.id);
     }
+
+    private static Color MandatoryStatusColor(LmsMandatoryTrainingService.MandatoryStatus s) => s switch
+    {
+        LmsMandatoryTrainingService.MandatoryStatus.Completed => Color.Success,
+        LmsMandatoryTrainingService.MandatoryStatus.Enrolled => Color.Info,
+        _ => Color.Warning,
+    };
+
+    private static string MandatoryStatusLabel(LmsMandatoryTrainingService.MandatoryStatus s) => s switch
+    {
+        LmsMandatoryTrainingService.MandatoryStatus.Completed => "เรียนจบแล้ว",
+        LmsMandatoryTrainingService.MandatoryStatus.Enrolled => "ลงทะเบียนแล้ว",
+        _ => "ยังไม่ลงทะเบียน",
+    };
 
     private static Color StatusColor(EnrollmentStatus s) => s switch
     {

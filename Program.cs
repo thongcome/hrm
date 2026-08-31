@@ -444,6 +444,7 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 builder.Services.AddScoped<HRM.Services.Lms.LmsEnrollmentService>();
 builder.Services.AddScoped<HRM.Services.Lms.LmsQuizService>();
 builder.Services.AddScoped<HRM.Services.Lms.LmsTrainingBudgetService>();
+builder.Services.AddScoped<HRM.Services.Lms.LmsMandatoryTrainingService>();
 // ----- end Lms_* module -----
 
 // ----- Km_* module (Knowledge Management, HRD Phase 6) -----

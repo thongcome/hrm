@@ -100,5 +100,38 @@ public class PerfGoalService(IDbContextFactory<HRMContext> dbFactory)
             goal.CurrentValue = valueAtCheckIn;
 
         await context.SaveChangesAsync(ct);
+
+        if (goal.ParentGoalId is long parentId)
+            await RollUpToParentAsync(context, parentId, ct);
+    }
+
+    // A child goal's own unit rarely matches its parent's (e.g. a "close 5
+    // deals" child under a "เพิ่มยอดขาย 10,000,000 บาท" parent) — so rollup
+    // can't sum literal CurrentValue across children. Instead each
+    // measurable child contributes its own completion RATIO
+    // (CurrentValue/TargetValue, clamped 0-1), the parent's CurrentValue is
+    // set to (parent.TargetValue × average child ratio), and that keeps
+    // rendering through the exact same "CurrentValue / TargetValue Unit"
+    // display every goal already uses (PerfGoalTree.razor) — the parent
+    // just stops being self-reported once it has measurable children.
+    // Recurses upward so a grandparent also reflects the cascade, not just
+    // the immediate parent.
+    private static async Task RollUpToParentAsync(HRMContext context, long parentGoalId, CancellationToken ct)
+    {
+        var parent = await context.Perf_Goals.FirstOrDefaultAsync(g => g.Id == parentGoalId, ct);
+        if (parent is null || parent.TargetValue is not decimal parentTarget || parentTarget == 0) return;
+
+        var children = await context.Perf_Goals.Where(g => g.ParentGoalId == parentGoalId).ToListAsync(ct);
+        var ratios = children
+            .Where(c => c.TargetValue is decimal t && t != 0 && c.CurrentValue is not null)
+            .Select(c => Math.Clamp(c.CurrentValue!.Value / c.TargetValue!.Value, 0m, 1m))
+            .ToList();
+        if (ratios.Count == 0) return; // no measurable child yet — leave parent's own value alone
+
+        parent.CurrentValue = Math.Round(parentTarget * ratios.Average(), 2);
+        await context.SaveChangesAsync(ct);
+
+        if (parent.ParentGoalId is long grandparentId)
+            await RollUpToParentAsync(context, grandparentId, ct);
     }
 }

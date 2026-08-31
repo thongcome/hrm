@@ -555,6 +555,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Lms_QuizAnswer> Lms_QuizAnswers { get; set; }
     public virtual DbSet<Lms_TrainingNeed> Lms_TrainingNeeds { get; set; }
     public virtual DbSet<Lms_TrainingBudget> Lms_TrainingBudgets { get; set; }
+    public virtual DbSet<Lms_CourseRequirement> Lms_CourseRequirements { get; set; }
+    public virtual DbSet<Lms_MandatoryAssignment> Lms_MandatoryAssignments { get; set; }
     // ----- end Lms_* module -----
 
     // ----- Km_* module (Knowledge Management, HRD Phase 6) -----

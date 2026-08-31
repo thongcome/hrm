@@ -1,4 +1,5 @@
 using HRM.Models;
+using HRM.Services.Lms;
 using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Services.Hrd;
@@ -27,6 +28,18 @@ public class LifecycleTaskService
             ?? throw new InvalidOperationException("ไม่พบพนักงาน");
 
         await StartCaseAsync(context, emp, LifecycleTaskDirection.Onboarding, actorUserId, ct);
+
+        // Deliberately outside StartCaseAsync's own idempotency guard —
+        // that guard only protects the checklist-task copy from
+        // duplicating, but re-running onboarding-start (e.g. re-visiting
+        // the page) should still pick up any mandatory-course rule added
+        // since the case first started. SyncAssignmentsAsync is itself
+        // idempotent per (employee, course), so calling it every time is
+        // safe. Covers the common case where a position is already
+        // assigned by the time onboarding starts; EmployeePositionSync.cs
+        // covers the other order (position assigned/changed afterward).
+        await LmsMandatoryTrainingHelper.SyncAssignmentsAsync(context, hremployeeId, ct);
+        await context.SaveChangesAsync(ct);
     }
 
     public async Task StartOffboardingAsync(long hremployeeId, long actorUserId, CancellationToken ct = default)

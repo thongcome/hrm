@@ -1,4 +1,5 @@
 using HRM.Models;
+using HRM.Services.Lms;
 using HRM.Services.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -134,6 +135,15 @@ public static class EmployeePositionSync
             slot.EmpNo = curEmp?.EmpNo;
             if (curEmp is not null)
             {
+                // Position-scoped mandatory training (Lms_CourseRequirement)
+                // — covers both a brand-new appointment and a transfer into
+                // a different position, either of which can newly require
+                // courses this employee didn't need before. Complements the
+                // onboarding-start sync in LifecycleTaskService.cs, which
+                // only fires once at hire time.
+                await LmsMandatoryTrainingHelper.SyncAssignmentsForPositionAsync(context, curId, slot.PosExecTypeId, ct);
+
+
                 if (slot.IsActive && slot.OrganizationId is long orgId)
                 {
                     var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == orgId, ct);

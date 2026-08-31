@@ -1,0 +1,78 @@
+@page "/lms/mandatory-compliance"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Lms
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthenticationStateProvider AuthProvider
+@inject LmsMandatoryTrainingService MandatoryTrainingSvc
+@attribute [Authorize(Policy = "Menu:LMS_ADMIN")]
+
+<PageTitle>ติดตามคอร์สบังคับ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ติดตามการเรียนคอร์สบังคับ</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        รายชื่อพนักงานที่ถูกมอบหมายคอร์สบังคับ (ตอน Onboarding หรือตอนได้รับตำแหน่งที่กำหนดไว้) พร้อมสถานะการเรียน — รายการนี้ใช้ติดตามอย่างเดียว ไม่ได้บล็อกการทำงานใดๆ
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" Spacing="4" Class="mb-3">
+            <MudText Typo="Typo.body2">ยังไม่ลงทะเบียน: <b>@_rows.Count(r => r.Status == LmsMandatoryTrainingService.MandatoryStatus.NotEnrolled)</b></MudText>
+            <MudText Typo="Typo.body2">ลงทะเบียนแล้ว: <b>@_rows.Count(r => r.Status == LmsMandatoryTrainingService.MandatoryStatus.Enrolled)</b></MudText>
+            <MudText Typo="Typo.body2">เรียนจบแล้ว: <b>@_rows.Count(r => r.Status == LmsMandatoryTrainingService.MandatoryStatus.Completed)</b></MudText>
+        </MudStack>
+
+        <MudTable Items="_rows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>รหัสพนักงาน</MudTh>
+                <MudTh>ชื่อ</MudTh>
+                <MudTh>หลักสูตร</MudTh>
+                <MudTh>มอบหมายเมื่อ</MudTh>
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo</MudTd>
+                <MudTd>@context.EmployeeName</MudTd>
+                <MudTd>@context.CourseTitle</MudTd>
+                <MudTd>@context.AssignedDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการมอบหมายคอร์สบังคับ</MudText></NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private List<LmsMandatoryTrainingService.ComplianceRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        _rows = await MandatoryTrainingSvc.GetComplianceReportAsync(_companyId);
+    }
+
+    private static Color StatusColor(LmsMandatoryTrainingService.MandatoryStatus s) => s switch
+    {
+        LmsMandatoryTrainingService.MandatoryStatus.Completed => Color.Success,
+        LmsMandatoryTrainingService.MandatoryStatus.Enrolled => Color.Info,
+        _ => Color.Warning,
+    };
+
+    private static string StatusLabel(LmsMandatoryTrainingService.MandatoryStatus s) => s switch
+    {
+        LmsMandatoryTrainingService.MandatoryStatus.Completed => "เรียนจบแล้ว",
+        LmsMandatoryTrainingService.MandatoryStatus.Enrolled => "ลงทะเบียนแล้ว",
+        _ => "ยังไม่ลงทะเบียน",
+    };
+}
