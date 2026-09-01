@@ -56,14 +56,22 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        @* KeepPanelsAlive is the fix for "คลิกแท็บแล้วค้าง": with 11 data-heavy
-           panels, the MudTabs default disposes/re-renders a panel on every
-           click — a full server-circuit render each time. Alive panels render
-           once and switch instantly. Data was already loaded up-front, so
-           this costs one heavier first render only. *@
-        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" KeepPanelsAlive="true"
-                 Color="Color.Primary" SliderColor="Color.Secondary" ActiveTabClass="mud-primary-text">
-            <MudTabPanel Text="ข้อมูลทั่วไป" Icon="@Icons.Material.Filled.Badge">
+        @* "คลิกแท็บแล้วค้าง" fix (1 ก.ย. 2569): MudTabs was replaced by a
+           plain button strip + one @if body per tab, so exactly ONE section's
+           markup lives in the DOM at a time. MudTabs' default disposes/rebuilds
+           the active panel on every click (a full server-circuit render of a
+           heavy MudTable — the hang), and KeepPanelsAlive traded that for
+           rendering all 11 tables up-front (a heavy first load). This renders
+           only the selected section and switching is a tiny state change — no
+           MudTabs animation/measure, no per-click table teardown. *@
+        <div class="d-flex flex-wrap gap-2 mb-3">
+@foreach (var t in VisibleTabs())
+{
+<MudButton Variant="@(_tab == t.Key ? Variant.Filled : Variant.Text)" Color="Color.Primary" Size="Size.Small" StartIcon="@t.Icon" OnClick="@(() => _tab = t.Key)" Class="text-none">@t.Label</MudButton>
+}
+</div>
+            @if (_tab == "general")
+{
                 <MudGrid Class="pa-2">
                     <MudItem xs="12" md="8">
                         <MudText Typo="Typo.subtitle1" Class="mb-2">ข้อมูลทั่วไป</MudText>
@@ -114,9 +122,10 @@ else
                 {
                     <MudText Typo="Typo.body2">@AddressText(_registeredAddress)</MudText>
                 }
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ข้อมูลเพิ่มเติม" Icon="@Icons.Material.Filled.Info">
+            @if (_tab == "more")
+{
                 <MudGrid Class="pa-2">
                     <MudItem xs="6"><MudTextField Value="@(_emp.ContractNo ?? "-")" Label="เลขที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
                     <MudItem xs="6"><MudTextField Value="@(_emp.ContractDate?.ToString("dd/MM/yyyy") ?? "-")" Label="วันที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
@@ -134,9 +143,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{HremployeeId}/contact-person")">บุคคลติดต่อในยามฉุกเฉิน</MudLink></MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประวัติครอบครัว" Icon="@Icons.Material.Filled.FamilyRestroom">
+            @if (_tab == "family")
+{
                 <MudTable Items="_family" Dense="true">
                     <HeaderContent>
                         <MudTh>ความสัมพันธ์</MudTh><MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>อาชีพ</MudTh><MudTh>สถานะ</MudTh>
@@ -150,9 +160,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{HremployeeId}/family")">บุคคลในครอบครัว</MudLink></MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ข้อมูลบุตร" Icon="@Icons.Material.Filled.ChildCare">
+            @if (_tab == "children")
+{
                 <MudTable Items="_children" Dense="true">
                     <HeaderContent>
                         <MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>กำลังศึกษา</MudTh><MudTh>ใช้สิทธิลดหย่อน</MudTh>
@@ -165,9 +176,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูลบุตร — จัดการที่ <MudLink Href="@($"/employee/{HremployeeId}/family")">บุคคลในครอบครัว</MudLink></MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประวัติการทำงาน" Icon="@Icons.Material.Filled.WorkHistory">
+            @if (_tab == "workhist")
+{
                 <MudText Typo="Typo.body2" Class="mb-2">เหตุการณ์สำคัญของการจ้างงาน (จากข้อมูลพนักงานโดยตรง)</MudText>
                 <MudSimpleTable Dense="true">
                     <tbody>
@@ -180,9 +192,10 @@ else
                         }
                     </tbody>
                 </MudSimpleTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประวัติวุฒิการศึกษา" Icon="@Icons.Material.Filled.School">
+            @if (_tab == "education")
+{
                 <MudTable Items="_education" Dense="true">
                     <HeaderContent>
                         <MudTh>ระดับ</MudTh><MudTh>วุฒิ/สาขา</MudTh><MudTh>สถาบัน</MudTh><MudTh>ปีที่จบ</MudTh><MudTh>เกรดเฉลี่ย</MudTh>
@@ -196,9 +209,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{HremployeeId}/education")">ประวัติการศึกษา</MudLink></MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประสบการณ์ทำงาน" Icon="@Icons.Material.Filled.Work">
+            @if (_tab == "experience")
+{
                 <MudTable Items="_experience" Dense="true">
                     <HeaderContent>
                         <MudTh>ตำแหน่ง</MudTh><MudTh>บริษัท</MudTh><MudTh>ช่วงเวลา</MudTh>
@@ -210,9 +224,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีข้อมูล — จัดการที่ <MudLink Href="@($"/employee/{HremployeeId}/experience")">ประสบการณ์ก่อนเข้าทำงาน</MudLink></MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประเมินการทำงาน" Icon="@Icons.Material.Filled.Assessment">
+            @if (_tab == "evaluation")
+{
                 <MudTable Items="_evaluations" Dense="true" Hover="true">
                     <HeaderContent>
                         <MudTh>รอบประเมิน</MudTh><MudTh>คะแนนรวม</MudTh><MudTh>เกรด</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
@@ -226,9 +241,10 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีผลการประเมิน</MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
-            <MudTabPanel Text="ประวัติการโยกย้ายตำแหน่ง" Icon="@Icons.Material.Filled.SwapHoriz">
+            @if (_tab == "transfer")
+{
                 <MudTable Items="_positionHistory" Dense="true">
                     <HeaderContent>
                         <MudTh>วันที่</MudTh><MudTh>ประเภท</MudTh><MudTh>ตำแหน่งเดิม</MudTh><MudTh>ตำแหน่งใหม่</MudTh><MudTh>เหตุผล</MudTh>
@@ -242,11 +258,12 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประวัติการโยกย้ายตำแหน่ง/ปรับเงินเดือน</MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
+            }
 
             @if (_committeeHistory.Any())
             {
-                <MudTabPanel Text="ประวัติทำงานในคณะทำงาน" Icon="@Icons.Material.Filled.Groups">
+                @if (_tab == "committee")
+{
                     <MudTable Items="_committeeHistory" Dense="true">
                         <HeaderContent>
                             <MudTh>วันที่มีผล</MudTh><MudTh>ตำแหน่ง/คณะ</MudTh><MudTh>สังกัด</MudTh><MudTh>สถานะ</MudTh><MudTh>เหตุผล/หมายเหตุ</MudTh>
@@ -259,10 +276,11 @@ else
                             <MudTd>@(context.Reason ?? "-")</MudTd>
                         </RowTemplate>
                     </MudTable>
-                </MudTabPanel>
+                }
             }
 
-            <MudTabPanel Text="@L.Translate("EmpDocSectionTitle")" Icon="@Icons.Material.Filled.Folder">
+            @if (_tab == "docs")
+{
                 @if (!ReadOnlyDocuments)
                 {
                     @* Upload form: document type is mandatory (CEO order — every
@@ -348,13 +366,39 @@ else
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("EmpDocNoFiles")</MudText></NoRecordsContent>
                 </MudTable>
-            </MudTabPanel>
-        </MudTabs>
+            }
+        
     </MudPaper>
 }
 
 @code {
     [Parameter] public long HremployeeId { get; set; }
+
+    // Self-managed tab strip (replaces MudTabs — see the comment above the
+    // strip). Exactly one section renders at a time, keyed by _tab. The
+    // committee tab appears only when there is committee history; the docs
+    // tab label is localized.
+    private string _tab = "general";
+    private sealed record ProfileTab(string Key, string Label, string Icon);
+    private List<ProfileTab> VisibleTabs()
+    {
+        var tabs = new List<ProfileTab>
+        {
+            new("general", "ข้อมูลทั่วไป", Icons.Material.Filled.Badge),
+            new("more", "ข้อมูลเพิ่มเติม", Icons.Material.Filled.Info),
+            new("family", "ประวัติครอบครัว", Icons.Material.Filled.FamilyRestroom),
+            new("children", "ข้อมูลบุตร", Icons.Material.Filled.ChildCare),
+            new("workhist", "ประวัติการทำงาน", Icons.Material.Filled.WorkHistory),
+            new("education", "ประวัติวุฒิการศึกษา", Icons.Material.Filled.School),
+            new("experience", "ประสบการณ์ทำงาน", Icons.Material.Filled.Work),
+            new("evaluation", "ประเมินการทำงาน", Icons.Material.Filled.Assessment),
+            new("transfer", "ประวัติการโยกย้ายตำแหน่ง", Icons.Material.Filled.SwapHoriz),
+        };
+        if (_committeeHistory.Any())
+            tabs.Add(new("committee", "ประวัติทำงานในคณะทำงาน", Icons.Material.Filled.Groups));
+        tabs.Add(new("docs", L.Translate("EmpDocSectionTitle"), Icons.Material.Filled.Folder));
+        return tabs;
+    }
 
     // ESS mode (employee viewing their own record): active documents only,
     // no upload form, no active/superseded toggle — read-only list per CEO
