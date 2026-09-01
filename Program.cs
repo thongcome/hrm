@@ -142,7 +142,22 @@ builder.Services.AddDbContextFactory<HRMContext>(options =>
 builder.Services.AddQuickGridEntityFrameworkAdapter();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = true;
+        // OWASP A07 (security review 1 ก.ย. 2569): Identity's default minimum
+        // is 6 — raise to the org standard the StrongPasswordAttribute already
+        // implies (8 + upper/lower/digit/special) so the token-reset path
+        // enforces it too, not only the opt-in form attribute. Lockout stays
+        // on Identity defaults (5 attempts / 5 min), already exercised by
+        // CheckPasswordSignInAsync(lockoutOnFailure: true).
+        options.Password.RequiredLength = 8;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireDigit = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+    })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders()
@@ -265,7 +280,12 @@ builder.Services.AddSingleton<IEmailSender, EmailSender>();
 // Program.cs
 builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 
-builder.Services.AddScoped<AuthService>();
+// OWASP A02 (security review 1 ก.ย. 2569): AuthService/PasswordHelper use an
+// unsalted SHA-256 legacy scheme. It has NO caller — all sign-in goes through
+// SignInManager<ApplicationUser> (PBKDF2) — so the DI registration is removed
+// so the weak verifier can never be injected/reached. (The class files are
+// left in place as dead code to keep this change minimal; delete later.)
+// builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HRM.Services.Login.UserProvisioningService>();
 
 // AD.CRUDManage — per-action page rights read through a ~60s memory cache
@@ -537,8 +557,13 @@ else
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
-    app.UseMigrationsEndPoint();
+    // NOTE: UseMigrationsEndPoint() is intentionally NOT called in production —
+    // it exposes an endpoint that can apply EF migrations, which must never be
+    // reachable by end users (OWASP A05). It stays in the Development branch only.
 }
+
+// OWASP A05: security response headers (CSP + 4 others) on every response.
+app.UseMiddleware<HRM.Middleware.SecurityHeadersMiddleware>();
 
 app.UseStaticFiles(new StaticFileOptions
 {
