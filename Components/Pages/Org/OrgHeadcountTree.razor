@@ -62,12 +62,10 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
-        // Single-active-company rule: only the active company's tree renders.
-        var activeCompany = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
-        _allOrgs = await context.com_organizations
-            .Where(o => activeCompany != null && o.comp_code == activeCompany.code)
-            .ToListAsync();
-        _roots = _allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
+        // CEO 1 ก.ย. 2569: ดึงใน com_organization เลย — active roots only,
+        // children via parent_code linkage; no com_company join.
+        _allOrgs = await context.com_organizations.ToListAsync();
+        _roots = _allOrgs.Where(o => (o.istop || string.IsNullOrEmpty(o.parent_code)) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
 
         var slots = await context.Pos_PositionSlots
             .Where(s => s.CompanyId == _companyId && s.IsActive && s.OrganizationId != null)

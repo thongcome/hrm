@@ -452,13 +452,13 @@
         // Deliberately no initial load here — see the page-level comment on
         // why this list waits for an explicit search.
 
-        // Tree tab shows the ACTIVE company's tree only (CEO rule 1 ก.ย.
-        // 2569: one active company at a time; comp_code == com_company.code
-        // is the scoping key, backfilled for the legacy rows).
-        var activeCompany = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
-        _allOrgsForTree = await context.com_organizations
-            .Where(o => activeCompany != null && o.comp_code == activeCompany.code)
-            .ToListAsync();
+        // CEO 1 ก.ย. 2569: "ดึงใน com_organization เลย ผูกอย่างไรดึงแบบนั้น" —
+        // the org table is its own source of truth. Load everything; the
+        // tree renders from ACTIVE roots only (root = istop/no parent), and
+        // children follow parent_code linkage, so an inactive root's whole
+        // tree (e.g. the retired CEO Office tree) drops out naturally with
+        // no com_company join involved.
+        _allOrgsForTree = await context.com_organizations.ToListAsync();
 
         // CEO 1 ก.ย. 2569: "ในผังองค์กร ช่วย Link พนักงาน มาใส่ด้วย" — the
         // tree shows each node's ACTIVE employees (linked by
@@ -475,7 +475,7 @@
                 .OrderBy(e => e.EmpNo)
                 .Select(e => new EmpLite(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim()))
                 .ToList());
-        _treeRoots = _allOrgsForTree.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
+        _treeRoots = _allOrgsForTree.Where(o => (o.istop || string.IsNullOrEmpty(o.parent_code)) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
         foreach (var root in _treeRoots) _expandedTreeNodes.Add(root.id);
     }
 
@@ -597,11 +597,10 @@
     {
         _hasSearched = true;
         await using var context = await DbFactory.CreateDbContextAsync();
-        // Scoped to the active company's tree (comp_code == com_company.code),
-        // same single-active-company rule as the tree tab above.
-        var activeCompanyForSearch = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
-        var query = context.com_organizations
-            .Where(o => activeCompanyForSearch != null && o.comp_code == activeCompanyForSearch.code);
+        // Admin list searches the WHOLE com_organization table (CEO: ดึงใน
+        // com_organization เลย) — inactive trees stay findable here even
+        // though the tree tab hides them.
+        var query = context.com_organizations.AsQueryable();
         query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
             nameof(com_organization.code), nameof(com_organization.name), nameof(com_organization.name_en), nameof(com_organization.abbr));
         _organizations = await query.OrderBy(o => o.orgcodefull).ToListAsync();
