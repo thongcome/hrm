@@ -322,7 +322,12 @@ else
 
         _activeDelegation = await BossApproverService.GetActiveDelegationAsync(Id);
 
-        _allOrgs = await context.com_organizations.ToListAsync();
+        // Resolve relatives within THIS org's own company tree (comp_code) —
+        // a detail page may be opened for any company's node, so it scopes by
+        // the node itself rather than the globally active company.
+        _allOrgs = await context.com_organizations
+            .Where(o => o.comp_code == _org.comp_code)
+            .ToListAsync();
 
         var parentOrg = _allOrgs.FirstOrDefault(o => o.code == _org.parent_code);
         _parentName = parentOrg is { } p ? $"{p.code} — {p.name}" : null;

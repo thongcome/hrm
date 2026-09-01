@@ -416,6 +416,13 @@
     private List<com_organization> _allOrgsForTree = new();
     private List<com_organization> _treeRoots = new();
     private HashSet<long> _expandedTreeNodes = new();
+    private HashSet<long> _expandedEmployeeNodes = new();
+    private Dictionary<long, List<EmpLite>> _employeesByOrg = new();
+    private sealed record EmpLite(long Id, string EmpNo, string Name);
+    private void ToggleEmployeeExpand(long orgId)
+    {
+        if (!_expandedEmployeeNodes.Add(orgId)) _expandedEmployeeNodes.Remove(orgId);
+    }
 
     // "ผังองค์กร (ภาพ)" tab state — lazy: only loaded/rendered the first time
     // the user actually opens this tab (see OnActiveTabChangedAsync).
@@ -445,12 +452,29 @@
         // Deliberately no initial load here — see the page-level comment on
         // why this list waits for an explicit search.
 
-        // Tree tab loads eagerly and unconditionally — com_organization has no
-        // reliable company-scoping field (same reason SearchAsync() below
-        // queries it without a company filter), and the table is small enough
-        // that loading everything up front (then collapsing all but the roots)
-        // is cheap, matching OrgHeadcountTree.razor's own approach.
-        _allOrgsForTree = await context.com_organizations.ToListAsync();
+        // Tree tab shows the ACTIVE company's tree only (CEO rule 1 ก.ย.
+        // 2569: one active company at a time; comp_code == com_company.code
+        // is the scoping key, backfilled for the legacy rows).
+        var activeCompany = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
+        _allOrgsForTree = await context.com_organizations
+            .Where(o => activeCompany != null && o.comp_code == activeCompany.code)
+            .ToListAsync();
+
+        // CEO 1 ก.ย. 2569: "ในผังองค์กร ช่วย Link พนักงาน มาใส่ด้วย" — the
+        // tree shows each node's ACTIVE employees (linked by
+        // Hremployee.OrganizationId, so no companyid/comp_code join needed)
+        // as clickable links to their personnel profile. Names load once as
+        // a light projection; the list per node renders only when expanded.
+        var treeOrgIds = _allOrgsForTree.Select(o => o.id).ToList();
+        _employeesByOrg = (await context.Hremployee
+                .Where(e => e.IsActive == true && e.OrganizationId != null && treeOrgIds.Contains(e.OrganizationId.Value))
+                .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, OrgId = e.OrganizationId!.Value })
+                .ToListAsync())
+            .GroupBy(e => e.OrgId)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(e => e.EmpNo)
+                .Select(e => new EmpLite(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim()))
+                .ToList());
         _treeRoots = _allOrgsForTree.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
         foreach (var root in _treeRoots) _expandedTreeNodes.Add(root.id);
     }
@@ -523,14 +547,45 @@
             builder.CloseElement();
         }
 
-        builder.CloseElement();
-        builder.CloseElement();
+        builder.CloseElement(); // </a> — the employee block below must sit OUTSIDE the card link (no nested <a>)
+
+        // "Link พนักงาน" (CEO 1 ก.ย. 2569): direct employees of this node —
+        // a count toggle, expanding to profile links.
+        if (_employeesByOrg.TryGetValue(node.id, out var emps) && emps.Count > 0)
+        {
+            var empExpanded = _expandedEmployeeNodes.Contains(node.id);
+            builder.OpenElement(29, "button");
+            builder.AddAttribute(30, "type", "button");
+            builder.AddAttribute(31, "class", "org-tree-emp-toggle");
+            builder.AddAttribute(32, "style", "margin-left:8px;border:none;background:none;cursor:pointer;color:var(--mud-palette-primary);font-size:0.8rem;white-space:nowrap;");
+            builder.AddAttribute(33, "onclick", EventCallback.Factory.Create(this, () => ToggleEmployeeExpand(node.id)));
+            builder.AddContent(34, $"{(empExpanded ? "▾" : "▸")} พนักงาน {emps.Count} คน");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // row div
+
+        if (_employeesByOrg.TryGetValue(node.id, out var empList) && empList.Count > 0
+            && _expandedEmployeeNodes.Contains(node.id))
+        {
+            builder.OpenElement(35, "div");
+            builder.AddAttribute(36, "style", $"margin-left:{depth * 22 + 46}px;padding:2px 0 6px 0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:0.8rem;");
+            foreach (var emp in empList)
+            {
+                builder.OpenElement(37, "a");
+                builder.AddAttribute(38, "href", $"/employee/personnel-profile/{emp.Id}");
+                builder.AddAttribute(39, "style", "text-decoration:none;color:var(--mud-palette-primary);");
+                builder.AddContent(40, $"{emp.EmpNo} — {emp.Name}");
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
 
         if (isExpanded)
         {
             foreach (var child in children)
             {
-                builder.AddContent(28, RenderTreeNode(child, depth + 1));
+                builder.AddContent(200, RenderTreeNode(child, depth + 1));
             }
         }
     };
@@ -542,11 +597,11 @@
     {
         _hasSearched = true;
         await using var context = await DbFactory.CreateDbContextAsync();
-        // com_organization has no reliable company-scoping field (companyid/comp_code
-        // don't line up with the payroll_company claim used elsewhere) — matches the
-        // existing precedent in PayrollEmployeeAdmin.razor's org picker, which also
-        // loads this table without a company filter.
-        var query = context.com_organizations.AsQueryable();
+        // Scoped to the active company's tree (comp_code == com_company.code),
+        // same single-active-company rule as the tree tab above.
+        var activeCompanyForSearch = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
+        var query = context.com_organizations
+            .Where(o => activeCompanyForSearch != null && o.comp_code == activeCompanyForSearch.code);
         query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
             nameof(com_organization.code), nameof(com_organization.name), nameof(com_organization.name_en), nameof(com_organization.abbr));
         _organizations = await query.OrderBy(o => o.orgcodefull).ToListAsync();

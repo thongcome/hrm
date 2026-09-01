@@ -62,7 +62,11 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
-        _allOrgs = await context.com_organizations.ToListAsync();
+        // Single-active-company rule: only the active company's tree renders.
+        var activeCompany = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
+        _allOrgs = await context.com_organizations
+            .Where(o => activeCompany != null && o.comp_code == activeCompany.code)
+            .ToListAsync();
         _roots = _allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
 
         var slots = await context.Pos_PositionSlots

@@ -474,6 +474,21 @@
         var registeredDate = _registeredDate is DateTime rd ? DateOnly.FromDateTime(rd) : (DateOnly?)null;
         var nextRenewalDate = _nextRenewalDate is DateTime nrd ? DateOnly.FromDateTime(nrd) : (DateOnly?)null;
 
+        // CEO rule (1 ก.ย. 2569): "บริษัท active ได้ 1" — the whole system
+        // (org charts, new root org nodes) keys off THE active company, so
+        // activating this one automatically deactivates every other row.
+        // Multi-company in the future is configured per-node in
+        // com_organization.comp_code, not by activating a second company.
+        if (_isActive)
+        {
+            var others = await context.com_companies
+                .Where(c => c.isActive == true && (_editingId == null || c.id != _editingId))
+                .ToListAsync();
+            foreach (var o in others) { o.isActive = false; o.moddate = DateTime.Now; }
+            if (others.Count > 0)
+                Snackbar.Add($"สลับบริษัทที่ใช้งานเป็น '{_name}' — ปิดใช้งาน {others.Count} บริษัทเดิมอัตโนมัติ (ระบบใช้งานได้ทีละ 1 บริษัท)", Severity.Info);
+        }
+
         if (_editingId is long id)
         {
             var existing = await context.com_companies.FirstOrDefaultAsync(c => c.id == id);

@@ -242,7 +242,12 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
-        var allOrgs = await context.com_organizations.ToListAsync();
+        // Single-active-company rule (CEO 1 ก.ย. 2569): the chart always shows
+        // the active company's tree, keyed by comp_code == com_company.code.
+        var activeCompany = await HRM.Services.Org.ActiveCompanyHelper.GetActiveAsync(context);
+        var allOrgs = await context.com_organizations
+            .Where(o => activeCompany != null && o.comp_code == activeCompany.code)
+            .ToListAsync();
         _orgsByCode = allOrgs.Where(o => !string.IsNullOrEmpty(o.code))
             .GroupBy(o => o.code!).ToDictionary(g => g.Key, g => g.First());
         var roots = allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();

@@ -112,8 +112,14 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                         ? null
                         : await context.com_organizations.FirstOrDefaultAsync(o => o.code == req.NewParentCode, ct);
                     var orgcodefull = await OrgCodeFullHelper.ComputeNextOrgCodeFullAsync(context, parent?.orgcodefull);
+                    // comp_code: inherit the parent's company tree; a new ROOT
+                    // node belongs to the currently active company (CEO rule:
+                    // one active company; comp_code == com_company.code).
+                    var compCode = parent?.comp_code
+                        ?? (await ActiveCompanyHelper.GetActiveAsync(context))?.code;
                     var newOrg = new com_organization
                     {
+                        comp_code = compCode,
                         code = req.NewCode,
                         name = req.NewName,
                         name_en = req.NewNameEn,
