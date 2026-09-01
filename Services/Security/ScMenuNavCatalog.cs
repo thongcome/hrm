@@ -150,6 +150,9 @@ public static class ScMenuNavCatalog
         // ---- GRP_ORG_STRUCT (group guarded by HasAny("ORG_ADMIN","SYS_ADMIN","POS_ADMIN","PAY_ADMIN")) ----
         new("GRP_ORG_STRUCT", "SYS_ADMIN", "/admin/system/companies", "ข้อมูลบริษัท", "Company Information", "Icons.Material.Filled.Apartment", 10),
         new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/organizations", "ข้อมูลสังกัด", "Organization Units", "Icons.Material.Filled.Business", 20),
+        // Interactive tree with inline add/edit/end (effective-dated) + change
+        // history — added to the menu 2 ก.ย. 2569 (was reachable by URL only).
+        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/com_organizations/orgtree", "ผังหน่วยงาน (แก้ไข/ประวัติ)", "Org Tree (Edit/History)", "Icons.Material.Filled.AccountTree", 25),
         new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/section-types", "ข้อมูลประเภทสังกัด", "Organization Unit Types", "Icons.Material.Filled.Layers", 30),
         new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/subsection-types", "ลักษณะของหน่วยงาน", "Unit Characteristics", "Icons.Material.Filled.Category", 40),
         new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/layers", "ระดับชั้นหน่วยงาน (Org Layer)", "ระดับชั้นหน่วยงาน (Org Layer)", "Icons.Material.Filled.Layers", 50), // literal Thai label
