@@ -1,0 +1,256 @@
+@page "/mss"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Shared
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@* ESS-personalized convention (same as /wf/my-inbox): this page is entirely
+   self-scoped by the logged-in user — direct reports resolve from the
+   caller's own empno claim, the inbox from their own sc_userid — so it
+   takes a bare [Authorize] and deliberately NO Menu:XXX policy. Only pages
+   that show data across users the caller doesn't personally own need a
+   menu gate. *@
+@attribute [Authorize]
+
+<PageTitle>พื้นที่หัวหน้างาน (MSS)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudText Typo="Typo.h5">พื้นที่หัวหน้างาน (MSS)</MudText>
+        @if (_employee is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.75;">
+                @_employee.EmpName @_employee.EmpSurname (@_employee.EmpNo)
+            </MudText>
+        }
+
+        @if (_directReports.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                คุณยังไม่มีผู้ใต้บังคับบัญชาในระบบ — หน้านี้สำหรับหัวหน้างาน
+            </MudAlert>
+        }
+
+        <MudGrid Class="mt-2">
+            @if (_directReports.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Groups" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">ทีมของฉัน (Direct Reports)</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_directReports.Count คน</MudChip>
+                        </MudStack>
+                        <MudStack Spacing="1" Class="mt-2">
+                            @foreach (var emp in _directReports)
+                            {
+                                <div>
+                                    <MudLink Href="@($"/employee/personnel-profile/{emp.id}")">
+                                        @emp.EmpNo — @emp.EmpName @emp.EmpSurname
+                                    </MudLink>
+                                    <MudText Typo="Typo.caption" Style="opacity:.7;">@PositionLabel(emp.PosCode)</MudText>
+                                </div>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Approval" Color="Color.Warning" />
+                        <MudText Typo="Typo.h6">งานรออนุมัติของฉัน</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@(_inbox.Count > 0 ? Color.Warning : Color.Default)">@_inbox.Count รายการ</MudChip>
+                    </MudStack>
+                    @if (_inbox.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ไม่มีงานรออนุมัติ</MudText>
+                    }
+                    else
+                    {
+                        <MudStack Spacing="1" Class="mt-2">
+                            @foreach (var item in _inbox.Take(5))
+                            {
+                                <MudText Typo="Typo.body2">
+                                    <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Small" Style="vertical-align:middle;" Class="mr-1" />@(item.jobmaster?.subject ?? $"Job #{item.jobmasterid}")
+                                </MudText>
+                            }
+                        </MudStack>
+                    }
+                    <MudButton Href="/wf/my-inbox" Variant="Variant.Text" Color="Color.Primary" Class="mt-3">ไปที่กล่องอนุมัติ</MudButton>
+                </MudPaper>
+            </MudItem>
+
+            @if (_directReports.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.EventBusy" Color="Color.Secondary" />
+                            <MudText Typo="Typo.h6">การลาของทีมวันนี้/พรุ่งนี้</MudText>
+                        </MudStack>
+                        @if (_teamLeaves.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:.7;">ไม่มีสมาชิกทีมลาในช่วงวันนี้ถึงพรุ่งนี้</MudText>
+                        }
+                        else
+                        {
+                            <MudStack Spacing="1" Class="mt-2">
+                                @foreach (var row in _teamLeaves)
+                                {
+                                    <MudText Typo="Typo.body2">
+                                        @row.EmployeeName — @row.LeaveTypeName — @row.StartDate.ToString("dd/MM/yyyy")@(row.EndDate != row.StartDate ? $" ถึง {row.EndDate:dd/MM/yyyy}" : "")
+                                    </MudText>
+                                }
+                            </MudStack>
+                            <MudText Typo="Typo.caption" Class="mt-2" Style="opacity:.6;">สถานะดูในโมดูลลา</MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            }
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Info" />
+                        <MudText Typo="Typo.h6">ลิงก์ด่วน MSS</MudText>
+                    </MudStack>
+                    <MudStack Spacing="1" Class="mt-2">
+                        <MudButton Href="/wf/my-inbox" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Approval" Style="justify-content:flex-start;">อนุมัติงาน</MudButton>
+                        <MudButton Href="/leave-requests/team-calendar" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CalendarMonth" Style="justify-content:flex-start;">ปฏิทินทีม</MudButton>
+                        <MudButton Href="/idp/team" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.School" Style="justify-content:flex-start;">พัฒนาทีม IDP</MudButton>
+                        <MudButton Href="/talent/team-rating" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Star" Style="justify-content:flex-start;">ประเมินศักยภาพทีม</MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<Hremployee> _directReports = new();
+    private List<job_user_list> _inbox = new();
+    private List<TeamLeaveRow> _teamLeaves = new();
+    private Dictionary<string, string> _positionNames = new();
+
+    private record TeamLeaveRow(string EmployeeName, string LeaveTypeName, DateOnly StartDate, DateOnly EndDate);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        // Approval inbox works for any approver, manager or not — same call
+        // /wf/my-inbox itself makes (keyed by sc_userid, not empno).
+        if (actorUserId > 0)
+            _inbox = await Engine.GetMyInboxAsync(actorUserId);
+
+        // "Which employee is this person" goes through the one shared
+        // resolver (empno claim → Hremployee), never a per-page query.
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            _directReports = (await DirectReportResolverHelper.ResolveDirectReportsAsync(context, _employee))
+                .OrderBy(e => e.EmpNo)
+                .ToList();
+
+            if (_directReports.Count > 0)
+            {
+                await LoadPositionNamesAsync(context);
+                await LoadTeamLeavesAsync(context);
+            }
+        }
+
+        _loaded = true;
+    }
+
+    private async Task LoadPositionNamesAsync(HRMContext context)
+    {
+        var posCodes = _directReports
+            .Select(e => e.PosCode)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct()
+            .ToList();
+        if (posCodes.Count == 0)
+            return;
+
+        // Cheap code → name lookup on the position master; unknown codes
+        // fall back to showing the raw code (PositionLabel below). De-dup
+        // in memory — the fetched set is at most a few dozen rows.
+        var positions = await context.com_positions
+            .Where(p => p.code != null && posCodes.Contains(p.code) && p.name != null)
+            .Select(p => new { p.code, p.name })
+            .ToListAsync();
+        _positionNames = positions
+            .GroupBy(p => p.code!)
+            .ToDictionary(g => g.Key, g => g.First().name!);
+    }
+
+    private async Task LoadTeamLeavesAsync(HRMContext context)
+    {
+        var reportIds = _directReports.Select(e => e.id).ToList();
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var tomorrow = today.AddDays(1);
+
+        // Submitted requests (JobMasterId set) overlapping today..tomorrow.
+        // Status is the same cheap read LeaveRequestForm.RefreshAsync does —
+        // a snapshot of job_master.status, no workflow sync plumbing — used
+        // only to drop rejected/cancelled requests; the caption sends the
+        // user to the leave module for the authoritative status.
+        var requests = await context.Lve_LeaveRequests
+            .Include(r => r.Lve_LeaveType)
+            .Where(r => reportIds.Contains(r.HremployeeId)
+                && r.JobMasterId != null
+                && r.StartDate <= tomorrow
+                && r.EndDate >= today)
+            .OrderBy(r => r.StartDate)
+            .ToListAsync();
+        if (requests.Count == 0)
+            return;
+
+        var jobIds = requests.Select(r => r.JobMasterId!.Value).ToList();
+        var jobStatuses = await context.job_masters
+            .Where(j => jobIds.Contains(j.jobmasterid))
+            .ToDictionaryAsync(j => j.jobmasterid, j => j.status);
+
+        var names = _directReports.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+
+        _teamLeaves = requests
+            .Where(r =>
+            {
+                jobStatuses.TryGetValue(r.JobMasterId!.Value, out var status);
+                return status != WorkflowEngineService.StatusRejected
+                    && status != WorkflowEngineService.StatusCancelled
+                    && status != "RETURNED";
+            })
+            .Select(r => new TeamLeaveRow(
+                names.TryGetValue(r.HremployeeId, out var name) ? name : r.EmpNo,
+                r.Lve_LeaveType?.NameTh ?? "-",
+                r.StartDate,
+                r.EndDate))
+            .ToList();
+    }
+
+    private string PositionLabel(string? posCode)
+    {
+        if (string.IsNullOrWhiteSpace(posCode))
+            return "-";
+        return _positionNames.TryGetValue(posCode, out var name) ? name : posCode;
+    }
+}
