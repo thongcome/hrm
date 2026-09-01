@@ -701,5 +701,12 @@ await HRM.Services.Hr.EmployeeDocTypeSeeder.SeedAsync(app.Services);
 // UserProvisioningService uses to auto-assign a role at first user setup.
 // Mapping seeds only while NULL — a human's change wins forever.
 await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
+if (app.Environment.IsDevelopment())
+{
+    // Dev-only end-to-end proof of the auto-role above: a committee-type
+    // fixture (KB0001/Dev@12345) provisioned through the real
+    // UserProvisioningService path — must land the 'กรรมการ' role.
+    await HRM.Services.Dev.DevAuthSeeder.EnsureCommitteeAutoRoleFixtureAsync(app.Services);
+}
 
 app.Run();

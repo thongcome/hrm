@@ -30,6 +30,7 @@ else
                 OnClick="@(() => Nav.NavigateTo($"/job/profiles/{PosExecTypeId}/print"))">@L.Translate("JdPrintButton")</MudButton>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1">นิยามบทบาทของตำแหน่งนี้: สายอาชีพ/ระดับ, วัตถุประสงค์, ความรับผิดชอบหลัก และสมรรถนะที่ต้องการ</MudText>
+        <MudText Typo="Typo.caption" Class="mt-1" Style="opacity:.75;">@JdVersionLine()</MudText>
 
         @if (!CanWrite)
         {
@@ -291,6 +292,47 @@ else
         }
     </MudPaper>
 
+    @* ---------- KPI ประจำตำแหน่ง (JD block B) ---------- *@
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">@L.Translate("JdKpiSectionTitle")</MudText>
+
+        <MudTable Items="ActiveKpis" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh Style="min-width:220px;">@L.Translate("JdKpiColName")</MudTh>
+                <MudTh Style="min-width:220px;">@L.Translate("JdKpiColTarget")</MudTh>
+                <MudTh Style="width:110px;">@L.Translate("JdKpiColUnit")</MudTh>
+                <MudTh Style="width:130px;">@L.Translate("JdKpiColValue")</MudTh>
+                <MudTh Style="width:90px;">@L.Translate("JdColSort")</MudTh>
+                <MudTh Style="width:70px;"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudTextField T="string" @bind-Value="context.Name" ReadOnly="@(!CanWrite)" MaxLength="300" /></MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="context.TargetDescription" ReadOnly="@(!CanWrite)" MaxLength="500" /></MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="context.Unit" ReadOnly="@(!CanWrite)" MaxLength="50" /></MudTd>
+                <MudTd><MudNumericField T="decimal?" @bind-Value="context.TargetValue" ReadOnly="@(!CanWrite)" /></MudTd>
+                <MudTd><MudNumericField T="int" @bind-Value="context.SortOrder" ReadOnly="@(!CanWrite)" /></MudTd>
+                <MudTd>
+                    @if (CanWrite)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                            OnClick="@(() => RemoveKpiAsync(context))">@L.Translate("JdRemoveRow")</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">@L.Translate("JdNoKpiRows")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (CanWrite)
+        {
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddKpiRow">@L.Translate("JdAddKpiButton")</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveKpisAsync">@L.Translate("JdSaveKpisButton")</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+
     @* ---------- สมรรถนะที่ต้องการ (existing requirements table, kept as-is) ---------- *@
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">สมรรถนะที่ต้องการ (Required Competencies)</MudText>
@@ -369,8 +411,10 @@ else
     private List<Comp_ProficiencyLevel> _allLevels = new();
     private List<Job_ProfileDuty> _duties = new();
     private List<Job_ProfileQualification> _qualifications = new();
+    private List<Job_ProfileKpi> _kpis = new();
     private List<JobReportingLineHelper.ReportingLineRow> _reportingRows = new();
     private string? _error;
+    private string _actorName = "admin";
 
     private long? _jobFamilyId;
     private CareerTrack? _careerTrack;
@@ -387,11 +431,13 @@ else
 
     private List<Job_ProfileDuty> ActiveDuties => _duties.Where(d => d.IsActive).OrderBy(d => d.SortOrder).ToList();
     private List<Job_ProfileQualification> ActiveQualifications => _qualifications.Where(q => q.IsActive).OrderBy(q => q.SortOrder).ToList();
+    private List<Job_ProfileKpi> ActiveKpis => _kpis.Where(k => k.IsActive).OrderBy(k => k.SortOrder).ToList();
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _actorName = state.User.Identity?.Name ?? "admin";
     }
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
@@ -414,6 +460,7 @@ else
         _requirements = await context.Job_CompetencyRequirements.Where(r => r.PosExecTypeId == PosExecTypeId && r.IsActive).OrderBy(r => r.SortOrder).ToListAsync();
         _duties = await context.Job_ProfileDuties.Where(d => d.PosExecTypeId == PosExecTypeId && d.IsActive).OrderBy(d => d.SortOrder).ToListAsync();
         _qualifications = await context.Job_ProfileQualifications.Where(q => q.PosExecTypeId == PosExecTypeId && q.IsActive).OrderBy(q => q.SortOrder).ToListAsync();
+        _kpis = await context.Job_ProfileKpis.Where(k => k.PosExecTypeId == PosExecTypeId && k.IsActive).OrderBy(k => k.SortOrder).ToListAsync();
 
         var categoryIds = await context.Comp_Categories.Where(c => c.CompanyId == _execType.CompanyId).Select(c => c.Id).ToListAsync();
         _allCompetencies = await context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId) && c.IsActive).ToListAsync();
@@ -447,6 +494,29 @@ else
         return Task.FromResult(query.OrderBy(c => c.Name).Take(20));
     }
 
+    // ---------- JD versioning (lightweight — JD block B) ----------
+    // Deliberately NO history table this round (CEO-approved trade-off):
+    // only a running version number + last-reviewed stamp on Pos_ExecType.
+    // Called once per save action that changes JD content (Purpose, duties,
+    // qualifications, KPIs — including soft removals), inside the same
+    // context/SaveChanges as the content change itself.
+    private async Task StampJdVersionAsync(HRMContext context)
+    {
+        var execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
+        if (execType is null) return;
+        execType.JdVersion += 1;
+        execType.JdReviewedDate = DateTime.Now;
+        execType.JdReviewedBy = _actorName;
+    }
+
+    private string JdVersionLine()
+    {
+        if (_execType is null) return "";
+        return _execType.JdReviewedDate is DateTime rd
+            ? string.Format(L.Translate("JdVersionTemplate"), _execType.JdVersion, rd.ToString("dd/MM/yyyy HH:mm"), _execType.JdReviewedBy ?? "-")
+            : string.Format(L.Translate("JdVersionOnlyTemplate"), _execType.JdVersion);
+    }
+
     // Both layers, always (AD.CRUDManage): every write handler re-checks the
     // table right server-side — a hidden button stops nobody who replays the
     // circuit event. Returns false (with the error surfaced) when refused.
@@ -477,7 +547,17 @@ else
         existing.JobFamilyId = _jobFamilyId;
         existing.CareerTrack = _careerTrack;
         existing.JobLevelId = _jobLevelId;
-        existing.Purpose = string.IsNullOrWhiteSpace(_purpose) ? null : _purpose;
+        var newPurpose = string.IsNullOrWhiteSpace(_purpose) ? null : _purpose;
+        if (existing.Purpose != newPurpose)
+        {
+            // JD content changed (Purpose) — bump version + stamp reviewer.
+            // Family/track/level edits alone are classification, not JD
+            // content, so they don't bump.
+            existing.JdVersion += 1;
+            existing.JdReviewedDate = DateTime.Now;
+            existing.JdReviewedBy = _actorName;
+        }
+        existing.Purpose = newPurpose;
         // KeyAccountabilities deliberately untouched here — the legacy blob is
         // read-only fallback display now (see the duties section), never
         // edited or deleted from this page.
@@ -511,6 +591,7 @@ else
         if (db is not null)
         {
             db.IsActive = false;
+            await StampJdVersionAsync(context);
             await context.SaveChangesAsync();
         }
         row.IsActive = false;
@@ -551,6 +632,7 @@ else
         await UpsertLinkedRequirementsAsync(context,
             rows.Where(r => r.IncludeInCompetency && r.LinkedCompetencyId is not null).Select(r => r.LinkedCompetencyId!.Value));
 
+        await StampJdVersionAsync(context);
         await context.SaveChangesAsync();
         Snackbar.Add(L.Translate("JdSavedMessage"), Severity.Success);
         await LoadAsync();
@@ -581,6 +663,7 @@ else
         if (db is not null)
         {
             db.IsActive = false;
+            await StampJdVersionAsync(context);
             await context.SaveChangesAsync();
         }
         row.IsActive = false;
@@ -622,6 +705,76 @@ else
         await UpsertLinkedRequirementsAsync(context,
             rows.Where(r => r.IncludeInCompetency && r.LinkedCompetencyId is not null).Select(r => r.LinkedCompetencyId!.Value));
 
+        await StampJdVersionAsync(context);
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("JdSavedMessage"), Severity.Success);
+        await LoadAsync();
+    }
+
+    // ---------- KPIs (KPI ประจำตำแหน่ง — JD block B) ----------
+
+    private void AddKpiRow()
+    {
+        _kpis.Add(new Job_ProfileKpi
+        {
+            PosExecTypeId = PosExecTypeId,
+            Name = "",
+            SortOrder = _kpis.Count(k => k.IsActive) + 1,
+        });
+    }
+
+    private async Task RemoveKpiAsync(Job_ProfileKpi row)
+    {
+        _error = null;
+        if (row.Id == 0) { _kpis.Remove(row); return; }
+
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Delete)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var db = await context.Job_ProfileKpis.FirstOrDefaultAsync(k => k.Id == row.Id);
+        if (db is not null)
+        {
+            db.IsActive = false;
+            await StampJdVersionAsync(context);
+            await context.SaveChangesAsync();
+        }
+        row.IsActive = false;
+    }
+
+    private async Task SaveKpisAsync()
+    {
+        _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Edit)) return;
+
+        var rows = ActiveKpis.Where(k => !string.IsNullOrWhiteSpace(k.Name)).ToList();
+        if (rows.Count != ActiveKpis.Count)
+        {
+            _error = L.Translate("JdRowTextRequired");
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        foreach (var row in rows)
+        {
+            row.Name = row.Name.Trim();
+            row.TargetDescription = string.IsNullOrWhiteSpace(row.TargetDescription) ? null : row.TargetDescription.Trim();
+            row.Unit = string.IsNullOrWhiteSpace(row.Unit) ? null : row.Unit.Trim();
+            if (row.Id == 0)
+            {
+                context.Job_ProfileKpis.Add(row);
+            }
+            else
+            {
+                var db = await context.Job_ProfileKpis.FirstOrDefaultAsync(k => k.Id == row.Id);
+                if (db is null) continue;
+                db.Name = row.Name;
+                db.TargetDescription = row.TargetDescription;
+                db.Unit = row.Unit;
+                db.TargetValue = row.TargetValue;
+                db.SortOrder = row.SortOrder;
+            }
+        }
+
+        await StampJdVersionAsync(context);
         await context.SaveChangesAsync();
         Snackbar.Add(L.Translate("JdSavedMessage"), Severity.Success);
         await LoadAsync();

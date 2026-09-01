@@ -1,12 +1,14 @@
 @page "/pay/admin/employee-tax-deductions"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
@@ -20,6 +22,11 @@
     <MudText Typo="Typo.body2" Class="mt-1">
         บันทึกว่าพนักงานใช้สิทธิลดหย่อนพิเศษประเภทไหน เท่าไหร่ และเลือกว่าจะให้มีผลลดภาษีหัก ณ ที่จ่ายตั้งแต่ตอนนี้ หรือเก็บไว้ให้พนักงานไปขอคืนเองตอนยื่นภาษีประจำปี
     </MudText>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="6">
@@ -67,7 +74,7 @@
                 </MudTd>
                 <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
                 <MudTd>
-                    @if (context.IsActive)
+                    @if (context.IsActive && _rights?.CanDelete == true)
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(context.Id))">ยกเลิกสิทธิ</MudButton>
                     }
@@ -78,6 +85,8 @@
             </NoRecordsContent>
         </MudTable>
 
+        @if (_rights?.CanCreate == true)
+        {
         <MudDivider Class="my-4" />
         <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มการใช้สิทธิลดหย่อน</MudText>
         <MudGrid>
@@ -108,6 +117,7 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddElectionAsync">+ เพิ่มการใช้สิทธิ</MudButton>
             </MudItem>
         </MudGrid>
+        }
     }
 </MudPaper>
 
@@ -128,10 +138,30 @@
 
     private long _actorUserId;
 
+    private const string ProgramPath = "/pay/admin/employee-tax-deductions";
+    private ProgramRoleService.ProgramRights? _rights;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task OnEmployeeChangedAsync(Hremployee? employee)
@@ -172,6 +202,11 @@
     {
         _error = null;
         _info = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         if (_selectedEmployee is null || _newTypeId is null)
         {
             _error = "กรุณาเลือกพนักงานและประเภทลดหย่อน";
@@ -216,6 +251,11 @@
 
     private async Task DeactivateAsync(long electionId)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
         var election = await context.Pay_EmployeeTaxDeductionElections.FirstOrDefaultAsync(e => e.Id == electionId);
         if (election is null) return;

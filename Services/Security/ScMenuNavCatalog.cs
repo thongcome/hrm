@@ -100,7 +100,7 @@ public static class ScMenuNavCatalog
     {
         // ---- Top-level links (before any group) ----
         new(null, null, "/modules", "ภาพรวมระบบตามโมดูล", "Module Overview", "Icons.Material.Filled.Apps", 10), // TODO ungated today
-        new(null, null, "/dev/pages", "รวมลิงก์ทั้งหมด (ชั่วคราว)", "All Links (temp)", "Icons.Material.Filled.ListAlt", 20), // TODO ungated today
+        new(null, "SYS_ADMIN", "/dev/pages", "รวมลิงก์ทั้งหมด (ชั่วคราว)", "All Links (temp)", "Icons.Material.Filled.ListAlt", 20), // gated 1 ก.ย. 2569 (gap-closure)
 
         // ---- GRP_ESS (group guarded by _hasEssAccess -> "ESS_ACCESS") ----
         new("GRP_ESS", "ESS_ACCESS", "/ess", "หน้าแรก", "Home", "Icons.Material.Filled.Home", 10),
@@ -170,11 +170,11 @@ public static class ScMenuNavCatalog
         new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/ot-rules", "อัตราคูณค่าล่วงเวลา (OT)", "Overtime Multiplier Rules", "Icons.Material.Filled.MoneyOff", 70),
 
         // ---- GRP_PAYROLL (group itself ungated; per-link gates inside) ----
-        new("GRP_PAYROLL", null, "/hrpayrolldasboard", "แดชบอร์ด (เดิม)", "Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // TODO ungated today (legacy link, no Menu: policy)
-        new("GRP_PAYROLL", null, "/hremployees", "พนักงาน (payrolls)", "Employees (legacy)", "Icons.Material.Filled.People", 20), // TODO ungated today (legacy link, no Menu: policy)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/hrpayrolldasboard", "แดชบอร์ด (เดิม)", "Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/hremployees", "พนักงาน (payrolls)", "Employees (legacy)", "Icons.Material.Filled.People", 20), // gated 1 ก.ย. 2569 (gap-closure)
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/employees", "ข้อมูลพนักงาน / จัดการพนักงาน (Payroll)", "Employee Data / Management (Payroll)", "Icons.Material.Filled.Badge", 30),
         new("GRP_PAYROLL", "PAY_RUNS", "/payrollprocess", "ประมวลผลเงินเดือน", "Payroll Processing", "Icons.Material.Filled.PlaylistPlay", 40),
-        new("GRP_PAYROLL", null, "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 50), // TODO ungated today (legacy link, no Menu: policy)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 50), // gated 1 ก.ย. 2569 (gap-closure)
         new("GRP_PAYROLL", "PAY_RUNS", "/pay/runs", "เงินเดือน (ใหม่)", "Payroll (New)", "Icons.Material.Filled.RequestQuote", 60),
         new("GRP_PAYROLL", "PAY_ADHOC", "/pay/adhoc", "รายการเฉพาะกิจ", "Ad-hoc Pay Items", "Icons.Material.Filled.PostAdd", 70),
         new("GRP_PAYROLL", "PAY_ADHOC", "/pay/recurring-items", "เงินได้เงินหักประจำ", "Recurring Pay Items", "Icons.Material.Filled.Repeat", 80),
@@ -322,6 +322,8 @@ public static class ScMenuNavCatalog
         // ---- GRP_SYS_ADMIN (group guarded by Has("SYS_ADMIN")) ----
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/menus", "จัดการเมนู", "Menu Management", "Icons.Material.Filled.AccountTree", 10),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/roles", "จัดการกลุ่มผู้ใช้", "User Group Management", "Icons.Material.Filled.Groups", 20),
+        // AD.CRUDManage permission-admin screen (สิทธิ์ราย role × หน้า) — added 1 ก.ย. 2569.
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/program-rights", "สิทธิ์การใช้งานรายหน้า (CRUD)", "Per-page CRUD Rights", "Icons.Material.Filled.Rule", 25),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/users", "จัดการผู้ใช้", "User Management", "Icons.Material.Filled.ManageAccounts", 30),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/permissions", "จัดการสิทธิ์การใช้ระบบ", "Permission Management", "Icons.Material.Filled.Security", 40),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/role-scopes", "ขอบเขตข้อมูล (Data Scope)", "Data Scope", "Icons.Material.Filled.Domain", 50),
@@ -331,13 +333,13 @@ public static class ScMenuNavCatalog
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/sso-roles", "สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)", "External App Roles (SSO)", "Icons.Material.Filled.Key", 90),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "WorkflowDesign (ออกแบบหน้าจอ)", "WorkflowDesign (Screen Designer)", "Icons.Material.Filled.DesignServices", 100),
 
-        // ---- GRP_LEGACY (group itself ungated; targets are unauthorized-by-design or dead routes) ----
-        new("GRP_LEGACY", null, "/income", "Income Mng.", "Income Mng.", "Icons.Material.Filled.AttachMoney", 10), // TODO ungated today
-        new("GRP_LEGACY", null, "/masterdata", "Master Data", "Master Data", "Icons.Material.Filled.Storage", 20), // TODO ungated today
-        new("GRP_LEGACY", null, "/ot", "OT", "OT", "Icons.Material.Filled.MoreTime", 30), // TODO ungated today
-        new("GRP_LEGACY", null, "/sc_users", "User Mng", "User Mng", "Icons.Material.Filled.ManageAccounts", 40), // TODO ungated today
-        new("GRP_LEGACY", null, "/onlinereport", "report", "report", "Icons.Material.Filled.Description", 50), // TODO ungated today
-        new("GRP_LEGACY", null, "/hrpayrolls", "hrpayrolls", "hrpayrolls", "Icons.Material.Filled.Folder", 60), // TODO ungated today
+        // ---- GRP_LEGACY (gap-closure 1 ก.ย. 2569: live pages gated by code;
+        // /income, /ot, /onlinereport were DEAD links (no @page owns those
+        // routes — instant 404) and were removed here + hidden by the
+        // CloseLegacyMenuGaps migration rather than gated) ----
+        new("GRP_LEGACY", "SYS_ADMIN", "/masterdata", "Master Data", "Master Data", "Icons.Material.Filled.Storage", 20),
+        new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "User Mng", "User Mng", "Icons.Material.Filled.ManageAccounts", 40),
+        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "hrpayrolls", "hrpayrolls", "Icons.Material.Filled.Folder", 60),
         new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-log", "Audit Log ระบบ", "System Audit Log", "Icons.Material.Filled.History", 70),
     };
 }

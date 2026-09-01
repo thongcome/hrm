@@ -1,12 +1,14 @@
 @page "/admin/system/permissions"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -18,6 +20,11 @@
         กำหนดว่ากลุ่มผู้ใช้ (Role) ใดเห็นเมนูใดได้บ้าง — ผูกตรงกับ sc_role_menu ที่ระบบใช้ authorize จริง (นโยบาย Menu:{code})
         การเปลี่ยนแปลงจะมีผลตั้งแต่การ login ครั้งถัดไปของผู้ใช้ในกลุ่มนั้น
     </MudText>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="6">
@@ -57,7 +64,10 @@
             }
         </MudPaper>
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+        @if (_rights?.CanEdit == true)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">บันทึก</MudButton>
+        }
 
         <MudDivider Class="my-6" />
 
@@ -101,7 +111,10 @@
                     }
                 </tbody>
             </MudSimpleTable>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProgramsAsync">บันทึกสิทธิ์ปุ่ม</MudButton>
+            @if (_rights?.CanEdit == true)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProgramsAsync">บันทึกสิทธิ์ปุ่ม</MudButton>
+            }
         }
     }
 </MudPaper>
@@ -114,6 +127,8 @@
     private HashSet<long> _editableMenuIds = new();
     private string? _error;
     private string _actor = "admin";
+    private const string ProgramPath = "/admin/system/permissions";
+    private ProgramRoleService.ProgramRights? _rights;
 
     // sc_program rows for the same (entity, action) triple grouped into one
     // row — "EMPLOYEE_CREATE"/"EMPLOYEE_EDIT"/"EMPLOYEE_DELETE" collapse into
@@ -127,9 +142,26 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadPermissionsAsync()
@@ -219,6 +251,11 @@
     private async Task SaveAsync()
     {
         _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         if (_selectedRoleId is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -267,6 +304,11 @@
     private async Task SaveProgramsAsync()
     {
         _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         if (_selectedRoleId is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();

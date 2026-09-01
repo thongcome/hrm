@@ -1,12 +1,14 @@
 @page "/leave-requests/holidays"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
@@ -24,11 +26,19 @@
         return;
     }
 
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
     <MudDivider Class="my-4" />
 
     @if (!_showForm)
     {
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มวันหยุดใหม่</MudButton>
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มวันหยุดใหม่</MudButton>
+        }
     }
     else
     {
@@ -69,10 +79,16 @@
             <MudTd>@context.Name</MudTd>
             <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
-                    @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
-                </MudButton>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                }
+                @if (_rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                        @(context.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                    </MudButton>
+                }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -91,13 +107,33 @@
     private DateTime? _holidayDate = DateTime.Today;
     private string? _name;
 
+    private const string ProgramPath = "/leave-requests/holidays";
+    private ProgramRoleService.ProgramRights? _rights;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await LoadAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadAsync()
@@ -139,6 +175,11 @@
     private async Task SaveAsync()
     {
         _error = null;
+        if (await RequireRightAsync(_editingId is null ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
 
         if (_holidayDate is null || string.IsNullOrWhiteSpace(_name))
         {
@@ -186,6 +227,11 @@
 
     private async Task ToggleActiveAsync(Lve_CompanyHoliday holiday)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            Snackbar.Add(denied, Severity.Error);
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Lve_CompanyHolidays.FirstOrDefaultAsync(h => h.Id == holiday.Id && h.CompanyId == _companyId);
         if (existing is null) return;

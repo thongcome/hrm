@@ -65,4 +65,17 @@ public class Pos_ExecType
 
     [Column(TypeName = "nvarchar(max)")]
     public string? KeyAccountabilities { get; set; }
+
+    // --- JD versioning (lightweight — JD block B, CEO-approved) ---
+    // Deliberately NO history table this round: only a running version
+    // number plus a last-reviewed stamp. Every save on JobProfileDetail
+    // that changes Purpose/duties/qualifications/KPIs bumps JdVersion once
+    // and stamps who/when. If audits later need full diffs, a history
+    // table can be added without touching these columns.
+    public int JdVersion { get; set; } = 1;
+
+    public DateTime? JdReviewedDate { get; set; }
+
+    [StringLength(100)]
+    public string? JdReviewedBy { get; set; }
 }

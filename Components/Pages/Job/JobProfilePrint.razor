@@ -160,6 +160,40 @@ else
             <div class="jd-meta">-</div>
         }
 
+        <h2>@L.Translate("JdKpiSectionTitle")</h2>
+        @if (_kpis.Count > 0)
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30px;">#</th>
+                        <th>@L.Translate("JdKpiColName")</th>
+                        <th>@L.Translate("JdKpiColTarget")</th>
+                        <th style="width:100px;">@L.Translate("JdKpiColValue")</th>
+                        <th style="width:80px;">@L.Translate("JdKpiColUnit")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var kn = 0; }
+                    @foreach (var k in _kpis)
+                    {
+                        kn++;
+                        <tr>
+                            <td>@kn</td>
+                            <td>@k.Name</td>
+                            <td>@(k.TargetDescription ?? "-")</td>
+                            <td>@(k.TargetValue is decimal tv ? tv.ToString("#,##0.##") : "-")</td>
+                            <td>@(k.Unit ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="jd-meta">-</div>
+        }
+
         <h2>สมรรถนะที่ต้องการ (Required Competencies)</h2>
         @if (_requirements.Count > 0)
         {
@@ -188,7 +222,10 @@ else
             <div class="jd-meta">-</div>
         }
 
-        <div class="jd-footer">@string.Format(L.Translate("JdPrintedOnTemplate"), DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</div>
+        <div class="jd-footer">
+            <div>@JdVersionLine()</div>
+            <div>@string.Format(L.Translate("JdPrintedOnTemplate"), DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</div>
+        </div>
     </div>
 }
 
@@ -200,6 +237,7 @@ else
     private string? _levelName;
     private List<Job_ProfileDuty> _duties = new();
     private List<Job_ProfileQualification> _qualifications = new();
+    private List<Job_ProfileKpi> _kpis = new();
     private List<Job_CompetencyRequirement> _requirements = new();
     private List<Comp_Competency> _allCompetencies = new();
     private List<JobReportingLineHelper.ReportingLineRow> _reportingRows = new();
@@ -221,6 +259,9 @@ else
         _qualifications = await context.Job_ProfileQualifications
             .Where(q => q.PosExecTypeId == PosExecTypeId && q.IsActive)
             .OrderBy(q => q.SortOrder).ToListAsync();
+        _kpis = await context.Job_ProfileKpis
+            .Where(k => k.PosExecTypeId == PosExecTypeId && k.IsActive)
+            .OrderBy(k => k.SortOrder).ToListAsync();
         _requirements = await context.Job_CompetencyRequirements
             .Where(r => r.PosExecTypeId == PosExecTypeId && r.IsActive)
             .OrderBy(r => r.SortOrder).ToListAsync();
@@ -232,6 +273,16 @@ else
     }
 
     private string CompetencyName(long competencyId) => _allCompetencies.FirstOrDefault(c => c.Id == competencyId) is { } c ? $"{c.Code} — {c.Name}" : "-";
+
+    // JD versioning footer (lightweight — no history table this round, see
+    // Pos_ExecType.JdVersion comment).
+    private string JdVersionLine()
+    {
+        if (_execType is null) return "";
+        return _execType.JdReviewedDate is DateTime rd
+            ? string.Format(L.Translate("JdVersionTemplate"), _execType.JdVersion, rd.ToString("dd/MM/yyyy HH:mm"), _execType.JdReviewedBy ?? "-")
+            : string.Format(L.Translate("JdVersionOnlyTemplate"), _execType.JdVersion);
+    }
 
     private string TrackLabel(CareerTrack? t) => t switch
     {

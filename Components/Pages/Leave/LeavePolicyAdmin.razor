@@ -1,12 +1,14 @@
 @page "/leave-requests/policy"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
@@ -24,9 +26,14 @@
         return;
     }
 
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
     <MudGrid Class="mt-2">
         <MudItem xs="12" sm="6">
-            <MudSelect T="string" Value="_countryCode" ValueChanged="OnCountryChangedAsync" Label="ประเทศของบริษัท" Clearable="true">
+            <MudSelect T="string" Value="_countryCode" ValueChanged="OnCountryChangedAsync" Label="ประเทศของบริษัท" Clearable="true" Disabled="@(_rights?.CanEdit != true)">
                 @foreach (var c in HRM.Services.Leave.LeaveCountryHelper.CommonCountries)
                 {
                     <MudSelectItem T="string" Value="@c.Code">@c.Label</MudSelectItem>
@@ -41,7 +48,7 @@
             <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
                 @foreach (var day in _weekDays)
                 {
-                    <MudCheckBox T="bool" Value="@_workDaysSelected.Contains(day)" ValueChanged="@((bool v) => OnWorkDayToggledAsync(day, v))" Label="@DayLabel(day)" Dense="true" />
+                    <MudCheckBox T="bool" Value="@_workDaysSelected.Contains(day)" ValueChanged="@((bool v) => OnWorkDayToggledAsync(day, v))" Label="@DayLabel(day)" Dense="true" Disabled="@(_rights?.CanEdit != true)" />
                 }
             </MudStack>
             <MudText Typo="Typo.caption" Class="mt-1">ค่าเริ่มต้น = จันทร์-ศุกร์</MudText>
@@ -144,7 +151,7 @@
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CancelEdit">ยกเลิก</MudButton>
                 }
-                else
+                else if (_rights?.CanEdit == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
                 }
@@ -155,7 +162,7 @@
         </NoRecordsContent>
     </MudTable>
 
-    @if (_missingTypes.Count > 0)
+    @if (_missingTypes.Count > 0 && _rights?.CanCreate == true)
     {
         <MudDivider Class="my-4" />
         <MudText Typo="Typo.body2" Class="mb-2">ประเภทที่ยังไม่ได้ตั้งค่า:</MudText>
@@ -190,13 +197,33 @@
     ];
     private HashSet<DayOfWeek> _workDaysSelected = new();
 
+    private const string ProgramPath = "/leave-requests/policy";
+    private ProgramRoleService.ProgramRights? _rights;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await LoadAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadAsync()
@@ -238,6 +265,11 @@
 
     private async Task OnWorkDayToggledAsync(DayOfWeek day, bool selected)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         if (selected) _workDaysSelected.Add(day);
         else _workDaysSelected.Remove(day);
 
@@ -259,6 +291,11 @@
 
     private async Task OnCountryChangedAsync(string? value)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         _countryCode = value;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -297,6 +334,11 @@
 
     private async Task SaveAsync()
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         if (_editingId is not long id) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -322,6 +364,11 @@
 
     private async Task AddPolicyAsync(Lve_LeaveType type)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Lve_LeavePolicies.Add(new Lve_LeavePolicy
         {

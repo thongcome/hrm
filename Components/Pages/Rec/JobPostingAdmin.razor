@@ -11,6 +11,7 @@
 @inject RecJobPostingService PostingService
 @inject RecRequisitionService RequisitionService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @attribute [Authorize(Policy = "Menu:REC_ADMIN")]
 
 <PageTitle>ประกาศรับสมัคร (Job Posting)</PageTitle>
@@ -96,7 +97,7 @@ else
             <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Secondary">สร้างได้เฉพาะจากคำขออัตรากำลังที่อนุมัติแล้วและยังไม่มีประกาศ</MudText>
             <MudGrid Class="mt-1">
                 <MudItem xs="12" sm="6">
-                    <MudSelect T="Rec_Requisition" @bind-Value="_selectedRequisition" Label="คำขออัตรากำลังที่อนุมัติแล้ว" ToStringFunc="@(r => r == null ? null : $"#{r.Id} — {ExecTypeName(r.PosExecTypeId)} ({r.OpeningsCount} อัตรา)")">
+                    <MudSelect T="Rec_Requisition" Value="_selectedRequisition" ValueChanged="OnRequisitionChangedAsync" Label="คำขออัตรากำลังที่อนุมัติแล้ว" ToStringFunc="@(r => r == null ? null : $"#{r.Id} — {ExecTypeName(r.PosExecTypeId)} ({r.OpeningsCount} อัตรา)")">
                         @foreach (var r in _postableRequisitions)
                         {
                             <MudSelectItem Value="r">#@r.Id — @ExecTypeName(r.PosExecTypeId) (@r.OpeningsCount อัตรา)</MudSelectItem>
@@ -107,6 +108,16 @@ else
                 <MudItem xs="12" sm="6"><MudDatePicker Label="วันเปิดรับสมัคร" @bind-Date="_openDate" /></MudItem>
                 <MudItem xs="12" sm="6"><MudDatePicker Label="วันปิดรับสมัคร" @bind-Date="_closeDate" /></MudItem>
                 <MudItem xs="12"><MudTextField @bind-Value="_description" Label="รายละเอียดงาน" Lines="5" /></MudItem>
+                <MudItem xs="12">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Description"
+                            Disabled="@(!_jdAvailable)" OnClick="PullFromJdAsync">ดึงจาก Job Description</MudButton>
+                        @if (_selectedRequisition is not null && !_jdAvailable)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">ตำแหน่งนี้ยังไม่มี Job Description</MudText>
+                        }
+                    </MudStack>
+                </MudItem>
                 <MudItem xs="12">
                     <MudCheckBox T="bool" @bind-Value="_isInternal" Label="เปิดรับเฉพาะพนักงานภายใน (ไม่แสดงบน career site สาธารณะ)" />
                 </MudItem>
@@ -131,6 +142,9 @@ else
     private bool _showForm;
 
     private Rec_Requisition? _selectedRequisition;
+    // Whether the selected requisition's position has any JD content to pull
+    // (Purpose, structured duty/qualification rows, or the legacy blob).
+    private bool _jdAvailable;
     private string? _title;
     private DateTime? _openDate = DateTime.Today;
     private DateTime? _closeDate;
@@ -183,6 +197,7 @@ else
         _error = null;
         _info = null;
         _selectedRequisition = null;
+        _jdAvailable = false;
         _title = null;
         _openDate = DateTime.Today;
         _closeDate = null;
@@ -218,12 +233,117 @@ else
 
         _info = "บันทึกประกาศ (ร่าง) สำเร็จ — กด \"เปิดรับสมัคร\" เพื่อให้แสดงบนหน้า career site";
         _selectedRequisition = null;
+        _jdAvailable = false;
         _title = null;
         _description = null;
         _closeDate = null;
         _isInternal = false;
         _showForm = false;
         await RefreshAsync();
+    }
+
+    // ---------- ดึงจาก Job Description (JD block B) ----------
+    // A posting reaches its position through RequisitionId →
+    // Rec_Requisition.PosExecTypeId — no direct position link on the posting
+    // itself, and none is needed.
+
+    private async Task OnRequisitionChangedAsync(Rec_Requisition? requisition)
+    {
+        _selectedRequisition = requisition;
+        _jdAvailable = false;
+        if (requisition is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == requisition.PosExecTypeId);
+        if (execType is null) return;
+        _jdAvailable =
+            !string.IsNullOrWhiteSpace(execType.Purpose)
+            || !string.IsNullOrWhiteSpace(execType.KeyAccountabilities)
+            || await context.Job_ProfileDuties.AnyAsync(d => d.PosExecTypeId == requisition.PosExecTypeId && d.IsActive)
+            || await context.Job_ProfileQualifications.AnyAsync(q => q.PosExecTypeId == requisition.PosExecTypeId && q.IsActive);
+    }
+
+    private async Task PullFromJdAsync()
+    {
+        if (_selectedRequisition is null) return;
+
+        var text = await ComposeJdTextAsync(_selectedRequisition.PosExecTypeId);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Snackbar.Add("ตำแหน่งนี้ยังไม่มีข้อมูล Job Description", Severity.Info);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_description))
+        {
+            var confirmed = await DialogService.ShowMessageBox(
+                "เขียนทับรายละเอียดงาน?",
+                "ช่องรายละเอียดงานมีข้อความอยู่แล้ว — การดึงจาก Job Description จะเขียนทับข้อความเดิมทั้งหมด",
+                yesText: "เขียนทับ", cancelText: "ยกเลิก");
+            if (confirmed != true) return;
+        }
+
+        _description = text;
+        Snackbar.Add("ดึงข้อมูลจาก Job Description แล้ว", Severity.Success);
+    }
+
+    // Composes the posting description from the position's structured JD:
+    // Purpose first, then active duties as a bulleted list (ordered by
+    // SortOrder, weight% appended when set — falling back to the legacy
+    // KeyAccountabilities blob only while no structured duty rows exist,
+    // same one-way fallback rule as JobProfileDetail/Print), then active
+    // qualifications grouped จำเป็น / ควรมี.
+    private async Task<string?> ComposeJdTextAsync(long posExecTypeId)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(t => t.Id == posExecTypeId);
+        if (execType is null) return null;
+
+        var duties = await context.Job_ProfileDuties
+            .Where(d => d.PosExecTypeId == posExecTypeId && d.IsActive)
+            .OrderBy(d => d.SortOrder).ToListAsync();
+        var qualifications = await context.Job_ProfileQualifications
+            .Where(q => q.PosExecTypeId == posExecTypeId && q.IsActive)
+            .OrderBy(q => q.SortOrder).ToListAsync();
+
+        var sb = new System.Text.StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(execType.Purpose))
+        {
+            sb.AppendLine("วัตถุประสงค์ของตำแหน่ง");
+            sb.AppendLine(execType.Purpose.Trim());
+        }
+
+        if (duties.Count > 0)
+        {
+            if (sb.Length > 0) sb.AppendLine();
+            sb.AppendLine("หน้าที่ความรับผิดชอบ");
+            foreach (var d in duties)
+                sb.AppendLine(d.WeightPercent is decimal w ? $"• {d.Text} ({w:0.#}%)" : $"• {d.Text}");
+        }
+        else if (!string.IsNullOrWhiteSpace(execType.KeyAccountabilities))
+        {
+            if (sb.Length > 0) sb.AppendLine();
+            sb.AppendLine("หน้าที่ความรับผิดชอบ");
+            sb.AppendLine(execType.KeyAccountabilities.Trim());
+        }
+
+        var required = qualifications.Where(q => q.IsRequired).ToList();
+        var preferred = qualifications.Where(q => !q.IsRequired).ToList();
+        if (required.Count > 0)
+        {
+            if (sb.Length > 0) sb.AppendLine();
+            sb.AppendLine("คุณสมบัติที่จำเป็น");
+            foreach (var q in required) sb.AppendLine($"• {q.Text}");
+        }
+        if (preferred.Count > 0)
+        {
+            if (sb.Length > 0) sb.AppendLine();
+            sb.AppendLine("คุณสมบัติที่ควรมี (จะพิจารณาเป็นพิเศษ)");
+            foreach (var q in preferred) sb.AppendLine($"• {q.Text}");
+        }
+
+        return sb.Length == 0 ? null : sb.ToString().TrimEnd();
     }
 
     private async Task OpenAsync(long postingId)

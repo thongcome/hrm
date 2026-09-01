@@ -429,6 +429,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Job_CompetencyRequirement> Job_CompetencyRequirements { get; set; }
     public virtual DbSet<Job_ProfileDuty> Job_ProfileDuties { get; set; }
     public virtual DbSet<Job_ProfileQualification> Job_ProfileQualifications { get; set; }
+    public virtual DbSet<Job_ProfileKpi> Job_ProfileKpis { get; set; }
     public virtual DbSet<Idp_CompetencyAssessment> Idp_CompetencyAssessments { get; set; }
     public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
     public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }
@@ -1913,6 +1914,13 @@ public partial class HRMContext : DbContext
                 .HasForeignKey(q => q.LinkedCompetencyId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(q => q.PosExecTypeId);
+        });
+
+        // KPI ประจำตำแหน่ง (JD block B) — same soft-link + index convention
+        // as Job_ProfileDuty above; no competency link on KPI rows.
+        modelBuilder.Entity<Job_ProfileKpi>(entity =>
+        {
+            entity.HasIndex(k => k.PosExecTypeId);
         });
 
         modelBuilder.Entity<Pay_PayrollPeriod>().HasData(

@@ -1,12 +1,14 @@
 @page "/admin/system/roles"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -18,7 +20,15 @@
         กลุ่มผู้ใช้ (sc_role) เป็นตัวกำหนดสิทธิ์จริงของระบบ ผูกกับเมนูผ่านหน้า "จัดการสิทธิ์การใช้ระบบ"
     </MudText>
 
-    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มกลุ่มผู้ใช้</MudButton>
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มกลุ่มผู้ใช้</MudButton>
+    }
 
     @if (!string.IsNullOrEmpty(_error))
     {
@@ -43,14 +53,20 @@
             <MudTd>@context.upperrole</MudTd>
             <MudTd>@(context.isactive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
-                @if (context.isactive)
+                @if (_rights?.CanEdit == true)
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">ปิดใช้งาน</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
                 }
-                else
+                @if (_rights?.CanDelete == true)
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">เปิดใช้งาน</MudButton>
+                    @if (context.isactive)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">ปิดใช้งาน</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">เปิดใช้งาน</MudButton>
+                    }
                 }
             </MudTd>
         </RowTemplate>
@@ -98,7 +114,10 @@
         }
 
         <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editing.roleid == 0 ? _rights?.CanCreate == true : _rights?.CanEdit == true)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            }
             <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
         </MudStack>
     </MudPaper>
@@ -112,12 +131,31 @@
     private string? _editError;
     private string _actor = "admin";
     private const long DefaultCompanyId = 1;
+    private const string ProgramPath = "/admin/system/roles";
+    private ProgramRoleService.ProgramRights? _rights;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         await LoadAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadAsync()
@@ -154,6 +192,11 @@
     {
         _editError = null;
         if (_editing is null) return;
+        if (await RequireRightAsync(_editing.roleid == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _editError = denied;
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(_editing.name))
         {
@@ -203,6 +246,11 @@
     private async Task ToggleActiveAsync(sc_role role)
     {
         _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.sc_roles.FirstOrDefaultAsync(r => r.roleid == role.roleid);
         if (existing is null) return;

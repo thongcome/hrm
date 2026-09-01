@@ -1,0 +1,392 @@
+@page "/admin/system/program-rights"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+@* AD.CRUDManage permission-admin screen — per-role × per-page
+   Create/Read/Edit/Delete flags in sc_program_role. Rows are auto-seeded at
+   startup by ProgramRoleService.SeedAsync (one row per role × routed path);
+   this page only edits the flags, it never adds/removes rows. Every save
+   calls ProgramRoles.InvalidateCache() so the ~60s rights cache refreshes
+   immediately. The page is itself both-layers wired to AD.CRUDManage on its
+   own path (write controls gated by GetRightsAsync, every write handler
+   re-checked via RequireAsync). Safety rail: the Edit right of the Admin
+   role on THIS page's own path can never be removed here — otherwise an
+   admin could lock everyone out of the rights screen permanently. *@
+
+<PageTitle>จัดการสิทธิ์การใช้งานรายหน้า</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการสิทธิ์การใช้งานรายหน้า (Program Rights)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        กำหนดสิทธิ์ เพิ่ม / อ่าน / แก้ไข / ลบ ของแต่ละกลุ่มผู้ใช้ ต่อแต่ละหน้าในระบบ (sc_program_role)
+        — รายการหน้าถูกลงทะเบียนอัตโนมัติทุกครั้งที่ระบบเริ่มทำงาน ไม่ต้องเพิ่มหน้าเอง
+        การแก้ไขมีผลภายในไม่กี่วินาที ไม่ต้องให้ผู้ใช้ออกจากระบบ
+    </MudText>
+
+    @if (_rights is not null && !_rights.CanEdit)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudSelect T="long?" Value="_selectedRoleId" ValueChanged="OnRoleSelectedAsync"
+               Label="กลุ่มผู้ใช้ (Role)" Class="mt-3" Style="max-width:420px;"
+               Placeholder="— เลือกกลุ่มผู้ใช้ —" Clearable="false">
+        @foreach (var r in _roles)
+        {
+            <MudSelectItem T="long?" Value="@((long?)r.roleid)">@($"{r.roleid} — {r.name}")</MudSelectItem>
+        }
+    </MudSelect>
+</MudPaper>
+
+@if (_selectedRoleId is null)
+{
+    <MudPaper Class="pa-8" Outlined="true">
+        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Large" Color="Color.Default" />
+            <MudText Typo="Typo.body1">เลือกกลุ่มผู้ใช้ด้านบนก่อน ระบบจึงจะแสดงรายการสิทธิ์ของกลุ่มนั้น</MudText>
+        </MudStack>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap" Spacing="2">
+            <MudTextField T="string" Value="_searchTerm" Label="ค้นหาเส้นทางหน้า (path)" Immediate="true"
+                DebounceInterval="300" ValueChanged="OnSearchChanged" Style="min-width:320px;max-width:420px;"
+                AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Clearable="true" />
+
+            @if (_rights?.CanEdit == true)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                        StartIcon="@Icons.Material.Filled.DoneAll"
+                        Disabled="@(!Filtered.Any())"
+                        OnClick="@(() => BulkApplyAsync(manage: true))">จัดการทั้งหมดที่กรอง</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                        StartIcon="@Icons.Material.Filled.Visibility"
+                        Disabled="@(!Filtered.Any())"
+                        OnClick="@(() => BulkApplyAsync(manage: false))">อ่านอย่างเดียวทั้งหมดที่กรอง</MudButton>
+                </MudStack>
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.caption" Class="mt-2 d-block">
+            แสดง @Filtered.Count() จาก @_rows.Count หน้า ของกลุ่ม "@_selectedRoleName"
+        </MudText>
+
+        <MudTable Items="Filtered" Dense="true" Hover="true" Class="mt-2" RowsPerPage="50">
+            <HeaderContent>
+                <MudTh>เส้นทางหน้า (path)</MudTh>
+                <MudTh Style="text-align:center;">เพิ่ม (Create)</MudTh>
+                <MudTh Style="text-align:center;">อ่าน (Read)</MudTh>
+                <MudTh Style="text-align:center;">แก้ไข (Edit)</MudTh>
+                <MudTh Style="text-align:center;">ลบ (Delete)</MudTh>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudTh>กำหนดเร็ว</MudTh>
+                }
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd Style="font-family:monospace;">
+                    @context.progpath
+                    @if (IsAdminLockRow(context))
+                    {
+                        <MudTooltip Text="สิทธิ์แก้ไขของกลุ่ม Admin บนหน้านี้ ถูกล็อกไว้ไม่ให้ปิด เพื่อป้องกันการล็อกตัวเองออกจากหน้าจัดการสิทธิ์">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Warning" Class="ml-1" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+                <MudTd Style="text-align:center;">
+                    <MudCheckBox T="bool" Value="@context.cancreate" Dense="true"
+                        Disabled="@(_rights?.CanEdit != true)"
+                        ValueChanged="@(v => SetFlagAsync(context, RightFlag.Create, v))" />
+                </MudTd>
+                <MudTd Style="text-align:center;">
+                    <MudCheckBox T="bool" Value="@context.canread" Dense="true"
+                        Disabled="@(_rights?.CanEdit != true)"
+                        ValueChanged="@(v => SetFlagAsync(context, RightFlag.Read, v))" />
+                </MudTd>
+                <MudTd Style="text-align:center;">
+                    <MudCheckBox T="bool" Value="@context.canedit" Dense="true"
+                        Disabled="@(_rights?.CanEdit != true)"
+                        ValueChanged="@(v => SetFlagAsync(context, RightFlag.Edit, v))" />
+                </MudTd>
+                <MudTd Style="text-align:center;">
+                    <MudCheckBox T="bool" Value="@context.candelete" Dense="true"
+                        Disabled="@(_rights?.CanEdit != true)"
+                        ValueChanged="@(v => SetFlagAsync(context, RightFlag.Delete, v))" />
+                </MudTd>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                            OnClick="@(() => ApplyPresetAsync(context, manage: true))">จัดการ</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning"
+                            OnClick="@(() => ApplyPresetAsync(context, manage: false))">อ่านอย่างเดียว</MudButton>
+                    </MudTd>
+                }
+                <MudTd>
+                    @if (context.isactive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">ใช้งาน</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">ปิดใช้งาน</MudChip>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ไม่พบหน้าที่ตรงกับคำค้น</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private const string OwnPath = "/admin/system/program-rights";
+
+    private enum RightFlag { Create, Read, Edit, Delete }
+
+    private List<sc_role> _roles = new();
+    private List<sc_program_role> _rows = new();
+    private long? _selectedRoleId;
+    private string? _searchTerm;
+    private long? _adminRoleId;
+    private string _actor = "admin";
+    private ProgramRoleService.ProgramRights? _rights;
+    private ClaimsPrincipal? _user;
+
+    private string _selectedRoleName =>
+        _roles.FirstOrDefault(r => r.roleid == _selectedRoleId)?.name ?? "?";
+
+    private IEnumerable<sc_program_role> Filtered =>
+        string.IsNullOrWhiteSpace(_searchTerm)
+            ? _rows
+            : _rows.Where(r => r.progpath.Contains(_searchTerm.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _user = state.User;
+        _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, OwnPath);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
+        _adminRoleId = _roles
+            .FirstOrDefault(r => string.Equals(r.name, "Admin", StringComparison.OrdinalIgnoreCase))?.roleid;
+        // Deliberately no row load here — large-table convention: nothing
+        // loads until the user explicitly picks a role.
+    }
+
+    private async Task OnRoleSelectedAsync(long? roleId)
+    {
+        _selectedRoleId = roleId;
+        _rows = new();
+        if (roleId is null) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _rows = await context.sc_program_roles
+            .Where(p => p.roleid == roleId.Value)
+            .OrderBy(p => p.progpath)
+            .ToListAsync();
+    }
+
+    private void OnSearchChanged(string value) => _searchTerm = value;
+
+    // ---- Safety rail ------------------------------------------------------
+    // The Admin role's Edit right on THIS page's own path must never be
+    // removable here — losing it would permanently lock everyone out of the
+    // rights screen (fail-closed check + this is the only page that edits
+    // the table).
+    private bool IsAdminLockRow(sc_program_role row) =>
+        _adminRoleId is not null
+        && row.roleid == _adminRoleId.Value
+        && string.Equals(row.progpath, OwnPath, StringComparison.OrdinalIgnoreCase);
+
+    private const string AdminLockMessage =
+        "ไม่สามารถปิดสิทธิ์ \"แก้ไข\" ของกลุ่ม Admin บนหน้าจัดการสิทธิ์นี้ได้ — มิฉะนั้นจะไม่มีใครแก้ไขสิทธิ์ได้อีกเลย";
+
+    // ---- Single-flag toggle (immediate save) ------------------------------
+    private async Task SetFlagAsync(sc_program_role row, RightFlag flag, bool value)
+    {
+        if (flag == RightFlag.Edit && !value && IsAdminLockRow(row))
+        {
+            Snackbar.Add(AdminLockMessage, Severity.Error);
+            StateHasChanged(); // revert the checkbox to the unchanged model value
+            return;
+        }
+
+        try
+        {
+            await ProgramRoles.RequireAsync(_user!, OwnPath, ProgramRoleService.ProgramAction.Edit);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.sc_program_roles.FirstOrDefaultAsync(p => p.id == row.id);
+            if (existing is null)
+            {
+                Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                return;
+            }
+
+            switch (flag)
+            {
+                case RightFlag.Create: existing.cancreate = value; break;
+                case RightFlag.Read: existing.canread = value; break;
+                case RightFlag.Edit: existing.canedit = value; break;
+                case RightFlag.Delete: existing.candelete = value; break;
+            }
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+            await context.SaveChangesAsync();
+            ProgramRoles.InvalidateCache();
+
+            // Mirror into the in-memory row so the UI stays consistent.
+            switch (flag)
+            {
+                case RightFlag.Create: row.cancreate = value; break;
+                case RightFlag.Read: row.canread = value; break;
+                case RightFlag.Edit: row.canedit = value; break;
+                case RightFlag.Delete: row.candelete = value; break;
+            }
+
+            Snackbar.Add($"บันทึกสิทธิ์ {row.progpath} เรียบร้อย", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            StateHasChanged();
+        }
+    }
+
+    // ---- Per-row presets --------------------------------------------------
+    // manage = true  -> tick all four flags
+    // manage = false -> "อ่านอย่างเดียว": tick only Read
+    private async Task ApplyPresetAsync(sc_program_role row, bool manage)
+    {
+        if (!manage && IsAdminLockRow(row))
+        {
+            Snackbar.Add(AdminLockMessage, Severity.Error);
+            return;
+        }
+
+        try
+        {
+            await ProgramRoles.RequireAsync(_user!, OwnPath, ProgramRoleService.ProgramAction.Edit);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.sc_program_roles.FirstOrDefaultAsync(p => p.id == row.id);
+            if (existing is null)
+            {
+                Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                return;
+            }
+
+            existing.cancreate = manage;
+            existing.canread = true;
+            existing.canedit = manage;
+            existing.candelete = manage;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+            await context.SaveChangesAsync();
+            ProgramRoles.InvalidateCache();
+
+            row.cancreate = manage;
+            row.canread = true;
+            row.canedit = manage;
+            row.candelete = manage;
+
+            Snackbar.Add(manage
+                ? $"ตั้งเป็น \"จัดการ\" ให้ {row.progpath} เรียบร้อย"
+                : $"ตั้งเป็น \"อ่านอย่างเดียว\" ให้ {row.progpath} เรียบร้อย", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    // ---- Bulk presets on the filtered set ---------------------------------
+    private async Task BulkApplyAsync(bool manage)
+    {
+        var targets = Filtered.ToList();
+        if (targets.Count == 0) return;
+
+        var confirmed = await DialogService.ShowMessageBox(
+            manage ? "ยืนยันตั้งเป็น \"จัดการ\" ทั้งหมด" : "ยืนยันตั้งเป็น \"อ่านอย่างเดียว\" ทั้งหมด",
+            manage
+                ? $"จะเปิดสิทธิ์ เพิ่ม/อ่าน/แก้ไข/ลบ ให้กลุ่ม \"{_selectedRoleName}\" ทั้ง {targets.Count} หน้าที่กรองอยู่ ยืนยันหรือไม่?"
+                : $"จะเหลือเฉพาะสิทธิ์ อ่าน ให้กลุ่ม \"{_selectedRoleName}\" ทั้ง {targets.Count} หน้าที่กรองอยู่ ยืนยันหรือไม่?",
+            yesText: "ยืนยัน", cancelText: "ยกเลิก");
+        if (confirmed != true) return;
+
+        try
+        {
+            await ProgramRoles.RequireAsync(_user!, OwnPath, ProgramRoleService.ProgramAction.Edit);
+
+            // Safety rail applies to the bulk read-only preset too: the
+            // Admin-lock row is skipped, never stripped of Edit.
+            var skippedAdminLock = 0;
+            if (!manage)
+            {
+                var before = targets.Count;
+                targets = targets.Where(t => !IsAdminLockRow(t)).ToList();
+                skippedAdminLock = before - targets.Count;
+            }
+
+            if (targets.Count > 0)
+            {
+                var ids = targets.Select(t => t.id).ToList();
+                await using var context = await DbFactory.CreateDbContextAsync();
+                var existingRows = await context.sc_program_roles.Where(p => ids.Contains(p.id)).ToListAsync();
+                foreach (var existing in existingRows)
+                {
+                    existing.cancreate = manage;
+                    existing.canread = true;
+                    existing.canedit = manage;
+                    existing.candelete = manage;
+                    existing.moddate = DateTime.Now;
+                    existing.modby = _actor;
+                }
+                await context.SaveChangesAsync();
+                ProgramRoles.InvalidateCache();
+
+                foreach (var row in targets)
+                {
+                    row.cancreate = manage;
+                    row.canread = true;
+                    row.canedit = manage;
+                    row.candelete = manage;
+                }
+            }
+
+            Snackbar.Add(manage
+                ? $"ตั้งเป็น \"จัดการ\" ให้ {targets.Count} หน้าเรียบร้อย"
+                : $"ตั้งเป็น \"อ่านอย่างเดียว\" ให้ {targets.Count} หน้าเรียบร้อย", Severity.Success);
+            if (skippedAdminLock > 0)
+            {
+                Snackbar.Add(AdminLockMessage + $" (ข้ามไป {skippedAdminLock} รายการ)", Severity.Warning);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using HRM.Data
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -12,6 +13,7 @@
 @inject IPasswordHasher<sc_user> PasswordHasher
 @inject UserManager<ApplicationUser> UserManager
 @inject HRM.Services.Login.UserProvisioningService UserProvisioning
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -23,7 +25,15 @@
         สร้าง/แก้ไขบัญชี sc_user และผูกกลุ่มผู้ใช้ (Role) — บัญชีที่จะ login เข้าระบบได้จริงต้องผูกกับ Identity ผ่านหน้า "ผูกบัญชี Identity" ด้วย
     </MudText>
 
-    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มผู้ใช้</MudButton>
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="my-2" OnClick="StartAdd">เพิ่มผู้ใช้</MudButton>
+    }
 
     <MudTable Items="_users" Dense="true" Hover="true">
         <HeaderContent>
@@ -65,10 +75,16 @@
                 }
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
-                    @(context.isdisable ? "เปิดใช้งาน" : "ปิดใช้งาน")
-                </MudButton>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                }
+                @if (_rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                        @(context.isdisable ? "เปิดใช้งาน" : "ปิดใช้งาน")
+                    </MudButton>
+                }
             </MudTd>
         </RowTemplate>
     </MudTable>
@@ -118,7 +134,7 @@
             }
         </MudGrid>
 
-        @if (_editing.userid != 0)
+        @if (_editing.userid != 0 && _rights?.CanEdit == true)
         {
             <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" Class="mt-2" OnClick="ResetPasswordAsync">
                 รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น
@@ -135,7 +151,10 @@
         }
 
         <MudStack Row="true" Spacing="2" Class="mt-4">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            @if (_editing.userid == 0 ? _rights?.CanCreate == true : _rights?.CanEdit == true)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            }
             <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
         </MudStack>
     </MudPaper>
@@ -154,12 +173,31 @@
     private string? _editError;
     private string? _editInfo;
     private string _actor = "admin";
+    private const string ProgramPath = "/admin/system/users";
+    private ProgramRoleService.ProgramRights? _rights;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         await LoadAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadAsync()
@@ -248,6 +286,11 @@
         _editError = null;
         _editInfo = null;
         if (_editing is null) return;
+        if (await RequireRightAsync(_editing.userid == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _editError = denied;
+            return;
+        }
 
         // No hard minimum length: logins created from the employee page reuse
         // EmpNo verbatim (e.g. "005"), which can be shorter than the old
@@ -368,6 +411,11 @@
     private async Task ResetPasswordAsync()
     {
         if (_editing is null || _editing.userid == 0) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _editError = denied;
+            return;
+        }
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == _editing.userid);
@@ -399,6 +447,11 @@
 
     private async Task ToggleActiveAsync(sc_user user)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            Snackbar.Add(denied, Severity.Error);
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == user.userid);
         if (existing is null) return;

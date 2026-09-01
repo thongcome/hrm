@@ -1,12 +1,14 @@
 @page "/admin/system/menus"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -20,10 +22,18 @@
 
     <MudBreadcrumbs Items="_breadcrumbItems" Class="mt-3 pl-0"></MudBreadcrumbs>
 
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
     <MudStack Row="true" Spacing="2" Class="mb-3">
-        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add"
-            Disabled="@(_currentParent is not null && _currentParent.isfinal)"
-            OnClick="StartAddChild">เพิ่มเมนู</MudButton>
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add"
+                Disabled="@(_currentParent is not null && _currentParent.isfinal)"
+                OnClick="StartAddChild">เพิ่มเมนู</MudButton>
+        }
         @if (_breadcrumbPath.Count > 0)
         {
             <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowUpward" OnClick="GoUp">Go up</MudButton>
@@ -89,7 +99,10 @@
             }
 
             <MudStack Row="true" Spacing="2" Class="mt-4">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                @if (_editing.menuid == 0 ? _rights?.CanCreate == true : _rights?.CanEdit == true)
+                {
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+                }
                 <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
             </MudStack>
         </MudPaper>
@@ -137,8 +150,14 @@
             <MudTd>@row.Menu.menuorder</MudTd>
             <MudTd>@(row.Menu.isshow ? "ใช่" : "ไม่")</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row.Menu))">แก้ไข</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Menu))">ลบ</MudButton>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row.Menu))">แก้ไข</MudButton>
+                }
+                @if (_rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeleteAsync(row.Menu))">ลบ</MudButton>
+                }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -157,16 +176,35 @@
     private string? _error;
     private string? _editError;
     private string _actor = "admin";
+    private const string ProgramPath = "/admin/system/menus";
+    private ProgramRoleService.ProgramRights? _rights;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _menuGroups = await context.sc_menugroups.OrderBy(g => g.menugroupname).ToListAsync();
 
         await LoadAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — returns
+    // the denial message, or null when the action is allowed.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadAsync()
@@ -264,6 +302,11 @@
     {
         _editError = null;
         if (_editing is null) return;
+        if (await RequireRightAsync(_editing.menuid == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _editError = denied;
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(_editing.menuname))
         {
@@ -322,6 +365,11 @@
 
     private async Task DeleteAsync(sc_menu menu)
     {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            _error = denied;
+            return;
+        }
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var hasActiveChildren = !string.IsNullOrWhiteSpace(menu.menucode)

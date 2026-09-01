@@ -1,7 +1,10 @@
 namespace HRM.Services.Dev;
 
 using HRM.Data;
+using HRM.Models;
+using HRM.Services.Login;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 // Development-only convenience so anyone (a new developer, an AI agent
 // verifying a change) always has a known-working login without hand-editing
@@ -56,6 +59,81 @@ public static class DevAuthSeeder
         await ResetPasswordAsync(userManager, DevEssEmail, DevEssPassword);
         foreach (var email in DemoEmployeeEmails)
             await ResetPasswordAsync(userManager, email, DevEssPassword);
+    }
+
+    // End-to-end fixture for CEO access-control step 3 (auto-role by
+    // employeeType at first user setup), Development only. Creates — once —
+    // a committee-type (EMPTYPE_CODE '02') demo employee at AdvanceDigital
+    // with an sc_user that has NO role rows, then provisions its Identity
+    // account through the REAL UserProvisioningService path, which must
+    // auto-assign the 'กรรมการ' role via sc_role.employeetype_code. Login:
+    // KB0001 / Dev@12345. Must run AFTER EmployeeTypeRoleSeeder (needs the
+    // '02' mapping) — see the call site in Program.cs. Same dev-only
+    // rationale as the password resets above.
+    public const string CommitteeFixtureLogin = "KB0001";
+
+    public static async Task EnsureCommitteeAutoRoleFixtureAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<HRMContext>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DevAuthSeeder");
+        await using var ctx = await dbFactory.CreateDbContextAsync();
+
+        var scUser = await ctx.sc_users.FirstOrDefaultAsync(u => u.loginname == CommitteeFixtureLogin);
+        if (scUser is null)
+        {
+            var company = await ctx.com_companies.FirstOrDefaultAsync(c => c.code == "ADVD");
+            var emp = await ctx.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == CommitteeFixtureLogin);
+            if (emp is null)
+            {
+                emp = new Hremployee
+                {
+                    companyid = "ADVD",
+                    EmpNo = CommitteeFixtureLogin,
+                    EmpName = "สมเกียรติ",
+                    EmpSurname = "วัฒนกิจ",
+                    EmptypeCode = "02", // กรรมการ — the whole point of the fixture
+                    Sex = "M",
+                    WorkDate = new DateTime(2020, 1, 6),
+                    IsActive = true,
+                };
+                ctx.Hremployee.Add(emp);
+            }
+            scUser = new sc_user
+            {
+                loginname = CommitteeFixtureLogin,
+                empid = CommitteeFixtureLogin,
+                firstname = "สมเกียรติ",
+                lastname = "วัฒนกิจ",
+                company_id = company?.id ?? 1,
+                isdisable = false,
+                iscancel = false,
+                isActivate = true,
+                isforcechanged = false,
+                moddate = DateTime.Now,
+                modby = "DevAuthSeeder",
+            };
+            ctx.sc_users.Add(scUser);
+            await ctx.SaveChangesAsync();
+            logger.LogInformation("Committee auto-role fixture: created Hremployee/sc_user {Login}.", CommitteeFixtureLogin);
+        }
+
+        // Provision through the real first-setup path (idempotent) — this is
+        // what triggers the employeeType→role auto-assign being proven here.
+        var provisioning = scope.ServiceProvider.GetRequiredService<UserProvisioningService>();
+        var result = await provisioning.EnsureIdentityLinkedAsync(scUser, DevEssPassword, "kb0001@hrm.local");
+        if (!result.Succeeded)
+        {
+            logger.LogWarning("Committee auto-role fixture: provisioning failed — {Error}", result.Error);
+            return;
+        }
+
+        var roleNames = await (from ur in ctx.sc_user_roles
+                               join r in ctx.sc_roles on ur.roleid equals r.roleid
+                               where ur.userid == scUser.userid
+                               select r.name).ToListAsync();
+        logger.LogInformation("Committee auto-role fixture: {Login} now holds roles [{Roles}] (expected: กรรมการ).",
+            CommitteeFixtureLogin, string.Join(", ", roleNames));
     }
 
     private static async Task ResetPasswordAsync(UserManager<ApplicationUser> userManager, string email, string password)
