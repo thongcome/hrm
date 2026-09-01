@@ -675,10 +675,12 @@ using (var oidcSeedScope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     await HRM.Services.Dev.DevAuthSeeder.EnsureKnownDevPasswordAsync(app.Services);
-    // CEO demo dataset: company AUTOX, 7,000 fictitious employees wired into
-    // org structure/positions/sc_user. One-shot (skips when AUTOX exists) —
-    // first Development startup after this line takes ~1-3 minutes longer.
-    await HRM.Services.Dev.AutoxDemoSeeder.SeedAsync(app.Services);
+    // CEO demo dataset: company AdvanceDigital (ADVD), 7,000 fictitious
+    // employees wired into org structure/positions/sc_user. One-shot (skips
+    // when ADVD exists) — first Development startup takes ~1-3 minutes longer.
+    // (Originally seeded as "AUTOX"; renamed by the RenameDemoCompany
+    // migration — the seeder now produces ADVD from scratch too.)
+    await HRM.Services.Dev.DemoCompanySeeder.SeedAsync(app.Services);
 }
 
 // AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike
@@ -694,5 +696,10 @@ await HRM.Services.Security.ScMenuNavSeeder.SeedAsync(app.Services);
 // Standard employee-document types (สัญญาจ้าง ฯลฯ) into legacy mas_doc_type —
 // add-missing-by-code, never touches existing rows.
 await HRM.Services.Hr.EmployeeDocTypeSeeder.SeedAsync(app.Services);
+// Access-control step 3 (CEO): employeetype master ('01' พนักงาน / '02'
+// กรรมการ), the กรรมการ role, and the role↔employeetype mapping that
+// UserProvisioningService uses to auto-assign a role at first user setup.
+// Mapping seeds only while NULL — a human's change wins forever.
+await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
 
 app.Run();

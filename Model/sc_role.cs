@@ -57,6 +57,12 @@ public partial class sc_role
     [StringLength(500)]
     public string? ref2 { get; set; }
 
+    // ประเภทพนักงาน (employeetype.code) ที่จะได้ role นี้อัตโนมัติตอน set user
+    // ครั้งแรก (CEO access-control step 3, 2026-09-01). NULL = ไม่ auto-assign.
+    // Matched against HREMPLOYEE.EMPTYPE_CODE by UserProvisioningService.
+    [StringLength(100)]
+    public string? employeetype_code { get; set; }
+
  
     [InverseProperty("role")]
     public virtual ICollection<sc_role_menu> sc_role_menus { get; set; } = new List<sc_role_menu>();

@@ -3,25 +3,25 @@ namespace HRM.Services.Dev;
 using HRM.Models;
 using Microsoft.EntityFrameworkCore;
 
-// Demo-scale company "AUTOX" (CEO order, 2026-09-01): 7,000 fictitious Thai
+// Demo-scale company "ADVD" (CEO order, 2026-09-01): 7,000 fictitious Thai
 // employees wired consistently into com_organization + position tables +
 // sc_user, so demos and performance testing have a believable large company
 // next to the tiny real "001" data set.
 //
 // Design notes (all verified against the live schema/data before writing):
 //
-// - ONE-SHOT / IDEMPOTENT: if any HREMPLOYEE row with companyid = "AUTOX"
+// - ONE-SHOT / IDEMPOTENT: if any HREMPLOYEE row with companyid = "ADVD"
 //   exists the seeder returns immediately. To re-seed from scratch, delete
-//   the AUTOX rows (HREMPLOYEE / sc_user+sc_user_role via empid like 'AX%',
-//   com_organization comp_code='AUTOX', pos_position pos_code 'A01'-'A07',
-//   Pos_ExecType CompanyId='AUTOX', com_company code='AUTOX') and restart.
+//   the ADVD demo rows (HREMPLOYEE / sc_user+sc_user_role via empid like 'AD%',
+//   com_organization comp_code='ADVD demo', pos_position pos_code 'A01'-'A07',
+//   Pos_ExecType CompanyId='ADVD demo', com_company code='ADVD demo') and restart.
 //   All randomness comes from ONE Random with a FIXED seed consumed in a
 //   fixed order, so a wipe + rerun reproduces identical data.
 //
 // - Never touches any existing row in any table (company "001", real
 //   sc_user accounts, the existing CEO/HR org tree). Every phase inserts
-//   only rows that are missing, keyed by AUTOX-prefixed codes that cannot
-//   collide with existing data ("AX...." EmpNos, "AX"/"AX-*" org codes,
+//   only rows that are missing, keyed by ADVD demo-prefixed codes that cannot
+//   collide with existing data ("AD...." EmpNos, "AD"/"AD-*" org codes,
 //   "A01".."A07" position codes — existing data uses "001"-style codes).
 //
 // - Column choices mirror what existing rows actually populate:
@@ -52,16 +52,16 @@ using Microsoft.EntityFrameworkCore;
 //   of going through Pos_PositionSlot + EmployeePositionSync (the normal
 //   single source of truth per Hremployee.cs). Deliberate, documented
 //   deviation: creating 7,000 headcount-slot rows would double the insert
-//   volume for no demo benefit, and no slot rows exist for AUTOX that the
+//   volume for no demo benefit, and no slot rows exist for ADVD demo that the
 //   sync could ever contradict.
 //
 // - The automatic audit hook in HRMContext.Audit.cs logs every insert —
 //   correct and intentional; expect roughly 21,000+ AuditLog rows from one
 //   full run.
-public static class AutoxDemoSeeder
+public static class DemoCompanySeeder
 {
-    private const string CompanyId = "AUTOX";           // HREMPLOYEE.companyid (nvarchar(6)) — the string company scope
-    private const string SeederName = "AutoxDemoSeeder";
+    private const string CompanyId = "ADVD";           // HREMPLOYEE.companyid (nvarchar(6)) — the string company scope
+    private const string SeederName = "DemoCompanySeeder";
     private const int FixedSeed = 20260901;             // fixed → deterministic reruns after a wipe
     private const int BatchSize = 500;
     private const int TotalEmployees = 7000;
@@ -190,11 +190,11 @@ public static class AutoxDemoSeeder
             // ---- One-shot guard --------------------------------------------
             if (await ctx.Hremployee.AnyAsync(e => e.companyid == CompanyId))
             {
-                logger.LogInformation("AUTOX demo data already present (HREMPLOYEE companyid={CompanyId}) — seeder skipped.", CompanyId);
+                logger.LogInformation("ADVD demo demo data already present (HREMPLOYEE companyid={CompanyId}) — seeder skipped.", CompanyId);
                 return;
             }
 
-            logger.LogInformation("AUTOX demo seed starting: {Total} employees, fixed seed {Seed}.", TotalEmployees, FixedSeed);
+            logger.LogInformation("ADVD demo demo seed starting: {Total} employees, fixed seed {Seed}.", TotalEmployees, FixedSeed);
 
             // ---- Phase 1: com_company display row --------------------------
             // com_company.code lives in a DIFFERENT id space than
@@ -202,7 +202,7 @@ public static class AutoxDemoSeeder
             // existing employees use companyid '001' while com_company has
             // only code 'AD'). The row here exists because sc_user.company_id
             // is a NOT NULL FK into com_company (every existing sc_user
-            // points at row id=1 'AD'), and so AUTOX shows up in any picker
+            // points at row id=1 'AD'), and so ADVD demo shows up in any picker
             // that lists com_company.
             var company = await ctx.com_companies.FirstOrDefaultAsync(c => c.code == CompanyId);
             if (company is null)
@@ -210,33 +210,33 @@ public static class AutoxDemoSeeder
                 company = new com_company
                 {
                     code = CompanyId,
-                    name = "บริษัท ออโต้เอ็กซ์ จำกัด",
-                    name_en = "AutoX Co., Ltd.",
+                    name = "บริษัท แอดวานซ์ ดิจิทัล จำกัด",
+                    name_en = "AdvanceDigital Co., Ltd.",
                     abbr = CompanyId,
                     amount_emp = TotalEmployees,
                     isActive = true,
                     VatRegistered = false,
                     moddate = Anchor,
                     modby = SeederName,
-                    remark = "บริษัทตัวอย่างสำหรับเดโม (สร้างโดย AutoxDemoSeeder — ข้อมูลสมมติทั้งหมด)",
+                    remark = "บริษัทตัวอย่างสำหรับเดโม (สร้างโดย DemoCompanySeeder — ข้อมูลสมมติทั้งหมด)",
                 };
                 ctx.com_companies.Add(company);
                 await ctx.SaveChangesAsync();
-                logger.LogInformation("AUTOX seed: com_company row created (id={Id}).", company.id);
+                logger.LogInformation("ADVD demo seed: com_company row created (id={Id}).", company.id);
             }
             companyRowId = company.id;
 
             // ---- Phase 2: plan org tree + employees in memory --------------
             // Root orgcodefull prefix: existing top-level rows own "01"
-            // (CEO Office); AUTOX takes the next free 2-digit slot. If a
-            // previous partial run already wrote the AUTOX root, reuse its
+            // (CEO Office); ADVD demo takes the next free 2-digit slot. If a
+            // previous partial run already wrote the ADVD demo root, reuse its
             // prefix so orgcodefull values stay consistent.
-            var existingAutoxOrgs = await ctx.com_organizations
+            var existingDemoOrgs = await ctx.com_organizations
                 .Where(o => o.comp_code == CompanyId)
                 .ToListAsync();
 
             string rootPrefix;
-            var existingRoot = existingAutoxOrgs.FirstOrDefault(o => o.code == "AX");
+            var existingRoot = existingDemoOrgs.FirstOrDefault(o => o.code == "AD");
             if (existingRoot?.orgcodefull is { Length: >= 2 } persisted)
             {
                 rootPrefix = persisted[..2];
@@ -257,7 +257,7 @@ public static class AutoxDemoSeeder
             (orgPlans, empPlans) = BuildPlans(rootPrefix);
 
             // ---- Phase 3: insert org tree ----------------------------------
-            var existingCodes = existingAutoxOrgs.Select(o => o.code).ToHashSet();
+            var existingCodes = existingDemoOrgs.Select(o => o.code).ToHashSet();
             var newOrgs = new List<com_organization>();
             foreach (var o in orgPlans)
             {
@@ -274,7 +274,7 @@ public static class AutoxDemoSeeder
                     orgcodefull = o.OrgFull,
                     approver_empid = o.ApproverEmpNo,                   // vertical-approval anchor (workflow engine)
                     approver_name = o.ApproverName,
-                    comp_code = CompanyId,                              // marker so AUTOX org rows are identifiable/wipeable
+                    comp_code = CompanyId,                              // marker so ADVD demo org rows are identifiable/wipeable
                     isActive = true,
                     createdate = Anchor,
                     createby = SeederName,
@@ -285,9 +285,9 @@ public static class AutoxDemoSeeder
                 ctx.com_organizations.AddRange(newOrgs);
                 await ctx.SaveChangesAsync();
             }
-            logger.LogInformation("AUTOX seed: org tree ready ({New} inserted, {Existing} pre-existing).", newOrgs.Count, existingAutoxOrgs.Count);
+            logger.LogInformation("ADVD demo seed: org tree ready ({New} inserted, {Existing} pre-existing).", newOrgs.Count, existingDemoOrgs.Count);
 
-            orgIdByCode = existingAutoxOrgs.Concat(newOrgs).ToDictionary(o => o.code!, o => o.id);
+            orgIdByCode = existingDemoOrgs.Concat(newOrgs).ToDictionary(o => o.code!, o => o.id);
 
             // ---- Phase 4: position ladder ----------------------------------
             // pos_position.id / Pos_ExecType.Id are real IDENTITY columns
@@ -338,7 +338,7 @@ public static class AutoxDemoSeeder
                 });
             }
             await ctx.SaveChangesAsync();
-            logger.LogInformation("AUTOX seed: position ladder ready ({Count} levels).", Positions.Length);
+            logger.LogInformation("ADVD demo seed: position ladder ready ({Count} levels).", Positions.Length);
 
             // Same role existing employee accounts hold (sc_user 26 / empid
             // '008' → role name "Employee"). Looked up by name, never
@@ -348,7 +348,7 @@ public static class AutoxDemoSeeder
                 .Select(r => (long?)r.roleid)
                 .FirstOrDefaultAsync();
             if (employeeRoleId is null)
-                logger.LogWarning("AUTOX seed: sc_role 'Employee' not found — sc_user rows will be created WITHOUT a role link.");
+                logger.LogWarning("ADVD demo seed: sc_role 'Employee' not found — sc_user rows will be created WITHOUT a role link.");
         }
 
         // ---- Phase 5: 7,000 HREMPLOYEE rows (batched, fresh context per batch)
@@ -379,13 +379,13 @@ public static class AutoxDemoSeeder
             await ctx.SaveChangesAsync();
             inserted += chunk.Length;
             if (inserted % 1000 == 0 || inserted == empPlans.Count)
-                logger.LogInformation("AUTOX seed: {Inserted}/{Total} HREMPLOYEE rows inserted.", inserted, empPlans.Count);
+                logger.LogInformation("ADVD demo seed: {Inserted}/{Total} HREMPLOYEE rows inserted.", inserted, empPlans.Count);
         }
 
         // ---- Phase 6: one sc_user (+Employee role) per employee ------------
         // Mirrors sc_user 26 (empid '008'). empid = Hremployee.EmpNo is the
         // bridge ScUserClaimsPrincipalFactory ("empno" claim) and
-        // PayrollCompanyResolver (payroll_company claim → companyid 'AUTOX')
+        // PayrollCompanyResolver (payroll_company claim → companyid 'ADVD demo')
         // resolve through; loginname = EmpNo is what LoginEndpoints looks up.
         // No password and no ApplicationUser — a login is linked later, per
         // account, via UserProvisioningService/LinkIdentityAccount.
@@ -428,11 +428,11 @@ public static class AutoxDemoSeeder
             await ctx.SaveChangesAsync();
             inserted += chunk.Length;
             if (inserted % 1000 == 0 || inserted == empPlans.Count)
-                logger.LogInformation("AUTOX seed: {Inserted}/{Total} sc_user rows inserted.", inserted, empPlans.Count);
+                logger.LogInformation("ADVD demo seed: {Inserted}/{Total} sc_user rows inserted.", inserted, empPlans.Count);
         }
 
         logger.LogInformation(
-            "AUTOX demo seed finished: {Orgs} org units, {Positions} position levels, {Employees} employees, {Users} sc_user rows.",
+            "ADVD demo demo seed finished: {Orgs} org units, {Positions} position levels, {Employees} employees, {Users} sc_user rows.",
             orgPlans.Count, Positions.Length, empPlans.Count, empPlans.Count);
     }
 
@@ -449,8 +449,8 @@ public static class AutoxDemoSeeder
         // ---- Org tree -------------------------------------------------------
         var root = new OrgPlan
         {
-            Code = "AX",
-            Name = "บริษัท ออโต้เอ็กซ์ จำกัด (สำนักงานใหญ่)",
+            Code = "AD",
+            Name = "บริษัท แอดวานซ์ ดิจิทัล จำกัด (สำนักงานใหญ่)",
             ParentCode = null,
             Depth = 1,
             OrgFull = rootPrefix,
@@ -465,7 +465,7 @@ public static class AutoxDemoSeeder
         {
             var div = new OrgPlan
             {
-                Code = $"AX-{Divisions[d].Code}",
+                Code = $"AD-{Divisions[d].Code}",
                 Name = Divisions[d].Name,
                 ParentCode = root.Code,
                 Depth = 2,
@@ -523,7 +523,7 @@ public static class AutoxDemoSeeder
 
         // ---- People ---------------------------------------------------------
         var empNoSeq = 0;
-        string NextEmpNo() => $"AX{++empNoSeq:0000}";   // 6 chars — matches EMP_NO nvarchar(6)
+        string NextEmpNo() => $"AD{++empNoSeq:0000}";   // 6 chars — matches EMP_NO nvarchar(6)
 
         EmpPlan MakePerson(string posCode, OrgPlan org, int minAge, int maxAge, int minTenureYears)
         {

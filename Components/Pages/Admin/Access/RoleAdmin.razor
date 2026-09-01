@@ -80,6 +80,16 @@
                     }
                 </MudSelect>
             </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_editing.employeetype_code"
+                           Label="ประเภทพนักงานที่ได้ role นี้อัตโนมัติ (employeeType)" Clearable="true"
+                           HelperText="ตอน set user ครั้งแรก พนักงานประเภทนี้จะได้ role นี้อัตโนมัติ (เว้นว่าง = ไม่ auto-assign)">
+                    @foreach (var t in _employeeTypes)
+                    {
+                        <MudSelectItem T="string" Value="@t.code">@($"{t.code} — {t.name}")</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
         </MudGrid>
 
         @if (!string.IsNullOrEmpty(_editError))
@@ -96,6 +106,7 @@
 
 @code {
     private List<sc_role> _roles = new();
+    private List<Employeetype> _employeeTypes = new();
     private sc_role? _editing;
     private string? _error;
     private string? _editError;
@@ -113,6 +124,7 @@
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         _roles = await context.sc_roles.OrderBy(r => r.roleid).ToListAsync();
+        _employeeTypes = await context.employeetypes.OrderBy(t => t.code).ToListAsync();
     }
 
     private void StartAdd()
@@ -134,6 +146,7 @@
             upperrole = role.upperrole,
             rolecode = role.rolecode,
             isactive = role.isactive,
+            employeetype_code = role.employeetype_code,
         };
     }
 
@@ -176,6 +189,7 @@
             existing.abbr = _editing.abbr;
             existing.rolelevel = _editing.rolelevel;
             existing.upperrole = _editing.upperrole;
+            existing.employeetype_code = _editing.employeetype_code;
             existing.moddate = DateTime.Now;
             existing.modby = _actor;
         }
