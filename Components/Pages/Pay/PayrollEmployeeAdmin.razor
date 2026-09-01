@@ -18,13 +18,19 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject JsonLocalizationService L
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>@L.Translate("EmpAdminPageTitle")</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-        <MudText Typo="Typo.h5">@L.Translate("EmpAdminHeading")</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">@L.Translate("EmpAdminHeading")</MudText>
+            @* PDPA: the list shows SalaryAmt — badge + access log are the
+               project-wide requirement for any personal-data view. *@
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        </MudStack>
         @if (!string.IsNullOrEmpty(_companyId))
         {
             <MudStack Row="true" Spacing="2">
@@ -235,6 +241,10 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        // PDPA: the employee list exposes salary — log the sensitive access
+        // (the SaveChanges hook only covers writes, never views).
+        await AuditLogger.LogAccessAsync("Hremployee", _companyId, isSensitive: true, note: "payroll employee list view");
 
         await using (var context = await DbFactory.CreateDbContextAsync())
         {

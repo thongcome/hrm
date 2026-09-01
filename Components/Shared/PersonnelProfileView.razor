@@ -56,8 +56,14 @@ else
     </MudPaper>
 
     <MudPaper Class="pa-4 mb-4">
-        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
-            <MudTabPanel Text="ข้อมูลทั่วไป">
+        @* KeepPanelsAlive is the fix for "คลิกแท็บแล้วค้าง": with 11 data-heavy
+           panels, the MudTabs default disposes/re-renders a panel on every
+           click — a full server-circuit render each time. Alive panels render
+           once and switch instantly. Data was already loaded up-front, so
+           this costs one heavier first render only. *@
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" KeepPanelsAlive="true"
+                 Color="Color.Primary" SliderColor="Color.Secondary" ActiveTabClass="mud-primary-text">
+            <MudTabPanel Text="ข้อมูลทั่วไป" Icon="@Icons.Material.Filled.Badge">
                 <MudGrid Class="pa-2">
                     <MudItem xs="12" md="8">
                         <MudText Typo="Typo.subtitle1" Class="mb-2">ข้อมูลทั่วไป</MudText>
@@ -110,7 +116,7 @@ else
                 }
             </MudTabPanel>
 
-            <MudTabPanel Text="ข้อมูลเพิ่มเติม">
+            <MudTabPanel Text="ข้อมูลเพิ่มเติม" Icon="@Icons.Material.Filled.Info">
                 <MudGrid Class="pa-2">
                     <MudItem xs="6"><MudTextField Value="@(_emp.ContractNo ?? "-")" Label="เลขที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
                     <MudItem xs="6"><MudTextField Value="@(_emp.ContractDate?.ToString("dd/MM/yyyy") ?? "-")" Label="วันที่สัญญาจ้าง" ReadOnly="true" /></MudItem>
@@ -130,7 +136,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประวัติครอบครัว">
+            <MudTabPanel Text="ประวัติครอบครัว" Icon="@Icons.Material.Filled.FamilyRestroom">
                 <MudTable Items="_family" Dense="true">
                     <HeaderContent>
                         <MudTh>ความสัมพันธ์</MudTh><MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>อาชีพ</MudTh><MudTh>สถานะ</MudTh>
@@ -146,7 +152,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ข้อมูลบุตร">
+            <MudTabPanel Text="ข้อมูลบุตร" Icon="@Icons.Material.Filled.ChildCare">
                 <MudTable Items="_children" Dense="true">
                     <HeaderContent>
                         <MudTh>ชื่อ-สกุล</MudTh><MudTh>วันเกิด</MudTh><MudTh>กำลังศึกษา</MudTh><MudTh>ใช้สิทธิลดหย่อน</MudTh>
@@ -161,7 +167,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประวัติการทำงาน">
+            <MudTabPanel Text="ประวัติการทำงาน" Icon="@Icons.Material.Filled.WorkHistory">
                 <MudText Typo="Typo.body2" Class="mb-2">เหตุการณ์สำคัญของการจ้างงาน (จากข้อมูลพนักงานโดยตรง)</MudText>
                 <MudSimpleTable Dense="true">
                     <tbody>
@@ -176,7 +182,7 @@ else
                 </MudSimpleTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประวัติวุฒิการศึกษา">
+            <MudTabPanel Text="ประวัติวุฒิการศึกษา" Icon="@Icons.Material.Filled.School">
                 <MudTable Items="_education" Dense="true">
                     <HeaderContent>
                         <MudTh>ระดับ</MudTh><MudTh>วุฒิ/สาขา</MudTh><MudTh>สถาบัน</MudTh><MudTh>ปีที่จบ</MudTh><MudTh>เกรดเฉลี่ย</MudTh>
@@ -192,7 +198,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประสบการณ์ทำงาน">
+            <MudTabPanel Text="ประสบการณ์ทำงาน" Icon="@Icons.Material.Filled.Work">
                 <MudTable Items="_experience" Dense="true">
                     <HeaderContent>
                         <MudTh>ตำแหน่ง</MudTh><MudTh>บริษัท</MudTh><MudTh>ช่วงเวลา</MudTh>
@@ -206,7 +212,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประเมินการทำงาน">
+            <MudTabPanel Text="ประเมินการทำงาน" Icon="@Icons.Material.Filled.Assessment">
                 <MudTable Items="_evaluations" Dense="true" Hover="true">
                     <HeaderContent>
                         <MudTh>รอบประเมิน</MudTh><MudTh>คะแนนรวม</MudTh><MudTh>เกรด</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
@@ -222,7 +228,7 @@ else
                 </MudTable>
             </MudTabPanel>
 
-            <MudTabPanel Text="ประวัติการโยกย้ายตำแหน่ง">
+            <MudTabPanel Text="ประวัติการโยกย้ายตำแหน่ง" Icon="@Icons.Material.Filled.SwapHoriz">
                 <MudTable Items="_positionHistory" Dense="true">
                     <HeaderContent>
                         <MudTh>วันที่</MudTh><MudTh>ประเภท</MudTh><MudTh>ตำแหน่งเดิม</MudTh><MudTh>ตำแหน่งใหม่</MudTh><MudTh>เหตุผล</MudTh>
@@ -240,7 +246,7 @@ else
 
             @if (_committeeHistory.Any())
             {
-                <MudTabPanel Text="ประวัติทำงานในคณะทำงาน">
+                <MudTabPanel Text="ประวัติทำงานในคณะทำงาน" Icon="@Icons.Material.Filled.Groups">
                     <MudTable Items="_committeeHistory" Dense="true">
                         <HeaderContent>
                             <MudTh>วันที่มีผล</MudTh><MudTh>ตำแหน่ง/คณะ</MudTh><MudTh>สังกัด</MudTh><MudTh>สถานะ</MudTh><MudTh>เหตุผล/หมายเหตุ</MudTh>
@@ -256,7 +262,7 @@ else
                 </MudTabPanel>
             }
 
-            <MudTabPanel Text="@L.Translate("EmpDocSectionTitle")">
+            <MudTabPanel Text="@L.Translate("EmpDocSectionTitle")" Icon="@Icons.Material.Filled.Folder">
                 @if (!ReadOnlyDocuments)
                 {
                     @* Upload form: document type is mandatory (CEO order — every

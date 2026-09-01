@@ -48,7 +48,7 @@ public static class ScMenuNavCatalog
         // guard: Has("REC_ADMIN")
         new("GRP_RECRUIT", "สรรหาบุคลากร (Recruitment)", "Recruitment", "Icons.Material.Filled.PersonSearch", 20),
         // guard: Has("PAY_ADMIN")
-        new("GRP_EMPLOYEE", "ระบบบริหารการพนักงาน (Employee)", "Employee Management", "Icons.Material.Filled.Person", 30),
+        new("GRP_EMPLOYEE", "ระบบบริหารงานบุคคล (Employee)", "Employee Management", "Icons.Material.Filled.Person", 30),
         // guard: HasAny("ORG_ADMIN","SYS_ADMIN","POS_ADMIN","PAY_ADMIN"); literal title in layout (no Translate key)
         new("GRP_ORG_STRUCT", "โครงสร้างองค์กร (Organization Structure)", "โครงสร้างองค์กร (Organization Structure)", "Icons.Material.Filled.AccountBalance", 40),
         // guard: HasAny("ORG_ADMIN","POS_ADMIN")
@@ -92,7 +92,7 @@ public static class ScMenuNavCatalog
         // no guard on the group itself (individual links gated inside)
         new("GRP_WF_ENGINE", "Workflow (Engine)", "Workflow (Engine)", "Icons.Material.Filled.Rule", 240),
         // guard: HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")
-        new("GRP_WF_SCAFFOLD", "Workflow (ตัวอย่าง CRUD Scaffold)", "Workflow (CRUD Scaffold Example)", "Icons.Material.Filled.AccountTree", 250),
+        new("GRP_WF_SCAFFOLD", "ข้อมูลอ้างอิง Workflow", "Workflow Reference Data", "Icons.Material.Filled.AccountTree", 250),
         // guard: Has("HR_ANALYTICS")
         new("GRP_HR_ANALYTICS", "HR Analytics", "HR Analytics", "Icons.Material.Filled.QueryStats", 260),
         // guard: Has("SYS_ADMIN")
@@ -105,7 +105,7 @@ public static class ScMenuNavCatalog
     {
         // ---- Top-level links (before any group) ----
         new(null, null, "/modules", "ภาพรวมระบบตามโมดูล", "Module Overview", "Icons.Material.Filled.Apps", 10), // TODO ungated today
-        new(null, "SYS_ADMIN", "/dev/pages", "รวมลิงก์ทั้งหมด (ชั่วคราว)", "All Links (temp)", "Icons.Material.Filled.ListAlt", 20), // gated 1 ก.ย. 2569 (gap-closure)
+        new(null, "SYS_ADMIN", "/dev/pages", "ดัชนีหน้าจอ (ผู้ดูแลระบบ)", "Page Directory (Admin)", "Icons.Material.Filled.ListAlt", 20), // gated 1 ก.ย. 2569 (gap-closure)
 
         // ---- GRP_ESS (group guarded by _hasEssAccess -> "ESS_ACCESS") ----
         new("GRP_ESS", "ESS_ACCESS", "/ess", "หน้าแรก", "Home", "Icons.Material.Filled.Home", 10),
@@ -182,8 +182,8 @@ public static class ScMenuNavCatalog
         new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/ot-rules", "อัตราคูณค่าล่วงเวลา (OT)", "Overtime Multiplier Rules", "Icons.Material.Filled.MoneyOff", 70),
 
         // ---- GRP_PAYROLL (group itself ungated; per-link gates inside) ----
-        new("GRP_PAYROLL", "PAY_ADMIN", "/hrpayrolldasboard", "แดชบอร์ด (เดิม)", "Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // gated 1 ก.ย. 2569 (gap-closure)
-        new("GRP_PAYROLL", "PAY_ADMIN", "/hremployees", "พนักงาน (payrolls)", "Employees (legacy)", "Icons.Material.Filled.People", 20), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/hrpayrolldasboard", "แดชบอร์ดเงินเดือน (ระบบเดิม)", "Payroll Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/hremployees", "ทะเบียนพนักงาน (ระบบเดิม)", "Employee Register (Legacy)", "Icons.Material.Filled.People", 20), // gated 1 ก.ย. 2569 (gap-closure)
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/employees", "ข้อมูลพนักงาน / จัดการพนักงาน (Payroll)", "Employee Data / Management (Payroll)", "Icons.Material.Filled.Badge", 30),
         new("GRP_PAYROLL", "PAY_RUNS", "/payrollprocess", "ประมวลผลเงินเดือน", "Payroll Processing", "Icons.Material.Filled.PlaylistPlay", 40),
         new("GRP_PAYROLL", "PAY_ADMIN", "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 50), // gated 1 ก.ย. 2569 (gap-closure)
@@ -302,9 +302,9 @@ public static class ScMenuNavCatalog
         new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/culture-assessment", "ประเมินวัฒนธรรมองค์กร", "Culture Assessment", "Icons.Material.Filled.Favorite", 50),
 
         // ---- GRP_WF_ENGINE (group itself ungated; per-link gates inside) ----
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/canvas", "ภาพรวม Workflow (Canvas)", "Workflow Overview (Canvas)", "Icons.Material.Filled.ViewKanban", 10),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/canvas", "ภาพรวม Workflow", "Workflow Overview", "Icons.Material.Filled.ViewKanban", 10),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/workflows", "จัดการ Workflow", "Manage Workflows", "Icons.Material.Filled.Route", 20),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wfworkflows", "Workflow (CRUD)", "Workflow (CRUD)", "Icons.Material.Filled.Route", 30), // legacy scaffold CRUD, superseded by /wf/workflows
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wfworkflows", "จัดการ Workflow (ระบบเดิม)", "Workflow (Legacy)", "Icons.Material.Filled.Route", 30), // legacy scaffold CRUD, superseded by /wf/workflows
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/sub-workflow-levels", "จัดการระดับการอนุมัติ", "Approval Levels", "Icons.Material.Filled.Layers", 40),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/custom-users", "ผู้อนุมัติเจาะจง (Custom User)", "Specific Approvers (Custom User)", "Icons.Material.Filled.Person", 50),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/custom-roles", "ผู้อนุมัติตาม Role", "Approvers by Role", "Icons.Material.Filled.Badge", 60),
@@ -322,8 +322,8 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-compliance", "รายงาน Block Leave", "รายงาน Block Leave", "Icons.Material.Filled.FactCheck", 180), // literal Thai label
 
         // ---- GRP_WF_SCAFFOLD (group guarded by HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")) ----
-        new("GRP_WF_SCAFFOLD", "WF_EMPLOYEE_ADMIN", "/wf/employees", "จัดการพนักงาน (wf_employee)", "Manage Employees (wf_employee)", "Icons.Material.Filled.Badge", 10),
-        new("GRP_WF_SCAFFOLD", "WF_ORG_TYPE_ADMIN", "/wf/org-types", "จัดการประเภทหน่วยงาน (wf_org_type)", "Manage Org Types (wf_org_type)", "Icons.Material.Filled.Business", 20),
+        new("GRP_WF_SCAFFOLD", "WF_EMPLOYEE_ADMIN", "/wf/employees", "จัดการพนักงาน (Workflow)", "Workflow Employees", "Icons.Material.Filled.Badge", 10),
+        new("GRP_WF_SCAFFOLD", "WF_ORG_TYPE_ADMIN", "/wf/org-types", "จัดการประเภทหน่วยงาน (Workflow)", "Workflow Org Types", "Icons.Material.Filled.Business", 20),
 
         // ---- GRP_HR_ANALYTICS (group guarded by Has("HR_ANALYTICS")) ----
         new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/analytics", "ภาพรวม Analytics", "Analytics Overview", "Icons.Material.Filled.Dashboard", 10),
@@ -337,21 +337,27 @@ public static class ScMenuNavCatalog
         // AD.CRUDManage permission-admin screen (สิทธิ์ราย role × หน้า) — added 1 ก.ย. 2569.
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/program-rights", "สิทธิ์การใช้งานรายหน้า (CRUD)", "Per-page CRUD Rights", "Icons.Material.Filled.Rule", 25),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/users", "จัดการผู้ใช้", "User Management", "Icons.Material.Filled.ManageAccounts", 30),
+        // Demo polish 1 ก.ย. 2569: two legacy rows floated ungrouped at the
+        // top of the drawer ("Role" /sc_roles, "ผูกบัญชี Identity") — these
+        // catalog entries make the seeder ADOPT them into this group
+        // (placement only; their menucode grants stay untouched).
+        new("GRP_SYS_ADMIN", "role", "/sc_roles", "กลุ่มผู้ใช้ (Legacy)", "Roles (Legacy)", "Icons.Material.Filled.Badge", 35),
+        new("GRP_SYS_ADMIN", "SYS_LINK_IDENTITY", "/admin/link-identity-account", "ผูกบัญชีผู้ใช้ (Identity)", "Link Identity Account", "Icons.Material.Filled.Link", 38),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/permissions", "จัดการสิทธิ์การใช้ระบบ", "Permission Management", "Icons.Material.Filled.Security", 40),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/role-scopes", "ขอบเขตข้อมูล (Data Scope)", "Data Scope", "Icons.Material.Filled.Domain", 50),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/user-sessions", "เซสชันการเข้าใช้งาน", "User Sessions", "Icons.Material.Filled.DevicesOther", 60),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/document-types", "ประเภทเอกสาร (Document Types)", "Document Types", "Icons.Material.Filled.Description", 70),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/languages", "ตั้งค่าภาษา (Language Settings)", "Language Settings", "Icons.Material.Filled.Language", 80),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/sso-roles", "สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)", "External App Roles (SSO)", "Icons.Material.Filled.Key", 90),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "WorkflowDesign (ออกแบบหน้าจอ)", "WorkflowDesign (Screen Designer)", "Icons.Material.Filled.DesignServices", 100),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "เครื่องมือออกแบบหน้าจอ", "Screen Designer", "Icons.Material.Filled.DesignServices", 100),
 
         // ---- GRP_LEGACY (gap-closure 1 ก.ย. 2569: live pages gated by code;
         // /income, /ot, /onlinereport were DEAD links (no @page owns those
         // routes — instant 404) and were removed here + hidden by the
         // CloseLegacyMenuGaps migration rather than gated) ----
-        new("GRP_LEGACY", "SYS_ADMIN", "/masterdata", "Master Data", "Master Data", "Icons.Material.Filled.Storage", 20),
-        new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "User Mng", "User Mng", "Icons.Material.Filled.ManageAccounts", 40),
-        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "hrpayrolls", "hrpayrolls", "Icons.Material.Filled.Folder", 60),
+        new("GRP_LEGACY", "SYS_ADMIN", "/masterdata", "ข้อมูลหลัก (ระบบเดิม)", "Master Data (Legacy)", "Icons.Material.Filled.Storage", 20),
+        new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "ผู้ใช้ (ระบบเดิม)", "Users (Legacy)", "Icons.Material.Filled.ManageAccounts", 40),
+        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "ทะเบียนจ่ายเงินเดือน (ระบบเดิม)", "Payroll Register (Legacy)", "Icons.Material.Filled.Folder", 60),
         new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-log", "Audit Log ระบบ", "System Audit Log", "Icons.Material.Filled.History", 70),
     };
 }

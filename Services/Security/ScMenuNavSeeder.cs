@@ -54,6 +54,12 @@ public static class ScMenuNavSeeder
             .GroupBy(m => m.menucode!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
+        // Rows this seeder authored are its own to keep current — including
+        // the display NAME (demo polish 1 ก.ย. 2569: catalog renames must
+        // reach the drawer). Rows authored by anyone else (old migrations,
+        // humans) keep their names forever.
+        static bool SeederOwns(sc_menu m) => string.Equals(m.modby, "ScMenuNavSeeder", StringComparison.Ordinal);
+
         // 1) Groups — level 1, no url, isfinal=false.
         foreach (var g in ScMenuNavCatalog.Groups)
         {
@@ -62,6 +68,7 @@ public static class ScMenuNavSeeder
                 existing.menuorder = g.Order;
                 existing.icon = g.Icon;
                 existing.menuname_en = g.NameEn;
+                if (SeederOwns(existing)) existing.menuname = g.NameTh;
                 continue;
             }
             var row = new sc_menu
@@ -100,6 +107,7 @@ public static class ScMenuNavSeeder
                 existing.icon = l.Icon;
                 if (string.IsNullOrWhiteSpace(existing.menuname_en))
                     existing.menuname_en = l.NameEn;
+                if (SeederOwns(existing)) { existing.menuname = l.NameTh; existing.menuname_en = l.NameEn; }
                 continue;
             }
 

@@ -537,6 +537,11 @@ public static class DemoCompanySeeder
             var birth = Anchor.AddYears(-ageYears).AddDays(-rand.Next(0, 365));
 
             var tenureDays = rand.Next(Math.Max(minTenureYears * 365, 30), 15 * 365 + 1);
+            // Labour-law sanity (HR review 1 ก.ย. 2569): age and tenure were
+            // drawn independently, which could "hire" someone before age 18
+            // (worst case: age 5). Cap tenure so every hire happens at 20+.
+            var maxLegalTenureDays = (int)Math.Max(30, (Anchor - birth.AddYears(20)).TotalDays);
+            tenureDays = Math.Min(tenureDays, maxLegalTenureDays);
             var workDate = Anchor.AddDays(-tenureDays);
 
             var band = Positions.First(x => x.Code == posCode);
