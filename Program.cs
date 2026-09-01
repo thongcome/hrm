@@ -710,6 +710,15 @@ if (app.Environment.IsDevelopment())
     // so the JD page's AI competency suggestion has something to match for
     // demo positions. One-shot; skips once ADVD has any category.
     await HRM.Services.Dev.AdvdCompetencySeeder.SeedAsync(app.Services);
+    // ADVD demo HRD data (perf/9-box/succession/IDP/LMS/engagement for a
+    // coherent employee slice) so the HRD screens are populated when demoed
+    // on AdvanceDigital. One-shot; depends on the ADVD employees + competency
+    // catalog above.
+    await HRM.Services.Dev.AdvdHrdDemoSeeder.SeedAsync(app.Services);
+    // Separate ADVD-scoped admin login (advadmin / dev admin password) so the
+    // presenter can demo HRD on the 7,000-employee company; the '001' admin
+    // stays for the payroll demo.
+    await HRM.Services.Dev.DevAuthSeeder.EnsureAdvdDemoAdminAsync(app.Services);
 }
 
 // AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike

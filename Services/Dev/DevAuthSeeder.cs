@@ -136,6 +136,80 @@ public static class DevAuthSeeder
             CommitteeFixtureLogin, string.Join(", ", roleNames));
     }
 
+    // Demo login scoped to AdvanceDigital (CEO 1 ก.ย. 2569: demo HRD on the
+    // 7,000-employee ADVD company, not the 24-person '001'). The existing
+    // 'admin' account resolves to company '001', so this adds a SEPARATE
+    // login (advadmin / Dev@12345) linked to ADVD's CEO employee AD0001 —
+    // payroll_company resolves to 'ADVD', it holds the Admin role (full menu
+    // claims), and AD0001 is a real org approver so MSS/approval demos work
+    // too. The '001' admin path is left untouched. Development only.
+    public const string AdvdAdminLogin = "advadmin";
+    private const string AdvdAdminEmpNo = "AD0001";
+
+    public static async Task EnsureAdvdDemoAdminAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<HRMContext>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DevAuthSeeder");
+        await using var ctx = await dbFactory.CreateDbContextAsync();
+
+        // AD0001 must exist (seeded by DemoCompanySeeder). If not, ADVD isn't
+        // seeded yet — nothing to do.
+        var emp = await ctx.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == AdvdAdminEmpNo && e.companyid == "ADVD");
+        if (emp is null) { logger.LogWarning("ADVD demo admin: employee {Emp} not found — ADVD not seeded yet.", AdvdAdminEmpNo); return; }
+
+        var company = await ctx.com_companies.FirstOrDefaultAsync(c => c.code == "ADVD");
+        var scUser = await ctx.sc_users.FirstOrDefaultAsync(u => u.loginname == AdvdAdminLogin);
+        if (scUser is null)
+        {
+            // A dedicated login row (loginname 'advadmin') pointing at AD0001,
+            // so we never disturb AD0001's own employee sc_user.
+            scUser = new sc_user
+            {
+                loginname = AdvdAdminLogin,
+                empid = AdvdAdminEmpNo, // bridges to payroll_company 'ADVD'
+                firstname = emp.EmpName ?? "ADVD",
+                lastname = emp.EmpSurname ?? "Admin",
+                company_id = company?.id ?? 1,
+                isdisable = false,
+                iscancel = false,
+                isActivate = true,
+                isforcechanged = false,
+                moddate = DateTime.Now,
+                modby = "DevAuthSeeder",
+            };
+            ctx.sc_users.Add(scUser);
+            await ctx.SaveChangesAsync();
+            logger.LogInformation("ADVD demo admin: created sc_user {Login} -> {Emp}.", AdvdAdminLogin, AdvdAdminEmpNo);
+        }
+
+        // Grant the Admin role (full menu claims) if not already held.
+        var adminRole = await ctx.sc_roles.FirstOrDefaultAsync(r => r.name == "Admin" && r.isactive);
+        if (adminRole is not null)
+        {
+            var hasAdmin = await ctx.sc_user_roles.AnyAsync(ur => ur.userid == scUser.userid && ur.roleid == adminRole.roleid);
+            if (!hasAdmin)
+            {
+                ctx.sc_user_roles.Add(new sc_user_role
+                {
+                    userid = scUser.userid,
+                    roleid = adminRole.roleid,
+                    empid = AdvdAdminEmpNo,
+                    isactive = true,
+                    modate = DateTime.Now,
+                    modby = "DevAuthSeeder",
+                });
+                await ctx.SaveChangesAsync();
+            }
+        }
+
+        // Provision the Identity login (idempotent) with the known dev password.
+        var provisioning = scope.ServiceProvider.GetRequiredService<UserProvisioningService>();
+        var result = await provisioning.EnsureIdentityLinkedAsync(scUser, DevAdminPassword, "advadmin@hrm.local");
+        logger.LogInformation("ADVD demo admin: login '{Login}' provisioned={Ok} (password = the dev admin password).",
+            AdvdAdminLogin, result.Succeeded);
+    }
+
     private static async Task ResetPasswordAsync(UserManager<ApplicationUser> userManager, string email, string password)
     {
         var user = await userManager.FindByEmailAsync(email);
