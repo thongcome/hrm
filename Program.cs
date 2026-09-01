@@ -681,6 +681,10 @@ if (app.Environment.IsDevelopment())
     // (Originally seeded as "AUTOX"; renamed by the RenameDemoCompany
     // migration — the seeder now produces ADVD from scratch too.)
     await HRM.Services.Dev.DemoCompanySeeder.SeedAsync(app.Services);
+    // ADVD competency catalog (3 categories, 13 competencies, 5 levels each)
+    // so the JD page's AI competency suggestion has something to match for
+    // demo positions. One-shot; skips once ADVD has any category.
+    await HRM.Services.Dev.AdvdCompetencySeeder.SeedAsync(app.Services);
 }
 
 // AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike
