@@ -35,8 +35,11 @@ public class LeaveRequestService(IDbContextFactory<HRMContext> dbFactory, Workfl
 
         // --- Catalog-rule enforcement (service layer — never trust the UI alone) ---
 
-        // ApplicableGender: "M"/"F"/null, same single-char convention as Hremployee.Sex.
+        // ApplicableGender: "M"/"F"/null, same single-char convention as
+        // Hremployee.Sex. An employee with NO recorded sex passes — missing
+        // legacy data must not strip entitlements (matches the form filter).
         if (!string.IsNullOrWhiteSpace(leaveType.ApplicableGender)
+            && !string.IsNullOrWhiteSpace(emp.Sex)
             && !string.Equals(emp.Sex, leaveType.ApplicableGender, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(leaveType.ApplicableGender == "F"

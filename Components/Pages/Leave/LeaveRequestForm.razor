@@ -369,10 +369,13 @@ else
 
         // Country + gender filter: a type restricted to "M"/"F" is only
         // offered to employees whose Hremployee.Sex matches (service-side
-        // re-check in LeaveRequestService.CreateDraftAsync).
+        // re-check in LeaveRequestService.CreateDraftAsync). An employee with
+        // NO recorded sex (legacy rows predating the field) sees every type —
+        // a data-quality gap must not silently strip leave entitlements.
         _availableLeaveTypes = _allLeaveTypes
             .Where(t => LeaveCountryHelper.IsApplicable(t, _selectedEmployeeCountryCode))
             .Where(t => employee is null || string.IsNullOrWhiteSpace(t.ApplicableGender)
+                || string.IsNullOrWhiteSpace(employee.Sex)
                 || string.Equals(employee.Sex, t.ApplicableGender, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (_availableLeaveTypes.All(t => t.Id != _leaveTypeId))

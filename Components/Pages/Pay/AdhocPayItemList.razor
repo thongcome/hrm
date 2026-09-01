@@ -276,7 +276,17 @@
     // InvariantCulture is load-bearing: under th-TH the default calendar is
     // Buddhist, so culture-sensitive yyyyMM would emit "2569xx" and the
     // Gregorian parse above would re-add 543 on every round trip.
-    private void OnPeriodMonthChangedAsync(DateTime? date) => Nav.NavigateTo($"/pay/adhoc/{(date ?? DateTime.Today).ToString("yyyyMM", CultureInfo.InvariantCulture)}");
+    private void OnPeriodMonthChangedAsync(DateTime? date)
+    {
+        // Entering the ALL view sets _periodMonth = null programmatically and
+        // MudDatePicker echoes that back as DateChanged(null) — navigating on
+        // it would bounce the user straight out of ALL. Only a real pick
+        // (non-null, different from what's already shown) navigates.
+        if (date is null) return;
+        var target = date.Value.ToString("yyyyMM", CultureInfo.InvariantCulture);
+        if (ViewingAll || !string.Equals(target, EffectivePeriod, StringComparison.Ordinal))
+            Nav.NavigateTo($"/pay/adhoc/{target}");
+    }
 
     private void ToggleCreateForm()
     {
