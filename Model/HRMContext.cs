@@ -427,6 +427,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Comp_Competency> Comp_Competencies { get; set; }
     public virtual DbSet<Comp_ProficiencyLevel> Comp_ProficiencyLevels { get; set; }
     public virtual DbSet<Job_CompetencyRequirement> Job_CompetencyRequirements { get; set; }
+    public virtual DbSet<Job_ProfileDuty> Job_ProfileDuties { get; set; }
+    public virtual DbSet<Job_ProfileQualification> Job_ProfileQualifications { get; set; }
     public virtual DbSet<Idp_CompetencyAssessment> Idp_CompetencyAssessments { get; set; }
     public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
     public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }
@@ -1887,6 +1889,31 @@ public partial class HRMContext : DbContext
             .WithMany()
             .HasForeignKey(i => i.CompetencyId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Structured Job Description line items (CEO order 2026-09-01).
+        // Explicit HasForeignKey per the same house rule as Perf_Indicator
+        // above — never rely on nav-property auto-convention. Restrict so a
+        // competency linked from a JD line can't be deleted out from under
+        // it. PosExecTypeId is a soft link (no FK) matching
+        // Job_CompetencyRequirement's convention, indexed for the per-
+        // position load every JobProfileDetail/print visit does.
+        modelBuilder.Entity<Job_ProfileDuty>(entity =>
+        {
+            entity.HasOne(d => d.LinkedCompetency)
+                .WithMany()
+                .HasForeignKey(d => d.LinkedCompetencyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(d => d.PosExecTypeId);
+        });
+
+        modelBuilder.Entity<Job_ProfileQualification>(entity =>
+        {
+            entity.HasOne(q => q.LinkedCompetency)
+                .WithMany()
+                .HasForeignKey(q => q.LinkedCompetencyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(q => q.PosExecTypeId);
+        });
 
         modelBuilder.Entity<Pay_PayrollPeriod>().HasData(
             new Pay_PayrollPeriod { Id = 1, CompanyId = "001", Year = 2026, Month = 7, TermNo = 1, Label = "ก.ค. 2569 งวดที่ 1", PeriodStart = new DateOnly(2026, 7, 1), PeriodEnd = new DateOnly(2026, 7, 31), IsActive = true },

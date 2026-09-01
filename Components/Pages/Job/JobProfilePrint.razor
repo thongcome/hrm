@@ -1,0 +1,253 @@
+@page "/job/profiles/{PosExecTypeId:long}/print"
+@using HRM.Models
+@using HRM.Services.Job
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject JsonLocalizationService L
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+@* Printable one-page Job Description (CEO order 2026-09-01). Read-only —
+   same Menu policy as JobProfileDetail.razor. The @media print rules below
+   hide the app chrome (MainLayout's MudAppBar/MudDrawer/footer) so what
+   comes out of window.print() is just the JD sheet. *@
+
+<PageTitle>JD — @(_execType?.Name)</PageTitle>
+
+<style>
+    @@media print {
+        .mud-appbar, .mud-drawer, footer, .no-print { display: none !important; }
+        .mud-main-content { padding: 0 !important; margin: 0 !important; }
+        .jd-sheet { box-shadow: none !important; border: none !important; }
+    }
+    .jd-sheet { max-width: 820px; margin: 0 auto; background: #fff; color: #000; padding: 32px; }
+    .jd-sheet h1 { font-size: 1.35rem; margin: 0 0 4px 0; }
+    .jd-sheet h2 { font-size: 1.05rem; margin: 18px 0 6px 0; border-bottom: 1px solid #999; padding-bottom: 2px; }
+    .jd-sheet table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    .jd-sheet th, .jd-sheet td { border: 1px solid #bbb; padding: 4px 8px; font-size: 0.85rem; text-align: left; vertical-align: top; }
+    .jd-sheet th { background: #f0f0f0; }
+    .jd-meta { font-size: 0.9rem; }
+    .jd-meta span { display: inline-block; margin-right: 24px; }
+    .jd-footer { margin-top: 24px; font-size: 0.75rem; color: #555; text-align: right; }
+</style>
+
+@if (_execType is null)
+{
+    <MudAlert Severity="Severity.Warning" Class="ma-4">ไม่พบตำแหน่งนี้</MudAlert>
+}
+else
+{
+    <div class="no-print mb-3" style="max-width:820px;margin:0 auto;">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print"
+                OnClick="PrintAsync">@L.Translate("JdPrintNowButton")</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/job/profiles/{PosExecTypeId}"))">@L.Translate("JdPrintBackButton")</MudButton>
+        </MudStack>
+    </div>
+
+    <div class="jd-sheet mud-elevation-1">
+        <h1>@L.Translate("JdPrintTitle")</h1>
+        <div class="jd-meta">
+            <span><b>@L.Translate("JdPrintPositionLabel"):</b> @_execType.Name @(string.IsNullOrWhiteSpace(_execType.NameEn) ? "" : $"({_execType.NameEn})")</span>
+            <span><b>@L.Translate("JdPrintFamilyLabel"):</b> @(_familyName ?? "-")</span>
+            <span><b>@L.Translate("JdPrintLevelLabel"):</b> @(_levelName ?? "-")</span>
+            <span><b>@L.Translate("JdPrintTrackLabel"):</b> @TrackLabel(_execType.CareerTrack)</span>
+        </div>
+
+        <h2>@L.Translate("JdReportingSectionTitle")</h2>
+        @if (_reportingRows.Count == 0)
+        {
+            <div class="jd-meta">@L.Translate("JdReportingNoSlots")</div>
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>@L.Translate("JdReportingOrgCol")</th>
+                        <th>@L.Translate("JdReportsToLabel")</th>
+                        <th>@L.Translate("JdSubordinateCountLabel")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _reportingRows)
+                    {
+                        <tr>
+                            <td>@r.OrgName @(r.IsBoss ? $"({L.Translate("JdReportingBossChip")})" : "")</td>
+                            <td>
+                                @if (r.ReportsToTitle is null && r.ReportsToName is null)
+                                {
+                                    @L.Translate("JdReportingVacant")
+                                }
+                                else
+                                {
+                                    @($"{r.ReportsToTitle ?? "-"} — {r.ReportsToName ?? L.Translate("JdReportingVacant")}")
+                                }
+                            </td>
+                            <td>@(r.IsBoss ? r.SubordinateCount.ToString() : "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <h2>วัตถุประสงค์ของตำแหน่ง (Purpose)</h2>
+        <div class="jd-meta" style="white-space: pre-wrap;">@(_execType.Purpose ?? "-")</div>
+
+        <h2>@L.Translate("JdDutiesSectionTitle")</h2>
+        @if (_duties.Count > 0)
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30px;">#</th>
+                        <th>@L.Translate("JdDutyColText")</th>
+                        <th style="width:90px;">@L.Translate("JdDutyColWeight")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var n = 0; }
+                    @foreach (var d in _duties)
+                    {
+                        n++;
+                        <tr>
+                            <td>@n</td>
+                            <td>@d.Text</td>
+                            <td>@(d.WeightPercent is decimal w ? $"{w:0.#}%" : "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else if (!string.IsNullOrWhiteSpace(_execType.KeyAccountabilities))
+        {
+            @* Legacy fallback — position not yet migrated to duty line items. *@
+            <div class="jd-meta" style="white-space: pre-wrap;">@_execType.KeyAccountabilities</div>
+        }
+        else
+        {
+            <div class="jd-meta">-</div>
+        }
+
+        <h2>@L.Translate("JdQualSectionTitle")</h2>
+        @if (_qualifications.Count > 0)
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:140px;">@L.Translate("JdQualColType")</th>
+                        <th>@L.Translate("JdQualColText")</th>
+                        <th style="width:90px;">@L.Translate("JdQualColRequired")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var q in _qualifications)
+                    {
+                        <tr>
+                            <td>@QualTypeLabel(q.QualType)</td>
+                            <td>@q.Text</td>
+                            <td>@(q.IsRequired ? L.Translate("JdQualRequired") : L.Translate("JdQualPreferred"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="jd-meta">-</div>
+        }
+
+        <h2>สมรรถนะที่ต้องการ (Required Competencies)</h2>
+        @if (_requirements.Count > 0)
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>สมรรถนะ</th>
+                        <th style="width:110px;">ระดับที่ต้องการ</th>
+                        <th style="width:110px;">จำเป็น</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _requirements)
+                    {
+                        <tr>
+                            <td>@CompetencyName(r.CompetencyId)</td>
+                            <td>@r.RequiredLevel</td>
+                            <td>@(r.IsCritical ? "จำเป็น (Critical)" : "ควรมี")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="jd-meta">-</div>
+        }
+
+        <div class="jd-footer">@string.Format(L.Translate("JdPrintedOnTemplate"), DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</div>
+    </div>
+}
+
+@code {
+    [Parameter] public long PosExecTypeId { get; set; }
+
+    private Pos_ExecType? _execType;
+    private string? _familyName;
+    private string? _levelName;
+    private List<Job_ProfileDuty> _duties = new();
+    private List<Job_ProfileQualification> _qualifications = new();
+    private List<Job_CompetencyRequirement> _requirements = new();
+    private List<Comp_Competency> _allCompetencies = new();
+    private List<JobReportingLineHelper.ReportingLineRow> _reportingRows = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
+        if (_execType is null) return;
+
+        _familyName = _execType.JobFamilyId is long fid
+            ? (await context.Job_Families.FirstOrDefaultAsync(f => f.Id == fid))?.Name : null;
+        _levelName = _execType.JobLevelId is long lid
+            ? (await context.Job_Levels.FirstOrDefaultAsync(l => l.Id == lid))?.Name : null;
+
+        _duties = await context.Job_ProfileDuties
+            .Where(d => d.PosExecTypeId == PosExecTypeId && d.IsActive)
+            .OrderBy(d => d.SortOrder).ToListAsync();
+        _qualifications = await context.Job_ProfileQualifications
+            .Where(q => q.PosExecTypeId == PosExecTypeId && q.IsActive)
+            .OrderBy(q => q.SortOrder).ToListAsync();
+        _requirements = await context.Job_CompetencyRequirements
+            .Where(r => r.PosExecTypeId == PosExecTypeId && r.IsActive)
+            .OrderBy(r => r.SortOrder).ToListAsync();
+
+        var competencyIds = _requirements.Select(r => r.CompetencyId).Distinct().ToList();
+        _allCompetencies = await context.Comp_Competencies.Where(c => competencyIds.Contains(c.Id)).ToListAsync();
+
+        _reportingRows = await JobReportingLineHelper.ResolveAsync(context, PosExecTypeId);
+    }
+
+    private string CompetencyName(long competencyId) => _allCompetencies.FirstOrDefault(c => c.Id == competencyId) is { } c ? $"{c.Code} — {c.Name}" : "-";
+
+    private string TrackLabel(CareerTrack? t) => t switch
+    {
+        CareerTrack.IndividualContributor => "สายผู้เชี่ยวชาญ (IC)",
+        CareerTrack.Managerial => "สายบริหาร (Managerial)",
+        _ => "-",
+    };
+
+    private string QualTypeLabel(JobQualificationType t) => t switch
+    {
+        JobQualificationType.Education => L.Translate("JdQualTypeEducation"),
+        JobQualificationType.ExperienceYears => L.Translate("JdQualTypeExperienceYears"),
+        JobQualificationType.License => L.Translate("JdQualTypeLicense"),
+        JobQualificationType.Skill => L.Translate("JdQualTypeSkill"),
+        _ => L.Translate("JdQualTypeOther"),
+    };
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("window.print");
+}

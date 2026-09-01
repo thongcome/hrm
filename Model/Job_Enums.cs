@@ -17,3 +17,15 @@ public enum CompetencyCategoryType
     Leadership = 2,
     Functional = 3,
 }
+
+// Type of a Job_ProfileQualification line item (structured JD, CEO order
+// 2026-09-01). Other = 9 leaves room for future specific types without
+// renumbering.
+public enum JobQualificationType
+{
+    Education = 0,
+    ExperienceYears = 1,
+    License = 2,
+    Skill = 3,
+    Other = 9,
+}

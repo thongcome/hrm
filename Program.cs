@@ -675,6 +675,10 @@ using (var oidcSeedScope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     await HRM.Services.Dev.DevAuthSeeder.EnsureKnownDevPasswordAsync(app.Services);
+    // CEO demo dataset: company AUTOX, 7,000 fictitious employees wired into
+    // org structure/positions/sc_user. One-shot (skips when AUTOX exists) —
+    // first Development startup after this line takes ~1-3 minutes longer.
+    await HRM.Services.Dev.AutoxDemoSeeder.SeedAsync(app.Services);
 }
 
 // AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike

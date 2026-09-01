@@ -1,11 +1,17 @@
 @page "/job/profiles/{PosExecTypeId:long}"
 @using HRM.Models
+@using HRM.Services.Job
+@using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
 
 <PageTitle>Job Profile — @(_execType?.Name)</PageTitle>
@@ -17,12 +23,23 @@
 else
 {
     <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">Job Profile — @_execType.Name</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Job Profile — @_execType.Name</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print"
+                OnClick="@(() => Nav.NavigateTo($"/job/profiles/{PosExecTypeId}/print"))">@L.Translate("JdPrintButton")</MudButton>
+        </MudStack>
         <MudText Typo="Typo.body2" Class="mt-1">นิยามบทบาทของตำแหน่งนี้: สายอาชีพ/ระดับ, วัตถุประสงค์, ความรับผิดชอบหลัก และสมรรถนะที่ต้องการ</MudText>
+
+        @if (!CanWrite)
+        {
+            @* AD.CRUDManage rule: unwritable state is announced, never silently missing buttons. *@
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L.Translate("JdNoWriteAccess")</MudAlert>
+        }
 
         <MudGrid Class="mt-3">
             <MudItem xs="12" sm="4">
-                <MudSelect T="long?" @bind-Value="_jobFamilyId" Label="สายอาชีพ (Job Family)" Clearable="true">
+                <MudSelect T="long?" @bind-Value="_jobFamilyId" Label="สายอาชีพ (Job Family)" Clearable="true" ReadOnly="@(!CanWrite)">
                     @foreach (var f in _families)
                     {
                         <MudSelectItem T="long?" Value="@((long?)f.Id)">@f.Name</MudSelectItem>
@@ -30,13 +47,13 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudSelect T="CareerTrack?" @bind-Value="_careerTrack" Label="สาย (Career Track)" Clearable="true">
+                <MudSelect T="CareerTrack?" @bind-Value="_careerTrack" Label="สาย (Career Track)" Clearable="true" ReadOnly="@(!CanWrite)">
                     <MudSelectItem T="CareerTrack?" Value="CareerTrack.IndividualContributor">สายผู้เชี่ยวชาญ (IC)</MudSelectItem>
                     <MudSelectItem T="CareerTrack?" Value="CareerTrack.Managerial">สายบริหาร (Managerial)</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudSelect T="long?" @bind-Value="_jobLevelId" Label="ระดับ (Job Level)" Clearable="true">
+                <MudSelect T="long?" @bind-Value="_jobLevelId" Label="ระดับ (Job Level)" Clearable="true" ReadOnly="@(!CanWrite)">
                     @foreach (var l in _levels.Where(l => _careerTrack == null || l.CareerTrack == _careerTrack))
                     {
                         <MudSelectItem T="long?" Value="@((long?)l.Id)">@l.Name (@l.Code)</MudSelectItem>
@@ -44,10 +61,7 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_purpose" Label="วัตถุประสงค์ของตำแหน่ง (Purpose)" Lines="2" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_keyAccountabilities" Label="ความรับผิดชอบหลัก (Key Accountabilities)" Lines="5" />
+                <MudTextField @bind-Value="_purpose" Label="วัตถุประสงค์ของตำแหน่ง (Purpose)" Lines="2" ReadOnly="@(!CanWrite)" />
             </MudItem>
         </MudGrid>
 
@@ -56,9 +70,228 @@ else
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProfileAsync">บันทึก Job Profile</MudButton>
+        @if (CanWrite)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProfileAsync">บันทึก Job Profile</MudButton>
+        }
     </MudPaper>
 
+    @* ---------- สายบังคับบัญชา (auto-derived, read-only — never keyed in by HR) ---------- *@
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">@L.Translate("JdReportingSectionTitle")</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">@L.Translate("JdReportingAutoNote")</MudText>
+        @if (_reportingRows.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L.Translate("JdReportingNoSlots")</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_reportingRows" Dense="true" Hover="true" Class="mt-2">
+                <HeaderContent>
+                    <MudTh>@L.Translate("JdReportingOrgCol")</MudTh>
+                    <MudTh>@L.Translate("JdReportsToLabel")</MudTh>
+                    <MudTh>@L.Translate("JdSubordinateCountLabel")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.OrgName @(context.IsBoss ? $"({L.Translate("JdReportingBossChip")})" : "")</MudTd>
+                    <MudTd>
+                        @if (context.ReportsToTitle is null && context.ReportsToName is null)
+                        {
+                            @L.Translate("JdReportingVacant")
+                        }
+                        else
+                        {
+                            @($"{context.ReportsToTitle ?? "-"} — {context.ReportsToName ?? L.Translate("JdReportingVacant")}")
+                        }
+                    </MudTd>
+                    <MudTd>@(context.IsBoss ? context.SubordinateCount.ToString() : "-")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    @* ---------- หน้าที่ความรับผิดชอบ (structured duties — replaces the KeyAccountabilities blob) ---------- *@
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">@L.Translate("JdDutiesSectionTitle")</MudText>
+            <MudSpacer />
+            @if (CanWrite)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.AutoAwesome"
+                    OnClick="SuggestCompetenciesAsync">@L.Translate("JdSuggestButton")</MudButton>
+            }
+        </MudStack>
+
+        @if (ActiveDuties.Count == 0 && !string.IsNullOrWhiteSpace(_execType.KeyAccountabilities))
+        {
+            @* One-way legacy fallback: show the old free-text blob only while no
+               structured duty rows exist yet. Once rows are saved, the blob is
+               ignored (the column itself is never deleted). *@
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@L.Translate("JdLegacyBlobFallbackInfo")</MudAlert>
+            <MudPaper Outlined="true" Class="pa-3 mt-2" Style="white-space: pre-wrap;">@_execType.KeyAccountabilities</MudPaper>
+        }
+
+        <MudTable Items="ActiveDuties" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh Style="min-width:280px;">@L.Translate("JdDutyColText")</MudTh>
+                <MudTh Style="width:110px;">@L.Translate("JdDutyColWeight")</MudTh>
+                <MudTh Style="width:90px;">@L.Translate("JdColSort")</MudTh>
+                <MudTh Style="min-width:260px;">@L.Translate("JdColCompetencyFlag")</MudTh>
+                <MudTh Style="width:70px;"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudTextField T="string" @bind-Value="context.Text" Lines="2" ReadOnly="@(!CanWrite)" MaxLength="500" />
+                    @if (_suggestions.TryGetValue(context, out var dutySugs) && context.LinkedCompetencyId is null)
+                    {
+                        <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
+                            @if (dutySugs.Count == 0)
+                            {
+                                <MudText Typo="Typo.caption">@L.Translate("JdSuggestNone")</MudText>
+                            }
+                            @foreach (var s in dutySugs)
+                            {
+                                var sug = s;
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined"
+                                    OnClick="@(() => AcceptSuggestion(context, null, sug))">
+                                    @string.Format(L.Translate("JdSuggestChipTemplate"), sug.DisplayName, (int)Math.Round(sug.Score * 100))
+                                </MudChip>
+                            }
+                        </MudStack>
+                    }
+                </MudTd>
+                <MudTd><MudNumericField T="decimal?" @bind-Value="context.WeightPercent" Min="0" Max="100" ReadOnly="@(!CanWrite)" /></MudTd>
+                <MudTd><MudNumericField T="int" @bind-Value="context.SortOrder" ReadOnly="@(!CanWrite)" /></MudTd>
+                <MudTd>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudCheckBox T="bool" @bind-Value="context.IncludeInCompetency" Disabled="@(!CanWrite)" Dense="true" />
+                        @if (context.IncludeInCompetency)
+                        {
+                            <MudSelect T="long?" @bind-Value="context.LinkedCompetencyId" Label="@L.Translate("JdColLinkedCompetency")"
+                                Dense="true" Clearable="true" ReadOnly="@(!CanWrite)">
+                                @foreach (var c in _allCompetencies.OrderBy(c => c.Name))
+                                {
+                                    <MudSelectItem T="long?" Value="@((long?)c.Id)">@c.Code — @c.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd>
+                    @if (CanWrite)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                            OnClick="@(() => RemoveDutyAsync(context))">@L.Translate("JdRemoveRow")</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">@L.Translate("JdNoDutyRows")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (ActiveDuties.Any(d => d.WeightPercent is not null))
+        {
+            var sum = ActiveDuties.Sum(d => d.WeightPercent ?? 0);
+            <MudText Typo="Typo.body2" Class="mt-2" Color="@(sum == 100 ? Color.Success : Color.Warning)">
+                @string.Format(L.Translate("JdWeightSumTemplate"), sum)
+            </MudText>
+        }
+
+        @if (CanWrite)
+        {
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddDutyRow">@L.Translate("JdAddDutyButton")</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveDutiesAsync">@L.Translate("JdSaveDutiesButton")</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+
+    @* ---------- คุณสมบัติประจำตำแหน่ง (Qualifications) ---------- *@
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6">@L.Translate("JdQualSectionTitle")</MudText>
+
+        <MudTable Items="ActiveQualifications" Dense="true" Hover="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh Style="width:170px;">@L.Translate("JdQualColType")</MudTh>
+                <MudTh Style="min-width:240px;">@L.Translate("JdQualColText")</MudTh>
+                <MudTh Style="width:130px;">@L.Translate("JdQualColRequired")</MudTh>
+                <MudTh Style="width:90px;">@L.Translate("JdColSort")</MudTh>
+                <MudTh Style="min-width:260px;">@L.Translate("JdColCompetencyFlag")</MudTh>
+                <MudTh Style="width:70px;"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudSelect T="JobQualificationType" @bind-Value="context.QualType" Dense="true" ReadOnly="@(!CanWrite)">
+                        @foreach (var qt in Enum.GetValues<JobQualificationType>())
+                        {
+                            <MudSelectItem T="JobQualificationType" Value="qt">@QualTypeLabel(qt)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudTd>
+                <MudTd>
+                    <MudTextField T="string" @bind-Value="context.Text" ReadOnly="@(!CanWrite)" MaxLength="300" />
+                    @if (_suggestions.TryGetValue(context, out var qualSugs) && context.LinkedCompetencyId is null)
+                    {
+                        <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
+                            @if (qualSugs.Count == 0)
+                            {
+                                <MudText Typo="Typo.caption">@L.Translate("JdSuggestNone")</MudText>
+                            }
+                            @foreach (var s in qualSugs)
+                            {
+                                var sug = s;
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined"
+                                    OnClick="@(() => AcceptSuggestion(null, context, sug))">
+                                    @string.Format(L.Translate("JdSuggestChipTemplate"), sug.DisplayName, (int)Math.Round(sug.Score * 100))
+                                </MudChip>
+                            }
+                        </MudStack>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudSwitch T="bool" @bind-Value="context.IsRequired" Color="Color.Warning" Disabled="@(!CanWrite)"
+                        Label="@(context.IsRequired ? L.Translate("JdQualRequired") : L.Translate("JdQualPreferred"))" />
+                </MudTd>
+                <MudTd><MudNumericField T="int" @bind-Value="context.SortOrder" ReadOnly="@(!CanWrite)" /></MudTd>
+                <MudTd>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudCheckBox T="bool" @bind-Value="context.IncludeInCompetency" Disabled="@(!CanWrite)" Dense="true" />
+                        @if (context.IncludeInCompetency)
+                        {
+                            <MudSelect T="long?" @bind-Value="context.LinkedCompetencyId" Label="@L.Translate("JdColLinkedCompetency")"
+                                Dense="true" Clearable="true" ReadOnly="@(!CanWrite)">
+                                @foreach (var c in _allCompetencies.OrderBy(c => c.Name))
+                                {
+                                    <MudSelectItem T="long?" Value="@((long?)c.Id)">@c.Code — @c.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd>
+                    @if (CanWrite)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                            OnClick="@(() => RemoveQualificationAsync(context))">@L.Translate("JdRemoveRow")</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">@L.Translate("JdNoQualRows")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (CanWrite)
+        {
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddQualificationRow">@L.Translate("JdAddQualButton")</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveQualificationsAsync">@L.Translate("JdSaveQualsButton")</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+
+    @* ---------- สมรรถนะที่ต้องการ (existing requirements table, kept as-is) ---------- *@
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">สมรรถนะที่ต้องการ (Required Competencies)</MudText>
 
@@ -73,36 +306,44 @@ else
                 <MudTd>@CompetencyName(context.CompetencyId)</MudTd>
                 <MudTd>ระดับ @context.RequiredLevel — @LevelDescription(context.CompetencyId, context.RequiredLevel)</MudTd>
                 <MudTd>@(context.IsCritical ? "จำเป็น (Critical)" : "ควรมี")</MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveRequirementAsync(context.Id))">ลบ</MudButton></MudTd>
+                <MudTd>
+                    @if (CanDelete)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveRequirementAsync(context.Id))">ลบ</MudButton>
+                    }
+                </MudTd>
             </RowTemplate>
             <NoRecordsContent>
                 <MudText Typo="Typo.body2">ยังไม่มีสมรรถนะที่กำหนด</MudText>
             </NoRecordsContent>
         </MudTable>
 
-        <MudGrid Class="mt-3">
-            <MudItem xs="12" sm="5">
-                <MudAutocomplete T="Comp_Competency" Label="เลือกสมรรถนะ" @bind-Value="_selectedCompetency"
-                    SearchFunc="SearchCompetenciesAsync"
-                    ToStringFunc="@(c => c == null ? null : $"{c.Code} — {c.Name}")"
-                    ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudSelect T="int" @bind-Value="_selectedLevel" Label="ระดับที่ต้องการ">
-                    @for (var lvl = 1; lvl <= 5; lvl++)
-                    {
-                        var l = lvl;
-                        <MudSelectItem T="int" Value="l">ระดับ @l @(_selectedCompetency is null ? "" : $"— {LevelDescription(_selectedCompetency.Id, l)}")</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="8" sm="2">
-                <MudSwitch T="bool" @bind-Value="_selectedCritical" Color="Color.Warning" Label="จำเป็น (Critical)" />
-            </MudItem>
-            <MudItem xs="4" sm="1">
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddRequirementAsync">เพิ่ม</MudButton>
-            </MudItem>
-        </MudGrid>
+        @if (CanWrite)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="5">
+                    <MudAutocomplete T="Comp_Competency" Label="เลือกสมรรถนะ" @bind-Value="_selectedCompetency"
+                        SearchFunc="SearchCompetenciesAsync"
+                        ToStringFunc="@(c => c == null ? null : $"{c.Code} — {c.Name}")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="int" @bind-Value="_selectedLevel" Label="ระดับที่ต้องการ">
+                        @for (var lvl = 1; lvl <= 5; lvl++)
+                        {
+                            var l = lvl;
+                            <MudSelectItem T="int" Value="l">ระดับ @l @(_selectedCompetency is null ? "" : $"— {LevelDescription(_selectedCompetency.Id, l)}")</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="8" sm="2">
+                    <MudSwitch T="bool" @bind-Value="_selectedCritical" Color="Color.Warning" Label="จำเป็น (Critical)" />
+                </MudItem>
+                <MudItem xs="4" sm="1">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddRequirementAsync">เพิ่ม</MudButton>
+                </MudItem>
+            </MudGrid>
+        }
     </MudPaper>
 
     <MudButton Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo("/pos/exec-types"))">กลับไปหน้าชื่อตำแหน่ง</MudButton>
@@ -111,28 +352,53 @@ else
 @code {
     [Parameter] public long PosExecTypeId { get; set; }
 
+    // AD.CRUDManage: one program path for this route ({PosExecTypeId} segment
+    // is stripped by ProgramRoleService.NormalizeRouteTemplate). All child-row
+    // edits on this page (duties/qualifications/requirements) count as Edit
+    // on the profile; row removals count as Delete.
+    private const string ProgramPath = "/job/profiles";
+    private ProgramRoleService.ProgramRights? _rights;
+    private bool CanWrite => _rights?.CanEdit == true;
+    private bool CanDelete => _rights?.CanDelete == true;
+
     private Pos_ExecType? _execType;
     private List<Job_Family> _families = new();
     private List<Job_Level> _levels = new();
     private List<Job_CompetencyRequirement> _requirements = new();
     private List<Comp_Competency> _allCompetencies = new();
     private List<Comp_ProficiencyLevel> _allLevels = new();
+    private List<Job_ProfileDuty> _duties = new();
+    private List<Job_ProfileQualification> _qualifications = new();
+    private List<JobReportingLineHelper.ReportingLineRow> _reportingRows = new();
     private string? _error;
 
     private long? _jobFamilyId;
     private CareerTrack? _careerTrack;
     private long? _jobLevelId;
     private string? _purpose;
-    private string? _keyAccountabilities;
 
     private Comp_Competency? _selectedCompetency;
     private int _selectedLevel = 3;
     private bool _selectedCritical;
 
+    // Suggestion chips keyed by the row object itself — stable across
+    // re-renders, immune to add/remove reindexing.
+    private readonly Dictionary<object, List<JdCompetencySuggestionService.Suggestion>> _suggestions = new();
+
+    private List<Job_ProfileDuty> ActiveDuties => _duties.Where(d => d.IsActive).OrderBy(d => d.SortOrder).ToList();
+    private List<Job_ProfileQualification> ActiveQualifications => _qualifications.Where(q => q.IsActive).OrderBy(q => q.SortOrder).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+    }
+
     protected override async Task OnParametersSetAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
+        _suggestions.Clear();
         await using var context = await DbFactory.CreateDbContextAsync();
         _execType = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
         if (_execType is null) return;
@@ -144,14 +410,17 @@ else
         _careerTrack = _execType.CareerTrack;
         _jobLevelId = _execType.JobLevelId;
         _purpose = _execType.Purpose;
-        _keyAccountabilities = _execType.KeyAccountabilities;
 
         _requirements = await context.Job_CompetencyRequirements.Where(r => r.PosExecTypeId == PosExecTypeId && r.IsActive).OrderBy(r => r.SortOrder).ToListAsync();
+        _duties = await context.Job_ProfileDuties.Where(d => d.PosExecTypeId == PosExecTypeId && d.IsActive).OrderBy(d => d.SortOrder).ToListAsync();
+        _qualifications = await context.Job_ProfileQualifications.Where(q => q.PosExecTypeId == PosExecTypeId && q.IsActive).OrderBy(q => q.SortOrder).ToListAsync();
 
         var categoryIds = await context.Comp_Categories.Where(c => c.CompanyId == _execType.CompanyId).Select(c => c.Id).ToListAsync();
         _allCompetencies = await context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId) && c.IsActive).ToListAsync();
         var competencyIds = _allCompetencies.Select(c => c.Id).ToList();
         _allLevels = await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync();
+
+        _reportingRows = await JobReportingLineHelper.ResolveAsync(context, PosExecTypeId);
     }
 
     private string CompetencyName(long competencyId) => _allCompetencies.FirstOrDefault(c => c.Id == competencyId) is { } c ? $"{c.Code} — {c.Name}" : "-";
@@ -161,6 +430,15 @@ else
         return string.IsNullOrWhiteSpace(desc) ? "(ยังไม่มีคำอธิบาย)" : desc;
     }
 
+    private string QualTypeLabel(JobQualificationType t) => t switch
+    {
+        JobQualificationType.Education => L.Translate("JdQualTypeEducation"),
+        JobQualificationType.ExperienceYears => L.Translate("JdQualTypeExperienceYears"),
+        JobQualificationType.License => L.Translate("JdQualTypeLicense"),
+        JobQualificationType.Skill => L.Translate("JdQualTypeSkill"),
+        _ => L.Translate("JdQualTypeOther"),
+    };
+
     private Task<IEnumerable<Comp_Competency>> SearchCompetenciesAsync(string search, CancellationToken ct)
     {
         var query = _allCompetencies.AsEnumerable();
@@ -169,9 +447,29 @@ else
         return Task.FromResult(query.OrderBy(c => c.Name).Take(20));
     }
 
+    // Both layers, always (AD.CRUDManage): every write handler re-checks the
+    // table right server-side — a hidden button stops nobody who replays the
+    // circuit event. Returns false (with the error surfaced) when refused.
+    private async Task<bool> RequireAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return false;
+        }
+    }
+
     private async Task SaveProfileAsync()
     {
         _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Edit)) return;
+
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pos_ExecTypes.FirstOrDefaultAsync(e => e.Id == PosExecTypeId);
         if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
@@ -180,16 +478,261 @@ else
         existing.CareerTrack = _careerTrack;
         existing.JobLevelId = _jobLevelId;
         existing.Purpose = string.IsNullOrWhiteSpace(_purpose) ? null : _purpose;
-        existing.KeyAccountabilities = string.IsNullOrWhiteSpace(_keyAccountabilities) ? null : _keyAccountabilities;
+        // KeyAccountabilities deliberately untouched here — the legacy blob is
+        // read-only fallback display now (see the duties section), never
+        // edited or deleted from this page.
         await context.SaveChangesAsync();
 
         Snackbar.Add("บันทึก Job Profile เรียบร้อย", Severity.Success);
         await LoadAsync();
     }
 
+    // ---------- duties ----------
+
+    private void AddDutyRow()
+    {
+        _duties.Add(new Job_ProfileDuty
+        {
+            PosExecTypeId = PosExecTypeId,
+            Text = "",
+            SortOrder = _duties.Count(d => d.IsActive) + 1,
+        });
+    }
+
+    private async Task RemoveDutyAsync(Job_ProfileDuty row)
+    {
+        _error = null;
+        _suggestions.Remove(row);
+        if (row.Id == 0) { _duties.Remove(row); return; }
+
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Delete)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var db = await context.Job_ProfileDuties.FirstOrDefaultAsync(d => d.Id == row.Id);
+        if (db is not null)
+        {
+            db.IsActive = false;
+            await context.SaveChangesAsync();
+        }
+        row.IsActive = false;
+    }
+
+    private async Task SaveDutiesAsync()
+    {
+        _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Edit)) return;
+
+        var rows = ActiveDuties.Where(d => !string.IsNullOrWhiteSpace(d.Text)).ToList();
+        if (rows.Count != ActiveDuties.Count)
+        {
+            _error = L.Translate("JdRowTextRequired");
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        foreach (var row in rows)
+        {
+            row.Text = row.Text.Trim();
+            if (row.Id == 0)
+            {
+                context.Job_ProfileDuties.Add(row);
+            }
+            else
+            {
+                var db = await context.Job_ProfileDuties.FirstOrDefaultAsync(d => d.Id == row.Id);
+                if (db is null) continue;
+                db.Text = row.Text;
+                db.WeightPercent = row.WeightPercent;
+                db.SortOrder = row.SortOrder;
+                db.IncludeInCompetency = row.IncludeInCompetency;
+                db.LinkedCompetencyId = row.LinkedCompetencyId;
+            }
+        }
+
+        await UpsertLinkedRequirementsAsync(context,
+            rows.Where(r => r.IncludeInCompetency && r.LinkedCompetencyId is not null).Select(r => r.LinkedCompetencyId!.Value));
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("JdSavedMessage"), Severity.Success);
+        await LoadAsync();
+    }
+
+    // ---------- qualifications ----------
+
+    private void AddQualificationRow()
+    {
+        _qualifications.Add(new Job_ProfileQualification
+        {
+            PosExecTypeId = PosExecTypeId,
+            Text = "",
+            QualType = JobQualificationType.Education,
+            SortOrder = _qualifications.Count(q => q.IsActive) + 1,
+        });
+    }
+
+    private async Task RemoveQualificationAsync(Job_ProfileQualification row)
+    {
+        _error = null;
+        _suggestions.Remove(row);
+        if (row.Id == 0) { _qualifications.Remove(row); return; }
+
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Delete)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var db = await context.Job_ProfileQualifications.FirstOrDefaultAsync(q => q.Id == row.Id);
+        if (db is not null)
+        {
+            db.IsActive = false;
+            await context.SaveChangesAsync();
+        }
+        row.IsActive = false;
+    }
+
+    private async Task SaveQualificationsAsync()
+    {
+        _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Edit)) return;
+
+        var rows = ActiveQualifications.Where(q => !string.IsNullOrWhiteSpace(q.Text)).ToList();
+        if (rows.Count != ActiveQualifications.Count)
+        {
+            _error = L.Translate("JdRowTextRequired");
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        foreach (var row in rows)
+        {
+            row.Text = row.Text.Trim();
+            if (row.Id == 0)
+            {
+                context.Job_ProfileQualifications.Add(row);
+            }
+            else
+            {
+                var db = await context.Job_ProfileQualifications.FirstOrDefaultAsync(q => q.Id == row.Id);
+                if (db is null) continue;
+                db.QualType = row.QualType;
+                db.Text = row.Text;
+                db.IsRequired = row.IsRequired;
+                db.SortOrder = row.SortOrder;
+                db.IncludeInCompetency = row.IncludeInCompetency;
+                db.LinkedCompetencyId = row.LinkedCompetencyId;
+            }
+        }
+
+        await UpsertLinkedRequirementsAsync(context,
+            rows.Where(r => r.IncludeInCompetency && r.LinkedCompetencyId is not null).Select(r => r.LinkedCompetencyId!.Value));
+
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("JdSavedMessage"), Severity.Success);
+        await LoadAsync();
+    }
+
+    // CEO's competency link: a flagged+linked JD line materializes as a
+    // Job_CompetencyRequirement for this position (default RequiredLevel 3 —
+    // mid-scale, editable afterward in the requirements table like any other
+    // row). Deliberately upsert-only: UNFLAGGING a line does NOT delete or
+    // deactivate the requirement it once created, because HR may since have
+    // tuned that requirement's level/criticality by hand — a JD edit must
+    // never silently destroy that tuning. Removing a requirement stays an
+    // explicit act in the requirements table below.
+    private async Task UpsertLinkedRequirementsAsync(HRMContext context, IEnumerable<long> competencyIds)
+    {
+        var existingCount = await context.Job_CompetencyRequirements.CountAsync(r => r.PosExecTypeId == PosExecTypeId);
+        foreach (var competencyId in competencyIds.Distinct())
+        {
+            var existing = await context.Job_CompetencyRequirements
+                .FirstOrDefaultAsync(r => r.PosExecTypeId == PosExecTypeId && r.CompetencyId == competencyId);
+            if (existing is null)
+            {
+                context.Job_CompetencyRequirements.Add(new Job_CompetencyRequirement
+                {
+                    PosExecTypeId = PosExecTypeId,
+                    CompetencyId = competencyId,
+                    RequiredLevel = 3,
+                    IsCritical = false,
+                    SortOrder = existingCount++,
+                });
+            }
+            else if (!existing.IsActive)
+            {
+                // Was soft-removed earlier — flagging a JD line to it again is
+                // an explicit signal to bring it back (keeping its old level).
+                existing.IsActive = true;
+            }
+            // Active existing row: leave it exactly as HR tuned it.
+        }
+    }
+
+    // ---------- ML.NET suggestions ----------
+
+    private Task SuggestCompetenciesAsync()
+    {
+        _error = null;
+        _suggestions.Clear();
+
+        var catalog = _allCompetencies
+            .Select(c => new JdCompetencySuggestionService.CatalogItem(
+                c.Id,
+                $"{c.Code} — {c.Name}",
+                string.Join(" ", new[] { c.Code, c.Name, c.NameEn, c.Description }.Where(s => !string.IsNullOrWhiteSpace(s)))))
+            .ToList();
+
+        var rowByKey = new Dictionary<string, object>();
+        var lines = new List<JdCompetencySuggestionService.QueryLine>();
+        var i = 0;
+        foreach (var d in ActiveDuties.Where(d => d.LinkedCompetencyId is null && !string.IsNullOrWhiteSpace(d.Text)))
+        {
+            var key = $"D{i++}";
+            rowByKey[key] = d;
+            lines.Add(new JdCompetencySuggestionService.QueryLine(key, d.Text));
+        }
+        foreach (var q in ActiveQualifications.Where(q => q.LinkedCompetencyId is null && !string.IsNullOrWhiteSpace(q.Text)))
+        {
+            var key = $"Q{i++}";
+            rowByKey[key] = q;
+            lines.Add(new JdCompetencySuggestionService.QueryLine(key, q.Text));
+        }
+
+        if (lines.Count == 0 || catalog.Count == 0)
+        {
+            Snackbar.Add(L.Translate("JdSuggestNothingToScan"), Severity.Info);
+            return Task.CompletedTask;
+        }
+
+        // In-process, on demand — the catalog is small, fitting takes
+        // milliseconds; no scheduler, no persisted model (see service comment).
+        var suggestions = JdCompetencySuggestionService.Suggest(catalog, lines);
+        foreach (var (key, sugs) in suggestions)
+            _suggestions[rowByKey[key]] = sugs;
+
+        return Task.CompletedTask;
+    }
+
+    private void AcceptSuggestion(Job_ProfileDuty? duty, Job_ProfileQualification? qual, JdCompetencySuggestionService.Suggestion s)
+    {
+        if (duty is not null)
+        {
+            duty.IncludeInCompetency = true;
+            duty.LinkedCompetencyId = s.CompetencyId;
+            _suggestions.Remove(duty);
+        }
+        if (qual is not null)
+        {
+            qual.IncludeInCompetency = true;
+            qual.LinkedCompetencyId = s.CompetencyId;
+            _suggestions.Remove(qual);
+        }
+        // Link is set in-memory only — the section's save button persists it
+        // (and upserts the Job_CompetencyRequirement).
+        Snackbar.Add(string.Format(L.Translate("JdSuggestAccepted"), s.DisplayName), Severity.Info);
+    }
+
+    // ---------- requirements (existing behavior, now permission-checked) ----------
+
     private async Task AddRequirementAsync()
     {
         _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Edit)) return;
         if (_selectedCompetency is null) { _error = "กรุณาเลือกสมรรถนะ"; return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -228,6 +771,8 @@ else
 
     private async Task RemoveRequirementAsync(long id)
     {
+        _error = null;
+        if (!await RequireAsync(ProgramRoleService.ProgramAction.Delete)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var row = await context.Job_CompetencyRequirements.FirstOrDefaultAsync(r => r.Id == id);
         if (row is null) return;
