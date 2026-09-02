@@ -66,6 +66,12 @@ public class Org_OrganizationChangeRequest
     [StringLength(20)]
     public string? NewSectionTypeCode { get; set; }
     public long? NewSubSectionTypeId { get; set; }
+    // Which org layer (com_organize_layer.layercode) this new unit sits at —
+    // "ชั้น 1 = บริษัท, ชั้น 2 = ฝ่าย…". Applied to com_organization.layer_code
+    // when the create request is approved. Nullable: a unit need not have its
+    // layer classified.
+    [StringLength(30)]
+    public string? NewLayerCode { get; set; }
     [StringLength(20)]
     public string? NewCostCenterCode { get; set; }
     public DateTime? NewStartDate { get; set; }

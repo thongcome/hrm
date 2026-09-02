@@ -1,0 +1,57 @@
+@page "/careers/{PostingId:long}"
+@using HRM.Models
+@using HRM.Services.Rec
+@using MudBlazor
+@inject RecJobPostingService PostingService
+
+@* Public single-posting detail page — the "หน้าสาธารณะ" that
+   Rec/JobPostingAdmin.razor links to ("ดูหน้าสาธารณะ") and the natural landing
+   for a shared /careers/{id} link. Deliberately public (no [Authorize]),
+   mirroring CareerSiteList/CareerSiteApply. Reads only an OPEN posting via
+   GetOpenPostingPublicAsync, which never joins internal requisition/candidate
+   data; a non-open id simply shows the not-found state rather than leaking
+   that a draft/closed posting exists. *@
+
+<PageTitle>@(_posting?.Title ?? "ตำแหน่งงาน")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Href="/careers" Class="mb-2">ตำแหน่งงานทั้งหมด</MudButton>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (_posting is null)
+    {
+        <MudAlert Severity="Severity.Warning">ไม่พบตำแหน่งงานนี้ หรือปิดรับสมัครแล้ว</MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-6" Outlined="true">
+            <MudText Typo="Typo.h4" Class="mb-3">@_posting.Title</MudText>
+            @if (!string.IsNullOrWhiteSpace(_posting.Description))
+            {
+                <MudText Typo="Typo.body1" Style="white-space:pre-wrap">@_posting.Description</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Style="color:var(--mud-palette-text-secondary);">ไม่มีรายละเอียดเพิ่มเติม</MudText>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-5"
+                StartIcon="@Icons.Material.Filled.Send" Href="@($"/careers/{PostingId}/apply")">สมัครงานนี้</MudButton>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long PostingId { get; set; }
+
+    private Rec_JobPosting? _posting;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _posting = await PostingService.GetOpenPostingPublicAsync(PostingId);
+        _loading = false;
+    }
+}

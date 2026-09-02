@@ -121,6 +121,25 @@ window.OrgChartD3 = {
         this.chart.fit();
     },
 
+    // Explicit zoom controls. d3-org-chart already pans on drag and zooms on
+    // mouse-wheel (d3-zoom under the hood), but on a wide company tree the
+    // initial fit() shrinks every node to an unreadable size — the "ของไม่มี
+    // ราคา" the user saw — and wheel-zoom isn't discoverable. These drive the
+    // library's own zoomIn/zoomOut (smooth, centered on the current view) so a
+    // button press is equivalent to a wheel notch; resetZoom re-fits the whole
+    // tree back into view.
+    zoomIn: function () {
+        if (this.chart && typeof this.chart.zoomIn === 'function') this.chart.zoomIn();
+    },
+
+    zoomOut: function () {
+        if (this.chart && typeof this.chart.zoomOut === 'function') this.chart.zoomOut();
+    },
+
+    resetZoom: function () {
+        if (this.chart) this.chart.fit();
+    },
+
     // Browser Fullscreen API on the canvas-wrap div itself (its parent, one
     // level up from the #containerId the chart renders into) — fullscreening
     // just the chart area, not the whole <body>, so the page underneath is

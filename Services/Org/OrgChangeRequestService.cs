@@ -132,6 +132,7 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                         isBranch = req.NewIsBranch ?? false,
                         SectionTypeCode = req.NewSectionTypeCode,
                         SubSectionTypeId = req.NewSubSectionTypeId,
+                        layer_code = req.NewLayerCode,
                         parent_code = req.NewParentCode,
                         CostCenterCode = req.NewCostCenterCode,
                         orgcodefull = orgcodefull,

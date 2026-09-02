@@ -171,8 +171,16 @@
         <MudStack Row="true" Spacing="2" Class="mb-2">
             <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="ExpandAllAsync">ขยายทั้งหมด</MudButton>
             <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldLess" OnClick="CollapseAllAsync">ย่อทั้งหมด</MudButton>
+            <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+                <MudIconButton Icon="@Icons.Material.Filled.ZoomOut" OnClick="ZoomOutAsync" Title="ซูมออก" />
+                <MudIconButton Icon="@Icons.Material.Filled.CenterFocusStrong" OnClick="ResetZoomAsync" Title="พอดีหน้าจอ" />
+                <MudIconButton Icon="@Icons.Material.Filled.ZoomIn" OnClick="ZoomInAsync" Title="ซูมเข้า" />
+            </MudButtonGroup>
             <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@(_isFullscreen ? Icons.Material.Filled.FullscreenExit : Icons.Material.Filled.Fullscreen)" OnClick="ToggleFullscreenAsync">@(_isFullscreen ? "ออกจากเต็มจอ" : "เต็มจอ")</MudButton>
         </MudStack>
+        <MudText Typo="Typo.caption" Class="d-block mb-1" Style="color:var(--mud-palette-text-secondary);">
+            เคล็ดลับ: ลากเพื่อเลื่อนผัง · หมุนล้อเมาส์ หรือกดปุ่มซูม (+ / −) เพื่อขยาย-ย่อ · กดไอคอนตรงกลางเพื่อพอดีหน้าจอ
+        </MudText>
         <div id="orgChartCanvas" class="org-chart-canvas-wrap"></div>
     }
 </MudPaper>
@@ -239,4 +247,7 @@
 
     private async Task ExpandAllAsync() => await JS.InvokeVoidAsync("OrgChartD3.expandAll");
     private async Task CollapseAllAsync() => await JS.InvokeVoidAsync("OrgChartD3.collapseAll");
+    private async Task ZoomInAsync() => await JS.InvokeVoidAsync("OrgChartD3.zoomIn");
+    private async Task ZoomOutAsync() => await JS.InvokeVoidAsync("OrgChartD3.zoomOut");
+    private async Task ResetZoomAsync() => await JS.InvokeVoidAsync("OrgChartD3.resetZoom");
 }

@@ -64,7 +64,15 @@ else
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="6" />
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_layerCode" Label="ระดับชั้น (Org Layer)" Clearable="true"
+                    HelperText="สังกัดนี้อยู่ระดับชั้นใด เช่น ชั้น 1 = บริษัท, ชั้น 2 = ฝ่าย">
+                    @foreach (var ly in _layers)
+                    {
+                        <MudSelectItem T="string" Value="@ly.layercode">@ly.layercode — @ly.name (ชั้น @ly.layer)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
 
             <MudItem xs="12" sm="4">
                 <MudText Typo="Typo.body2" Class="mb-1">สถานะ</MudText>
@@ -137,6 +145,8 @@ else
     private string? _companyId;
     private List<Com_SectionType> _sectionTypes = new();
     private List<Com_SubSectionType> _subSectionTypes = new();
+    private List<com_organize_layer> _layers = new();
+    private string? _layerCode;
     private string? _error;
 
     private string _code = "";
@@ -181,6 +191,7 @@ else
 
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
         _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
+        _layers = await context.com_organize_layers.Where(l => l.isActive).OrderBy(l => l.layer).ThenBy(l => l.name).ToListAsync();
 
         _code = org.code ?? "";
         _name = org.name ?? "";
@@ -194,6 +205,7 @@ else
         _isBranch = org.isBranch;
         _sectionTypeId = _sectionTypes.FirstOrDefault(t => t.Code == org.SectionTypeCode)?.Id;
         _subSectionTypeId = org.SubSectionTypeId;
+        _layerCode = org.layer_code;
         _startDate = org.startdate;
         _endDate = org.enddate;
         _remark = org.remark;
@@ -289,6 +301,7 @@ else
             existing.isBranch = _isBranch;
             existing.SectionTypeCode = newSectionTypeCode;
             existing.SubSectionTypeId = _subSectionTypeId;
+            existing.layer_code = _layerCode;
             existing.CostCenterCode = newCostCenterCode;
             existing.startdate = _startDate;
             existing.enddate = _endDate;

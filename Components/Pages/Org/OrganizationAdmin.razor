@@ -279,6 +279,7 @@
                         <MudTh>ชื่อย่อ</MudTh>
                         <MudTh>รหัสการเงิน</MudTh>
                         <MudTh>ลักษณะของหน่วยงาน</MudTh>
+                        <MudTh>ระดับชั้น</MudTh>
                         <MudTh>ประเภท</MudTh>
                         <MudTh>สถานะ</MudTh>
                         <MudTh></MudTh>
@@ -290,6 +291,7 @@
                         <MudTd>@context.abbr</MudTd>
                         <MudTd>@context.CostCenterCode</MudTd>
                         <MudTd>@SubSectionTypeName(context.SubSectionTypeId)</MudTd>
+                        <MudTd>@LayerName(context.layer_code)</MudTd>
                         <MudTd>
                             @if (context.isCompany)
                             {
@@ -373,6 +375,11 @@
                 <MudItem xs="12" sm="6" Class="d-flex align-center ga-2">
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="ExpandAllChartAsync">ขยายทั้งหมด</MudButton>
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.UnfoldLess" OnClick="CollapseAllChartAsync">ย่อทั้งหมด</MudButton>
+                    <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+                        <MudIconButton Icon="@Icons.Material.Filled.ZoomOut" OnClick="ZoomOutChartAsync" Title="ซูมออก" />
+                        <MudIconButton Icon="@Icons.Material.Filled.CenterFocusStrong" OnClick="ResetZoomChartAsync" Title="พอดีหน้าจอ" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ZoomIn" OnClick="ZoomInChartAsync" Title="ซูมเข้า" />
+                    </MudButtonGroup>
                     <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@(_chartIsFullscreen ? Icons.Material.Filled.FullscreenExit : Icons.Material.Filled.Fullscreen)" OnClick="ToggleChartFullscreenAsync">@(_chartIsFullscreen ? "ออกจากเต็มจอ" : "เต็มจอ")</MudButton>
                 </MudItem>
             </MudGrid>
@@ -384,6 +391,9 @@
                page's total height jumped every time loading finished (or the
                root-org selection changed), which read as the screen "jumping
                around" on every interaction. *@
+            <MudText Typo="Typo.caption" Class="d-block mb-1" Style="color:var(--mud-palette-text-secondary);">
+                เคล็ดลับ: ลากเพื่อเลื่อนผัง · หมุนล้อเมาส์ หรือกดปุ่มซูม (+ / −) เพื่อขยาย-ย่อ · กดไอคอนตรงกลางเพื่อพอดีหน้าจอ
+            </MudText>
             <div class="org-chart-canvas-wrap" style="position:relative;">
                 @if (_chartLoading)
                 {
@@ -408,6 +418,7 @@
     private List<com_organization> _organizations = new();
     private List<Com_SectionType> _sectionTypes = new();
     private List<Com_SubSectionType> _subSectionTypes = new();
+    private List<com_organize_layer> _layers = new();
     private string? _searchTerm;
     private bool _hasSearched;
 
@@ -448,6 +459,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
         _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
+        _layers = await context.com_organize_layers.Where(l => l.isActive).OrderBy(l => l.layer).ThenBy(l => l.name).ToListAsync();
 
         // Deliberately no initial load here — see the page-level comment on
         // why this list waits for an explicit search.
@@ -592,6 +604,7 @@
 
     private string SectionTypeName(string? code) => string.IsNullOrEmpty(code) ? "" : (_sectionTypes.FirstOrDefault(t => t.Code == code)?.Name ?? code);
     private string SubSectionTypeName(long? id) => id is null ? "" : (_subSectionTypes.FirstOrDefault(t => t.Id == id)?.Name ?? "");
+    private string LayerName(string? code) => string.IsNullOrEmpty(code) ? "" : (_layers.FirstOrDefault(l => l.layercode == code)?.name ?? code);
 
     private async Task SearchAsync()
     {
@@ -686,6 +699,9 @@
 
     private async Task ExpandAllChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.expandAll");
     private async Task CollapseAllChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.collapseAll");
+    private async Task ZoomInChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.zoomIn");
+    private async Task ZoomOutChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.zoomOut");
+    private async Task ResetZoomChartAsync() => await JS.InvokeVoidAsync("OrgChartD3.resetZoom");
     private async Task ToggleChartFullscreenAsync() => await JS.InvokeVoidAsync("OrgChartD3.toggleFullscreen", "orgChartCanvasOrgAdmin");
 
     public void Dispose() => _chartDotNetRef?.Dispose();
