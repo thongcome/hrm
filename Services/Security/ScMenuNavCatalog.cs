@@ -323,6 +323,7 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/holidays", "ปฏิทินวันหยุดบริษัท", "Company Holiday Calendar", "Icons.Material.Filled.CalendarMonth", 160),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-policy", "นโยบาย Block Leave", "นโยบาย Block Leave", "Icons.Material.Filled.Block", 170), // literal Thai label
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-compliance", "รายงาน Block Leave", "รายงาน Block Leave", "Icons.Material.Filled.FactCheck", 180), // literal Thai label
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/analytics", "แดชบอร์ดการลา", "Leave Analytics Dashboard", "Icons.Material.Filled.Insights", 190),
 
         // ---- GRP_WF_SCAFFOLD (group guarded by HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")) ----
         new("GRP_WF_SCAFFOLD", "WF_EMPLOYEE_ADMIN", "/wf/employees", "จัดการพนักงาน (Workflow)", "Workflow Employees", "Icons.Material.Filled.Badge", 10),

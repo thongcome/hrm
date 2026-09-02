@@ -1,0 +1,275 @@
+@page "/leave-requests/analytics"
+@using System.Security.Claims
+@using HRM.Services.Audit
+@using HRM.Services.Leave
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject LeaveAnalyticsService Analytics
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>แดชบอร์ดการลา</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2 mb-1">
+        <MudText Typo="Typo.h5">แดชบอร์ดและรายงานการลา</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        ภาพรวมการใช้วันลาทั้งบริษัทในปีที่เลือก — คลิกแต่ละหน่วยงานเพื่อเจาะดูรายคน และเจาะต่อถึงคำขอแต่ละใบ
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudNumericField T="int" @bind-Value="_year" @bind-Value:after="LoadAsync" Label="ปี (ค.ศ.)"
+                     Min="2020" Max="2100" Class="mt-3" Style="max-width:200px" />
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+}
+else if (_data is not null)
+{
+    <MudGrid Class="mb-2">
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">วันลาที่ใช้รวม</MudText>
+                <MudText Typo="Typo.h4">@_data.TotalDaysTaken.ToString("0.#")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_data.CompletedRequests คำขอที่อนุมัติแล้ว</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">พนักงานที่ลา / ทั้งหมด</MudText>
+                <MudText Typo="Typo.h4">@_data.EmployeesWhoTook<span style="font-size:0.5em"> / @_data.Headcount</span></MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@PercentTook% ของกำลังคน</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">เฉลี่ยวันลา / คน</MudText>
+                <MudText Typo="Typo.h4">@_data.AvgDaysPerHead.ToString("0.#")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">ต่อกำลังคนทั้งหมด</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">คำขอรออนุมัติ</MudText>
+                <MudText Typo="Typo.h4" Color="@(_data.PendingRequests > 0 ? Color.Warning : Color.Default)">@_data.PendingRequests</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">ยังไม่จบ workflow</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">แยกตามประเภทการลา</MudText>
+        <MudTable Items="_data.ByType" Dense="true" Hover="true" T="LeaveAnalyticsService.TypeStat">
+            <HeaderContent>
+                <MudTh>ประเภท</MudTh>
+                <MudTh Style="text-align:right">จำนวนคำขอ</MudTh>
+                <MudTh Style="text-align:right">วันลารวม</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ประเภท">@context.Name</MudTd>
+                <MudTd DataLabel="จำนวนคำขอ" Style="text-align:right">@context.RequestCount</MudTd>
+                <MudTd DataLabel="วันลารวม" Style="text-align:right">@context.DaysTaken.ToString("0.#")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการลาที่อนุมัติแล้วในปีนี้</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-1">แยกตามหน่วยงาน (คลิกเพื่อเจาะดูรายคน)</MudText>
+        <MudExpansionPanels MultiExpansion="true">
+            @foreach (var org in _data.ByOrg)
+            {
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex justify-space-between align-center" style="width:100%">
+                            <MudText><b>@org.OrgName</b></MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @org.DaysTaken.ToString("0.#") วัน · ลา @org.EmployeesWhoTook/@org.Headcount คน · เฉลี่ย @org.AvgDaysPerHead.ToString("0.#") วัน/คน
+                            </MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudSimpleTable Dense="true" Hover="true" Style="overflow-x:auto">
+                            <thead>
+                                <tr>
+                                    <th>รหัส</th><th>ชื่อ</th>
+                                    <th style="text-align:right">คำขอ</th>
+                                    <th style="text-align:right">วันลา</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var emp in EmployeesOf(org.OrganizationId))
+                                {
+                                    <tr>
+                                        <td>@emp.EmpNo</td>
+                                        <td>@emp.EmployeeName</td>
+                                        <td style="text-align:right">@emp.RequestCount</td>
+                                        <td style="text-align:right">@emp.DaysTaken.ToString("0.#")</td>
+                                        <td style="text-align:right">
+                                            @if (emp.RequestCount > 0)
+                                            {
+                                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                           OnClick="@(() => ToggleEmployeeAsync(emp.HremployeeId))">
+                                                    @(_expandedEmp.Contains(emp.HremployeeId) ? "ซ่อน" : "ดูคำขอ")
+                                                </MudButton>
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (_expandedEmp.Contains(emp.HremployeeId) && _empRequests.TryGetValue(emp.HremployeeId, out var lines))
+                                    {
+                                        <tr>
+                                            <td colspan="5" style="padding:0">
+                                                <MudPaper Class="pa-2 ma-1" Elevation="0" Style="background:var(--mud-palette-background-grey)">
+                                                    <MudSimpleTable Dense="true" Style="background:transparent">
+                                                        <thead>
+                                                            <tr><th>เลขที่</th><th>ประเภท</th><th>ตั้งแต่</th><th>ถึง</th><th style="text-align:right">วัน</th><th>สถานะ</th><th></th></tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var l in lines)
+                                                            {
+                                                                <tr>
+                                                                    <td>@(l.RequestNo ?? $"#{l.RequestId}")</td>
+                                                                    <td>@l.TypeName</td>
+                                                                    <td>@l.StartDate.ToString("dd/MM/yyyy")</td>
+                                                                    <td>@l.EndDate.ToString("dd/MM/yyyy")</td>
+                                                                    <td style="text-align:right">@l.TotalDays.ToString("0.#")</td>
+                                                                    <td>@StatusLabel(l.Status)</td>
+                                                                    <td><MudLink Href="@($"/leave-requests/detail/{l.RequestId}")">เปิด</MudLink></td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </MudSimpleTable>
+                                                </MudPaper>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+        @if (_data.ByOrg.Count == 0)
+        {
+            <MudText Typo="Typo.body2">ไม่มีพนักงานในบริษัทนี้</MudText>
+        }
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-1">พนักงานที่ยังไม่ลาเลยทั้งปี (@_data.ZeroLeave.Count คน)</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">อาจเป็นสัญญาณ burnout หรือควรกระตุ้นให้ใช้สิทธิ์ลาพักผ่อน</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Style="max-height:320px;overflow-y:auto">
+                    <thead><tr><th>รหัส</th><th>ชื่อ</th><th>หน่วยงาน</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in _data.ZeroLeave)
+                        {
+                            <tr><td>@e.EmpNo</td><td>@e.EmployeeName</td><td>@e.OrgName</td></tr>
+                        }
+                        @if (_data.ZeroLeave.Count == 0)
+                        {
+                            <tr><td colspan="3"><MudText Typo="Typo.body2">ทุกคนใช้สิทธิ์ลาแล้ว</MudText></td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-1">พนักงานที่ลาบ่อย (@_data.FrequentAbsence.Count คน)</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">ลาแยกกันตั้งแต่ 4 ครั้งขึ้นไปในปี — รูปแบบการขาดงานที่ควรจับตา</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Style="max-height:320px;overflow-y:auto">
+                    <thead><tr><th>รหัส</th><th>ชื่อ</th><th style="text-align:right">ครั้ง</th><th style="text-align:right">วันรวม</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in _data.FrequentAbsence)
+                        {
+                            <tr><td>@e.EmpNo</td><td>@e.EmployeeName</td><td style="text-align:right">@e.RequestCount</td><td style="text-align:right">@e.DaysTaken.ToString("0.#")</td></tr>
+                        }
+                        @if (_data.FrequentAbsence.Count == 0)
+                        {
+                            <tr><td colspan="4"><MudText Typo="Typo.body2">ไม่มีรูปแบบการลาบ่อยผิดปกติ</MudText></td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string? _companyId;
+    private int _year = DateTime.Today.Year;
+    private bool _loading;
+    private LeaveAnalyticsService.DashboardData? _data;
+
+    private readonly HashSet<long> _expandedEmp = new();
+    private readonly Dictionary<long, List<LeaveAnalyticsService.RequestLine>> _empRequests = new();
+
+    private int PercentTook => _data is { Headcount: > 0 } d ? (int)Math.Round(100.0 * d.EmployeesWhoTook / d.Headcount) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        // PDPA: this report exposes per-employee leave records (who took leave,
+        // when) — an access to sensitive personal data that never touches
+        // SaveChanges, so it is logged explicitly here on open.
+        await AuditLogger.LogAccessAsync("Lve_LeaveRequest", null, isSensitive: true, note: "view leave analytics dashboard");
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _loading = true;
+        _expandedEmp.Clear();
+        _empRequests.Clear();
+        StateHasChanged();
+
+        _data = await Analytics.GetDashboardAsync(_companyId, _year);
+        _loading = false;
+    }
+
+    private IEnumerable<LeaveAnalyticsService.EmployeeStat> EmployeesOf(long orgId)
+        => _data is null ? Array.Empty<LeaveAnalyticsService.EmployeeStat>()
+            : _data.Employees.Where(e => (e.OrganizationId ?? 0) == orgId)
+                .OrderByDescending(e => e.DaysTaken).ThenBy(e => e.EmpNo);
+
+    private async Task ToggleEmployeeAsync(long hremployeeId)
+    {
+        if (!_expandedEmp.Add(hremployeeId))
+        {
+            _expandedEmp.Remove(hremployeeId);
+            return;
+        }
+        if (!_empRequests.ContainsKey(hremployeeId))
+            _empRequests[hremployeeId] = await Analytics.GetEmployeeRequestsAsync(hremployeeId, _year);
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "COMPLETED" => "อนุมัติแล้ว",
+        "PENDING" => "รออนุมัติ",
+        "REJECTED" => "ไม่อนุมัติ",
+        "CANCELLED" => "ยกเลิก",
+        "ร่าง" => "ร่าง",
+        _ => status,
+    };
+}
