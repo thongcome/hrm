@@ -17,6 +17,7 @@
 @inject NavigationManager Nav
 @inject HeadcountBudgetService BudgetService
 @inject SeparationRequestService SeparationService
+@inject EmployeeSlotBackfillService SlotBackfillService
 @attribute [Authorize(Policy = "Menu:POS_ADMIN")]
 
 <PageTitle>เลขที่อัตรา</PageTitle>
@@ -37,7 +38,16 @@
 
     @if (!_showForm)
     {
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มเลขที่อัตรา</MudButton>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="StartCreate">เพิ่มเลขที่อัตรา</MudButton>
+            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.GroupAdd"
+                OnClick="BackfillFromEmployeesAsync" Disabled="_backfilling">
+                @(_backfilling ? "กำลังสร้าง..." : "สร้างอัตราจากพนักงาน")
+            </MudButton>
+        </MudStack>
+        <MudText Typo="Typo.caption" Class="d-block mt-1" Style="color:var(--mud-palette-text-secondary);">
+            "สร้างอัตราจากพนักงาน" = สร้าง 1 อัตราต่อพนักงานที่ยังทำงานอยู่แต่ยังไม่มีอัตรา (ดึงตำแหน่งจาก POS_CODE + ประเภทพนักงานจาก EMPTYPE_CODE) — ทำซ้ำได้ ข้ามคนที่มีอัตราแล้ว เพื่อให้ผังองค์กรแสดงคนครบ
+        </MudText>
     }
     else
     {
@@ -191,6 +201,7 @@
     private bool _isActive = true;
     private string? _remark;
     private string? _budgetWarning;
+    private bool _backfilling;
 
     protected override async Task OnInitializedAsync()
     {
@@ -300,6 +311,30 @@
     {
         CancelEdit();
         _showForm = true;
+    }
+
+    private async Task BackfillFromEmployeesAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _backfilling = true;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+            var r = await SlotBackfillService.BackfillAsync(_companyId, userId);
+            Snackbar.Add($"สร้างอัตราใหม่ {r.SlotsCreated} รายการ · ข้าม (มีอัตราแล้ว) {r.Skipped} · ปรับประเภทพนักงาน {r.EmployeeTypesAligned}"
+                + (r.NoPositionMatch > 0 ? $" · ไม่พบตำแหน่งตาม POS_CODE {r.NoPositionMatch} คน" : ""),
+                r.SlotsCreated > 0 ? Severity.Success : Severity.Info);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("สร้างอัตราจากพนักงานไม่สำเร็จ: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _backfilling = false;
+        }
     }
 
     private void StartEdit(Pos_PositionSlot slot)

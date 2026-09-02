@@ -438,6 +438,7 @@ builder.Services.AddScoped<HRM.Services.Contract.ContractExpiryService>();
 
 // ----- Pos_* module (Position / Headcount Budget) -----
 builder.Services.AddScoped<HRM.Services.Pos.HeadcountBudgetService>();
+builder.Services.AddScoped<HRM.Services.Pos.EmployeeSlotBackfillService>();
 // ----- end Pos_* module -----
 
 // ----- Perf_* module (Performance / KPI) -----
