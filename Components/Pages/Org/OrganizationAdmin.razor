@@ -12,6 +12,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject OrgChangeRequestService ChangeRequestService
+@inject HRM.Services.Hr.SeparationRequestService SeparationService
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -455,6 +456,9 @@
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await ChangeRequestService.ApplyDueChangesAsync();
+        // Free any อัตรา whose occupant's separation effective date has arrived,
+        // so the chart's vacant/occupied nodes are current (lazy, no scheduler).
+        await SeparationService.ApplyDueSeparationsAsync();
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();

@@ -5,8 +5,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using HRM.Services.Shared
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.Hr.SeparationRequestService SeparationService
 @attribute [Authorize(Policy = "Menu:POS_ADMIN")]
 
 <PageTitle>อัตรากำลังตามผังองค์กร</PageTitle>
@@ -15,6 +17,7 @@
     <MudText Typo="Typo.h5">อัตรากำลังตามผังองค์กร</MudText>
     <MudText Typo="Typo.body2" Class="mt-1 mb-2">
         จำนวนเลขที่อัตราทั้งหมด/ว่าง ต่อหน่วยงาน — อัตราที่มีคนครองแสดงชื่อพนักงานไว้ให้เลย
+        <br/>วางแผนล่วงหน้าได้: เลือก "ดู ณ วันที่" เพื่อฉายภาพว่าอัตราไหน<b>จะว่าง</b>ในวันนั้น (นับรวมคนที่ลาออกมีผลก่อนวันที่เลือก) — เป็นการฉายภาพ ไม่กระทบข้อมูลจริง
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
@@ -23,9 +26,15 @@
         return;
     }
 
-    <MudStack Row="true" Spacing="2" Class="mb-3">
+    <MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
         <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(false))">ย่อทั้งหมด</MudButton>
         <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(true))">ขยายทั้งหมด</MudButton>
+        <MudDatePicker Label="ดูอัตราว่าง ณ วันที่" @bind-Date="_asOfDate" DateFormat="dd/MM/yyyy"
+            Culture="@System.Globalization.CultureInfo.InvariantCulture" Style="max-width:220px;" Margin="Margin.Dense" />
+        @if (_asOfDate?.Date > DateTime.Today)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Timeline">ฉายภาพล่วงหน้า ณ @_asOfDate?.ToString("dd/MM/yyyy")</MudChip>
+        }
     </MudStack>
 
     @if (_loading)
@@ -52,13 +61,20 @@
     private List<com_organization> _roots = new();
     private ILookup<string, Pos_PositionSlot> _slotsByOrgCode = Enumerable.Empty<Pos_PositionSlot>().ToLookup(s => "");
     private Dictionary<long, string> _employeeNames = new();
+    private Dictionary<long, DateTime?> _occupantResign = new();
     private HashSet<long> _expanded = new();
+    private DateTime? _asOfDate = DateTime.Today;
+    private DateOnly AsOf => DateOnly.FromDateTime((_asOfDate ?? DateTime.Today).Date);
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+
+        // Free อัตรา of employees whose separation effective date has arrived, so
+        // headcount/vacant counts here are current (lazy apply-on-read, no scheduler).
+        await SeparationService.ApplyDueSeparationsAsync();
 
         await using var context = await DbFactory.CreateDbContextAsync();
 
@@ -77,9 +93,14 @@
             .ToLookup(s => orgIdToCode[s.OrganizationId!.Value]);
 
         var empIds = slots.Where(s => s.HremployeeId is not null).Select(s => s.HremployeeId!.Value).Distinct().ToList();
-        _employeeNames = await context.Hremployee
+        var occupants = await context.Hremployee
             .Where(e => empIds.Contains(e.id))
-            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname, e.ResignDate })
+            .ToListAsync();
+        _employeeNames = occupants.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        // ResignDate of each current occupant lets the as-of projection tell which
+        // seats will have opened by the chosen date without re-querying.
+        _occupantResign = occupants.ToDictionary(e => e.id, e => e.ResignDate);
 
         foreach (var root in _roots) _expanded.Add(root.id);
         _loading = false;
@@ -93,14 +114,22 @@
     private (int total, int vacant) SlotCounts(string orgCode)
     {
         var slots = _slotsByOrgCode[orgCode].ToList();
-        return (slots.Count, slots.Count(s => s.HremployeeId is null));
+        return (slots.Count, slots.Count(IsVacantAsOf));
+    }
+
+    // Vacant as of the chosen date: no occupant, OR the occupant will have
+    // resigned by then (projection only — the slot itself is untouched).
+    private bool IsVacantAsOf(Pos_PositionSlot s)
+    {
+        DateTime? resign = s.HremployeeId is long id && _occupantResign.TryGetValue(id, out var r) ? r : null;
+        return EstablishmentVacancyHelper.IsEffectivelyVacantAsOf(s.HremployeeId, resign, AsOf);
     }
 
     private RenderFragment RenderNode(com_organization node, int depth) => builder =>
     {
         var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
         var slots = _slotsByOrgCode[node.code].OrderBy(s => s.PosCode).ToList();
-        var (total, vacant) = (slots.Count, slots.Count(s => s.HremployeeId is null));
+        var (total, vacant) = (slots.Count, slots.Count(IsVacantAsOf));
         var isExpanded = _expanded.Contains(node.id);
         var hasContent = children.Count > 0 || slots.Count > 0;
 
@@ -141,13 +170,19 @@
                 builder.AddAttribute(15, "style", $"margin-left:{(depth + 1) * 24 + 18}px;");
                 foreach (var slot in slots)
                 {
-                    var occupantName = slot.HremployeeId is long empId && _employeeNames.TryGetValue(empId, out var name) ? name : null;
+                    var vacantAsOf = IsVacantAsOf(slot);
+                    string? occupantName = null;
+                    var vacantLabel = "ว่าง";
+                    if (!vacantAsOf && slot.HremployeeId is long empId && _employeeNames.TryGetValue(empId, out var name))
+                        occupantName = name;
+                    else if (vacantAsOf && slot.HremployeeId is long empId2 && _occupantResign.TryGetValue(empId2, out var rd) && rd is not null)
+                        vacantLabel = $"จะว่าง {rd.Value:dd/MM/yyyy}"; // occupied today but resigns by the chosen date
                     builder.OpenElement(16, "div");
                     builder.AddAttribute(17, "style", "padding:2px 0; font-size:0.875rem;");
                     builder.AddContent(18, $"• {slot.PosCode ?? "(ไม่มีเลขที่)"} — {slot.Name} — ");
                     builder.OpenElement(19, "span");
                     builder.AddAttribute(20, "style", occupantName is null ? "color:var(--mud-palette-warning);font-weight:600;" : "color:var(--mud-palette-success);font-weight:600;");
-                    builder.AddContent(21, occupantName ?? "ว่าง");
+                    builder.AddContent(21, occupantName ?? vacantLabel);
                     builder.CloseElement();
                     builder.CloseElement();
                 }

@@ -168,6 +168,70 @@ else
                 }
                 else
                 {
+                    <MudAlert Severity="@(_employee.ResignDate > DateTime.Today ? Severity.Info : Severity.Normal)" Class="mt-1 mb-2" Dense="true">
+                        วันสิ้นสุดการจ้างงาน: <b>@_employee.ResignDate?.ToString("dd/MM/yyyy")</b>
+                        @if (_employee.ResignDate > DateTime.Today)
+                        {
+                            <text> — ยังไม่ถึงวันมีผล พนักงานยังครองอัตราอยู่ (อัตราจะถูกปล่อยเป็นว่างอัตโนมัติเมื่อถึงวันนี้)</text>
+                        }
+                        else
+                        {
+                            <text> — พ้นสภาพแล้ว อัตราถูกปล่อยเป็นว่างเรียบร้อย</text>
+                        }
+                    </MudAlert>
+
+                    @if (_employee.ResignDate > DateTime.Today)
+                    {
+                        @if (_pendingDateChange is not null)
+                        {
+                            <MudAlert Severity="Severity.Info" Class="mb-2" Dense="true">
+                                มีคำขอ<b>เลื่อนวันสิ้นสุดการจ้างงาน</b>รออนุมัติ — จาก @_pendingDateChange.OldEffectiveDate.ToString("dd/MM/yyyy") → @_pendingDateChange.NewEffectiveDate.ToString("dd/MM/yyyy")
+                                (ดูสถานะที่ <MudLink Href="/wf/my-inbox">กล่องอนุมัติ</MudLink>)
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudExpansionPanels Class="mb-2">
+                                <MudExpansionPanel Text="เลื่อนวันสิ้นสุดการจ้างงาน (ต้องผ่านการอนุมัติ)">
+                                    <MudDatePicker @bind-Date="_rescheduleNewDate" Label="วันที่มีผลใหม่" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                                    <MudTextField @bind-Value="_rescheduleReason" Label="เหตุผลการเลื่อน" Lines="2" Class="mt-2" />
+                                    @if (!string.IsNullOrEmpty(_rescheduleError))
+                                    {
+                                        <MudAlert Severity="Severity.Error" Class="mt-2">@_rescheduleError</MudAlert>
+                                    }
+                                    <MudButton Color="Color.Warning" Variant="Variant.Filled" Class="mt-2" OnClick="SubmitRescheduleAsync">ส่งคำขอเลื่อนวัน</MudButton>
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        }
+                    }
+
+                    @if (_dateChangeHistory.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">ประวัติการเลื่อนวันสิ้นสุดการจ้างงาน</MudText>
+                        <MudSimpleTable Dense="true" Bordered="true" Class="mb-3">
+                            <thead>
+                                <tr><th>วันเดิม</th><th>วันใหม่</th><th>เหตุผล</th><th>สถานะ</th><th>ยื่นเมื่อ</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var h in _dateChangeHistory)
+                                {
+                                    <tr>
+                                        <td>@h.OldEffectiveDate.ToString("dd/MM/yyyy")</td>
+                                        <td>@h.NewEffectiveDate.ToString("dd/MM/yyyy")</td>
+                                        <td>@h.Reason</td>
+                                        <td>
+                                            <MudChip T="string" Size="Size.Small"
+                                                Color="@(h.Status == SeparationRequestStatus.Approved ? Color.Success : h.Status == SeparationRequestStatus.Rejected ? Color.Error : Color.Warning)">
+                                                @DateChangeStatusLabel(h.Status)
+                                            </MudChip>
+                                        </td>
+                                        <td>@h.RequestedDate.ToString("dd/MM/yyyy")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+
                     @if (!string.IsNullOrEmpty(_severanceError))
                     {
                         <MudAlert Severity="Severity.Error" Class="mt-2">@_severanceError</MudAlert>
@@ -295,6 +359,11 @@ else
     private DateTime? _separationEffectiveDate = DateTime.Today;
     private string? _separationReason;
     private string? _separationError;
+    private List<Hr_SeparationDateChange> _dateChangeHistory = new();
+    private Hr_SeparationDateChange? _pendingDateChange;
+    private DateTime? _rescheduleNewDate;
+    private string? _rescheduleReason;
+    private string? _rescheduleError;
 
     private HRM.Services.Pay.Calculators.SeveranceCalculator.SeveranceResult? _severancePreview;
     private DateTime? _severanceTargetMonth = DateTime.Today;
@@ -332,6 +401,14 @@ else
         await SeparationRequestService.SyncStatusFromJobAsync(_employee.id);
         await context.Entry(_employee).ReloadAsync();
         _latestSeparationRequest = await SeparationRequestService.GetLatestAsync(_employee.id);
+
+        // Same lazy apply-on-read for a reschedule (เลื่อนวันลาออก) whose job has
+        // closed — it may have moved ResignDate, so reload again before the panel
+        // renders — then load the change history + any still-pending change.
+        await SeparationRequestService.SyncDateChangeStatusFromJobAsync(_employee.id);
+        await context.Entry(_employee).ReloadAsync();
+        _dateChangeHistory = await SeparationRequestService.GetDateChangeHistoryAsync(_employee.id);
+        _pendingDateChange = _dateChangeHistory.FirstOrDefault(c => c.Status == SeparationRequestStatus.PendingApproval);
 
         _workDate = _employee.WorkDate;
         _birthDate = _employee.BirthDate;
@@ -539,6 +616,45 @@ else
         Snackbar.Add("ส่งคำขอสิ้นสุดการจ้างงานเรียบร้อย รออนุมัติ", Severity.Success);
         await OnParametersSetAsync();
     }
+
+    private async Task SubmitRescheduleAsync()
+    {
+        _rescheduleError = null;
+
+        if (_employee is null || _rescheduleNewDate is null)
+        {
+            _rescheduleError = "กรุณาระบุวันที่มีผลใหม่";
+            return;
+        }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        var requesterEmpId = state.User.FindFirst("empno")?.Value;
+
+        try
+        {
+            await SeparationRequestService.RescheduleAsync(_employee.id, _rescheduleNewDate.Value,
+                _rescheduleReason, userId, requesterEmpId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _rescheduleError = ex.Message;
+            return;
+        }
+
+        _rescheduleNewDate = null;
+        _rescheduleReason = null;
+        Snackbar.Add("ส่งคำขอเลื่อนวันสิ้นสุดการจ้างงานเรียบร้อย รออนุมัติ", Severity.Success);
+        await OnParametersSetAsync();
+    }
+
+    private static string DateChangeStatusLabel(SeparationRequestStatus status) => status switch
+    {
+        SeparationRequestStatus.PendingApproval => "รออนุมัติ",
+        SeparationRequestStatus.Approved => "อนุมัติแล้ว",
+        SeparationRequestStatus.Rejected => "ปฏิเสธ",
+        _ => status.ToString(),
+    };
 
     private async Task SubmitSeveranceAsync()
     {

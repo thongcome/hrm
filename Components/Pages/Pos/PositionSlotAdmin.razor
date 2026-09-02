@@ -9,12 +9,14 @@
 @using MudBlazor
 @using HRM.Services.Pos
 @using HRM.Services.Pay
+@using HRM.Services.Hr
 @using HRM.Services.Security
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
 @inject HeadcountBudgetService BudgetService
+@inject SeparationRequestService SeparationService
 @attribute [Authorize(Policy = "Menu:POS_ADMIN")]
 
 <PageTitle>เลขที่อัตรา</PageTitle>
@@ -195,6 +197,10 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        // Lazy apply-on-read (no scheduler): free any อัตรา whose occupant's
+        // separation effective date has arrived, so vacancy shown here is current.
+        await SeparationService.ApplyDueSeparationsAsync();
 
         var uri = Nav.ToAbsoluteUri(Nav.Uri);
         var query = QueryHelpers.ParseQuery(uri.Query);

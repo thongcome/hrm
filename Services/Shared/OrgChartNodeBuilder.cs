@@ -24,7 +24,11 @@ public static class OrgChartNodeBuilder
     // org and its descendants, rooted at that org's own representative card
     // (ParentId = null for it), so the chart never accidentally pulls in
     // siblings or the rest of the company.
-    public static async Task<List<ChartNode>> BuildAsync(HRMContext context, string companyId, string? rootOrgCode, CancellationToken ct = default)
+    // asOfDate: null = live occupancy today (unchanged behavior). A date = a
+    // forward-planning projection — an occupant whose separation effective date
+    // (Hremployee.ResignDate) has passed by then reads as a vacant seat as of
+    // that date, WITHOUT mutating the slot (see EstablishmentVacancyHelper).
+    public static async Task<List<ChartNode>> BuildAsync(HRMContext context, string companyId, string? rootOrgCode, DateOnly? asOfDate = null, CancellationToken ct = default)
     {
         var nodes = new List<ChartNode>();
 
@@ -67,13 +71,22 @@ public static class OrgChartNodeBuilder
                     var id = $"{org.code}_{i}";
                     if (i == 0) representativeId = id;
 
+                    Hremployee? occupant = null;
                     if (slot.HremployeeId is long empId && employeesById.TryGetValue(empId, out var emp))
+                        occupant = emp;
+                    // Forward-planning projection (departures-only): an occupant who
+                    // will have resigned by asOfDate reads as a vacant seat then.
+                    if (occupant is not null && asOfDate is DateOnly asOf
+                        && EstablishmentVacancyHelper.IsEffectivelyVacantAsOf(occupant.id, occupant.ResignDate, asOf))
+                        occupant = null;
+
+                    if (occupant is not null)
                     {
-                        var name = $"{emp.EmpName} {emp.EmpSurname}".Trim();
-                        var photoUrl = !string.IsNullOrEmpty(emp.PhotoStoragePath) ? $"/org/files/employee-photo/{emp.id}" : null;
-                        var initials = !string.IsNullOrEmpty(emp.EmpName) ? emp.EmpName!.Substring(0, 1).ToUpperInvariant() : "?";
+                        var name = $"{occupant.EmpName} {occupant.EmpSurname}".Trim();
+                        var photoUrl = !string.IsNullOrEmpty(occupant.PhotoStoragePath) ? $"/org/files/employee-photo/{occupant.id}" : null;
+                        var initials = !string.IsNullOrEmpty(occupant.EmpName) ? occupant.EmpName!.Substring(0, 1).ToUpperInvariant() : "?";
                         nodes.Add(new ChartNode(id, i == 0 ? parentId : representativeId, org.id, org.name ?? org.code!,
-                            emp.id, name, slot.Name, photoUrl, initials, IsVacant: false));
+                            occupant.id, name, slot.Name, photoUrl, initials, IsVacant: false));
                     }
                     else
                     {
