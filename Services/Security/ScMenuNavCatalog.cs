@@ -219,6 +219,7 @@ public static class ScMenuNavCatalog
         new("GRP_WELFARE", "PAY_ADMIN", "/welfare", "หน้าหลักสวัสดิการ", "Welfare Home", "Icons.Material.Filled.VolunteerActivism", 5),
         new("GRP_WELFARE", "PAY_ADMIN", "/welfare/benefit-types", "แคตตาล็อกสวัสดิการ", "Welfare Benefit Catalog", "Icons.Material.Filled.CardGiftcard", 10),
         new("GRP_WELFARE", "PAY_ADMIN", "/welfare/entitlements", "กำหนดสิทธิ์ (ใครได้เท่าไหร่)", "Welfare Entitlements", "Icons.Material.Filled.Tune", 20),
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/allowance-report", "รายงานสวัสดิการจ่ายประจำ", "Monthly Allowance Report", "Icons.Material.Filled.Assessment", 30),
 
         // ---- GRP_CONTRACTS (group guarded by Has("CT_CONTRACT_ADMIN")) ----
         new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts", "รายการสัญญา", "Contract List", "Icons.Material.Filled.Description", 10),

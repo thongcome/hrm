@@ -161,6 +161,28 @@ public class PayrollCalculationService
         // assumes 12 monthly runs/year; remaining periods including this one
         var remainingPeriods = 13 - run.PeriodStart.Month;
 
+        // Welfare monthly allowances (จ่ายประจำเข้า payroll — เช่น ค่ารถ): the
+        // benefit types in MonthlyAllowance mode, their per-person override rules,
+        // an Id-keyed pay-item-type map, and each employee's position — so the
+        // resolver's pure Pick can give each person their own amount inside the
+        // loop without opening a nested DbContext.
+        var monthlyAllowanceBenefits = await context.Wel_BenefitTypes
+            .Where(b => b.CompanyId == run.CompanyId && b.IsActive && b.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+            .ToListAsync(ct);
+        var allowanceBenefitIds = monthlyAllowanceBenefits.Select(b => b.Id).ToList();
+        var allowanceRulesByBenefit = (allowanceBenefitIds.Count == 0
+                ? new List<Wel_Entitlement>()
+                : await context.Wel_Entitlements.Where(r => r.IsActive && allowanceBenefitIds.Contains(r.BenefitTypeId)).ToListAsync(ct))
+            .GroupBy(r => r.BenefitTypeId).ToDictionary(g => g.Key, g => g.ToList());
+        var payItemTypesById = payItemTypes.Values.ToDictionary(t => t.Id);
+        var empPosExecTypes = allowanceBenefitIds.Count == 0
+            ? new Dictionary<long, long>()
+            : await context.Pos_PositionSlots
+                .Where(s => s.IsActive && s.HremployeeId != null && s.PosExecTypeId != null)
+                .GroupBy(s => s.HremployeeId!.Value)
+                .Select(g => new { Emp = g.Key, Pos = g.Min(x => x.PosExecTypeId!.Value) })
+                .ToDictionaryAsync(x => x.Emp, x => x.Pos, ct);
+
         var negativeCount = 0;
         var totalNet = 0m;
 
@@ -199,7 +221,28 @@ public class PayrollCalculationService
                 lineItems.Add(NewLine(payItemTypes["OT"], PayLineSourceType.Overtime, otAmount, 1, ++seq, "HRW_OT", null,
                     $"รวมค่าล่วงเวลาจากรายการที่บันทึกไว้ {otRecords.Count} รายการในงวดนี้ = {otAmount:N2}"));
 
-            var grossEarnings = baseSalary + otAmount;
+            // Welfare monthly allowances — per-person amount via the resolver's
+            // pure Pick (company default / position / individual). Emitted as
+            // earning lines sourced from Wel_BenefitType.
+            decimal welfareAllowanceTotal = 0m, welfareTaxableAllowance = 0m;
+            if (monthlyAllowanceBenefits.Count > 0)
+            {
+                long? empPos = empPosExecTypes.TryGetValue(emp.id, out var pv) ? pv : null;
+                foreach (var wb in monthlyAllowanceBenefits)
+                {
+                    var rules = allowanceRulesByBenefit.TryGetValue(wb.Id, out var rs)
+                        ? (IEnumerable<Wel_Entitlement>)rs : Array.Empty<Wel_Entitlement>();
+                    var amt = HRM.Services.Welfare.WelfareEntitlementResolver.Pick(wb, rules, empPos, emp.id).Amount ?? 0m;
+                    if (amt <= 0) continue;
+                    var itemType = wb.PayItemTypeId is int pid && payItemTypesById.TryGetValue(pid, out var t) ? t : payItemTypes["ALLOWANCE"];
+                    lineItems.Add(NewLine(itemType, PayLineSourceType.Allowance, amt, 1, ++seq, "Wel_BenefitType", wb.Id,
+                        $"สวัสดิการจ่ายประจำ {wb.NameTh} = {amt:N2}"));
+                    welfareAllowanceTotal += amt;
+                    if (wb.IsTaxable) welfareTaxableAllowance += amt;
+                }
+            }
+
+            var grossEarnings = baseSalary + otAmount + welfareAllowanceTotal;
 
             var ssoAmount = SocialSecurityCalculator.Calculate(grossEarnings, ssoRate, ssoCap);
             if (ssoAmount != 0)
@@ -298,7 +341,7 @@ public class PayrollCalculationService
             }
 
             grossEarnings += adhocTaxableEarnings + adhocNonTaxableEarnings;
-            var taxableGrossThisPeriod = baseSalary + otAmount + adhocTaxableEarnings;
+            var taxableGrossThisPeriod = baseSalary + otAmount + adhocTaxableEarnings + welfareTaxableAllowance;
 
             var empMonthlyElections = monthlyTaxElections.Where(e => e.HremployeeId == emp.id).ToList();
             var electedMonthlyDeduction = empMonthlyElections.Sum(e => e.AnnualAmount) / 12m;

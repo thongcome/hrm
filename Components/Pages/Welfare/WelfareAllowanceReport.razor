@@ -1,0 +1,128 @@
+@page "/welfare/allowance-report"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Welfare
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject WelfareEntitlementResolver Resolver
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>รายงานสวัสดิการจ่ายประจำ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2 mb-1">
+        <MudText Typo="Typo.h5">รายงานตรวจสอบสวัสดิการจ่ายประจำ</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        แสดงว่าพนักงานแต่ละคนจะได้สวัสดิการจ่ายประจำเท่าไหร่ และมาจากกฎระดับใด (ค่าเริ่มต้น/ตำแหน่ง/รายบุคคล) — ใช้ตรวจสอบว่าตั้งค่าถูกต้องก่อนเข้าpayroll
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+}
+else
+{
+    <MudGrid Class="mb-2">
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">พนักงานที่ได้สวัสดิการ</MudText>
+                <MudText Typo="Typo.h4">@_rows.Select(r => r.HremployeeId).Distinct().Count()</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">รวมจ่าย/เดือน</MudText>
+                <MudText Typo="Typo.h4">@_rows.Sum(r => r.Amount).ToString("N0")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">ปรับเฉพาะบุคคล</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Info">@_rows.Count(r => r.SourceScope == WelfareEntitlementScope.Employee)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">ตามตำแหน่ง</MudText>
+                <MudText Typo="Typo.h4">@_rows.Count(r => r.SourceScope == WelfareEntitlementScope.Position)</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4">
+        <MudTable Items="_rows" Dense="true" Hover="true" Filter="Filter" T="WelfareEntitlementResolver.AllowanceReportRow">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_search" Placeholder="ค้นหา รหัส/ชื่อ/สวัสดิการ" Immediate="true" DebounceInterval="300"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mt-0" />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่อ</MudTh>
+                <MudTh>สวัสดิการ</MudTh>
+                <MudTh Style="text-align:right">จำนวน/เดือน</MudTh>
+                <MudTh>ที่มา</MudTh>
+                <MudTh>หมายเหตุ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="รหัส">@context.EmpNo</MudTd>
+                <MudTd DataLabel="ชื่อ">@context.EmployeeName</MudTd>
+                <MudTd DataLabel="สวัสดิการ">@context.BenefitName</MudTd>
+                <MudTd DataLabel="จำนวน/เดือน" Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                <MudTd DataLabel="ที่มา">
+                    <MudChip T="string" Size="Size.Small" Color="@ScopeColor(context.SourceScope)">@ScopeLabel(context.SourceScope)</MudChip>
+                </MudTd>
+                <MudTd DataLabel="หมายเหตุ">@context.SourceNote</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีสวัสดิการจ่ายประจำที่ apply กับพนักงานคนใด — ตั้งค่าที่หน้าแคตตาล็อก (โหมด "จ่ายประจำทุกเดือน") และหน้ากำหนดสิทธิ์</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private bool _loading = true;
+    private string _search = "";
+    private List<WelfareEntitlementResolver.AllowanceReportRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
+        _rows = await Resolver.GetMonthlyAllowanceReportAsync(_companyId);
+        _loading = false;
+    }
+
+    private bool Filter(WelfareEntitlementResolver.AllowanceReportRow r)
+        => string.IsNullOrWhiteSpace(_search)
+           || r.EmpNo.Contains(_search, StringComparison.OrdinalIgnoreCase)
+           || r.EmployeeName.Contains(_search, StringComparison.OrdinalIgnoreCase)
+           || r.BenefitName.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private static string ScopeLabel(WelfareEntitlementScope s) => s switch
+    {
+        WelfareEntitlementScope.All => "ค่าเริ่มต้น",
+        WelfareEntitlementScope.Position => "ตามตำแหน่ง",
+        _ => "เฉพาะบุคคล",
+    };
+
+    private static Color ScopeColor(WelfareEntitlementScope s) => s switch
+    {
+        WelfareEntitlementScope.Employee => Color.Info,
+        WelfareEntitlementScope.Position => Color.Primary,
+        _ => Color.Default,
+    };
+}

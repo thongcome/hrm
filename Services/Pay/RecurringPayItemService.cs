@@ -24,6 +24,7 @@ public static class RecurringPayItemService
         ("INSURANCE", "ประกันกลุ่ม"),
         ("LOAN", "เงินกู้บริษัท"),
         ("WELFAREFUND", "กองทุนสงเคราะห์ลูกจ้าง"),
+        ("WELFARE_ALLOWANCE", "สวัสดิการจ่ายประจำ (ค่ารถ/เบี้ยเลี้ยง)"),
     };
 
     public static async Task<List<RecurringItemRow>> GetForEmployeeAsync(HRMContext ctx, long hremployeeId, CancellationToken ct = default)
@@ -67,6 +68,28 @@ public static class RecurringPayItemService
             .FirstOrDefaultAsync(ct);
         if (welfarePolicy is not null && !hasPf)
             rows.Add(new RecurringItemRow("WELFAREFUND", "กองทุนสงเคราะห์ลูกจ้าง", $"พนักงาน {welfarePolicy.EmployeeContributionRate:0.##}%", null, null));
+
+        // Welfare monthly allowances (จ่ายประจำเข้า payroll) — per-person amount
+        // resolved via the entitlement layer (default / position / individual).
+        var monthlyBenefits = await ctx.Wel_BenefitTypes
+            .Where(b => b.CompanyId == emp.companyid && b.IsActive && b.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+            .ToListAsync(ct);
+        if (monthlyBenefits.Count > 0)
+        {
+            var benefitIds = monthlyBenefits.Select(b => b.Id).ToList();
+            var rulesByBenefit = (await ctx.Wel_Entitlements.Where(r => r.IsActive && benefitIds.Contains(r.BenefitTypeId)).ToListAsync(ct))
+                .GroupBy(r => r.BenefitTypeId).ToDictionary(g => g.Key, g => g.ToList());
+            long? pos = await ctx.Pos_PositionSlots
+                .Where(s => s.HremployeeId == hremployeeId && s.IsActive && s.PosExecTypeId != null)
+                .Select(s => s.PosExecTypeId).FirstOrDefaultAsync(ct);
+            foreach (var wb in monthlyBenefits)
+            {
+                var r = rulesByBenefit.TryGetValue(wb.Id, out var rs) ? (IEnumerable<Wel_Entitlement>)rs : Array.Empty<Wel_Entitlement>();
+                var amt = HRM.Services.Welfare.WelfareEntitlementResolver.Pick(wb, r, pos, hremployeeId).Amount ?? 0m;
+                if (amt > 0)
+                    rows.Add(new RecurringItemRow("WELFARE_ALLOWANCE", $"สวัสดิการจ่ายประจำ — {wb.NameTh}", $"{amt:N2}/เดือน", null, null));
+            }
+        }
 
         return rows;
     }
@@ -119,6 +142,36 @@ public static class RecurringPayItemService
                     .OrderBy(e => e.EmpNo)
                     .Select(e => new RecurringItemParticipant(e.id, e.EmpNo, (e.EmpName ?? "") + " " + (e.EmpSurname ?? ""), $"พนักงาน {policy.EmployeeContributionRate:0.##}%", null))
                     .ToListAsync(ct);
+
+            case "WELFARE_ALLOWANCE":
+            {
+                var benefits = await ctx.Wel_BenefitTypes
+                    .Where(b => b.CompanyId == companyId && b.IsActive && b.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+                    .ToListAsync(ct);
+                if (benefits.Count == 0) return new List<RecurringItemParticipant>();
+                var bIds = benefits.Select(b => b.Id).ToList();
+                var rules = (await ctx.Wel_Entitlements.Where(r => r.IsActive && bIds.Contains(r.BenefitTypeId)).ToListAsync(ct))
+                    .GroupBy(r => r.BenefitTypeId).ToDictionary(g => g.Key, g => g.ToList());
+                var posMap = await ctx.Pos_PositionSlots
+                    .Where(s => s.IsActive && s.HremployeeId != null && s.PosExecTypeId != null)
+                    .GroupBy(s => s.HremployeeId!.Value).Select(g => new { Emp = g.Key, Pos = g.Min(x => x.PosExecTypeId!.Value) })
+                    .ToDictionaryAsync(x => x.Emp, x => x.Pos, ct);
+                var emps = await ctx.Hremployee.Where(e => e.companyid == companyId && e.ResignDate == null).OrderBy(e => e.EmpNo).ToListAsync(ct);
+                var result = new List<RecurringItemParticipant>();
+                foreach (var e in emps)
+                {
+                    long? pos = posMap.TryGetValue(e.id, out var p) ? p : null;
+                    decimal total = 0m;
+                    foreach (var wb in benefits)
+                    {
+                        var r = rules.TryGetValue(wb.Id, out var rs) ? (IEnumerable<Wel_Entitlement>)rs : Array.Empty<Wel_Entitlement>();
+                        total += HRM.Services.Welfare.WelfareEntitlementResolver.Pick(wb, r, pos, e.id).Amount ?? 0m;
+                    }
+                    if (total > 0)
+                        result.Add(new RecurringItemParticipant(e.id, e.EmpNo, (e.EmpName ?? "") + " " + (e.EmpSurname ?? ""), $"{total:N2}/เดือน", null));
+                }
+                return result;
+            }
 
             default:
                 return new List<RecurringItemParticipant>();

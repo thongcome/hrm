@@ -40,6 +40,48 @@ public class WelfareEntitlementResolver(IDbContextFactory<HRMContext> dbFactory)
         return Pick(benefit, rules, posExecTypeId, hremployeeId);
     }
 
+    public record AllowanceReportRow(long HremployeeId, string EmpNo, string EmployeeName,
+        long BenefitTypeId, string BenefitName, decimal Amount, WelfareEntitlementScope SourceScope, string? SourceNote);
+
+    // Verification report: for every active employee × every MonthlyAllowance
+    // benefit in the company, the amount that WILL be applied and WHERE it came
+    // from (company default / position / individual) — so HR can confirm a new
+    // or changed benefit resolves correctly per person before it hits payroll.
+    public async Task<List<AllowanceReportRow>> GetMonthlyAllowanceReportAsync(string companyId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var benefits = await context.Wel_BenefitTypes
+            .Where(b => b.CompanyId == companyId && b.IsActive && b.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Code).ToListAsync(ct);
+        if (benefits.Count == 0) return new();
+
+        var bIds = benefits.Select(b => b.Id).ToList();
+        var rulesByBenefit = (await context.Wel_Entitlements.Where(r => r.IsActive && bIds.Contains(r.BenefitTypeId)).ToListAsync(ct))
+            .GroupBy(r => r.BenefitTypeId).ToDictionary(g => g.Key, g => g.ToList());
+        var posMap = await context.Pos_PositionSlots
+            .Where(s => s.IsActive && s.HremployeeId != null && s.PosExecTypeId != null)
+            .GroupBy(s => s.HremployeeId!.Value).Select(g => new { Emp = g.Key, Pos = g.Min(x => x.PosExecTypeId!.Value) })
+            .ToDictionaryAsync(x => x.Emp, x => x.Pos, ct);
+        var emps = await context.Hremployee.Where(e => e.companyid == companyId && e.ResignDate == null)
+            .OrderBy(e => e.EmpNo).ToListAsync(ct);
+
+        var rows = new List<AllowanceReportRow>();
+        foreach (var e in emps)
+        {
+            long? pos = posMap.TryGetValue(e.id, out var p) ? p : null;
+            foreach (var wb in benefits)
+            {
+                var r = rulesByBenefit.TryGetValue(wb.Id, out var rs) ? (IEnumerable<Wel_Entitlement>)rs : Array.Empty<Wel_Entitlement>();
+                var eff = Pick(wb, r, pos, e.id);
+                if ((eff.Amount ?? 0m) <= 0) continue;
+                rows.Add(new AllowanceReportRow(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(),
+                    wb.Id, wb.NameTh, eff.Amount!.Value, eff.SourceScope, eff.SourceNote));
+            }
+        }
+        return rows;
+    }
+
     // Pure most-specific-wins resolution. Each override field independently
     // inherits from the less-specific level when null, so a Position rule can
     // set only the amount and still take the benefit-type's default cap.
@@ -50,6 +92,7 @@ public class WelfareEntitlementResolver(IDbContextFactory<HRMContext> dbFactory)
         {
             WelfareEntitlementMode.AnnualAmount => benefit.AnnualLimitAmount,
             WelfareEntitlementMode.PerEventAmount => benefit.PerEventLimitAmount,
+            WelfareEntitlementMode.MonthlyAllowance => benefit.MonthlyAllowanceAmount,
             _ => (decimal?)null,
         };
         decimal? amount = baseAmount;

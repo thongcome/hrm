@@ -94,6 +94,25 @@
                     <MudNumericField @bind-Value="_editing.MaxClaimsPerYear" Label="จำนวนครั้งสูงสุดต่อปี" Min="0" />
                 </MudItem>
             }
+            @if (_editing.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_editing.MonthlyAllowanceAmount" Label="จำนวนจ่ายประจำ/เดือน (บาท)" Format="N2" Min="0"
+                                     HelperText="ค่าเริ่มต้น — ปรับตามตำแหน่ง/รายคนได้ที่หน้ากำหนดสิทธิ์" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="int?" @bind-Value="_editing.PayItemTypeId" Label="ลงเป็นเงินได้ประเภท" Clearable="true"
+                               HelperText="ว่าง = ค่าเบี้ยเลี้ยง/ค่าตอบแทน (ALLOWANCE)">
+                        @foreach (var pt in _earningTypes)
+                        {
+                            <MudSelectItem T="int?" Value="pt.Id">@pt.Code — @pt.NameTh</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudSwitch T="bool" @bind-Value="_editing.IsTaxable" Color="Color.Primary" Label="เป็นเงินได้ที่ต้องเสียภาษี" />
+                </MudItem>
+            }
 
             <MudItem xs="12" sm="4">
                 <MudNumericField @bind-Value="_editing.MinServiceMonths" Label="อายุงานขั้นต่ำ (เดือน)" Min="0" HelperText="ว่าง = ไม่มีเงื่อนไข" />
@@ -168,6 +187,7 @@
     private List<Wel_BenefitType> _filtered = new();
     private string _search = "";
     private Wel_BenefitType? _editing;
+    private List<Pay_PayItemType> _earningTypes = new();
     private bool _busy;
 
     protected override async Task OnInitializedAsync()
@@ -176,6 +196,12 @@
         _companyId = state.User.FindFirstValue("payroll_company");
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await using (var context = await DbFactory.CreateDbContextAsync())
+        {
+            _earningTypes = await context.Pay_PayItemTypes
+                .Where(t => t.Category == PayItemCategory.Earning && t.IsActive)
+                .OrderBy(t => t.SortOrder).ThenBy(t => t.Code).ToListAsync();
+        }
         await LoadAsync();
     }
 
@@ -214,6 +240,7 @@
             PerEventLimitAmount = row.PerEventLimitAmount, MaxClaimsPerYear = row.MaxClaimsPerYear,
             RequiresReceipt = row.RequiresReceipt, MinServiceMonths = row.MinServiceMonths,
             Description = row.Description, SortOrder = row.SortOrder, IsActive = row.IsActive,
+            MonthlyAllowanceAmount = row.MonthlyAllowanceAmount, PayItemTypeId = row.PayItemTypeId, IsTaxable = row.IsTaxable,
         };
 
     private async Task SaveAsync()
@@ -252,6 +279,7 @@
                 row.MaxClaimsPerYear = _editing.MaxClaimsPerYear; row.RequiresReceipt = _editing.RequiresReceipt;
                 row.MinServiceMonths = _editing.MinServiceMonths; row.Description = _editing.Description;
                 row.SortOrder = _editing.SortOrder;
+                row.MonthlyAllowanceAmount = _editing.MonthlyAllowanceAmount; row.PayItemTypeId = _editing.PayItemTypeId; row.IsTaxable = _editing.IsTaxable;
             }
             await context.SaveChangesAsync();
             _editing = null;
@@ -299,6 +327,7 @@
         WelfareEntitlementMode.AnnualAmount => "วงเงินรวมต่อปี (บาท)",
         WelfareEntitlementMode.PerEventAmount => "จำกัดต่อครั้ง (บาท)",
         WelfareEntitlementMode.CountPerYear => "จำกัดจำนวนครั้งต่อปี",
+        WelfareEntitlementMode.MonthlyAllowance => "จ่ายประจำทุกเดือน (เข้า payroll)",
         _ => "ไม่จำกัด / ให้ข้อมูล",
     };
 
@@ -307,6 +336,7 @@
         WelfareEntitlementMode.AnnualAmount => $"{t.AnnualLimitAmount?.ToString("N0") ?? "-"} บาท/ปี",
         WelfareEntitlementMode.PerEventAmount => $"{t.PerEventLimitAmount?.ToString("N0") ?? "-"} บาท/ครั้ง" + (t.MaxClaimsPerYear is int n ? $" (≤{n} ครั้ง/ปี)" : ""),
         WelfareEntitlementMode.CountPerYear => $"≤{t.MaxClaimsPerYear?.ToString() ?? "-"} ครั้ง/ปี",
+        WelfareEntitlementMode.MonthlyAllowance => $"{t.MonthlyAllowanceAmount?.ToString("N0") ?? "-"} บาท/เดือน (จ่ายผ่าน payroll)",
         _ => "ไม่จำกัด",
     };
 }

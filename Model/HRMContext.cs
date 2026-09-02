@@ -1816,6 +1816,14 @@ public partial class HRMContext : DbContext
         // the global Lve_LeaveType), so the unique index is composite.
         modelBuilder.Entity<Wel_BenefitType>().HasIndex(t => new { t.CompanyId, t.Code }).IsUnique();
 
+        // Wel_BenefitType → Pay_PayItemType (which earning line a MonthlyAllowance
+        // posts as) — explicit FK to avoid a shadow FK, Restrict.
+        modelBuilder.Entity<Wel_BenefitType>()
+            .HasOne(b => b.PayItemType)
+            .WithMany()
+            .HasForeignKey(b => b.PayItemTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Explicit FK (Wel_Entitlement.BenefitTypeId → Wel_BenefitType) so EF
         // doesn't invent a shadow FK from the BenefitType nav; Restrict so a
         // benefit type with rules can't be silently deleted (it's soft-deleted
