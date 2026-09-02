@@ -52,7 +52,11 @@ public class WorkflowEngineService
     // implemented later).
     private const string VerticalPrecheckMarker = "VERTICAL_PRECHECK";
 
-    private enum LevelOutcome { StillPending, Complete, Failed }
+    // public only so the pure AND/OR/unanimous level decision below can be
+    // unit-tested directly (WorkflowEvaluateLevelTests) — same "expose the
+    // pure decision for testing" convention as PayrollCalculationService
+    // .FoldPriorEmployerIncome / PayrollWorkflowService.GetAllowedActions.
+    public enum LevelOutcome { StillPending, Complete, Failed }
 
     // Propagated up through the recursive TryAdvanceLevelAsync <->
     // AssignLevelApproversAsync chain (which can be several auto-skip hops
@@ -398,7 +402,12 @@ public class WorkflowEngineService
     // still StillPending. AND-condition levels sum andPercent weight against
     // the configured threshold; ordinary levels keep the Block 2/3 rule
     // (any reject fails, otherwise all-must-approve).
-    private static LevelOutcome EvaluateLevel(job_subworkflow_master snapshot, List<job_user_list> rows)
+    // Pure level-approval decision: given a level's config snapshot and its
+    // approver rows, is the level Complete / Failed / StillPending? The heart
+    // of "a job silently stuck" and "a job wrongly approved" bugs, so it is
+    // public-static and unit-tested (WorkflowEvaluateLevelTests) rather than
+    // only exercised through the EF-bound engine.
+    public static LevelOutcome EvaluateLevel(job_subworkflow_master snapshot, List<job_user_list> rows)
     {
         if (rows.Count == 0)
             return LevelOutcome.StillPending;

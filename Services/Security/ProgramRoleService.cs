@@ -128,20 +128,47 @@ public class ProgramRoleService(IDbContextFactory<HRMContext> dbFactory, IMemory
         var rowsByRole = await GetRowsByRoleAsync(ct);
         var roleMap = cache.Get<Dictionary<string, long>>(CacheKey + ".rolemap") ?? new(StringComparer.OrdinalIgnoreCase);
 
+        var perRoleRows = user.FindAll(ClaimTypes.Role).Select(x => x.Value)
+            .Where(roleName => roleMap.TryGetValue(roleName, out var roleId) && rowsByRole.ContainsKey(roleId))
+            .Select(roleName => (IReadOnlyList<sc_program_role>)rowsByRole[roleMap[roleName]]);
+
+        return ResolveRights(perRoleRows, path);
+    }
+
+    // Normalize a request path to how program-path rows are keyed: no trailing
+    // slash, "/" stays "/". Public + static so it can be unit-tested and reused
+    // by GetRightsAsync alongside ResolveRights below.
+    public static string NormalizePath(string? path)
+    {
         var normalized = (path ?? "/").TrimEnd('/');
-        if (normalized.Length == 0) normalized = "/";
+        return normalized.Length == 0 ? "/" : normalized;
+    }
+
+    // Does a program-path row govern this (already-normalized) request path?
+    // Prefix match with a SEGMENT boundary, so "/admin" never covers
+    // "/administrators" — the boundary check is the security-critical part.
+    public static bool ProgPathCovers(string progpath, string normalizedPath)
+        => normalizedPath.StartsWith(progpath, StringComparison.OrdinalIgnoreCase)
+            && (normalizedPath.Length == progpath.Length
+                || progpath == "/"
+                || normalizedPath[progpath.Length] == '/');
+
+    // The pure access-control decision, extracted from GetRightsAsync so it can
+    // be unit-tested (ProgramRoleAccessTests) independently of the cache/EF:
+    // per role, longest-prefix wins ("/leave-requests/policy" beats
+    // "/leave-requests"); rights then OR-accumulate ACROSS roles; a path no row
+    // covers yields ProgramRights.None (fail-closed). Per-role-then-OR order is
+    // deliberate — flattening all roles' rows before longest-prefix would let a
+    // narrower read-only row on one role mask a broader edit grant on another.
+    public static ProgramRights ResolveRights(IEnumerable<IReadOnlyList<sc_program_role>> perRoleRows, string? path)
+    {
+        var normalized = NormalizePath(path);
 
         bool c = false, r = false, e = false, d = false;
-        foreach (var roleName in user.FindAll(ClaimTypes.Role).Select(x => x.Value))
+        foreach (var rows in perRoleRows)
         {
-            if (!roleMap.TryGetValue(roleName, out var roleId)) continue;
-            if (!rowsByRole.TryGetValue(roleId, out var rows)) continue;
-
-            // Longest-prefix wins per role: "/leave-requests/policy" beats
-            // "/leave-requests" when both rows exist.
             var match = rows
-                .Where(row => normalized.StartsWith(row.progpath, StringComparison.OrdinalIgnoreCase)
-                    && (normalized.Length == row.progpath.Length || row.progpath == "/" || normalized[row.progpath.Length] == '/'))
+                .Where(row => ProgPathCovers(row.progpath, normalized))
                 .OrderByDescending(row => row.progpath.Length)
                 .FirstOrDefault();
             if (match is null) continue;

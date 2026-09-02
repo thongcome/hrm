@@ -20,8 +20,11 @@ public class ProgramRoleSeederTests
             Assert.False(string.IsNullOrWhiteSpace(p));
             Assert.StartsWith("/", p);
             // No parameter braces may survive normalization — a brace here
-            // means a template shape the normalizer didn't strip.
-            Assert.DoesNotContain("{", p);
+            // means a template shape the normalizer didn't strip. (Use the
+            // char-based string.Contains, not Assert.DoesNotContain("{", p):
+            // xUnit 2.9.3 binds the two-string overload to a ReadOnlySpan form
+            // that reports a false match here.)
+            Assert.False(p.Contains('{'), $"parameter brace survived normalization: {p}");
             Assert.True(p == "/" || !p.EndsWith('/'), $"trailing slash survived: {p}");
         });
     }
