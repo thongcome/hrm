@@ -43,6 +43,7 @@ public static class WelfareWorkflowSeeder
             workflowcode = WorkflowCode,
             wname = "อนุมัติเบิกสวัสดิการ",
             wname_en = "Welfare Claim Approval",
+            wstatus = "ACTIVE", // NOT NULL — same value the LEAVE_APPROVAL workflow uses
             isactive = true,
             isshow = true,
         };
