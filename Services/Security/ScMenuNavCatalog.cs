@@ -114,6 +114,7 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "ESS_ACCESS", "/ess/my-profile", "ข้อมูลบุคลากรของฉัน", "My Personnel Profile", "Icons.Material.Filled.PermContactCalendar", 30),
         new("GRP_ESS", "ESS_ACCESS", "/ess/payslips", "สลิปเงินเดือน", "Payslips", "Icons.Material.Filled.Receipt", 40),
         new("GRP_ESS", "ESS_ACCESS", "/ess/my-recurring-items", "เงินได้เงินหักประจำของฉัน", "My Recurring Pay Items", "Icons.Material.Filled.Repeat", 50),
+        new("GRP_ESS", "ESS_ACCESS", "/welfare/my-claims", "เบิกสวัสดิการของฉัน", "My Welfare Claims", "Icons.Material.Filled.VolunteerActivism", 55),
         new("GRP_ESS", "ESS_ACCESS", "/ess/attendance-checkin", "เช็คอิน/เช็คเอาท์ (GPS)", "Check-in/Check-out (GPS)", "Icons.Material.Filled.MyLocation", 60),
         new("GRP_ESS", "ESS_ACCESS", "/att/my-timesheet", "Timesheet ของฉัน", "My Timesheet", "Icons.Material.Filled.Schedule", 70),
         // CEO order 31 ส.ค. 2569: the approval inbox also lives in ESS ("เอาไปอยู่ใน ESS ด้วย").
@@ -215,6 +216,7 @@ public static class ScMenuNavCatalog
         new("GRP_PAYROLL", "PAY_REPORTS", "/pay/dashboard", "แดชบอร์ดเงินเดือน", "Payroll Dashboard", "Icons.Material.Filled.Dashboard", 270),
 
         // ---- GRP_WELFARE (employee welfare entitlement module; PAY_ADMIN grant) ----
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare", "หน้าหลักสวัสดิการ", "Welfare Home", "Icons.Material.Filled.VolunteerActivism", 5),
         new("GRP_WELFARE", "PAY_ADMIN", "/welfare/benefit-types", "แคตตาล็อกสวัสดิการ", "Welfare Benefit Catalog", "Icons.Material.Filled.CardGiftcard", 10),
         new("GRP_WELFARE", "PAY_ADMIN", "/welfare/entitlements", "กำหนดสิทธิ์ (ใครได้เท่าไหร่)", "Welfare Entitlements", "Icons.Material.Filled.Tune", 20),
 

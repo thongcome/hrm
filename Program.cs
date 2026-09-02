@@ -422,6 +422,8 @@ builder.Services.AddScoped<HRM.Services.Leave.LeaveRequestService>();
 builder.Services.AddScoped<HRM.Services.Leave.BlockLeaveComplianceService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Welfare.WelfareEntitlementResolver>();
+builder.Services.AddScoped<HRM.Services.Welfare.WelfareBalanceService>();
+builder.Services.AddScoped<HRM.Services.Welfare.WelfareClaimService>();
 
 // ----- Att_* module (Time Tracking & Attendance) -----
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
@@ -751,6 +753,9 @@ await HRM.Services.Hr.EmployeeDocTypeSeeder.SeedAsync(app.Services);
 // UserProvisioningService uses to auto-assign a role at first user setup.
 // Mapping seeds only while NULL — a human's change wins forever.
 await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
+// Required (not demo) config: the WELFARE_CLAIM approval workflow so welfare
+// claims can route through the engine. Idempotent by workflowcode.
+await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
 if (app.Environment.IsDevelopment())
 {
     // Dev-only end-to-end proof of the auto-role above: a committee-type

@@ -407,6 +407,10 @@ public partial class HRMContext : DbContext
     // (company default / by position / per employee).
     public virtual DbSet<Wel_Entitlement> Wel_Entitlements { get; set; }
 
+    // Wel_Claim — an employee's welfare reimbursement request (phase 2),
+    // routed through the workflow engine like Lve_LeaveRequest.
+    public virtual DbSet<Wel_Claim> Wel_Claims { get; set; }
+
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
     public virtual DbSet<Pay_ProvidentFundVestingTier> Pay_ProvidentFundVestingTiers { get; set; }
     public virtual DbSet<Pay_ProvidentFundInvestmentPolicy> Pay_ProvidentFundInvestmentPolicies { get; set; }
@@ -1823,6 +1827,17 @@ public partial class HRMContext : DbContext
                 .HasForeignKey(e => e.BenefitTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => new { e.CompanyId, e.BenefitTypeId, e.IsActive });
+        });
+
+        // Wel_Claim → Wel_BenefitType explicit FK (avoid shadow FK), Restrict.
+        // The Hremployee nav is left to convention like Lve_LeaveRequest.
+        modelBuilder.Entity<Wel_Claim>(entity =>
+        {
+            entity.HasOne(c => c.BenefitType)
+                .WithMany()
+                .HasForeignKey(c => c.BenefitTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => new { c.CompanyId, c.HremployeeId, c.BenefitTypeId });
         });
 
         modelBuilder.Entity<Pay_PayslipSettings>().HasData(

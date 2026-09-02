@@ -1,0 +1,214 @@
+@page "/welfare/my-claims"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Shared
+@using HRM.Services.Welfare
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject WelfareBalanceService BalanceService
+@inject WelfareClaimService ClaimService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>เบิกสวัสดิการของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เบิกสวัสดิการของฉัน</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">ยื่นเบิกสวัสดิการตามสิทธิ์ของคุณ — คำขอจะส่งให้ HR อนุมัติผ่านระบบ workflow</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับข้อมูลพนักงาน</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long" Value="_benefitId" ValueChanged="OnBenefitChanged" Label="ประเภทสวัสดิการ">
+                    @foreach (var b in _benefits)
+                    {
+                        <MudSelectItem T="long" Value="b.Id">@b.NameTh</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="8" Class="d-flex align-center">
+                @if (_balance is not null)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="my-0">@BalanceText()</MudAlert>
+                }
+            </MudItem>
+
+            @if (_benefitId != 0)
+            {
+                <MudItem xs="6" sm="3">
+                    <MudNumericField @bind-Value="_amount" Label="จำนวนเงิน (บาท)" Format="N2" Min="0" />
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudDatePicker @bind-Date="_eventDate" Label="วันที่เกิดค่าใช้จ่าย" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_description" Label="รายละเอียด" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="_busy" StartIcon="@Icons.Material.Filled.Send">
+                        ส่งเบิก
+                    </MudButton>
+                    @if (_selectedBenefit?.RequiresReceipt == true)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-2">* สวัสดิการนี้ต้องแนบใบเสร็จ (แนบได้หลังส่ง หรือส่งให้ HR)</MudText>
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudPaper>
+
+@if (_loaded && _employee is not null)
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" Class="mb-2">ประวัติการเบิก</MudText>
+        <MudTable Items="_claims" Dense="true" Hover="true" T="ClaimRow">
+            <HeaderContent>
+                <MudTh>เลขที่</MudTh>
+                <MudTh>ประเภท</MudTh>
+                <MudTh>วันที่</MudTh>
+                <MudTh Style="text-align:right">จำนวน</MudTh>
+                <MudTh>สถานะ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="เลขที่">@context.Claim.ClaimNo</MudTd>
+                <MudTd DataLabel="ประเภท">@context.BenefitName</MudTd>
+                <MudTd DataLabel="วันที่">@context.Claim.EventDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd DataLabel="จำนวน" Style="text-align:right">@context.Claim.Amount.ToString("N2")</MudTd>
+                <MudTd DataLabel="สถานะ">
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีประวัติการเบิก</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private record ClaimRow(Wel_Claim Claim, string BenefitName, string Status);
+
+    private bool _loaded;
+    private Hremployee? _employee;
+    private long? _currentUserId;
+    private string? _companyId;
+    private List<Wel_BenefitType> _benefits = new();
+    private List<ClaimRow> _claims = new();
+
+    private long _benefitId;
+    private Wel_BenefitType? _selectedBenefit;
+    private WelfareBalanceService.Balance? _balance;
+    private decimal _amount;
+    private DateTime? _eventDate = DateTime.Today;
+    private string? _description;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _currentUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            _companyId = _employee.companyid;
+            _benefits = await context.Wel_BenefitTypes
+                .Where(b => b.CompanyId == _companyId && b.IsActive
+                    && b.EntitlementMode != WelfareEntitlementMode.Informational)
+                .OrderBy(b => b.SortOrder).ThenBy(b => b.Code).ToListAsync();
+            await LoadClaimsAsync(context);
+        }
+        _loaded = true;
+    }
+
+    private async Task LoadClaimsAsync(HRMContext context)
+    {
+        var rows = await (
+            from c in context.Wel_Claims
+            where c.HremployeeId == _employee!.id
+            orderby c.RequestedDate descending
+            select new { Claim = c, BenefitName = c.BenefitType.NameTh, c.JobMasterId }).ToListAsync();
+
+        var jobIds = rows.Where(r => r.JobMasterId != null).Select(r => r.JobMasterId!.Value).Distinct().ToList();
+        var jobStatus = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid))
+            .Select(j => new { j.jobmasterid, j.status }).ToDictionaryAsync(x => x.jobmasterid, x => x.status);
+
+        _claims = rows.Select(r => new ClaimRow(r.Claim, r.BenefitName,
+            r.JobMasterId is null ? "DRAFT" : jobStatus.TryGetValue(r.JobMasterId.Value, out var s) ? s ?? "-" : "-")).ToList();
+    }
+
+    private async Task OnBenefitChanged(long id)
+    {
+        _benefitId = id;
+        _selectedBenefit = _benefits.FirstOrDefault(b => b.Id == id);
+        _balance = null;
+        if (id != 0 && _employee is not null && _companyId is not null)
+            _balance = await BalanceService.GetAsync(_companyId, id, _employee.id, DateTime.Today.Year);
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_employee is null || _companyId is null || _benefitId == 0 || _currentUserId is null) return;
+        if (_eventDate is null) { Snackbar.Add("กรุณาเลือกวันที่", Severity.Warning); return; }
+
+        _busy = true;
+        try
+        {
+            var eventDate = DateOnly.FromDateTime(_eventDate.Value);
+            var claimId = await ClaimService.CreateDraftAsync(_employee.id, _employee.EmpNo, _companyId,
+                _benefitId, eventDate, _amount, _description);
+            await ClaimService.SubmitAsync(claimId, _currentUserId.Value, _employee.EmpNo);
+
+            Snackbar.Add("ส่งคำขอเบิกเรียบร้อย — รอ HR อนุมัติ", Severity.Success);
+            _amount = 0; _description = null;
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await LoadClaimsAsync(context);
+            await OnBenefitChanged(_benefitId); // refresh balance
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private string BalanceText()
+    {
+        if (_balance is null) return "";
+        return _balance.Mode switch
+        {
+            WelfareEntitlementMode.AnnualAmount => $"สิทธิ์ {_balance.Limit?.ToString("N0") ?? "-"} บาท/ปี · ใช้ไป {_balance.UsedAmount:N0} · คงเหลือ {_balance.RemainingAmount?.ToString("N0") ?? "-"} บาท",
+            WelfareEntitlementMode.PerEventAmount => $"สูงสุด {_balance.Limit?.ToString("N0") ?? "-"} บาท/ครั้ง" + (_balance.MaxClaimsPerYear is int m ? $" · เบิกได้อีก {_balance.RemainingClaims}/{m} ครั้ง" : ""),
+            WelfareEntitlementMode.CountPerYear => $"เบิกได้อีก {_balance.RemainingClaims?.ToString() ?? "-"}/{_balance.MaxClaimsPerYear} ครั้ง",
+            _ => "",
+        } + (_balance.SourceScope == WelfareEntitlementScope.Employee ? " (สิทธิ์เฉพาะบุคคล)" : _balance.SourceScope == WelfareEntitlementScope.Position ? " (ตามตำแหน่ง)" : "");
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "DRAFT" => "ร่าง", "PENDING" => "รออนุมัติ", "COMPLETED" => "อนุมัติแล้ว",
+        "APPROVED" => "อนุมัติแล้ว", "REJECTED" => "ไม่อนุมัติ", "RETURNED" => "ตีกลับ", "CANCELLED" => "ยกเลิก", _ => s,
+    };
+
+    private static Color StatusColor(string s) => s switch
+    {
+        "COMPLETED" or "APPROVED" => Color.Success,
+        "REJECTED" => Color.Error,
+        "PENDING" => Color.Warning,
+        _ => Color.Default,
+    };
+}

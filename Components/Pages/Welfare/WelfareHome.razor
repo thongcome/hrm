@@ -1,0 +1,61 @@
+@page "/welfare"
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>สวัสดิการพนักงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2">
+        <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Color="Color.Primary" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h5">สวัสดิการพนักงาน (Employee Welfare)</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">ศูนย์รวมสวัสดิการทั้งหมด — สวัสดิการทั่วไปที่เบิกได้ กองทุน และประกัน</MudText>
+        </div>
+    </div>
+</MudPaper>
+
+@foreach (var section in Sections)
+{
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">@section.Title</MudText>
+    <MudGrid>
+        @foreach (var card in section.Cards)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Outlined="true" Class="cursor-pointer" @onclick="@(() => Nav.NavigateTo(card.Url))" Style="height:100%">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-3">
+                            <MudIcon Icon="@card.Icon" Color="Color.Primary" Size="Size.Large" />
+                            <div>
+                                <MudText Typo="Typo.subtitle1"><b>@card.Title</b></MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@card.Description</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private record Card(string Title, string Description, string Icon, string Url);
+    private record Section(string Title, Card[] Cards);
+
+    private static readonly Section[] Sections =
+    {
+        new("สวัสดิการทั่วไป (เบิกได้ / กำหนดสิทธิ์)", new[]
+        {
+            new Card("แคตตาล็อกสวัสดิการ", "ประเภทสวัสดิการ วงเงิน และเงื่อนไข", Icons.Material.Filled.CardGiftcard, "/welfare/benefit-types"),
+            new Card("กำหนดสิทธิ์ (ใครได้เท่าไหร่)", "วงเงินตามตำแหน่ง / รายบุคคล (เช่น ค่ารถ)", Icons.Material.Filled.Tune, "/welfare/entitlements"),
+            new Card("เบิกสวัสดิการ (พนักงาน)", "หน้ายื่นเบิกของพนักงาน (ESS)", Icons.Material.Filled.ReceiptLong, "/welfare/my-claims"),
+        }),
+        new("กองทุน & ประกัน", new[]
+        {
+            new Card("กองทุนสำรองเลี้ยงชีพ", "นโยบาย อัตรา vesting และการออก", Icons.Material.Filled.Savings, "/pay/admin/provident-fund-policy"),
+            new Card("ประกันกลุ่ม", "แผนประกันและการลงทะเบียนพนักงาน", Icons.Material.Filled.HealthAndSafety, "/pay/admin/insurance-plans"),
+            new Card("กองทุนสงเคราะห์ลูกจ้าง", "นโยบายกองทุนสงเคราะห์ตามกฎหมาย", Icons.Material.Filled.AccountBalance, "/pay/admin/welfare-fund-policy"),
+        }),
+    };
+}
