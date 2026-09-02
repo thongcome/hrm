@@ -715,6 +715,10 @@ if (app.Environment.IsDevelopment())
     // on AdvanceDigital. One-shot; depends on the ADVD employees + competency
     // catalog above.
     await HRM.Services.Dev.AdvdHrdDemoSeeder.SeedAsync(app.Services);
+    // Wave 2: OKR cascade + key results + check-ins for ADVD (the engine was
+    // real but had no KR/check-in data anywhere) + OKR→Performance link.
+    await HRM.Services.Dev.AdvdOkrDemoSeeder.SeedAsync(app.Services);
+    await HRM.Services.Dev.AdvdOkrDemoSeeder.LinkOrphanIndicatorsAsync(app.Services);
     // Separate ADVD-scoped admin login (advadmin / dev admin password) so the
     // presenter can demo HRD on the 7,000-employee company; the '001' admin
     // stays for the payroll demo.
