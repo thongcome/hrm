@@ -1,0 +1,312 @@
+@page "/welfare/benefit-types"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>แคตตาล็อกสวัสดิการ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">แคตตาล็อกสวัสดิการพนักงาน (Welfare Benefit Catalog)</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        กำหนดประเภทสวัสดิการที่บริษัทให้พนักงาน (ค่ารักษา เงินช่วยเหลือ ตรวจสุขภาพ เบี้ยเลี้ยง) พร้อมวงเงิน/สิทธิ์ — พนักงานจะเบิกจากประเภทเหล่านี้ (ระยะถัดไป)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ (ดูได้อย่างเดียว)</MudAlert>
+    }
+
+    <div class="d-flex align-center gap-3 mt-3 flex-wrap">
+        <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Label="ค้นหา" Immediate="true"
+                      DebounceInterval="300" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Style="max-width:320px" />
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="StartCreate">เพิ่มประเภทสวัสดิการ</MudButton>
+        }
+    </div>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">@(_editing.Id == 0 ? "เพิ่มประเภทสวัสดิการ" : $"แก้ไข: {_editing.NameTh}")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.Code" Label="รหัส (Code)" Required="true" HelperText="เช่น MED_OPD, GRANT_FUNERAL — คงที่ ใช้อ้างอิงในการเบิก" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.NameTh" Label="ชื่อ (ไทย)" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editing.NameEn" Label="ชื่อ (อังกฤษ)" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudSelect T="WelfareBenefitCategory" @bind-Value="_editing.Category" Label="หมวด">
+                    @foreach (var c in Enum.GetValues<WelfareBenefitCategory>())
+                    {
+                        <MudSelectItem T="WelfareBenefitCategory" Value="c">@CategoryLabel(c)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="WelfareEntitlementMode" @bind-Value="_editing.EntitlementMode" Label="รูปแบบสิทธิ์">
+                    @foreach (var m in Enum.GetValues<WelfareEntitlementMode>())
+                    {
+                        <MudSelectItem T="WelfareEntitlementMode" Value="m">@ModeLabel(m)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @if (_editing.EntitlementMode == WelfareEntitlementMode.AnnualAmount)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_editing.AnnualLimitAmount" Label="วงเงินรวมต่อปี (บาท)" Format="N2" Min="0" />
+                </MudItem>
+            }
+            @if (_editing.EntitlementMode == WelfareEntitlementMode.PerEventAmount)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_editing.PerEventLimitAmount" Label="วงเงินต่อครั้ง (บาท)" Format="N2" Min="0" />
+                </MudItem>
+            }
+            @if (_editing.EntitlementMode is WelfareEntitlementMode.CountPerYear or WelfareEntitlementMode.PerEventAmount)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_editing.MaxClaimsPerYear" Label="จำนวนครั้งสูงสุดต่อปี" Min="0" />
+                </MudItem>
+            }
+
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_editing.MinServiceMonths" Label="อายุงานขั้นต่ำ (เดือน)" Min="0" HelperText="ว่าง = ไม่มีเงื่อนไข" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_editing.SortOrder" Label="ลำดับการแสดง" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center">
+                <MudSwitch T="bool" @bind-Value="_editing.RequiresReceipt" Color="Color.Primary" Label="ต้องแนบใบเสร็จ" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editing.Description" Label="รายละเอียด / เงื่อนไข" Lines="2" />
+            </MudItem>
+        </MudGrid>
+
+        <div class="d-flex gap-2 mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)" Disabled="_busy">ยกเลิก</MudButton>
+        </div>
+    </MudPaper>
+}
+
+<MudPaper Class="pa-4">
+    <MudTable Items="_filtered" Dense="true" Hover="true" T="Wel_BenefitType">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>หมวด</MudTh>
+            <MudTh>สิทธิ์</MudTh>
+            <MudTh>อายุงานขั้นต่ำ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="รหัส">@context.Code</MudTd>
+            <MudTd DataLabel="ชื่อ">@context.NameTh</MudTd>
+            <MudTd DataLabel="หมวด">@CategoryLabel(context.Category)</MudTd>
+            <MudTd DataLabel="สิทธิ์">@EntitlementSummary(context)</MudTd>
+            <MudTd DataLabel="อายุงานขั้นต่ำ">@(context.MinServiceMonths is int m ? $"{m} เดือน" : "-")</MudTd>
+            <MudTd DataLabel="สถานะ">
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "ใช้งาน" : "ปิด")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => StartEdit(context))" />
+                }
+                @if (_rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="@(context.IsActive ? Color.Error : Color.Success)"
+                               OnClick="@(() => ToggleActiveAsync(context))">
+                        @(context.IsActive ? "ปิด" : "เปิด")
+                    </MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีประเภทสวัสดิการ — กด "เพิ่มประเภทสวัสดิการ" เพื่อเริ่ม</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/welfare/benefit-types";
+
+    private string? _companyId;
+    private ProgramRoleService.ProgramRights? _rights;
+    private List<Wel_BenefitType> _all = new();
+    private List<Wel_BenefitType> _filtered = new();
+    private string _search = "";
+    private Wel_BenefitType? _editing;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _all = await context.Wel_BenefitTypes
+            .Where(t => t.CompanyId == _companyId)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Code)
+            .ToListAsync();
+        ApplyFilter();
+    }
+
+    private void OnSearchChanged(string value)
+    {
+        _search = value;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var q = _all.AsQueryable();
+        q = EntitySearchHelper.ApplyTextSearch(q, _search,
+            nameof(Wel_BenefitType.Code), nameof(Wel_BenefitType.NameTh), nameof(Wel_BenefitType.NameEn), nameof(Wel_BenefitType.Description));
+        _filtered = q.ToList();
+    }
+
+    private void StartCreate()
+        => _editing = new Wel_BenefitType { CompanyId = _companyId!, IsActive = true, RequiresReceipt = true, SortOrder = (_all.Count + 1) * 10 };
+
+    private void StartEdit(Wel_BenefitType row)
+        => _editing = new Wel_BenefitType
+        {
+            Id = row.Id, CompanyId = row.CompanyId, Code = row.Code, NameTh = row.NameTh, NameEn = row.NameEn,
+            Category = row.Category, EntitlementMode = row.EntitlementMode, AnnualLimitAmount = row.AnnualLimitAmount,
+            PerEventLimitAmount = row.PerEventLimitAmount, MaxClaimsPerYear = row.MaxClaimsPerYear,
+            RequiresReceipt = row.RequiresReceipt, MinServiceMonths = row.MinServiceMonths,
+            Description = row.Description, SortOrder = row.SortOrder, IsActive = row.IsActive,
+        };
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.Code) || string.IsNullOrWhiteSpace(_editing.NameTh))
+        {
+            Snackbar.Add("กรุณากรอกรหัสและชื่อ (ไทย)", Severity.Warning);
+            return;
+        }
+
+        var action = _editing.Id == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit;
+        if (await RequireRightAsync(action) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+
+        _busy = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            // app-level uniqueness (CompanyId, Code) — friendly message before the DB unique index would throw.
+            var dupExists = await context.Wel_BenefitTypes.AnyAsync(t =>
+                t.CompanyId == _companyId && t.Code == _editing.Code && t.Id != _editing.Id);
+            if (dupExists) { Snackbar.Add($"มีรหัส {_editing.Code} อยู่แล้วในบริษัทนี้", Severity.Error); return; }
+
+            if (_editing.Id == 0)
+            {
+                context.Wel_BenefitTypes.Add(_editing);
+            }
+            else
+            {
+                var row = await context.Wel_BenefitTypes.FirstOrDefaultAsync(t => t.Id == _editing.Id);
+                if (row is null) { Snackbar.Add("ไม่พบรายการ", Severity.Error); return; }
+                row.Code = _editing.Code; row.NameTh = _editing.NameTh; row.NameEn = _editing.NameEn;
+                row.Category = _editing.Category; row.EntitlementMode = _editing.EntitlementMode;
+                row.AnnualLimitAmount = _editing.AnnualLimitAmount; row.PerEventLimitAmount = _editing.PerEventLimitAmount;
+                row.MaxClaimsPerYear = _editing.MaxClaimsPerYear; row.RequiresReceipt = _editing.RequiresReceipt;
+                row.MinServiceMonths = _editing.MinServiceMonths; row.Description = _editing.Description;
+                row.SortOrder = _editing.SortOrder;
+            }
+            await context.SaveChangesAsync();
+            _editing = null;
+            await LoadAsync();
+            Snackbar.Add("บันทึกแล้ว", Severity.Success);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleActiveAsync(Wel_BenefitType row)
+    {
+        // Deactivation is the soft-delete of this table (never hard delete), so
+        // it is governed by the Delete right per AD.CRUDManage.
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var db = await context.Wel_BenefitTypes.FirstOrDefaultAsync(t => t.Id == row.Id);
+        if (db is null) return;
+        db.IsActive = !db.IsActive;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    private static string CategoryLabel(WelfareBenefitCategory c) => c switch
+    {
+        WelfareBenefitCategory.Medical => "ค่ารักษาพยาบาล",
+        WelfareBenefitCategory.Grant => "เงินช่วยเหลือ",
+        WelfareBenefitCategory.HealthCheck => "ตรวจสุขภาพ",
+        WelfareBenefitCategory.Allowance => "เบี้ยเลี้ยง/ค่าอุปกรณ์",
+        _ => "อื่นๆ",
+    };
+
+    private static string ModeLabel(WelfareEntitlementMode m) => m switch
+    {
+        WelfareEntitlementMode.AnnualAmount => "วงเงินรวมต่อปี (บาท)",
+        WelfareEntitlementMode.PerEventAmount => "จำกัดต่อครั้ง (บาท)",
+        WelfareEntitlementMode.CountPerYear => "จำกัดจำนวนครั้งต่อปี",
+        _ => "ไม่จำกัด / ให้ข้อมูล",
+    };
+
+    private static string EntitlementSummary(Wel_BenefitType t) => t.EntitlementMode switch
+    {
+        WelfareEntitlementMode.AnnualAmount => $"{t.AnnualLimitAmount?.ToString("N0") ?? "-"} บาท/ปี",
+        WelfareEntitlementMode.PerEventAmount => $"{t.PerEventLimitAmount?.ToString("N0") ?? "-"} บาท/ครั้ง" + (t.MaxClaimsPerYear is int n ? $" (≤{n} ครั้ง/ปี)" : ""),
+        WelfareEntitlementMode.CountPerYear => $"≤{t.MaxClaimsPerYear?.ToString() ?? "-"} ครั้ง/ปี",
+        _ => "ไม่จำกัด",
+    };
+}

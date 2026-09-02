@@ -724,6 +724,8 @@ if (app.Environment.IsDevelopment())
     // Wave 2: fill the Job Description body (duties/qualifications/KPIs) for the
     // ADVD finance ladder — the competency link was seeded, the JD body was not.
     await HRM.Services.Dev.AdvdJobProfileBodySeeder.SeedAsync(app.Services);
+    // Welfare module: sensible Thai-SME benefit catalog for the demo companies.
+    await HRM.Services.Dev.WelfareBenefitDemoSeeder.SeedAsync(app.Services);
     // Separate ADVD-scoped admin login (advadmin / dev admin password) so the
     // presenter can demo HRD on the 7,000-employee company; the '001' admin
     // stays for the payroll demo.

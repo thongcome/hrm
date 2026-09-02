@@ -398,6 +398,11 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Pay_WelfareFundPolicy> Pay_WelfareFundPolicies { get; set; }
 
+    // Wel_* — employee welfare entitlement catalog (discretionary benefits:
+    // medical, allowances, life-event grants, health checks), separate from the
+    // financial-benefit tables above.
+    public virtual DbSet<Wel_BenefitType> Wel_BenefitTypes { get; set; }
+
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
     public virtual DbSet<Pay_ProvidentFundVestingTier> Pay_ProvidentFundVestingTiers { get; set; }
     public virtual DbSet<Pay_ProvidentFundInvestmentPolicy> Pay_ProvidentFundInvestmentPolicies { get; set; }
@@ -1797,6 +1802,11 @@ public partial class HRMContext : DbContext
         });
 
         modelBuilder.Entity<Lve_LeaveType>().HasIndex(t => t.Code).IsUnique();
+
+        // Welfare benefit catalog: Code is stable and unique PER COMPANY (the
+        // catalog is company-scoped by the CompanyId string convention, unlike
+        // the global Lve_LeaveType), so the unique index is composite.
+        modelBuilder.Entity<Wel_BenefitType>().HasIndex(t => new { t.CompanyId, t.Code }).IsUnique();
 
         modelBuilder.Entity<Pay_PayslipSettings>().HasData(
             new Pay_PayslipSettings { Id = 1, CompanyId = "001", PasswordTemplate = "{BirthDateDDMMYYYY}", ModifiedDate = new DateTime(2026, 7, 29) }

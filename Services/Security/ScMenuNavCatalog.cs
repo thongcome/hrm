@@ -59,6 +59,7 @@ public static class ScMenuNavCatalog
         new("GRP_ATTENDANCE", "เวลาเข้างาน (Attendance)", "Attendance", "Icons.Material.Filled.AccessTime", 70),
         // no guard on the group itself (individual links gated inside)
         new("GRP_PAYROLL", "เงินเดือน (Payroll)", "Payroll", "Icons.Material.Filled.Payments", 80),
+        new("GRP_WELFARE", "สวัสดิการพนักงาน", "Employee Welfare", "Icons.Material.Filled.VolunteerActivism", 85),
         // guard: Has("CT_CONTRACT_ADMIN")
         new("GRP_CONTRACTS", "สัญญา (Contracts)", "Contracts", "Icons.Material.Filled.Assignment", 90),
         // guard: HasAny("HR_ANNOUNCE_ACCESS","HR_ANNOUNCE_ADMIN")
@@ -212,6 +213,9 @@ public static class ScMenuNavCatalog
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/por1", "ภ.ง.ด.1 / ภ.ง.ด.1ก", "PND.1 / PND.1A", "Icons.Material.Filled.RequestPage", 250),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/salary-cert", "หนังสือรับรองเงินเดือน", "Salary Certificate", "Icons.Material.Filled.Description", 260),
         new("GRP_PAYROLL", "PAY_REPORTS", "/pay/dashboard", "แดชบอร์ดเงินเดือน", "Payroll Dashboard", "Icons.Material.Filled.Dashboard", 270),
+
+        // ---- GRP_WELFARE (employee welfare entitlement module; PAY_ADMIN grant) ----
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/benefit-types", "แคตตาล็อกสวัสดิการ", "Welfare Benefit Catalog", "Icons.Material.Filled.CardGiftcard", 10),
 
         // ---- GRP_CONTRACTS (group guarded by Has("CT_CONTRACT_ADMIN")) ----
         new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts", "รายการสัญญา", "Contract List", "Icons.Material.Filled.Description", 10),
