@@ -1,0 +1,308 @@
+@page "/welfare/entitlements"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>สิทธิ์สวัสดิการ (ใครได้เท่าไหร่)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">กำหนดสิทธิ์สวัสดิการ — ใครได้เท่าไหร่</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        สวัสดิการเดียวกันกำหนดวงเงินต่างกันได้ตาม <b>ทั้งบริษัท</b> (ค่าเริ่มต้น) · <b>ตำแหน่ง</b> · หรือ <b>เจาะจงรายบุคคล</b> (กรณีพิเศษ) — กฎที่เจาะจงกว่าจะชนะ (รายบุคคล ▸ ตำแหน่ง ▸ ทั้งบริษัท)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ (ดูได้อย่างเดียว)</MudAlert>
+    }
+
+    <MudSelect T="long" Value="_benefitId" ValueChanged="OnBenefitChanged" Label="เลือกสวัสดิการ" Class="mt-3" Style="max-width:480px">
+        @foreach (var b in _benefits)
+        {
+            <MudSelectItem T="long" Value="b.Id">@b.Code — @b.NameTh</MudSelectItem>
+        }
+    </MudSelect>
+</MudPaper>
+
+@if (_benefit is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1">ค่าเริ่มต้นของสวัสดิการนี้ (ใช้กับทุกคนที่ไม่มีกฎเจาะจง)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@DefaultSummary(_benefit)</MudText>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <div class="d-flex justify-space-between align-center mb-2">
+            <MudText Typo="Typo.h6">กฎกำหนดสิทธิ์เฉพาะ (override)</MudText>
+            @if (_rights?.CanCreate == true && _adding is null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="StartAdd">เพิ่มกฎ</MudButton>
+            }
+        </div>
+
+        @if (_adding is not null)
+        {
+            <MudPaper Class="pa-3 mb-3" Outlined="true">
+                <MudGrid>
+                    <MudItem xs="12" sm="3">
+                        <MudSelect T="WelfareEntitlementScope" @bind-Value="_adding.Scope" Label="ขอบเขต">
+                            <MudSelectItem T="WelfareEntitlementScope" Value="WelfareEntitlementScope.All">ทั้งบริษัท (ค่าเริ่มต้น)</MudSelectItem>
+                            <MudSelectItem T="WelfareEntitlementScope" Value="WelfareEntitlementScope.Position">ตามตำแหน่ง</MudSelectItem>
+                            <MudSelectItem T="WelfareEntitlementScope" Value="WelfareEntitlementScope.Employee">เจาะจงรายบุคคล</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    @if (_adding.Scope == WelfareEntitlementScope.Position)
+                    {
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="long?" @bind-Value="_adding.PosExecTypeId" Label="ตำแหน่ง">
+                                @foreach (var p in _positions)
+                                {
+                                    <MudSelectItem T="long?" Value="p.Id">@p.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    }
+                    else if (_adding.Scope == WelfareEntitlementScope.Employee)
+                    {
+                        <MudItem xs="12" sm="4">
+                            <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeePicked"
+                                             SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                                             ResetValueOnEmptyText="true" MinCharacters="1" />
+                        </MudItem>
+                    }
+                    <MudItem xs="6" sm="2">
+                        <MudNumericField @bind-Value="_adding.OverrideAmount" Label="วงเงิน (บาท)" Format="N2" Min="0" />
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudNumericField @bind-Value="_adding.OverrideMaxClaimsPerYear" Label="ครั้ง/ปี" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" sm="8">
+                        <MudTextField @bind-Value="_adding.Note" Label="หมายเหตุ (เหตุผลกรณีพิเศษ)" />
+                    </MudItem>
+                    <MudItem xs="12" Class="d-flex gap-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAddAsync" Disabled="_busy">บันทึกกฎ</MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _adding = null; _selectedEmployee = null; })" Disabled="_busy">ยกเลิก</MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <MudTable Items="_rules" Dense="true" Hover="true" T="Wel_Entitlement">
+            <HeaderContent>
+                <MudTh>ขอบเขต</MudTh>
+                <MudTh>ใคร</MudTh>
+                <MudTh Style="text-align:right">วงเงิน</MudTh>
+                <MudTh Style="text-align:right">ครั้ง/ปี</MudTh>
+                <MudTh>หมายเหตุ / เหตุผล</MudTh>
+                <MudTh>บันทึกเมื่อ</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ขอบเขต">@ScopeLabel(context.Scope)</MudTd>
+                <MudTd DataLabel="ใคร">@WhoLabel(context)</MudTd>
+                <MudTd DataLabel="วงเงิน" Style="text-align:right">@(context.OverrideAmount?.ToString("N0") ?? "(ตามค่าเริ่มต้น)")</MudTd>
+                <MudTd DataLabel="ครั้ง/ปี" Style="text-align:right">@(context.OverrideMaxClaimsPerYear?.ToString() ?? "-")</MudTd>
+                <MudTd DataLabel="หมายเหตุ / เหตุผล">@context.Note</MudTd>
+                <MudTd DataLabel="บันทึกเมื่อ">
+                    <MudText Typo="Typo.caption">@context.SetDate.ToString("dd/MM/yyyy HH:mm")@(context.SetByUserId is long u ? $" (ผู้ใช้ #{u})" : "")</MudText>
+                </MudTd>
+                <MudTd>
+                    @if (_rights?.CanDelete == true)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveAsync(context))">ลบ</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ยังไม่มีกฎเฉพาะ — ทุกคนใช้ค่าเริ่มต้นด้านบน กด "เพิ่มกฎ" เพื่อกำหนดตามตำแหน่งหรือรายบุคคล</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private const string ProgramPath = "/welfare/entitlements";
+
+    private string? _companyId;
+    private ProgramRoleService.ProgramRights? _rights;
+    private List<Wel_BenefitType> _benefits = new();
+    private List<Pos_ExecType> _positions = new();
+    private long _benefitId;
+    private Wel_BenefitType? _benefit;
+    private List<Wel_Entitlement> _rules = new();
+    private Dictionary<long, string> _posNames = new();
+    private Dictionary<long, string> _empNames = new();
+
+    private Wel_Entitlement? _adding;
+    private Hremployee? _selectedEmployee;
+    private long? _currentUserId;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _currentUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : null;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _benefits = await context.Wel_BenefitTypes
+            .Where(b => b.CompanyId == _companyId && b.IsActive)
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Code).ToListAsync();
+        _positions = await context.Pos_ExecTypes
+            .Where(p => p.CompanyId == _companyId).OrderBy(p => p.Id).ToListAsync();
+        _posNames = _positions.ToDictionary(p => p.Id, p => p.Name);
+    }
+
+    private async Task OnBenefitChanged(long id)
+    {
+        _benefitId = id;
+        _adding = null;
+        _selectedEmployee = null;
+        await LoadRulesAsync();
+    }
+
+    private async Task LoadRulesAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _benefit = await context.Wel_BenefitTypes.FirstOrDefaultAsync(b => b.Id == _benefitId);
+        _rules = await context.Wel_Entitlements
+            .Where(r => r.BenefitTypeId == _benefitId && r.CompanyId == _companyId && r.IsActive)
+            .ToListAsync();
+        _rules = _rules.OrderBy(r => (int)r.Scope).ToList();
+
+        // resolve employee names for display
+        var empIds = _rules.Where(r => r.HremployeeId != null).Select(r => r.HremployeeId!.Value).Distinct().ToList();
+        _empNames = empIds.Count == 0 ? new()
+            : await context.Hremployee.Where(e => empIds.Contains(e.id))
+                .ToDictionaryAsync(e => e.id, e => $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}");
+    }
+
+    private void StartAdd()
+        => _adding = new Wel_Entitlement { CompanyId = _companyId!, BenefitTypeId = _benefitId, Scope = WelfareEntitlementScope.Position, IsActive = true };
+
+    private void OnEmployeePicked(Hremployee? e)
+    {
+        _selectedEmployee = e;
+        if (_adding is not null) _adding.HremployeeId = e?.id;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(e => e.EmpNo.Contains(search)
+                || (e.EmpName != null && e.EmpName.Contains(search))
+                || (e.EmpSurname != null && e.EmpSurname.Contains(search)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task SaveAddAsync()
+    {
+        if (_adding is null) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+
+        if (_adding.Scope == WelfareEntitlementScope.Position && _adding.PosExecTypeId is null)
+        { Snackbar.Add("กรุณาเลือกตำแหน่ง", Severity.Warning); return; }
+        if (_adding.Scope == WelfareEntitlementScope.Employee && _adding.HremployeeId is null)
+        { Snackbar.Add("กรุณาเลือกพนักงาน", Severity.Warning); return; }
+        if (_adding.OverrideAmount is null && _adding.OverrideMaxClaimsPerYear is null)
+        { Snackbar.Add("กรุณากรอกวงเงินหรือจำนวนครั้งอย่างน้อยหนึ่งอย่าง", Severity.Warning); return; }
+
+        // normalize: clear the scope key that doesn't apply
+        if (_adding.Scope != WelfareEntitlementScope.Position) _adding.PosExecTypeId = null;
+        if (_adding.Scope != WelfareEntitlementScope.Employee) _adding.HremployeeId = null;
+
+        _busy = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            // one active rule per (benefit, scope, target) — replace if exists
+            var dup = await context.Wel_Entitlements.FirstOrDefaultAsync(r =>
+                r.BenefitTypeId == _benefitId && r.CompanyId == _companyId && r.IsActive && r.Scope == _adding.Scope
+                && r.PosExecTypeId == _adding.PosExecTypeId && r.HremployeeId == _adding.HremployeeId);
+            if (dup is not null)
+            {
+                dup.OverrideAmount = _adding.OverrideAmount;
+                dup.OverrideMaxClaimsPerYear = _adding.OverrideMaxClaimsPerYear;
+                dup.Note = _adding.Note;
+                dup.SetByUserId = _currentUserId;
+                dup.SetDate = DateTime.Now;
+            }
+            else
+            {
+                _adding.SetByUserId = _currentUserId;
+                _adding.SetDate = DateTime.Now;
+                context.Wel_Entitlements.Add(_adding);
+            }
+            await context.SaveChangesAsync();
+            _adding = null;
+            _selectedEmployee = null;
+            await LoadRulesAsync();
+            Snackbar.Add("บันทึกกฎแล้ว", Severity.Success);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RemoveAsync(Wel_Entitlement rule)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var db = await context.Wel_Entitlements.FirstOrDefaultAsync(r => r.Id == rule.Id);
+        if (db is null) return;
+        db.IsActive = false; // soft delete
+        await context.SaveChangesAsync();
+        await LoadRulesAsync();
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    private static string ScopeLabel(WelfareEntitlementScope s) => s switch
+    {
+        WelfareEntitlementScope.All => "ทั้งบริษัท",
+        WelfareEntitlementScope.Position => "ตามตำแหน่ง",
+        _ => "เจาะจงบุคคล",
+    };
+
+    private string WhoLabel(Wel_Entitlement r) => r.Scope switch
+    {
+        WelfareEntitlementScope.All => "พนักงานทุกคน",
+        WelfareEntitlementScope.Position => r.PosExecTypeId is long p && _posNames.TryGetValue(p, out var n) ? n : "(ตำแหน่ง)",
+        _ => r.HremployeeId is long e && _empNames.TryGetValue(e, out var n) ? n : "(บุคคล)",
+    };
+
+    private static string DefaultSummary(Wel_BenefitType b) => b.EntitlementMode switch
+    {
+        WelfareEntitlementMode.AnnualAmount => $"{b.AnnualLimitAmount?.ToString("N0") ?? "-"} บาท/ปี",
+        WelfareEntitlementMode.PerEventAmount => $"{b.PerEventLimitAmount?.ToString("N0") ?? "-"} บาท/ครั้ง" + (b.MaxClaimsPerYear is int n ? $" (≤{n} ครั้ง/ปี)" : ""),
+        WelfareEntitlementMode.CountPerYear => $"≤{b.MaxClaimsPerYear?.ToString() ?? "-"} ครั้ง/ปี",
+        _ => "ไม่จำกัด",
+    };
+}

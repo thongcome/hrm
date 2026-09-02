@@ -403,6 +403,10 @@ public partial class HRMContext : DbContext
     // financial-benefit tables above.
     public virtual DbSet<Wel_BenefitType> Wel_BenefitTypes { get; set; }
 
+    // Wel_Entitlement — override rules for who gets how much of a benefit
+    // (company default / by position / per employee).
+    public virtual DbSet<Wel_Entitlement> Wel_Entitlements { get; set; }
+
     public virtual DbSet<Pay_ProvidentFundPolicy> Pay_ProvidentFundPolicies { get; set; }
     public virtual DbSet<Pay_ProvidentFundVestingTier> Pay_ProvidentFundVestingTiers { get; set; }
     public virtual DbSet<Pay_ProvidentFundInvestmentPolicy> Pay_ProvidentFundInvestmentPolicies { get; set; }
@@ -1807,6 +1811,19 @@ public partial class HRMContext : DbContext
         // catalog is company-scoped by the CompanyId string convention, unlike
         // the global Lve_LeaveType), so the unique index is composite.
         modelBuilder.Entity<Wel_BenefitType>().HasIndex(t => new { t.CompanyId, t.Code }).IsUnique();
+
+        // Explicit FK (Wel_Entitlement.BenefitTypeId → Wel_BenefitType) so EF
+        // doesn't invent a shadow FK from the BenefitType nav; Restrict so a
+        // benefit type with rules can't be silently deleted (it's soft-deleted
+        // via IsActive anyway). Index the resolver's lookup key.
+        modelBuilder.Entity<Wel_Entitlement>(entity =>
+        {
+            entity.HasOne(e => e.BenefitType)
+                .WithMany()
+                .HasForeignKey(e => e.BenefitTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.CompanyId, e.BenefitTypeId, e.IsActive });
+        });
 
         modelBuilder.Entity<Pay_PayslipSettings>().HasData(
             new Pay_PayslipSettings { Id = 1, CompanyId = "001", PasswordTemplate = "{BirthDateDDMMYYYY}", ModifiedDate = new DateTime(2026, 7, 29) }
