@@ -10,9 +10,7 @@
 @inherits LocalizedComponentBase
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
-@inject HRM.Services.EmailSender EmailSender
-@inject HRM.Services.Pay.PrivateFileStorage FileStorage
-@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject HRM.Services.Pay.PayslipEmailService PayslipEmail
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
@@ -129,23 +127,18 @@
         _sendingIds.Add(row.Payslip.Id);
         try
         {
-            var bytes = await FileStorage.ReadAsync(row.Payslip.PdfStoragePath);
-            var fileName = $"payslip_{row.PayrollEmployee.EmpNo}_{row.Run.PayrollPeriod}.pdf";
-            var subject = $"สลิปเงินเดือน งวด {row.Run.PayrollPeriod}";
-            var body = $"<p>เรียนคุณ {_employee.EmpName} {_employee.EmpSurname}</p><p>แนบสลิปเงินเดือนงวด {row.Run.PayrollPeriod} มาพร้อมนี้</p>";
-
-            await EmailSender.SendEmailWithAttachmentAsync(_ownEmail!, subject, body, fileName, bytes);
-
-            await AuditLogger.LogAccessAsync("Pay_PayslipEmail", row.Payslip.Id.ToString(), isSensitive: true,
-                note: $"ส่งอีเมลไปที่ {_ownEmail}");
-
-            _lastSent[row.Payslip.Id] = DateTime.Now;
-            Snackbar.Add(string.Format(L.Translate("PayslipSentSuccess"), _ownEmail), Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "ESS payslip email send failed for payslip {Id}", row.Payslip.Id);
-            Snackbar.Add(L.Translate("EmailSendFailed"), Severity.Error);
+            // Shared with the HR-side send (PayrollRunDetail) via PayslipEmailService
+            // so the two never drift on file-name/audit/email-resolution.
+            var result = await PayslipEmail.SendToEmployeeAsync(row.Payslip.Id, "ESS พนักงานส่งเอง");
+            if (result.Success)
+            {
+                _lastSent[row.Payslip.Id] = DateTime.Now;
+                Snackbar.Add(string.Format(L.Translate("PayslipSentSuccess"), result.Email), Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(result.ErrorReason ?? L.Translate("EmailSendFailed"), Severity.Error);
+            }
         }
         finally
         {

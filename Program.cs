@@ -400,6 +400,7 @@ builder.Services.AddScoped<HRM.Services.Pay.PayrollCalculationService>();
 builder.Services.AddScoped<PayrollWorkflowService>();
 builder.Services.AddSingleton<PrivateFileStorage>();
 builder.Services.AddScoped<PayslipGenerationService>();
+builder.Services.AddScoped<PayslipEmailService>();
 builder.Services.AddScoped<BankFileExportService>();
 builder.Services.AddScoped<GLExportService>();
 builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();

@@ -13,6 +13,7 @@
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
 @inject PayslipGenerationService PayslipGenerationService
+@inject PayslipEmailService PayslipEmailService
 @inject BankFileExportService BankFileExportService
 @inject GLExportService GLExportService
 @inject PayrollAnomalyDetectionService AnomalyDetectionService
@@ -250,6 +251,11 @@ else
                     @if (_payslipIdByEmployeeId.TryGetValue(context.Employee.Id, out var payslipId))
                     {
                         <MudLink Href="@($"/pay/files/payslip/{payslipId}")" Target="_blank">@L.Translate("DownloadButton")</MudLink>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" Class="ml-1"
+                                   Disabled="@_sendingPayslipIds.Contains(payslipId)"
+                                   OnClick="@(() => SendPayslipToEmployeeAsync(payslipId))">
+                            <MudIcon Icon="@Icons.Material.Filled.Send" Size="Size.Small" /> ส่งอีเมล
+                        </MudButton>
                     }
                 </MudTd>
                 <MudTd>
@@ -324,6 +330,27 @@ else
     private List<Pay_PayrollRun> _pastRuns = new();
     private long? _selectedBaselineRunId;
     private Dictionary<long, long> _payslipIdByEmployeeId = new();
+    private readonly HashSet<long> _sendingPayslipIds = new();
+
+    // HR-initiated payslip email — an employee asks for their slip, HR sends
+    // it to the email on file. Shares PayslipEmailService with the ESS
+    // self-send so both stay identical (file name, audit, email resolution).
+    private async Task SendPayslipToEmployeeAsync(long payslipId)
+    {
+        _sendingPayslipIds.Add(payslipId);
+        try
+        {
+            var result = await PayslipEmailService.SendToEmployeeAsync(payslipId, "HR ส่งจากหน้ารอบเงินเดือน");
+            if (result.Success)
+                Snackbar.Add($"ส่งสลิปไปที่ {result.Email} แล้ว", Severity.Success);
+            else
+                Snackbar.Add(result.ErrorReason ?? "ส่งอีเมลไม่สำเร็จ", Severity.Error);
+        }
+        finally
+        {
+            _sendingPayslipIds.Remove(payslipId);
+        }
+    }
     private List<Pay_BankFileExportBatch> _bankFileBatches = new();
     private List<Pay_GLExportBatch> _glExportBatches = new();
 
