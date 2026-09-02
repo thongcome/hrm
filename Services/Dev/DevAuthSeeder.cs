@@ -56,6 +56,11 @@ public static class DevAuthSeeder
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
         await ResetPasswordAsync(userManager, DevAdminEmail, DevAdminPassword);
+        // ADVD demo admin (advadmin / Dev@12345): EnsureAdvdDemoAdminAsync only
+        // sets the password when it first creates the Identity user (idempotent),
+        // so an account created earlier keeps a stale/unknown password and can't
+        // log in. Reset it here every dev startup, same as the primary admin.
+        await ResetPasswordAsync(userManager, "advadmin@hrm.local", DevAdminPassword);
         await ResetPasswordAsync(userManager, DevEssEmail, DevEssPassword);
         foreach (var email in DemoEmployeeEmails)
             await ResetPasswordAsync(userManager, email, DevEssPassword);
