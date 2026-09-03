@@ -32,6 +32,7 @@ else
                 <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeMax" Label="ถึง (%)" Min="0" Max="100" /></MudItem>
                 <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeSalaryPct" Label="% ขึ้นเงินเดือน" Min="0" /></MudItem>
                 <MudItem xs="6" sm="2"><MudNumericField T="decimal" @bind-Value="_gradeBonusPct" Label="% โบนัส" Min="0" /></MudItem>
+                <MudItem xs="6" sm="2"><MudNumericField T="decimal?" @bind-Value="_gradeTargetDist" Label="% เป้าหมาย (bell curve)" Min="0" Max="100" HelperText="สัดส่วนคนที่ควรได้เกรดนี้ เช่น A=15%" /></MudItem>
                 <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_gradeRequiresJustification" Label="บังคับชี้แจง" /></MudItem>
             </MudGrid>
             <MudStack Row="true" Spacing="2" Class="mt-2">
@@ -51,6 +52,7 @@ else
                 <MudTh>ช่วงคะแนน</MudTh>
                 <MudTh>% ขึ้นเงินเดือน</MudTh>
                 <MudTh>% โบนัส</MudTh>
+                <MudTh>% เป้าหมาย</MudTh>
                 <MudTh>บังคับชี้แจง</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
@@ -59,6 +61,7 @@ else
                 <MudTd>@context.MinPercent.ToString("0.#")% - @context.MaxPercent.ToString("0.#")%</MudTd>
                 <MudTd>@context.SalaryIncreasePercent.ToString("0.##")%</MudTd>
                 <MudTd>@context.BonusPercent.ToString("0.##")%</MudTd>
+                <MudTd>@(context.TargetDistributionPercent.HasValue ? context.TargetDistributionPercent.Value.ToString("0.#") + "%" : "")</MudTd>
                 <MudTd>@(context.RequiresJustification ? "ใช่" : "")</MudTd>
                 <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveGradeBandAsync(context.Id))">ลบ</MudButton></MudTd>
             </RowTemplate>
@@ -126,6 +129,7 @@ else
     private decimal _gradeMax = 100;
     private decimal _gradeSalaryPct;
     private decimal _gradeBonusPct;
+    private decimal? _gradeTargetDist;
     private bool _gradeRequiresJustification;
 
     private int _scoreDescPoint = 1;
@@ -151,7 +155,7 @@ else
 
     private void OpenGradeForm()
     {
-        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeRequiresJustification = false;
+        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeTargetDist = null; _gradeRequiresJustification = false;
         _gradeError = null;
         _showGradeForm = true;
     }
@@ -177,12 +181,13 @@ else
             MaxPercent = _gradeMax,
             SalaryIncreasePercent = _gradeSalaryPct,
             BonusPercent = _gradeBonusPct,
+            TargetDistributionPercent = _gradeTargetDist,
             RequiresJustification = _gradeRequiresJustification,
             SortOrder = _gradeBands.Count,
         });
         await context.SaveChangesAsync();
 
-        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeRequiresJustification = false;
+        _gradeLabel = ""; _gradeMin = 0; _gradeMax = 100; _gradeSalaryPct = 0; _gradeBonusPct = 0; _gradeTargetDist = null; _gradeRequiresJustification = false;
         _showGradeForm = false;
         await LoadAsync();
     }

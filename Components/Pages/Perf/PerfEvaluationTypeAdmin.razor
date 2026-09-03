@@ -54,6 +54,7 @@
             <MudItem xs="12" sm="4"><MudTextField Value="@e.Code" Label="รหัส" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@e.Name" Label="ชื่อ" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@e.NameEn" Label="Name (English)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@MethodLabel(e.MethodType)" Label="วิธีให้เกรด" ReadOnly="true" /></MudItem>
             <MudItem xs="12"><MudTextField Value="@(e.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
             <MudItem xs="12">
                 <MudButton Variant="Variant.Text" Href="@($"/perf/topics/{e.Id}")">จัดการ Topic / SubTopic / ตัวชี้วัด ของแบบประเมินนี้</MudButton>
@@ -66,9 +67,25 @@
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.Code" Label="รหัส" Required="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.Name" Label="ชื่อ" Required="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.NameEn" Label="Name (English)" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="PerfEvalMethod" @bind-Value="e.MethodType" Label="วิธีให้เกรด"
+                    HelperText="เลือกวิธีแปลงผลเป็นเกรด: ตามมาตรวัดถ่วงน้ำหนัก / เลือกเกรดตรงๆ / จัดอันดับจากผลงานเชิงตัวเลข">
+                    <MudSelectItem T="PerfEvalMethod" Value="PerfEvalMethod.ScaleWeighted">ให้คะแนนตามมาตรวัด (ถ่วงน้ำหนัก)</MudSelectItem>
+                    <MudSelectItem T="PerfEvalMethod" Value="PerfEvalMethod.GradeDirect">เลือกเกรดตรงๆ</MudSelectItem>
+                    <MudSelectItem T="PerfEvalMethod" Value="PerfEvalMethod.RankByResult">จัดอันดับจากผลงาน (เช่น ยอดขาย)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12"><MudCheckBox T="bool" @bind-Value="e.IsActive" Label="ใช้งาน" /></MudItem>
         </MudGrid>
     </text>;
+
+    private static string MethodLabel(PerfEvalMethod m) => m switch
+    {
+        PerfEvalMethod.ScaleWeighted => "ให้คะแนนตามมาตรวัด (ถ่วงน้ำหนัก)",
+        PerfEvalMethod.GradeDirect => "เลือกเกรดตรงๆ",
+        PerfEvalMethod.RankByResult => "จัดอันดับจากผลงาน (เช่น ยอดขาย)",
+        _ => m.ToString(),
+    };
 
     private async Task<List<Perf_EvaluationType>> LoadListAsync(string term)
     {
@@ -92,6 +109,7 @@
             existing.Code = entity.Code;
             existing.Name = entity.Name;
             existing.NameEn = entity.NameEn;
+            existing.MethodType = entity.MethodType;
             existing.IsActive = entity.IsActive;
             entity = existing;
         }

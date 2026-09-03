@@ -41,6 +41,36 @@ else
         </MudStack>
     </MudPaper>
 
+    @if (_distribution is not null && _distribution.Count > 0)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6">การกระจายเกรด (Bell Curve)</MudText>
+            <MudText Typo="Typo.body2" Class="mb-3">
+                เทียบสัดส่วนคนจริงในแต่ละเกรดกับเป้าหมาย forced-distribution ตามขอบเขตของ session นี้ (ตั้งแต่ระดับหน่วยงานไปจนถึงทั้งบริษัทเมื่อไม่ได้จำกัดหน่วยงาน) เพื่อช่วยให้หัวหน้าจัดคนให้เข้ากรอบแต่ละแบนด์
+            </MudText>
+            <MudTable Items="_distribution" Dense="true">
+                <HeaderContent>
+                    <MudTh>เกรด</MudTh>
+                    <MudTh Style="text-align:right">จำนวนคน</MudTh>
+                    <MudTh Style="text-align:right">% จริง</MudTh>
+                    <MudTh Style="text-align:right">% เป้าหมาย</MudTh>
+                    <MudTh>คำแนะนำ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="เกรด">@context.Grade</MudTd>
+                    <MudTd DataLabel="จำนวนคน" Style="text-align:right">@context.ActualCount</MudTd>
+                    <MudTd DataLabel="% จริง" Style="text-align:right">@context.ActualPercent.ToString("N1")%</MudTd>
+                    <MudTd DataLabel="% เป้าหมาย" Style="text-align:right">@(context.TargetPercent is decimal t ? t.ToString("N1") + "%" : "—")</MudTd>
+                    <MudTd DataLabel="คำแนะนำ">
+                        <MudChip T="string" Size="Size.Small" Color="@DistributionColor(context.Status)">
+                            @DistributionText(context)
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+
     @if (_grid is null)
     {
         <MudProgressCircular Indeterminate="true" />
@@ -172,6 +202,7 @@ else
 
     private Perf_CalibrationSession? _session;
     private PerfCalibrationService.CalibrationGridResult? _grid;
+    private List<PerfCalibrationService.DistributionRow>? _distribution;
     private List<Perf_CalibrationAdjustment> _adjustments = new();
     private (string Organization, string Grade)? _expandedCell;
 
@@ -190,8 +221,25 @@ else
         if (_session is null) return;
 
         _grid = await CalibrationService.GetGridAsync(SessionId);
+        _distribution = await CalibrationService.GetDistributionRecommendationAsync(SessionId);
         _adjustments = await CalibrationService.GetAdjustmentsAsync(SessionId);
     }
+
+    private static Color DistributionColor(string status) => status switch
+    {
+        "over" => Color.Warning,
+        "under" => Color.Info,
+        "ok" => Color.Success,
+        _ => Color.Default,
+    };
+
+    private static string DistributionText(PerfCalibrationService.DistributionRow row) => row.Status switch
+    {
+        "over" => $"เกินเป้า +{row.VariancePercent?.ToString("N1")}% → ควรลดคนในเกรดนี้",
+        "under" => $"ต่ำกว่าเป้า {Math.Abs(row.VariancePercent ?? 0m).ToString("N1")}% → ยังเพิ่มได้",
+        "ok" => "ตรงเป้า",
+        _ => "ยังไม่ตั้งเป้า",
+    };
 
     private void ToggleCell((string, string) key) => _expandedCell = _expandedCell == key ? null : key;
 

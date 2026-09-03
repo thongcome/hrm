@@ -1,0 +1,360 @@
+@page "/perf/result-metrics"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Perf
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PerfScoringService ScoringService
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>บันทึกผลงาน & จัดอันดับ (Result-based)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <div class="d-flex flex-wrap align-center gap-2 mb-1">
+        <MudIcon Icon="@Icons.Material.Filled.Leaderboard" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">บันทึกผลงาน & จัดอันดับ (Rank by Result)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        สำหรับแบบประเมินที่ให้เกรดจากผลงานเชิงตัวเลข (เช่น ยอดขาย) — เลือกรอบและประเภทแบบประเมิน แล้วกรอกผลงานของแต่ละคน จากนั้นกด "จัดอันดับ & ให้เกรด" ระบบจะเรียงลำดับ → เปอร์เซ็นไทล์ → เทียบเกรด
+    </MudText>
+</MudPaper>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ จึงไม่สามารถแสดงรายการได้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="mr-1" />เลือกเงื่อนไข
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="long?" @bind-Value="_periodId" Label="รอบการประเมิน (Period)"
+                    Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="long?" Value="@((long?)null)">— เลือกรอบ —</MudSelectItem>
+                    @foreach (var p in _periods)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="long?" @bind-Value="_typeId" Label="ประเภทแบบประเมิน (RankByResult)"
+                    Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter"
+                    HelperText="แสดงเฉพาะแบบประเมินที่ให้เกรดจากผลงาน (RankByResult)">
+                    <MudSelectItem T="long?" Value="@((long?)null)">— เลือกประเภท —</MudSelectItem>
+                    @foreach (var t in _types)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)t.Id)">@t.Code — @t.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField T="string" @bind-Value="_searchTerm" Immediate="true" DebounceInterval="300"
+                    Label="กรองรายชื่อ"
+                    Placeholder="ค้นหา: ชื่อพนักงาน / รหัสพนักงาน"
+                    HelperText="กรองรายการหลังจากเลือกรอบและประเภทแล้ว"
+                    Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                    Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+        </MudGrid>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.ManageSearch"
+                OnClick="LoadAsync" Disabled="_loading || _periodId is null || _typeId is null">แสดงรายการ</MudButton>
+            <MudButton Color="Color.Default" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Clear"
+                OnClick="ClearAsync" Disabled="_loading">ล้าง</MudButton>
+        </div>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        @if (!_hasLoaded)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.Leaderboard" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">เลือกรอบและประเภทแบบประเมินก่อน</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                    ต้องเลือกทั้ง "รอบการประเมิน" และ "ประเภทแบบประเมิน (RankByResult)" แล้วกด "แสดงรายการ" เพื่อกรอกผลงาน
+                </MudText>
+                @if (_types.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">
+                        ยังไม่มีประเภทแบบประเมินแบบ RankByResult ในบริษัทนี้ — ตั้งค่า MethodType ของแบบประเมินให้เป็น "จัดอันดับจากผลงาน" ก่อน
+                    </MudAlert>
+                }
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="d-flex justify-center py-8">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (_filteredRows.Count == 0)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">ไม่พบรายการประเมิน</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ยังไม่มี instance ของแบบประเมินนี้ในรอบที่เลือก หรือคำค้นไม่ตรง</MudText>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap align-center gap-2 mb-3">
+                <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">พบ @_filteredRows.Count รายการ</MudText>
+                <MudSpacer />
+                <MudButton Color="Color.Secondary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save"
+                    OnClick="SaveMetricsAsync" Disabled="_saving">บันทึกผลงาน</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Leaderboard"
+                    OnClick="FinalizeAsync" Disabled="_saving">จัดอันดับ &amp; ให้เกรด</MudButton>
+            </div>
+
+            <MudTable Items="_filteredRows" Dense="true" Hover="true" Striped="true"
+                HorizontalScrollbar="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                <HeaderContent>
+                    <MudTh>พนักงาน</MudTh>
+                    <MudTh>ชื่อตัววัด</MudTh>
+                    <MudTh Style="text-align:right">ค่าที่วัดได้</MudTh>
+                    <MudTh>หน่วย</MudTh>
+                    <MudTh Style="text-align:center">ยิ่งมากยิ่งดี</MudTh>
+                    <MudTh Style="text-align:right">คะแนน</MudTh>
+                    <MudTh>เกรด</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="พนักงาน">
+                        <div class="d-flex flex-column">
+                            <MudText Typo="Typo.body2"><b>@(string.IsNullOrWhiteSpace(context.Instance.SnapshotEmpName) ? $"#{context.Instance.HremployeeId}" : context.Instance.SnapshotEmpName)</b></MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@(context.Instance.SnapshotEmpNo ?? "-")</MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="ชื่อตัววัด">
+                        <MudTextField @bind-Value="context.Metric.MetricName" Margin="Margin.Dense" Variant="Variant.Outlined" />
+                    </MudTd>
+                    <MudTd DataLabel="ค่าที่วัดได้" Style="text-align:right">
+                        <MudNumericField T="decimal" @bind-Value="context.Metric.MetricValue" Margin="Margin.Dense" Variant="Variant.Outlined" HideSpinButtons="true" />
+                    </MudTd>
+                    <MudTd DataLabel="หน่วย">
+                        <MudTextField @bind-Value="context.Metric.Unit" Margin="Margin.Dense" Variant="Variant.Outlined" Placeholder="บาท" />
+                    </MudTd>
+                    <MudTd DataLabel="ยิ่งมากยิ่งดี" Style="text-align:center">
+                        <MudCheckBox T="bool" @bind-Value="context.Metric.HigherIsBetter" />
+                    </MudTd>
+                    <MudTd DataLabel="คะแนน" Style="text-align:right">
+                        @(context.Instance.FinalScorePercent is decimal sc ? sc.ToString("0.##") + "%" : "—")
+                    </MudTd>
+                    <MudTd DataLabel="เกรด">
+                        @if (!string.IsNullOrWhiteSpace(context.Instance.FinalGrade))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">@context.Instance.FinalGrade</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">—</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private long? _periodId;
+    private long? _typeId;
+    private string _searchTerm = string.Empty;
+
+    private bool _hasLoaded;
+    private bool _loading;
+    private bool _saving;
+    private string? _error;
+
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private List<Perf_EvaluationType> _types = new();
+    private List<MetricRow> _rows = new();
+
+    // One editable row per instance = the instance plus its (existing or new) result metric.
+    private class MetricRow
+    {
+        public Perf_EvaluationInstance Instance { get; set; } = null!;
+        public Perf_ResultMetric Metric { get; set; } = null!;
+    }
+
+    private List<MetricRow> _filteredRows => string.IsNullOrWhiteSpace(_searchTerm)
+        ? _rows
+        : _rows.Where(r =>
+            (r.Instance.SnapshotEmpName?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (r.Instance.SnapshotEmpNo?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId))
+            return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods
+            .Where(p => p.CompanyId == _companyId)
+            .OrderByDescending(p => p.StartDate)
+            .ToListAsync();
+
+        // Only types graded by numeric result belong on this page.
+        _types = await context.Perf_EvaluationTypes
+            .Where(t => t.CompanyId == _companyId && t.IsActive && t.MethodType == PerfEvalMethod.RankByResult)
+            .OrderBy(t => t.Code)
+            .ToListAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_periodId is not long pid || _typeId is not long tid)
+            return;
+
+        _loading = true;
+        _hasLoaded = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            var instances = await context.Perf_EvaluationInstances
+                .Where(i => i.EvaluationPeriodId == pid && i.EvaluationTypeId == tid)
+                .OrderBy(i => i.SnapshotEmpNo)
+                .ThenByDescending(i => i.Id)
+                .ToListAsync();
+
+            var instanceIds = instances.Select(i => i.Id).ToList();
+            var existingMetrics = await context.Perf_ResultMetrics
+                .Where(m => instanceIds.Contains(m.EvaluationInstanceId) && m.IsActive)
+                .ToListAsync();
+            var metricByInstance = existingMetrics
+                .GroupBy(m => m.EvaluationInstanceId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(m => m.Id).First());
+
+            _rows = instances.Select(inst => new MetricRow
+            {
+                Instance = inst,
+                Metric = metricByInstance.TryGetValue(inst.Id, out var m)
+                    ? m
+                    : new Perf_ResultMetric
+                    {
+                        EvaluationInstanceId = inst.Id,
+                        MetricName = "ยอดขาย",
+                        Unit = "บาท",
+                        HigherIsBetter = true,
+                        IsActive = true,
+                    },
+            }).ToList();
+
+            // PDPA: this page shows individual performance results (personal data).
+            await AuditLogger.LogAccessAsync("Perf_ResultMetric", null, isSensitive: true,
+                note: $"result-metric entry: period {pid}, type {tid}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveMetricsAsync()
+    {
+        _error = null;
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            foreach (var row in _rows)
+            {
+                var metric = row.Metric;
+                if (string.IsNullOrWhiteSpace(metric.MetricName))
+                    metric.MetricName = "ยอดขาย";
+
+                if (metric.Id == 0)
+                {
+                    context.Perf_ResultMetrics.Add(metric);
+                }
+                else
+                {
+                    var existing = await context.Perf_ResultMetrics.FirstOrDefaultAsync(m => m.Id == metric.Id);
+                    if (existing is null) continue;
+                    existing.MetricName = metric.MetricName;
+                    existing.MetricValue = metric.MetricValue;
+                    existing.Unit = metric.Unit;
+                    existing.HigherIsBetter = metric.HigherIsBetter;
+                    existing.IsActive = true;
+                }
+            }
+            await context.SaveChangesAsync();
+            Snackbar.Add($"บันทึกผลงาน {_rows.Count} รายการเรียบร้อย", Severity.Success);
+
+            // Reload so newly-created metrics pick up their real Id.
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task FinalizeAsync()
+    {
+        _error = null;
+        if (_periodId is not long pid || _typeId is not long tid)
+            return;
+
+        _saving = true;
+        try
+        {
+            // Persist any pending edits first so the ranking reflects what's on screen.
+            await SaveMetricsAsync();
+
+            var n = await ScoringService.FinalizeRankByResultAsync(tid, pid);
+            Snackbar.Add($"จัดอันดับ {n} รายการเรียบร้อย", Severity.Success);
+
+            // Reload so each instance now shows its computed FinalScorePercent + FinalGrade.
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _periodId = null;
+        _typeId = null;
+        _searchTerm = string.Empty;
+        _hasLoaded = false;
+        _rows = new();
+        _error = null;
+        await Task.CompletedTask;
+    }
+}

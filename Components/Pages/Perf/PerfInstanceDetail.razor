@@ -108,22 +108,45 @@
         {
             <MudAlert Severity="Severity.Success">ปรับเงินเดือนแล้วเมื่อ @_instance.MeritAppliedDate?.ToString("dd/MM/yyyy HH:mm")</MudAlert>
         }
-        else if (_meritPreview is not null)
-        {
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>เงินเดือนปัจจุบัน</td><td>@_meritPreview.CurrentSalary.ToString("N2")</td></tr>
-                    <tr><td>% ขึ้นเงินเดือน (เกรด @_meritPreview.Grade)</td><td>@_meritPreview.SalaryIncreasePercent.ToString("0.#")%</td></tr>
-                    <tr><td>เงินเดือนใหม่ที่แนะนำ</td><td>@_meritPreview.RecommendedNewSalary.ToString("N2")</td></tr>
-                    <tr><td>% โบนัส</td><td>@_meritPreview.BonusPercent.ToString("0.#")%</td></tr>
-                    <tr><td>โบนัสที่แนะนำ</td><td>@_meritPreview.RecommendedBonusAmount.ToString("N2")</td></tr>
-                </tbody>
-            </MudSimpleTable>
-            <MudButton Class="mt-3" Color="Color.Primary" Variant="Variant.Filled" OnClick="ApplyMeritAsync">ยืนยันปรับเงินเดือนจริง</MudButton>
-        }
         else
         {
-            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="LoadMeritPreviewAsync">ดูตัวอย่างการปรับเงินเดือน</MudButton>
+            <MudText Typo="Typo.subtitle2" Class="mb-2">ปรับเพิ่ม/ลดนอกเหนือจากเกรด (รายบุคคล)</MudText>
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal?" @bind-Value="_instance.MeritAdjustmentPercent"
+                        Label="ปรับเพิ่ม/ลด % (นอกเหนือจากเกรด)"
+                        HelperText="บวกเข้ากับ % ของเกรด เป็น % ขึ้นเงินเดือนจริง"
+                        Min="(decimal?)(-100)" Max="(decimal?)100" Step="0.5M" />
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_instance.MeritAdjustmentReason" Label="เหตุผลการปรับ" />
+                </MudItem>
+            </MudGrid>
+            <MudButton Color="Color.Secondary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save"
+                OnClick="SaveMeritAdjustmentAsync">บันทึกการปรับ</MudButton>
+
+            <MudDivider Class="my-4" />
+
+            @if (_meritPreview is not null)
+            {
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr><td>เงินเดือนปัจจุบัน</td><td>@_meritPreview.CurrentSalary.ToString("N2")</td></tr>
+                        <tr>
+                            <td>% ขึ้นเงินเดือน (เกรด @_meritPreview.Grade)</td>
+                            <td>% เกรด @_meritPreview.SalaryIncreasePercent.ToString("0.##") + ปรับ @_meritPreview.AdjustmentPercent.ToString("0.##") = รวม @_meritPreview.EffectiveIncreasePercent.ToString("0.##")%</td>
+                        </tr>
+                        <tr><td>เงินเดือนใหม่ที่แนะนำ</td><td>@_meritPreview.RecommendedNewSalary.ToString("N2")</td></tr>
+                        <tr><td>% โบนัส</td><td>@_meritPreview.BonusPercent.ToString("0.#")%</td></tr>
+                        <tr><td>โบนัสที่แนะนำ</td><td>@_meritPreview.RecommendedBonusAmount.ToString("N2")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+                <MudButton Class="mt-3" Color="Color.Primary" Variant="Variant.Filled" OnClick="ApplyMeritAsync">ยืนยันปรับเงินเดือนจริง</MudButton>
+            }
+            else
+            {
+                <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="LoadMeritPreviewAsync">ดูตัวอย่างการปรับเงินเดือน</MudButton>
+            }
         }
     }
 
@@ -230,6 +253,30 @@
         _error = null;
         try
         {
+            _meritPreview = await MeritService.PreviewMeritIncreaseAsync(Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveMeritAdjustmentAsync()
+    {
+        _error = null;
+        if (_instance is null) return;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var entity = await context.Perf_EvaluationInstances.FirstOrDefaultAsync(i => i.Id == Id)
+                ?? throw new InvalidOperationException("ไม่พบรายการประเมินนี้แล้ว");
+            entity.MeritAdjustmentPercent = _instance.MeritAdjustmentPercent;
+            entity.MeritAdjustmentReason = _instance.MeritAdjustmentReason;
+            await context.SaveChangesAsync();
+            Snackbar.Add("บันทึกการปรับแล้ว", Severity.Success);
+
+            // Re-run the preview so the shown numbers reflect the new adjustment
+            // (effective raise = grade band % + adjustment %).
             _meritPreview = await MeritService.PreviewMeritIncreaseAsync(Id);
         }
         catch (InvalidOperationException ex)
