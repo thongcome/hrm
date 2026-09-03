@@ -14,6 +14,11 @@ public class Perf_RatingScaleDescription
 
     public long EvaluationPeriodId { get; set; }
 
+    // Optional: scope this scale anchor to one evaluation TYPE, so different
+    // groups can run different scales in the SAME period (AutoX #2). Null = the
+    // period-wide default scale (backward compatible with existing rows).
+    public long? EvaluationTypeId { get; set; }
+
     public int ScorePoint { get; set; }
 
     [Required, StringLength(300)]

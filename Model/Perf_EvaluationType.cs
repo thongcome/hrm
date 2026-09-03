@@ -23,5 +23,10 @@ public class Perf_EvaluationType
     [StringLength(200)]
     public string? NameEn { get; set; }
 
+    // How this type is graded (AutoX: several methods coexist). Default keeps the
+    // existing weighted-indicator behaviour; GradeDirect/RankByResult opt in per
+    // group so e.g. sales can be ranked by result while office staff use a scale.
+    public PerfEvalMethod MethodType { get; set; } = PerfEvalMethod.ScaleWeighted;
+
     public bool IsActive { get; set; } = true;
 }

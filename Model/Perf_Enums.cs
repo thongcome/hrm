@@ -91,3 +91,15 @@ public enum PipStatus
 public enum PipGoalStatus { NotStarted = 1, InProgress = 2, Achieved = 3, NotAchieved = 4 }
 
 public enum PipCheckInRating { OnTrack = 1, AtRisk = 2, OffTrack = 3 }
+
+// How an evaluation type turns raters' input into a score/grade (AutoX asked for
+// several methods to coexist; legacy PIS: evalconfig.calgradetype). ScaleWeighted
+// is today's behaviour (weighted indicators → percent → grade band); the others
+// are opt-in per Perf_EvaluationType so different groups can be graded differently
+// in the same period.
+public enum PerfEvalMethod
+{
+    ScaleWeighted = 1, // ให้คะแนนตัวชี้วัดตามมาตรวัด แล้วถ่วงน้ำหนักเป็น % → เกรด (ค่าเริ่มต้น)
+    GradeDirect = 2,   // ผู้ประเมินเลือกเกรด (A/B/C…) ให้ตรงๆ ไม่ผ่านการถ่วงน้ำหนัก
+    RankByResult = 3,  // จัดอันดับจากผลงานเชิงตัวเลข (เช่น ยอดขาย) → เปอร์เซ็นไทล์ → เกรด
+}

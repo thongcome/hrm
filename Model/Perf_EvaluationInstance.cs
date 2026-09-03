@@ -53,6 +53,14 @@ public class Perf_EvaluationInstance
     // จะกดส่งอนุมัติ (เหมือน Org_OrganizationChangeRequest.JobMasterId)
     public long? JobMasterId { get; set; }
 
+    // Per-person merit ADJUSTMENT on top of the grade band's standard increase%
+    // (AutoX #5: "เงินขึ้นจากการประเมิน + adjust"). The applied raise% =
+    // GradeBand.SalaryIncreasePercent + MeritAdjustmentPercent. Null/0 = no adjust.
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? MeritAdjustmentPercent { get; set; }
+    [StringLength(500)]
+    public string? MeritAdjustmentReason { get; set; }
+
     // กัน apply ซ้ำตอนขึ้นเงินเดือนตามผลประเมิน (idempotent เหมือน
     // Org_OrganizationChangeRequest.IsApplied)
     public bool IsMeritApplied { get; set; }

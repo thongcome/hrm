@@ -552,6 +552,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Perf_EvaluationInstance> Perf_EvaluationInstances { get; set; }
     public virtual DbSet<Perf_RaterAssignment> Perf_RaterAssignments { get; set; }
     public virtual DbSet<Perf_Score> Perf_Scores { get; set; }
+    public virtual DbSet<Perf_ResultMetric> Perf_ResultMetrics { get; set; }
     public virtual DbSet<Perf_Goal> Perf_Goals { get; set; }
     public virtual DbSet<Perf_GoalCheckIn> Perf_GoalCheckIns { get; set; }
     public virtual DbSet<Perf_CalibrationSession> Perf_CalibrationSessions { get; set; }
@@ -1931,6 +1932,15 @@ public partial class HRMContext : DbContext
             .WithMany()
             .HasForeignKey(i => i.EvaluationTypeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Rank-by-result metrics belong to an instance; explicit HasForeignKey
+        // per the house rule (shadow-FK lesson). Cascade so a cancelled instance
+        // takes its result rows with it (they're meaningless without it).
+        modelBuilder.Entity<Perf_ResultMetric>()
+            .HasOne(m => m.EvaluationInstance)
+            .WithMany()
+            .HasForeignKey(m => m.EvaluationInstanceId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Explicit HasForeignKey per house rule (shadow-FK lesson from
         // Pay_EmployeeTaxDeductionElection.DeductionTypeId). Restrict so a
