@@ -433,6 +433,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
     public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
     public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
+    public virtual DbSet<Pos_GradeChangeHistory> Pos_GradeChangeHistories { get; set; }
     public virtual DbSet<Pos_PositionSlot_his> Pos_PositionSlot_hises { get; set; }
     public virtual DbSet<Pos_HeadcountBudget> Pos_HeadcountBudgets { get; set; }
     public virtual DbSet<Job_Family> Job_Families { get; set; }

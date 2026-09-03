@@ -51,6 +51,13 @@ public partial class wf_workflow
     [Required]
     public bool? isactive { get; set; }
 
+    // When true, StartJobAsync completes the job immediately at submit with no
+    // approver assigned (auto-approve). Opt-in PER workflow (demo/low-risk
+    // flows) — leaves every other workflow's normal multi-level routing
+    // untouched. Owner request 2026-09-03 so demo flows don't stall waiting
+    // for a human approver.
+    public bool? isautoapprove { get; set; }
+
     [Column(TypeName = "datetime")]
     public DateTime? moddate { get; set; }
 

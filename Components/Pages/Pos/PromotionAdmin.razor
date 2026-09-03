@@ -1,0 +1,189 @@
+@page "/pos/promotion"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Shared
+@using HRM.Services.Pos
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject PromotionService PromotionService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+<PageTitle>เลื่อนระดับ (Promotion)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เลื่อนระดับตำแหน่ง / ระดับพนักงาน (Promotion)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+        รายชื่อเรียงตาม <b>ระดับตำแหน่ง / ระดับพนักงาน จากสูงสุดลงมา</b> — <b>ระดับ 1 = สูงสุด (CEO)</b> … ระดับ 7 = ต่ำสุด — ผู้ที่ระดับสูงกว่า (เลขน้อยกว่า) มีสิทธิ์เลื่อนก่อน ระดับดึงจาก <MudLink Href="/pos/position-levels">pos_position_level</MudLink> (plevel รองรับทศนิยม เช่น 7.5)
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+        return;
+    }
+
+    <MudGrid Class="mb-2">
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="com_organization" Label="กรองตามสังกัด (เว้นว่าง = ทั้งบริษัท)" Value="_filterOrg" ValueChanged="OnOrgChanged"
+                SearchFunc="SearchOrgsAsync" ToStringFunc="@(o => o == null ? null : $"{o.code} — {o.name}")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAsync" Disabled="_loading">
+                @(_loading ? "กำลังโหลด..." : "แสดงรายชื่อ")
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_promoting is not null)
+    {
+        <MudPaper Class="pa-3 mb-3" Outlined="true" Style="background:var(--mud-palette-info-hover);">
+            <MudText Typo="Typo.subtitle1">เลื่อนระดับ: <b>@_promoting.FullName</b> (@_promoting.EmpNo) — ระดับปัจจุบัน @GradeText(_promoting.GradeCode, _promoting.Plevel)</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_newGrade" Label="ระดับใหม่" Clearable="true">
+                        @foreach (var g in _grades)
+                        {
+                            <MudSelectItem T="string" Value="@g.Code">@g.Code — @g.Name (ระดับ @g.Plevel)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4"><MudDatePicker Label="วันที่มีผล" @bind-Date="_effectiveDate" Culture="@System.Globalization.CultureInfo.InvariantCulture" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_reason" Label="เหตุผล" /></MudItem>
+            </MudGrid>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmPromoteAsync">ยืนยันเลื่อนระดับ</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _promoting = null)">ยกเลิก</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @if (_candidates.Count == 0 && _hasLoaded)
+    {
+        <MudAlert Severity="Severity.Info">ไม่พบพนักงาน</MudAlert>
+    }
+    else if (_candidates.Count > 0)
+    {
+        <MudTable Items="_candidates" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>ลำดับสิทธิ์</MudTh>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่อ</MudTh>
+                <MudTh>ตำแหน่ง</MudTh>
+                <MudTh>สังกัด</MudTh>
+                <MudTh>ระดับ (grade)</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(_candidates.IndexOf(context) + 1)</MudTd>
+                <MudTd>@context.EmpNo</MudTd>
+                <MudTd>@context.FullName</MudTd>
+                <MudTd>@context.PositionName</MudTd>
+                <MudTd>@context.OrgName</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.Plevel is null ? Color.Default : Color.Info)">
+                        @GradeText(context.GradeCode, context.Plevel)
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => StartPromote(context))">เลื่อนระดับ</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent><MudTablePager /></PagerContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private long _actorUserId;
+    private com_organization? _filterOrg;
+    private List<PromotionService.Candidate> _candidates = new();
+    private List<PromotionService.GradeRung> _grades = new();
+    private bool _loading;
+    private bool _hasLoaded;
+
+    private PromotionService.Candidate? _promoting;
+    private string? _newGrade;
+    private DateTime? _effectiveDate = DateTime.Today;
+    private string? _reason;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _actorUserId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        _grades = await PromotionService.GetGradesAsync();
+    }
+
+    private void OnOrgChanged(com_organization? org) => _filterOrg = org;
+
+    private async Task<IEnumerable<com_organization>> SearchOrgsAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.com_organizations.Where(o => o.isActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, search, nameof(com_organization.code), nameof(com_organization.name));
+        return await query.OrderBy(o => o.orgcodefull).Take(20).ToListAsync(ct);
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _loading = true;
+        _promoting = null;
+        try
+        {
+            _candidates = await PromotionService.GetCandidatesAsync(_companyId, _filterOrg?.id);
+            _hasLoaded = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void StartPromote(PromotionService.Candidate c)
+    {
+        _promoting = c;
+        _newGrade = null;
+        _reason = null;
+        _effectiveDate = DateTime.Today;
+        _error = null;
+    }
+
+    private async Task ConfirmPromoteAsync()
+    {
+        _error = null;
+        if (_promoting is null || string.IsNullOrEmpty(_newGrade) || _effectiveDate is null)
+        {
+            _error = "กรุณาเลือกระดับใหม่และวันที่มีผล";
+            return;
+        }
+        try
+        {
+            await PromotionService.PromoteAsync(_promoting.HremployeeId, _newGrade, _reason, _effectiveDate.Value, _actorUserId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+        Snackbar.Add($"เลื่อนระดับ {_promoting.FullName} เรียบร้อย", Severity.Success);
+        _promoting = null;
+        await LoadAsync();
+    }
+
+    private static string GradeText(string? code, decimal? plevel)
+        => code is null ? "— (ยังไม่กำหนด)" : $"{code} (ระดับ {plevel})";
+}

@@ -185,6 +185,25 @@ public class WorkflowEngineService
         }
         await context.SaveChangesAsync(ct);
 
+        // Auto-approve (opt-in per workflow): close the job as COMPLETED right
+        // away with no approver row assigned. Nothing routes to a human inbox,
+        // and the caller's lazy SyncStatusFromJobAsync sees a closed+completed
+        // job on the next read and applies the outcome as if approved. Only
+        // affects workflows explicitly flagged isautoapprove — every other
+        // workflow still runs its normal level routing below.
+        if (workflow.isautoapprove == true)
+        {
+            job.status = StatusCompleted;
+            job.isJobClosed = true;
+            job.reasonClosed = "อนุมัติอัตโนมัติ (auto-approve)";
+            await context.SaveChangesAsync(ct);
+            await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", job.jobmasterid.ToString(),
+                new { status = levels[0].standstatus ?? StatusPending }, new { status = StatusCompleted, reason = "auto-approve" }, isSensitive: false, ct);
+            await NotifyRequesterAsync(context, job, WorkflowOutcome.Approved, ct);
+            Serilog.Log.Information("Workflow job {JobMasterId} auto-approved (workflow {WorkflowCode} flagged isautoapprove).", job.jobmasterid, workflow.workflowcode);
+            return job.jobmasterid;
+        }
+
         var startOutcome = await AssignLevelApproversAsync(context, job, levels[0], ct);
         await context.SaveChangesAsync(ct);
 

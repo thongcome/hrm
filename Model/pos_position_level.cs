@@ -20,8 +20,8 @@ public partial class pos_position_level
     
     public string? pol_note { get; set; }
 
-    [StringLength(7)]
-    
+    [StringLength(250)]
+
     public string? update_by { get; set; }
 
     [Column(TypeName = "datetime")]

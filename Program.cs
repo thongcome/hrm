@@ -439,6 +439,8 @@ builder.Services.AddScoped<HRM.Services.Contract.ContractExpiryService>();
 // ----- Pos_* module (Position / Headcount Budget) -----
 builder.Services.AddScoped<HRM.Services.Pos.HeadcountBudgetService>();
 builder.Services.AddScoped<HRM.Services.Pos.EmployeeSlotBackfillService>();
+builder.Services.AddScoped<HRM.Services.Pos.GradeLadderService>();
+builder.Services.AddScoped<HRM.Services.Pos.PromotionService>();
 // ----- end Pos_* module -----
 
 // ----- Perf_* module (Performance / KPI) -----
@@ -734,6 +736,10 @@ if (app.Environment.IsDevelopment())
     // presenter can demo HRD on the 7,000-employee company; the '001' admin
     // stays for the payroll demo.
     await HRM.Services.Dev.DevAuthSeeder.EnsureAdvdDemoAdminAsync(app.Services);
+
+    // Demo cast: one ADVD employee per job grade (A01→1 … A07→7) with a known
+    // login, so a demo can switch between admin and employees at various levels.
+    await HRM.Services.Dev.DemoCastSeeder.SeedAsync(app.Services);
 }
 
 // AD.CRUDManage auto-seed — runs EVERY startup (all environments, unlike
@@ -757,6 +763,12 @@ await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
 // Required (not demo) config: the WELFARE_CLAIM approval workflow so welfare
 // claims can route through the engine. Idempotent by workflowcode.
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
+if (app.Environment.IsDevelopment())
+{
+    // Dev-only: auto-approve the demo/testing workflows so end-to-end flows
+    // complete without a human approver (owner request 2026-09-03).
+    await HRM.Services.Dev.WorkflowAutoApproveSeeder.SeedAsync(app.Services);
+}
 if (app.Environment.IsDevelopment())
 {
     // Dev-only end-to-end proof of the auto-role above: a committee-type

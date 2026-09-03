@@ -18,6 +18,7 @@
 @inject HeadcountBudgetService BudgetService
 @inject SeparationRequestService SeparationService
 @inject EmployeeSlotBackfillService SlotBackfillService
+@inject GradeLadderService GradeService
 @attribute [Authorize(Policy = "Menu:POS_ADMIN")]
 
 <PageTitle>เลขที่อัตรา</PageTitle>
@@ -43,6 +44,10 @@
             <MudButton Color="Color.Secondary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.GroupAdd"
                 OnClick="BackfillFromEmployeesAsync" Disabled="_backfilling">
                 @(_backfilling ? "กำลังสร้าง..." : "สร้างอัตราจากพนักงาน")
+            </MudButton>
+            <MudButton Color="Color.Tertiary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Stairs"
+                OnClick="BuildGradeLadderAsync" Disabled="_grading">
+                @(_grading ? "กำลังกำหนด..." : "กำหนดระดับตำแหน่งจากตำแหน่ง (demo)")
             </MudButton>
         </MudStack>
         <MudText Typo="Typo.caption" Class="d-block mt-1" Style="color:var(--mud-palette-text-secondary);">
@@ -202,6 +207,7 @@
     private string? _remark;
     private string? _budgetWarning;
     private bool _backfilling;
+    private bool _grading;
 
     protected override async Task OnInitializedAsync()
     {
@@ -311,6 +317,28 @@
     {
         CancelEdit();
         _showForm = true;
+    }
+
+    private async Task BuildGradeLadderAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _grading = true;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+            var r = await GradeService.BuildAsync(_companyId, userId);
+            Snackbar.Add($"เพิ่มระดับใหม่ {r.GradesSeeded} · กำหนดระดับให้พนักงาน {r.EmployeesGraded} คน (A0n → ระดับ n) — ปรับ 7.5 เองได้ที่หน้าระดับตำแหน่ง",
+                Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("กำหนดระดับไม่สำเร็จ: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _grading = false;
+        }
     }
 
     private async Task BackfillFromEmployeesAsync()
