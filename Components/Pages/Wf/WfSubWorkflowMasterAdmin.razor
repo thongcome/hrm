@@ -119,7 +119,14 @@
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isLOA" ReadOnly="true" Label="LOA (ผู้อนุมัติตามวงเงิน)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isReturnSender" ReadOnly="true" Label="Return to Sender (ส่งกลับไปหาผู้ขอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isApproverSameCostCenter" ReadOnly="true" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isApproverSameOrg" ReadOnly="true" Label="ผู้อนุมัติที่หน่วยงาน (Org) เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isAdhocUser" ReadOnly="true" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (wf_adhoc_user)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.empLevel?.ToString() ?? "-")" Label="ระดับพนักงานผู้อนุมัติ (empLevel)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudText Typo="Typo.subtitle2" Class="mt-2">การเสียบ Component + ปุ่ม (epms)</MudText></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.controller" Label="Controller (component เอกสาร)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.action" Label="Action / View (component เอกสาร)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField Value="@e.displayName" Label="ข้อความบนปุ่มอนุมัติ (displayName)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox Value="e.isManualButton" ReadOnly="true" Label="ปุ่มกำหนดเอง (isManualButton)" /></MudItem>
             <MudItem xs="12"><MudTextField Value="@e.remark" Label="หมายเหตุ" ReadOnly="true" Lines="2" /></MudItem>
         </MudGrid>
     </text>;
@@ -189,7 +196,23 @@
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isLOA" Label="LOA (ผู้อนุมัติตามวงเงิน — ตั้งค่าช่วงที่ /wf/loa)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isReturnSender" Label="Return to Sender (ส่งกลับไปหาผู้ขอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameCostCenter" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameOrg" Label="ผู้อนุมัติที่หน่วยงาน (Org) เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAdhocUser" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (ตั้งค่าที่ /wf/adhoc-users)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.empLevel" Label="ระดับพนักงานผู้อนุมัติ (empLevel, เว้นว่าง = ไม่กำหนด)" Min="0" /></MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mt-2">การเสียบ Component + ปุ่ม (epms)</MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                    ค่าเหล่านี้ทำให้ runtime แสดงผลแบบ generic ได้: ระบุ component เอกสารที่จะเสียบในหน้า workflow และข้อความบนปุ่มอนุมัติของระดับนี้ เว้นว่างทั้งหมดถ้าใช้ลิงก์เอกสารปกติ + ชุดปุ่มมาตรฐาน
+                </MudAlert>
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.controller" Label="Controller (component เอกสาร)" HelperText="Controller ของ component เอกสารที่จะเสียบในหน้า workflow (epms) — เว้นว่างถ้าใช้ลิงก์เอกสารปกติ" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.action" Label="Action / View (component เอกสาร)" HelperText="Action/View ของ component เอกสาร" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="e.displayName" Label="ข้อความบนปุ่มอนุมัติ (displayName)" HelperText="ข้อความบนปุ่มอนุมัติของระดับนี้ (เว้นว่าง = 'อนุมัติ')" /></MudItem>
+            <MudItem xs="12" sm="6"><MudCheckBox @bind-Value="e.isManualButton" Label="ปุ่มกำหนดเอง(ไม่ใช้ชุดปุ่มมาตรฐาน)" /></MudItem>
+
             <MudItem xs="12"><MudTextField @bind-Value="e.remark" Label="หมายเหตุ" Lines="2" /></MudItem>
         </MudGrid>
     </text>;
@@ -234,7 +257,13 @@
             existing.isLOA = entity.isLOA;
             existing.isReturnSender = entity.isReturnSender;
             existing.isApproverSameCostCenter = entity.isApproverSameCostCenter;
+            existing.isApproverSameOrg = entity.isApproverSameOrg;
             existing.isAdhocUser = entity.isAdhocUser;
+            existing.empLevel = entity.empLevel;
+            existing.controller = entity.controller;
+            existing.action = entity.action;
+            existing.displayName = entity.displayName;
+            existing.isManualButton = entity.isManualButton;
             existing.remark = entity.remark;
             entity = existing;
         }

@@ -1,0 +1,189 @@
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+
+@*
+    WorkflowDocumentSlot — the "pluggable document" slot of the generic
+    workflow detail template (epms model).
+
+    Given a job (by JobMasterId) it shows that workflow's SOURCE DOCUMENT in
+    one of three ways, in priority order:
+
+      1. A registered Blazor component for this workflow/level, rendered via
+         Blazor's built-in <DynamicComponent>. This is the rich, in-page view
+         of the originating document (e.g. a leave-request summary card).
+      2. Otherwise, a LINK to the source document, built from the
+         admin-configured route template on wf_workflow.url — the exact same
+         fallback mechanism WfMyInboxDetail.BuildDocumentLink already uses.
+      3. Otherwise, a small muted note that no source document is wired.
+
+    ── How a module registers its document component ─────────────────────────
+    A module plugs its own document view into this slot WITHOUT editing this
+    file's rendering logic. Register a component Type against a KEY, where the
+    key is (case-insensitive) either:
+
+        "{controller}/{action}"   — from the current level's
+                                     wf_sub_workflow_master.controller/action, or
+        the workflow's workflowcode
+
+    Do it once at app startup (e.g. in Program.cs, a module's DI setup, or a
+    static ctor of the module) via the public static Register(...) method:
+
+        WorkflowDocumentSlot.Register("Leave/Summary",
+            typeof(HRM.Components.Shared.SomeLeaveDocView));
+        // or by workflow code:
+        WorkflowDocumentSlot.Register("LEAVE_REQ",
+            typeof(HRM.Components.Shared.SomeLeaveDocView));
+
+    Each registered document component MUST accept these two parameters:
+
+        [Parameter] public string RefId { get; set; }      // job_master.refid
+        [Parameter] public long   JobMasterId { get; set; } // this job's id
+
+    (Registrations are process-wide and idempotent — re-registering the same
+    key just overwrites it, which keeps hot-reload / repeated startup safe.)
+*@
+
+<div class="mt-2">
+    <MudText Typo="Typo.subtitle2">เอกสาร</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-1" />
+    }
+    else if (_job is null)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ไม่พบงาน</MudText>
+    }
+    else if (_docType is not null)
+    {
+        @* 1. Registered document component for this workflow/level. *@
+        <DynamicComponent Type="_docType" Parameters="_params" />
+    }
+    else if (_docLink is not null)
+    {
+        @* 2. Fallback link to the admin-configured source-document route. *@
+        <MudButton Href="@_docLink" Target="_blank"
+                   Variant="Variant.Outlined" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.OpenInNew" Class="mt-1">
+            ดูเอกสารต้นทาง (@_job.reftable #@_job.refid)
+        </MudButton>
+    }
+    else
+    {
+        @* 3. Nothing wired. *@
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ไม่มีเอกสารต้นทางที่เชื่อมไว้</MudText>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public long JobMasterId { get; set; }
+
+    // ── Static component registry ─────────────────────────────────────────
+    // Empty by default; modules add their document components via Register(...)
+    // (see the header comment for the contract). Keyed case-insensitively by
+    // "{controller}/{action}" or by workflowcode.
+    private static readonly Dictionary<string, Type> _registry =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Modules register here, e.g.:
+            // ["Leave/Summary"] = typeof(HRM.Components.Shared.SomeLeaveDocView),
+        };
+
+    // Register (or overwrite) the document component for a given key. Call once
+    // at startup from module DI/setup — process-wide and idempotent.
+    public static void Register(string key, Type componentType)
+    {
+        if (string.IsNullOrWhiteSpace(key) || componentType is null) return;
+        _registry[key] = componentType;
+    }
+
+    private job_master? _job;
+    private Type? _docType;
+    private string? _docLink;
+    private Dictionary<string, object> _params = new();
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _job = null;
+        _docType = null;
+        _docLink = null;
+        _params = new();
+
+        try
+        {
+            // GetJobDetailAsync loads the wf_workflow nav (Include(j => j.workflow)),
+            // so job.workflow?.url is available for the fallback link.
+            var job = await Engine.GetJobDetailAsync(JobMasterId);
+            _job = job;
+            if (job is null) return;
+
+            // Current level's controller/action wiring for the component key.
+            string? controller = null;
+            string? action = null;
+            await using (var context = await DbFactory.CreateDbContextAsync())
+            {
+                var cur = await context.wf_sub_workflow_masters
+                    .Where(s => s.workflowid == job.workflowid && s.wlevel == (job.lastLevel ?? 0))
+                    .Select(s => new { s.controller, s.action })
+                    .FirstOrDefaultAsync();
+                if (cur is not null)
+                {
+                    controller = cur.controller;
+                    action = cur.action;
+                }
+            }
+
+            _docType = ResolveComponentType(controller, action, job.workflow?.workflowcode);
+            if (_docType is not null)
+            {
+                _params = new Dictionary<string, object>
+                {
+                    ["RefId"] = job.refid ?? "",
+                    ["JobMasterId"] = JobMasterId,
+                };
+            }
+            else
+            {
+                _docLink = BuildDocumentLink(job);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Look up a registered document component: first by "{controller}/{action}",
+    // then by the workflow's workflowcode. Returns null if neither is registered.
+    private static Type? ResolveComponentType(string? controller, string? action, string? workflowcode)
+    {
+        if (!string.IsNullOrWhiteSpace(controller) || !string.IsNullOrWhiteSpace(action))
+        {
+            var key = $"{controller}/{action}";
+            if (_registry.TryGetValue(key, out var t)) return t;
+        }
+        if (!string.IsNullOrWhiteSpace(workflowcode) && _registry.TryGetValue(workflowcode!, out var wt))
+            return wt;
+        return null;
+    }
+
+    // Ported from WfMyInboxDetail.BuildDocumentLink: wf_workflow.url is an
+    // admin-configured route template (e.g. "/pay/adhoc-detail/{refid}") for the
+    // page that shows the document that started this job. job_master.reftable/refid
+    // are the generic (table, id) pair recorded at StartJobAsync time. No {refid}
+    // placeholder (or no template/refid) means routing isn't configured -> null.
+    private static string? BuildDocumentLink(job_master? job)
+    {
+        var template = job?.workflow?.url;
+        if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(job?.refid))
+            return null;
+        return template.Contains("{refid}") ? template.Replace("{refid}", job.refid) : template;
+    }
+}

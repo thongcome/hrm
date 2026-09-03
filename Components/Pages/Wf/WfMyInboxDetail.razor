@@ -47,11 +47,11 @@
             <WorkflowStepper JobMasterId="JobMasterId" />
         </div>
 
-        var docLink = BuildDocumentLink(_job);
-        @if (docLink is not null)
-        {
-            <MudLink Href="@docLink" Target="_blank" Class="mt-1">@L.Translate("WfSourceDocLink") (@_job.reftable #@_job.refid)</MudLink>
-        }
+        @* Pluggable document slot: renders the workflow's registered document
+           component, or falls back to a link to the source document. *@
+        <div class="mt-2 mb-1">
+            <WorkflowDocumentSlot JobMasterId="JobMasterId" />
+        </div>
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -303,17 +303,4 @@
         }
     }
 
-    // Block 7 (generic document-type routing): wf_workflow.url is an
-    // admin-configured route template (e.g. "/pay/adhoc-detail/{refid}")
-    // for whichever page shows the document that started this job —
-    // job_master.reftable/refid are the generic (table, id) pair recorded
-    // at StartJobAsync time. No {refid} placeholder in the template means
-    // the workflow hasn't been configured for routing yet (null link).
-    private static string? BuildDocumentLink(job_master? job)
-    {
-        var template = job?.workflow?.url;
-        if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(job?.refid))
-            return null;
-        return template.Contains("{refid}") ? template.Replace("{refid}", job.refid) : template;
-    }
 }

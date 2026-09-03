@@ -1,0 +1,420 @@
+@page "/wf/buttons"
+@using HRM.Models
+@using HRM.Services.Shared
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>จัดการปุ่ม Workflow (wf_button)</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">จัดการปุ่ม Workflow (wf_button)</MudText>
+<MudText Typo="Typo.body2" Class="mb-3" Style="opacity:.8;">
+    รายการที่นี่กำหนดว่า <b>ปุ่มไหน</b> (จาก wf_button_master) จะแสดงในหน้าอนุมัติของแต่ละ Workflow / ระดับ —
+    <code>WorkflowActionPanel</code> ตอนรันจะอ่านรายการเหล่านี้เพื่อสร้างปุ่มแบบ config-driven
+    (ถ้าไม่มีรายการที่ตรงระดับ จะใช้ปุ่ม อนุมัติ/ส่งกลับ/ไม่อนุมัติ มาตรฐานแทน)
+    เว้น <b>Workflow ว่าง (ทั้งหมด)</b> ไว้เพื่อทำเป็นชุดปุ่มเริ่มต้นร่วม (global default) ที่ใช้กับทุก Workflow
+    การจับคู่จะเลือกแถวที่ตรง (workflowid, ระดับ) ก่อน ถ้าไม่พบจึงใช้แถว global
+</MudText>
+
+@if (!_canEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว
+    </MudAlert>
+}
+
+@if (!_showForm)
+{
+    <MudPaper Class="pa-3 mb-3" Outlined="true">
+        <div class="d-flex flex-wrap gap-2 align-center">
+            <MudTextField T="string" Value="_searchTerm" Label="ค้นหา (ป้ายปุ่ม / code / สถานะ / หมายเหตุ)"
+                Immediate="true" DebounceInterval="300" ValueChanged="OnSearchChanged"
+                AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start"
+                Class="flex-grow-1" Style="min-width:260px;" />
+            @if (_canEdit)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                    OnClick="StartCreate">เพิ่มปุ่ม</MudButton>
+            }
+        </div>
+    </MudPaper>
+
+    <MudTable Items="_items" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>ปุ่ม</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>เงื่อนไข</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh Style="width:1%;"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ปุ่ม">@MasterLabel(context.button_masterid)</MudTd>
+            <MudTd DataLabel="Workflow">
+                @if (context.workflowid is null)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">ทั้งหมด (global)</MudChip>
+                }
+                else
+                {
+                    @WorkflowLabel(context.workflowid.Value)
+                }
+            </MudTd>
+            <MudTd DataLabel="ระดับ">@(context.wlevel?.ToString() ?? "-")</MudTd>
+            <MudTd DataLabel="เงื่อนไข">
+                @if (context.istop == true)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Class="ma-0 mr-1">istop</MudChip>
+                }
+                @if (context.isStart == true)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Tertiary" Class="ma-0 mr-1">isStart</MudChip>
+                }
+                @if (context.isAndCondition)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ma-0 mr-1">AND</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="สถานะ">
+                @if (context.isactive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">ใช้งาน</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">ปิด</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (_canEdit)
+                {
+                    <div class="d-flex gap-1">
+                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                            OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                        @if (context.isactive)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                OnClick="@(() => DeactivateAsync(context))">ปิด</MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success"
+                                OnClick="@(() => ReactivateAsync(context))">เปิด</MudButton>
+                        }
+                    </div>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2" Class="pa-3" Style="opacity:.7;">ยังไม่มีรายการปุ่มที่ตรงกับการค้นหา</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+else
+{
+    <MudPaper Class="pa-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editing!.wfbuttonid == 0 ? "เพิ่มปุ่ม" : "แก้ไขปุ่ม")</MudText>
+        <EditForm Model="_editing" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long" Value="_editing.button_masterid" ValueChanged="v => _editing.button_masterid = v"
+                        Label="ปุ่ม (wf_button_master)" Required="true" Disabled="!_canEdit">
+                        @foreach (var m in _masters)
+                        {
+                            <MudSelectItem T="long" Value="@m.id">@MasterOptionLabel(m)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" Value="_editing.workflowid" ValueChanged="v => _editing.workflowid = v"
+                        Label="Workflow (เว้นว่าง = ทั้งหมด / global)" Clearable="true" Disabled="!_canEdit">
+                        <MudSelectItem T="long?" Value="@((long?)null)">(ทั้งหมด — global default)</MudSelectItem>
+                        @foreach (var wf in _workflows)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="int?" @bind-Value="_editing.wlevel" Label="ระดับ (wlevel — เว้นว่างได้)"
+                        Min="1" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_editing.showwhenstatus" Label="แสดงเมื่อสถานะ (showwhenstatus — ถ้ามี)"
+                        Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox T="bool" Value="@(_editing.istop ?? false)" ValueChanged="v => _editing.istop = v"
+                        Label="ระดับสุดท้าย (istop)" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox T="bool" Value="@(_editing.isStart ?? false)" ValueChanged="v => _editing.isStart = v"
+                        Label="ระดับเริ่มต้น (isStart)" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox @bind-Value="_editing.isAndCondition" Label="AND-condition" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudCheckBox @bind-Value="_editing.isactive" Label="ใช้งาน (isactive)" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editing.remark" Label="หมายเหตุ (remark)" Lines="2" Disabled="!_canEdit" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        ตอนรัน ระบบจะเลือกปุ่มด้วยเงื่อนไข: <b>istop</b> ตรงกับระดับปัจจุบัน และ <b>AND-condition</b> ตรงกัน
+                        และ <b>ใช้งาน</b> อยู่ — โดยเลือกแถวที่ตรง (Workflow, ระดับ) ก่อน ถ้าไม่พบจึงใช้แถว global
+                        ป้าย/สี/การกระทำของปุ่มมาจาก wf_button_master ที่เลือก
+                    </MudAlert>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+            }
+
+            <div class="d-flex gap-2 mt-4">
+                @if (_canEdit)
+                {
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                        Disabled="_saving">บันทึก</MudButton>
+                }
+                <MudButton Variant="Variant.Outlined" OnClick="CancelForm" Disabled="_saving">ยกเลิก</MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+}
+
+@code {
+    private bool _canEdit;
+    private bool _loading;
+    private bool _saving;
+    private bool _showForm;
+    private string? _error;
+    private string? _searchTerm;
+
+    private List<wf_button> _items = new();
+    private List<wf_button_master> _masters = new();
+    private List<wf_workflow> _workflows = new();
+    private Dictionary<long, string> _masterLabels = new();
+    private Dictionary<long, string> _workflowLabels = new();
+
+    private wf_button? _editing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "WF_WORKFLOW_ADMIN");
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        // Both are small, bounded reference sets — load once for the pickers/labels.
+        _masters = await context.wf_button_masters
+            .OrderBy(m => m.orderth).ThenBy(m => m.name).ToListAsync();
+        _workflows = await context.wf_workflows
+            .OrderBy(w => w.workflowcode).ToListAsync();
+
+        _masterLabels = _masters.ToDictionary(m => m.id, MasterOptionLabel);
+        _workflowLabels = _workflows.ToDictionary(w => w.workflowid, w => $"{w.workflowcode} - {w.wname}");
+
+        await ReloadAsync();
+    }
+
+    private string MasterLabel(long id)
+        => _masterLabels.TryGetValue(id, out var label) ? label : $"#{id}";
+
+    private string WorkflowLabel(long id)
+        => _workflowLabels.TryGetValue(id, out var label) ? label : $"#{id}";
+
+    private static string MasterOptionLabel(wf_button_master m)
+    {
+        var label = !string.IsNullOrWhiteSpace(m.value) ? m.value
+            : !string.IsNullOrWhiteSpace(m.name) ? m.name
+            : $"#{m.id}";
+        return string.IsNullOrWhiteSpace(m.code) ? label! : $"{label} ({m.code})";
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            // wf_button is a bounded config table — load all, LIKE-search the text columns.
+            var query = EntitySearchHelper.ApplyTextSearch(context.wf_buttons.AsQueryable(), _searchTerm,
+                nameof(wf_button.btname), nameof(wf_button.bcode),
+                nameof(wf_button.showwhenstatus), nameof(wf_button.remark));
+            _items = await query
+                .OrderBy(b => b.workflowid == null ? 0 : 1)
+                .ThenBy(b => b.workflowid)
+                .ThenBy(b => b.wlevel)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSearchChanged(string? term)
+    {
+        _searchTerm = term;
+        await ReloadAsync();
+    }
+
+    private void StartCreate()
+    {
+        _error = null;
+        _editing = new wf_button
+        {
+            isactive = true,
+            isAndCondition = false,
+            istop = false,
+            isStart = false,
+            button_masterid = _masters.FirstOrDefault()?.id ?? 0,
+        };
+        _showForm = true;
+    }
+
+    private void StartEdit(wf_button row)
+    {
+        _error = null;
+        // Work on a detached copy so cancel doesn't mutate the list row in place.
+        _editing = new wf_button
+        {
+            wfbuttonid = row.wfbuttonid,
+            button_masterid = row.button_masterid,
+            workflowid = row.workflowid,
+            wlevel = row.wlevel,
+            subworkflowid = row.subworkflowid,
+            istop = row.istop,
+            isStart = row.isStart,
+            isAndCondition = row.isAndCondition,
+            isactive = row.isactive,
+            showwhenstatus = row.showwhenstatus,
+            btname = row.btname,
+            bt_type = row.bt_type,
+            bcode = row.bcode,
+            status = row.status,
+            isshow = row.isshow,
+            class_style = row.class_style,
+            remark = row.remark,
+        };
+        _showForm = true;
+    }
+
+    private void CancelForm()
+    {
+        _showForm = false;
+        _editing = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!_canEdit || _editing is null) return;
+        if (_editing.button_masterid == 0)
+        {
+            _error = "กรุณาเลือกปุ่ม (wf_button_master)";
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            // Keep the mapped code/label in sync with the chosen master so the
+            // runtime's btname/bcode fallbacks resolve even when the join is thin.
+            var master = _masters.FirstOrDefault(m => m.id == _editing.button_masterid);
+
+            if (_editing.wfbuttonid == 0)
+            {
+                var row = new wf_button
+                {
+                    button_masterid = _editing.button_masterid,
+                    workflowid = _editing.workflowid,
+                    wlevel = _editing.wlevel,
+                    subworkflowid = _editing.subworkflowid,
+                    istop = _editing.istop,
+                    isStart = _editing.isStart,
+                    isAndCondition = _editing.isAndCondition,
+                    isactive = _editing.isactive,
+                    isshow = _editing.isshow ?? true,
+                    showwhenstatus = _editing.showwhenstatus,
+                    remark = _editing.remark,
+                    btname = string.IsNullOrWhiteSpace(_editing.btname) ? (master?.value ?? master?.name) : _editing.btname,
+                    bcode = string.IsNullOrWhiteSpace(_editing.bcode) ? master?.code : _editing.bcode,
+                    bt_type = string.IsNullOrWhiteSpace(_editing.bt_type) ? master?.actiontypecode : _editing.bt_type,
+                };
+                context.wf_buttons.Add(row);
+            }
+            else
+            {
+                var existing = await context.wf_buttons.FirstOrDefaultAsync(b => b.wfbuttonid == _editing.wfbuttonid)
+                    ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+                existing.button_masterid = _editing.button_masterid;
+                existing.workflowid = _editing.workflowid;
+                existing.wlevel = _editing.wlevel;
+                existing.subworkflowid = _editing.subworkflowid;
+                existing.istop = _editing.istop;
+                existing.isStart = _editing.isStart;
+                existing.isAndCondition = _editing.isAndCondition;
+                existing.isactive = _editing.isactive;
+                existing.showwhenstatus = _editing.showwhenstatus;
+                existing.remark = _editing.remark;
+                existing.btname = string.IsNullOrWhiteSpace(_editing.btname) ? (master?.value ?? master?.name) : _editing.btname;
+                existing.bcode = string.IsNullOrWhiteSpace(_editing.bcode) ? master?.code : _editing.bcode;
+                existing.bt_type = string.IsNullOrWhiteSpace(_editing.bt_type) ? master?.actiontypecode : _editing.bt_type;
+            }
+
+            await context.SaveChangesAsync();
+            Snackbar.Add("บันทึกปุ่มเรียบร้อย", Severity.Success);
+            _showForm = false;
+            _editing = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // Soft delete per CRUD standard — flip isactive off, never hard DELETE.
+    private async Task DeactivateAsync(wf_button row) => await SetActiveAsync(row, false);
+
+    private async Task ReactivateAsync(wf_button row) => await SetActiveAsync(row, true);
+
+    private async Task SetActiveAsync(wf_button row, bool active)
+    {
+        if (!_canEdit) return;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.wf_buttons.FirstOrDefaultAsync(b => b.wfbuttonid == row.wfbuttonid);
+            if (existing is null) return;
+            existing.isactive = active;
+            await context.SaveChangesAsync();
+            Snackbar.Add(active ? "เปิดใช้งานปุ่มแล้ว" : "ปิดใช้งานปุ่มแล้ว", Severity.Success);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
