@@ -68,6 +68,7 @@
                which buttons show comes from this level's config passed in. *@
             <WorkflowActionPanel JobApproverId="@_myPendingRow.jobapproverid" ActorUserId="@_actorUserId"
                 IsTop="@_currentIsTop" BackwardLevel="@_currentBackwardLevel" ApproveLabel="@_approveLabel"
+                WorkflowId="@_job.workflowid" Wlevel="@(_job.lastLevel ?? 0)" IsAndCondition="@_currentIsAndCondition"
                 OnActed="OnWorkflowActed" />
         }
         else
@@ -119,6 +120,7 @@
     private Dictionary<long, string> _approverNames = new();
     private bool _currentIsTop;          // current level is the terminal (istop) level -> Decline allowed
     private int? _currentBackwardLevel;  // current level has a configured backwardlevel -> Send Back allowed
+    private bool _currentIsAndCondition; // current level is an AND-condition level (for wf_button selection)
     private string _approveLabel = "อนุมัติ"; // forward-button caption, configurable per level (displayName)
     private Dictionary<long, List<doc_center>> _attachments = new();
     private bool _loading = true;
@@ -227,17 +229,19 @@
     {
         _currentIsTop = false;
         _currentBackwardLevel = null;
+        _currentIsAndCondition = false;
         _approveLabel = "อนุมัติ";
         if (_job is null) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var cur = await context.wf_sub_workflow_masters
             .Where(s => s.workflowid == _job.workflowid && s.wlevel == (_job.lastLevel ?? 0))
-            .Select(s => new { s.istop, s.backwardlevel, s.displayName })
+            .Select(s => new { s.istop, s.backwardlevel, s.displayName, s.isandcondition })
             .FirstOrDefaultAsync();
         if (cur is not null)
         {
             _currentIsTop = cur.istop;
             _currentBackwardLevel = cur.backwardlevel;
+            _currentIsAndCondition = cur.isandcondition;
             if (!string.IsNullOrWhiteSpace(cur.displayName)) _approveLabel = cur.displayName!;
         }
     }

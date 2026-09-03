@@ -1,6 +1,7 @@
 @using HRM.Services.Workflow
 @using MudBlazor
 @inject WorkflowEngineService Engine
+@inject WorkflowButtonService ButtonService
 @inject ISnackbar Snackbar
 
 @*
@@ -22,23 +23,37 @@
 <MudPaper Outlined="true" Class="pa-3 mt-3">
     <MudText Typo="Typo.h6">การพิจารณาของฉัน</MudText>
     <MudStack Row="true" Spacing="1" Class="mt-2" Wrap="Wrap.Wrap">
-        <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
-            StartIcon="@Icons.Material.Filled.Check"
-            OnClick="@(() => OpenConfirm(WfAction.Approve))">@ApproveLabel</MudButton>
-        @if (BackwardLevel is not null)
+        @if (_configButtons.Count > 0)
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Warning" Disabled="_busy"
-                StartIcon="@Icons.Material.Filled.Undo"
-                OnClick="@(() => OpenConfirm(WfAction.SendBack))">ส่งกลับแก้ไข</MudButton>
+            @* Config-driven: buttons come from wf_button/wf_button_master for this
+               level (epms model) — label, colour and which actions appear are all
+               data. The built-in set below is the fallback when nothing is mapped. *@
+            @foreach (var b in _configButtons)
+            {
+                <MudButton Variant="Variant.Filled" Color="@ToColor(b.ColorOrClass)" Disabled="_busy"
+                    OnClick="@(() => OpenConfirm(ToAction(b.ActionKind), b.Label))">@b.Label</MudButton>
+            }
         }
-        @if (IsTop)
+        else
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy"
-                StartIcon="@Icons.Material.Filled.Block"
-                OnClick="@(() => OpenConfirm(WfAction.Decline))">ไม่อนุมัติ</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
+                StartIcon="@Icons.Material.Filled.Check"
+                OnClick="@(() => OpenConfirm(WfAction.Approve, ApproveLabel))">@ApproveLabel</MudButton>
+            @if (BackwardLevel is not null)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" Disabled="_busy"
+                    StartIcon="@Icons.Material.Filled.Undo"
+                    OnClick="@(() => OpenConfirm(WfAction.SendBack))">ส่งกลับแก้ไข</MudButton>
+            }
+            @if (IsTop)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy"
+                    StartIcon="@Icons.Material.Filled.Block"
+                    OnClick="@(() => OpenConfirm(WfAction.Decline))">ไม่อนุมัติ</MudButton>
+            }
         }
     </MudStack>
-    @if (!IsTop && BackwardLevel is null)
+    @if (_configButtons.Count == 0 && !IsTop && BackwardLevel is null)
     {
         <MudText Typo="Typo.caption" Class="mt-2" Style="display:block;opacity:.7;">
             * ระดับนี้ไม่ได้เปิด "ส่งกลับแก้ไข" และไม่ใช่ระดับสุดท้าย — หากไม่เห็นด้วยต้องให้ผู้ดูแลตั้งค่า backwardlevel ก่อน
@@ -86,6 +101,12 @@
     [Parameter] public bool IsTop { get; set; }
     [Parameter] public int? BackwardLevel { get; set; }
     [Parameter] public string ApproveLabel { get; set; } = "อนุมัติ";
+    // Identify the level so config-driven buttons can be looked up from wf_button.
+    // When WorkflowId is 0 (not provided) or no rows are mapped, the panel falls
+    // back to the built-in Approve / Send Back / Decline set.
+    [Parameter] public long WorkflowId { get; set; }
+    [Parameter] public int Wlevel { get; set; }
+    [Parameter] public bool IsAndCondition { get; set; }
     // Raised after any action succeeds so the host can reload / navigate.
     [Parameter] public EventCallback OnActed { get; set; }
 
@@ -94,13 +115,38 @@
     private bool _busy;
     private string? _error;
     private WfAction _pendingAction;
+    private string _pendingLabel = "";
     private string _actionComment = "";
+    private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
     private static readonly DialogOptions _confirmOptions =
         new() { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
 
+    // Load the config-driven button set for this level (empty => built-in fallback).
+    protected override async Task OnParametersSetAsync()
+    {
+        if (WorkflowId > 0)
+            _configButtons = await ButtonService.GetButtonsForLevelAsync(WorkflowId, Wlevel, IsTop, IsAndCondition);
+    }
+
+    private static Color ToColor(string colorHint) => colorHint switch
+    {
+        WorkflowButtonService.ColorError => Color.Error,
+        WorkflowButtonService.ColorWarning => Color.Warning,
+        WorkflowButtonService.ColorSuccess => Color.Success,
+        WorkflowButtonService.ColorPrimary => Color.Primary,
+        _ => Color.Default,
+    };
+
+    private static WfAction ToAction(string actionKind) => actionKind switch
+    {
+        WorkflowButtonService.ActionSendBack => WfAction.SendBack,
+        WorkflowButtonService.ActionDecline => WfAction.Decline,
+        _ => WfAction.Approve,
+    };
+
     private string ConfirmTitle => _pendingAction switch
     {
-        WfAction.Approve => $"ยืนยัน{ApproveLabel}",
+        WfAction.Approve => $"ยืนยัน{(!string.IsNullOrWhiteSpace(_pendingLabel) ? _pendingLabel : ApproveLabel)}",
         WfAction.SendBack => "ยืนยันส่งกลับแก้ไข",
         WfAction.Decline => "ยืนยันไม่อนุมัติ",
         _ => "ยืนยัน",
@@ -110,9 +156,10 @@
     private bool ConfirmDisabled =>
         _busy || (_pendingAction != WfAction.Approve && string.IsNullOrWhiteSpace(_actionComment));
 
-    private void OpenConfirm(WfAction action)
+    private void OpenConfirm(WfAction action, string? label = null)
     {
         _pendingAction = action;
+        _pendingLabel = label ?? "";
         _actionComment = "";
         _error = null;
         _showConfirm = true;
