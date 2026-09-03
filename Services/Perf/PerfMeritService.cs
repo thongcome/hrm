@@ -17,7 +17,10 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
     public record MeritPreview(
         long InstanceId, string Grade, decimal FinalScorePercent,
         decimal CurrentSalary, decimal SalaryIncreasePercent, decimal RecommendedNewSalary,
-        decimal BonusPercent, decimal RecommendedBonusAmount, bool RequiresJustification, bool AlreadyApplied);
+        decimal BonusPercent, decimal RecommendedBonusAmount, bool RequiresJustification, bool AlreadyApplied,
+        // AutoX #5: the effective raise = grade band's standard % + the per-person
+        // adjustment on the instance. Both surfaced so the UI can show the split.
+        decimal AdjustmentPercent, decimal EffectiveIncreasePercent);
 
     public async Task<MeritPreview> PreviewMeritIncreaseAsync(long instanceId, CancellationToken ct = default)
     {
@@ -38,12 +41,15 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
             ?? throw new InvalidOperationException("ไม่พบพนักงานคนนี้แล้ว");
         var currentSalary = employee.SalaryAmt ?? 0m;
 
-        var newSalary = Math.Round(currentSalary * (1 + gradeBand.SalaryIncreasePercent / 100m), 2);
+        var adjust = instance.MeritAdjustmentPercent ?? 0m;
+        var effectivePercent = gradeBand.SalaryIncreasePercent + adjust;
+        var newSalary = Math.Round(currentSalary * (1 + effectivePercent / 100m), 2);
         var bonusAmount = Math.Round(currentSalary * (gradeBand.BonusPercent / 100m), 2);
 
         return new MeritPreview(instanceId, gradeBand.Grade, instance.FinalScorePercent ?? 0m,
             currentSalary, gradeBand.SalaryIncreasePercent, newSalary,
-            gradeBand.BonusPercent, bonusAmount, gradeBand.RequiresJustification, instance.IsMeritApplied);
+            gradeBand.BonusPercent, bonusAmount, gradeBand.RequiresJustification, instance.IsMeritApplied,
+            adjust, effectivePercent);
     }
 
     public async Task ApplyMeritIncreaseAsync(long instanceId, long actorUserId, CancellationToken ct = default)
@@ -69,10 +75,13 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
         var period = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(p => p.Id == instance.EvaluationPeriodId, ct);
 
         var oldSalary = employee.SalaryAmt ?? 0m;
-        var newSalary = Math.Round(oldSalary * (1 + gradeBand.SalaryIncreasePercent / 100m), 2);
+        var adjust = instance.MeritAdjustmentPercent ?? 0m;
+        var effectivePercent = gradeBand.SalaryIncreasePercent + adjust;
+        var newSalary = Math.Round(oldSalary * (1 + effectivePercent / 100m), 2);
 
         employee.SalaryAmt = newSalary;
 
+        var adjustText = adjust == 0m ? "" : $" + ปรับเพิ่ม {adjust:0.#}%";
         context.Pay_PositionSalaryHistories.Add(new Pay_PositionSalaryHistory
         {
             HremployeeId = employee.id,
@@ -81,7 +90,7 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
             OldSalary = oldSalary,
             NewSalary = newSalary,
             ChangeType = "S",
-            Reason = $"ปรับเงินเดือนตามผลประเมิน{(period is null ? "" : $" รอบ {period.Name}")} เกรด {gradeBand.Grade} (+{gradeBand.SalaryIncreasePercent:0.#}%)",
+            Reason = $"ปรับเงินเดือนตามผลประเมิน{(period is null ? "" : $" รอบ {period.Name}")} เกรด {gradeBand.Grade} (+{gradeBand.SalaryIncreasePercent:0.#}%{adjustText} = +{effectivePercent:0.#}%)",
             ChangedByUserId = actorUserId,
             ChangedDate = DateTime.Now,
         });

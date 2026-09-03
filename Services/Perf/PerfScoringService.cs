@@ -279,6 +279,62 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         await context.SaveChangesAsync(ct);
     }
 
+    // AutoX #2 — RankByResult scoring. For an evaluation TYPE graded by result
+    // (e.g. sales), the score isn't weighted indicators — it's the person's
+    // standing within their cohort. Ranks every instance of this type+period by
+    // the sum of its Perf_ResultMetric values (lower-is-better metrics negated),
+    // turns the rank into a percentile-percent (best = 100), maps that through
+    // the period's grade bands, and moves each instance to PendingApproval.
+    // Returns how many instances were ranked. Idempotent — safe to re-run after
+    // metrics change. Instances of the type that have NO result metric are left
+    // untouched (nothing to rank them by).
+    public async Task<int> FinalizeRankByResultAsync(long evaluationTypeId, long evaluationPeriodId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var instances = await context.Perf_EvaluationInstances
+            .Where(i => i.EvaluationTypeId == evaluationTypeId && i.EvaluationPeriodId == evaluationPeriodId)
+            .ToListAsync(ct);
+        if (instances.Count == 0) return 0;
+
+        var instanceIds = instances.Select(i => i.Id).ToList();
+        var metrics = await context.Perf_ResultMetrics
+            .Where(m => instanceIds.Contains(m.EvaluationInstanceId) && m.IsActive)
+            .ToListAsync(ct);
+
+        // One score per instance = sum of its metrics (a lower-is-better metric
+        // subtracts, so higher combined score is always better).
+        var scoreByInstance = metrics
+            .GroupBy(m => m.EvaluationInstanceId)
+            .ToDictionary(g => g.Key, g => g.Sum(m => m.HigherIsBetter ? m.MetricValue : -m.MetricValue));
+
+        var ranked = instances
+            .Where(i => scoreByInstance.ContainsKey(i.Id))
+            .OrderByDescending(i => scoreByInstance[i.Id])
+            .ToList();
+        var n = ranked.Count;
+        if (n == 0) return 0;
+
+        var gradeBands = await context.Perf_GradeBands
+            .Where(g => g.EvaluationPeriodId == evaluationPeriodId && g.IsActive)
+            .OrderBy(g => g.SortOrder)
+            .ToListAsync(ct);
+
+        for (var idx = 0; idx < n; idx++)
+        {
+            // Percentile-percent: best (idx 0) -> 100, worst -> (1/n)*100.
+            var percent = n == 1 ? 100m : Math.Round((decimal)(n - idx) / n * 100m, 2);
+            var inst = ranked[idx];
+            inst.FinalScorePercent = percent;
+            inst.FinalGrade = gradeBands.FirstOrDefault(g => percent >= g.MinPercent && percent <= g.MaxPercent)?.Grade;
+            if (inst.Status is PerfInstanceStatus.Draft or PerfInstanceStatus.InProgress)
+                inst.Status = PerfInstanceStatus.PendingApproval;
+        }
+
+        await context.SaveChangesAsync(ct);
+        return n;
+    }
+
     public record MyEvaluationItem(long RaterAssignmentId, long InstanceId, string SubjectEmpName, PerfRaterDirection Direction, PerfRaterStatus Status, string PeriodName);
 
     public async Task<List<MyEvaluationItem>> GetMyEvaluationsAsync(long myHremployeeId, CancellationToken ct = default)

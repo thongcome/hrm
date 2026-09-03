@@ -79,6 +79,61 @@ public class PerfCalibrationService(IDbContextFactory<HRMContext> dbFactory)
         return new CalibrationGridResult(orgNames, grades, cells, noGradeRows);
     }
 
+    // AutoX #4 — bell-curve / forced-distribution recommendation. Per grade band,
+    // compares the ACTUAL % of people who landed in it (across this session's
+    // scope — a dept subtree, or the whole company when the session has no org)
+    // against the band's configured TargetDistributionPercent, so a supervisor
+    // can see "you have 30% in A, target is 15% → เกินเกณฑ์" and re-balance.
+    public record DistributionRow(
+        string Grade, int SortOrder, decimal? TargetPercent,
+        int ActualCount, decimal ActualPercent, decimal? VariancePercent, string Status);
+
+    public async Task<List<DistributionRow>> GetDistributionRecommendationAsync(long sessionId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var session = await context.Perf_CalibrationSessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct)
+            ?? throw new InvalidOperationException("ไม่พบ session นี้แล้ว");
+
+        var query = context.Perf_EvaluationInstances
+            .Where(i => i.EvaluationPeriodId == session.EvaluationPeriodId
+                && i.Status == PerfInstanceStatus.PendingApproval && i.JobMasterId == null);
+
+        if (session.OrganizationId is long orgId)
+        {
+            var scopeEmployees = await OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, session.CompanyId, orgId, ct);
+            var scopeEmployeeIds = scopeEmployees.Select(e => e.id).ToList();
+            query = query.Where(i => scopeEmployeeIds.Contains(i.HremployeeId));
+        }
+
+        var graded = (await query.ToListAsync(ct)).Where(i => !string.IsNullOrEmpty(i.FinalGrade)).ToList();
+        var total = graded.Count;
+        var countByGrade = graded.GroupBy(i => i.FinalGrade!).ToDictionary(g => g.Key, g => g.Count());
+
+        var gradeBands = await context.Perf_GradeBands
+            .Where(g => g.EvaluationPeriodId == session.EvaluationPeriodId && g.IsActive)
+            .OrderBy(g => g.SortOrder)
+            .ToListAsync(ct);
+
+        var result = new List<DistributionRow>();
+        foreach (var band in gradeBands)
+        {
+            var actualCount = countByGrade.TryGetValue(band.Grade, out var c) ? c : 0;
+            var actualPercent = total == 0 ? 0m : Math.Round(actualCount * 100m / total, 1);
+            decimal? variance = null;
+            string status;
+            if (band.TargetDistributionPercent is decimal target)
+            {
+                variance = Math.Round(actualPercent - target, 1);
+                status = variance > 0m ? "over" : variance < 0m ? "under" : "ok";
+            }
+            else status = "no-target";
+            result.Add(new DistributionRow(band.Grade, band.SortOrder, band.TargetDistributionPercent,
+                actualCount, actualPercent, variance, status));
+        }
+        return result;
+    }
+
     public record AdjustmentPreview(decimal AdjustedScorePercent, string? AdjustedGrade);
 
     public async Task<AdjustmentPreview> PreviewAdjustmentAsync(long instanceId, decimal newScorePercent, CancellationToken ct = default)
