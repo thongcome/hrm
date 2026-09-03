@@ -1,0 +1,155 @@
+@page "/perf/hub"
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>ศูนย์รวมระบบประเมินผล (KPI)</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="pa-0">
+
+    <!-- Hero / intro -->
+    <MudPaper Class="pa-6 mb-6" Elevation="0" Style="background:var(--mud-palette-primary); color:var(--mud-palette-primary-text); border-radius:12px;">
+        <div class="d-flex align-center mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Large" Class="mr-3" />
+            <MudText Typo="Typo.h4">ศูนย์รวมระบบประเมินผล (KPI)</MudText>
+        </div>
+        <MudText Typo="Typo.body1" Class="mb-4" Style="opacity:.9;">
+            จุดเริ่มต้นเดียวสำหรับทุกหน้าจอของระบบประเมินผลการปฏิบัติงาน — เลือกขั้นตอนที่ต้องการจากด้านล่าง
+        </MudText>
+
+        <!-- Journey flow -->
+        <div class="d-flex flex-wrap align-center" style="gap:8px;">
+            @foreach (var (label, idx) in _flow.Select((l, i) => (l, i)))
+            {
+                <MudChip T="string" Variant="Variant.Filled" Color="Color.Surface" Size="Size.Small">@label</MudChip>
+                @if (idx < _flow.Length - 1)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" Style="opacity:.7;" />
+                }
+            }
+        </div>
+    </MudPaper>
+
+    @foreach (var section in _sections)
+    {
+        <div class="d-flex align-center mb-3 mt-6">
+            <MudIcon Icon="@section.Icon" Color="Color.Primary" Class="mr-2" />
+            <MudText Typo="Typo.h5">@section.Title</MudText>
+        </div>
+        @if (!string.IsNullOrEmpty(section.Subtitle))
+        {
+            <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">@section.Subtitle</MudText>
+        }
+
+        <MudGrid>
+            @foreach (var tile in section.Tiles)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Class="perf-hub-tile" Elevation="1" Style="height:100%; display:flex; flex-direction:column; border-radius:12px;">
+                        <MudCardContent Class="flex-grow-1">
+                            <div class="d-flex align-center mb-2">
+                                <MudAvatar Color="@tile.Color" Variant="Variant.Outlined" Class="mr-3">
+                                    <MudIcon Icon="@tile.Icon" />
+                                </MudAvatar>
+                                <MudText Typo="Typo.h6">@tile.Title</MudText>
+                            </div>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">@tile.Description</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Href="@tile.Href"
+                                       Variant="Variant.Text"
+                                       Color="@tile.Color"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward"
+                                       FullWidth="true">
+                                เปิดหน้าจอ
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <MudDivider Class="my-6" />
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+        หมายเหตุ: เกรดและมาตรวัดคะแนนตั้งค่าแยกตามแต่ละรอบประเมิน — เข้าจากหน้ารอบประเมินแล้วเลือก "เกรด"
+    </MudText>
+
+</MudContainer>
+
+<style>
+    .perf-hub-tile { transition: transform .15s ease, box-shadow .15s ease; }
+    .perf-hub-tile:hover { transform: translateY(-3px); box-shadow: var(--mud-elevation-8); }
+</style>
+
+@code {
+    private readonly string[] _flow =
+    {
+        "ตั้งค่า", "มอบหมาย", "ประเมิน", "สอบเทียบ (calibrate)", "ขึ้นเงินเดือน"
+    };
+
+    private record Tile(string Title, string Description, string Href, string Icon, Color Color);
+    private record Section(string Title, string? Subtitle, string Icon, Tile[] Tiles);
+
+    private readonly Section[] _sections =
+    {
+        new Section(
+            "1. ตั้งค่าแบบประเมิน (Config)",
+            "กำหนดโครงสร้างของระบบก่อนเริ่มรอบประเมิน",
+            Icons.Material.Filled.Settings,
+            new[]
+            {
+                new Tile("ประเภทแบบประเมิน", "จัดการชนิดของแบบประเมินและหัวข้อที่วัด", "/perf/evaluation-types", Icons.Material.Filled.Category, Color.Primary),
+                new Tile("รอบการประเมิน", "สร้างและกำหนดช่วงเวลาของแต่ละรอบประเมิน", "/perf/periods", Icons.Material.Filled.DateRange, Color.Primary),
+                new Tile("เกรด + มาตรวัด", "ตั้งค่าแถบเกรดและช่วงคะแนนของแต่ละรอบ (เข้าจากหน้ารอบประเมิน)", "/perf/periods", Icons.Material.Filled.Grade, Color.Primary),
+                new Tile("ทิศทางผู้ประเมิน", "กำหนดว่าใครประเมินใคร (บน-ล่าง, ตนเอง, เพื่อนร่วมงาน)", "/perf/rater-directions", Icons.Material.Filled.CompareArrows, Color.Primary),
+            }),
+
+        new Section(
+            "2. มอบหมาย (Assignment)",
+            "จับคู่พนักงานเข้ากับรอบประเมินและกำหนดผู้ประเมิน",
+            Icons.Material.Filled.AssignmentInd,
+            new[]
+            {
+                new Tile("มอบหมายการประเมิน", "สร้างรายการมอบหมายพนักงาน-ผู้ประเมินสำหรับรอบที่เลือก", "/perf/assignments", Icons.Material.Filled.AssignmentTurnedIn, Color.Secondary),
+            }),
+
+        new Section(
+            "3. ประเมินผล (Evaluation)",
+            "ให้คะแนนและติดตามความคืบหน้าของการประเมิน",
+            Icons.Material.Filled.RateReview,
+            new[]
+            {
+                new Tile("รายการประเมินทั้งหมด", "ภาพรวมและติดตามสถานะของทุกใบประเมินในระบบ", "/perf/instances", Icons.Material.Filled.ListAlt, Color.Tertiary),
+                new Tile("การประเมินของฉัน", "งานประเมินที่รอผู้ใช้คนปัจจุบันให้คะแนน", "/perf/my-evaluations", Icons.Material.Filled.Person, Color.Tertiary),
+                new Tile("เป้าหมาย / OKR", "ต้นไม้เป้าหมายและ Key Result ที่เชื่อมกับการประเมิน", "/perf/goals", Icons.Material.Filled.Flag, Color.Tertiary),
+            }),
+
+        new Section(
+            "4. สอบเทียบ (Calibration)",
+            "ปรับผลให้เป็นมาตรฐานเดียวกันด้วย bell curve",
+            Icons.Material.Filled.Balance,
+            new[]
+            {
+                new Tile("สอบเทียบผลประเมิน", "รอบสอบเทียบและการกระจายเกรดตามโค้งระฆัง", "/perf/calibration", Icons.Material.Filled.StackedLineChart, Color.Warning),
+            }),
+
+        new Section(
+            "5. แผนพัฒนา (PIP)",
+            "ติดตามพนักงานที่ต้องมีแผนพัฒนารายบุคคล",
+            Icons.Material.Filled.TrendingUp,
+            new[]
+            {
+                new Tile("แผนพัฒนา (PIP)", "จัดการ Performance Improvement Plan ของพนักงาน", "/perf/pip", Icons.Material.Filled.Assignment, Color.Info),
+            }),
+
+        new Section(
+            "6. รายงาน (Dashboard)",
+            "ภาพรวมเชิงตัวเลขและสถานะของทั้งโมดูล",
+            Icons.Material.Filled.Dashboard,
+            new[]
+            {
+                new Tile("ภาพรวม HR Dashboard", "สรุปสถานะการประเมิน จำนวนที่รอ และการปรับเงินเดือน", "/perf/hr-dashboard", Icons.Material.Filled.QueryStats, Color.Success),
+            }),
+    };
+}

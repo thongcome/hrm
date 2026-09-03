@@ -24,6 +24,13 @@
 
     <MudText Typo="Typo.body2" Class="mt-1">@_myEmployee.EmpName @_myEmployee.EmpSurname (@_myEmployee.EmpNo)</MudText>
 
+    <MudTextField T="string" Value="_searchTerm" Immediate="true" DebounceInterval="300"
+        ValueChanged="OnSearchChanged" Label="ค้นหา"
+        Placeholder="ค้นหา: รอบ / ชื่อผู้ถูกประเมิน / ทิศทาง"
+        HelperText="ค้นหาข้ามช่อง: ชื่อรอบ, ชื่อผู้ถูกประเมิน, ทิศทางการประเมิน"
+        Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+        Clearable="true" Class="mt-4 mud-width-full" Style="max-width:420px;" />
+
     <MudTabs Class="mt-4">
         <MudTabPanel Text="@($"รอให้คะแนน ({_pending.Count})")">
             <MudTable Items="_pending" Dense="true" Hover="true" Class="mt-2">
@@ -62,6 +69,8 @@
 
 @code {
     private Hremployee? _myEmployee;
+    private string _searchTerm = "";
+    private List<PerfScoringService.MyEvaluationItem> _allItems = new();
     private List<PerfScoringService.MyEvaluationItem> _pending = new();
     private List<PerfScoringService.MyEvaluationItem> _submitted = new();
 
@@ -72,9 +81,33 @@
         _myEmployee = await EssEmployeeResolver.ResolveAsync(context, state.User);
         if (_myEmployee is null) return;
 
-        var items = await ScoringService.GetMyEvaluationsAsync(_myEmployee.id);
-        _pending = items.Where(i => i.Status == PerfRaterStatus.Pending).ToList();
-        _submitted = items.Where(i => i.Status == PerfRaterStatus.Submitted).ToList();
+        _allItems = await ScoringService.GetMyEvaluationsAsync(_myEmployee.id);
+        ApplyFilter();
+    }
+
+    private void OnSearchChanged(string term)
+    {
+        _searchTerm = term ?? "";
+        ApplyFilter();
+    }
+
+    // Self-scoped ESS list held in memory (MyEvaluationItem is a projection, not an
+    // EF entity), so this is a plain in-memory contains-search across its text fields
+    // — the same "one box searches everything" intent as EntitySearchHelper, minus SQL.
+    private void ApplyFilter()
+    {
+        IEnumerable<PerfScoringService.MyEvaluationItem> items = _allItems;
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            var term = _searchTerm.Trim();
+            items = items.Where(i =>
+                (i.PeriodName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (i.SubjectEmpName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || DirectionLabel(i.Direction).Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+        var filtered = items.ToList();
+        _pending = filtered.Where(i => i.Status == PerfRaterStatus.Pending).ToList();
+        _submitted = filtered.Where(i => i.Status == PerfRaterStatus.Submitted).ToList();
     }
 
     private static string DirectionLabel(PerfRaterDirection d) => d switch

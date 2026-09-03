@@ -1,0 +1,301 @@
+@page "/perf/instances"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
+
+<PageTitle>รายการประเมิน (Evaluation Instances)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <div class="d-flex flex-wrap align-center gap-2 mb-1">
+        <MudIcon Icon="@Icons.Material.Filled.FactCheck" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">รายการประเมิน (Evaluation Instances)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        ค้นหาชุดผลการประเมินของพนักงานรายบุคคลในแต่ละรอบ แล้วคลิก "ดู" เพื่อเปิดรายละเอียด คะแนน ผู้ประเมิน และสถานะการอนุมัติ
+    </MudText>
+</MudPaper>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ จึงไม่สามารถแสดงรายการประเมินได้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="mr-1" />ค้นหา
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Value="_searchTerm" ValueChanged="OnSearchTermChanged" Immediate="true"
+                    DebounceInterval="300"
+                    Label="ค้นหาแบบรวดเร็ว (AI Search)"
+                    Placeholder="ค้นหา: ชื่อพนักงาน / รหัสพนักงาน / ตำแหน่ง / หน่วยงาน"
+                    HelperText="พิมพ์คำค้นแล้วกด Enter หรือปุ่มค้นหา — ค้นได้จากทุกช่องข้อความพร้อมกัน"
+                    Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                    Variant="Variant.Outlined" Clearable="true"
+                    OnKeyDown="OnSearchKeyDown" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="long?" @bind-Value="_filterPeriodId" Label="รอบการประเมิน (Period)"
+                    Variant="Variant.Outlined" Clearable="true" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="long?" Value="@((long?)null)">— ทุกรอบ —</MudSelectItem>
+                    @foreach (var p in _periods)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="PerfInstanceStatus?" @bind-Value="_filterStatus" Label="สถานะ (Status)"
+                    Variant="Variant.Outlined" Clearable="true" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="PerfInstanceStatus?" Value="@((PerfInstanceStatus?)null)">— ทุกสถานะ —</MudSelectItem>
+                    @foreach (var s in _allStatuses)
+                    {
+                        <MudSelectItem T="PerfInstanceStatus?" Value="@((PerfInstanceStatus?)s)">@StatusLabel(s)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Search"
+                OnClick="SearchAsync" Disabled="_loading">ค้นหา</MudButton>
+            <MudButton Color="Color.Default" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Clear"
+                OnClick="ClearAsync" Disabled="_loading">ล้าง</MudButton>
+        </div>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        @if (!_hasSearched)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">ค้นหาเพื่อแสดงรายการ</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                    เลือกรอบ/สถานะ หรือพิมพ์คำค้น แล้วกด "ค้นหา" — ตารางรายการประเมินอาจมีจำนวนมาก จึงยังไม่โหลดจนกว่าจะค้นหา
+                </MudText>
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="d-flex justify-center py-8">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (_results.Count == 0)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">ไม่พบรายการ</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ลองปรับคำค้น หรือเปลี่ยนรอบ/สถานะแล้วค้นหาอีกครั้ง</MudText>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-center mb-2">
+                <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">พบ @_results.Count รายการ</MudText>
+            </div>
+            <MudTable Items="_results" Dense="true" Hover="true" Striped="true"
+                HorizontalScrollbar="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                <HeaderContent>
+                    <MudTh>พนักงาน</MudTh>
+                    <MudTh>รอบ</MudTh>
+                    <MudTh>ตำแหน่ง / หน่วยงาน</MudTh>
+                    <MudTh Style="text-align:right">คะแนน</MudTh>
+                    <MudTh>เกรด</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="พนักงาน">
+                        <div class="d-flex flex-column">
+                            <MudText Typo="Typo.body2"><b>@(string.IsNullOrWhiteSpace(context.SnapshotEmpName) ? $"#{context.HremployeeId}" : context.SnapshotEmpName)</b></MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@(context.SnapshotEmpNo ?? "-")</MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="รอบ">@PeriodName(context.EvaluationPeriodId)</MudTd>
+                    <MudTd DataLabel="ตำแหน่ง / หน่วยงาน">
+                        <div class="d-flex flex-column">
+                            <MudText Typo="Typo.body2">@(context.SnapshotPositionName ?? "-")</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@(context.SnapshotOrganizationName ?? "-")</MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="คะแนน" Style="text-align:right">
+                        @(context.FinalScorePercent is decimal sc ? sc.ToString("0.##") + "%" : "—")
+                    </MudTd>
+                    <MudTd DataLabel="เกรด">
+                        @if (!string.IsNullOrWhiteSpace(context.FinalGrade))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="GradeColor(context.FinalGrade)" Variant="Variant.Filled">@context.FinalGrade</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">—</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="สถานะ">
+                        <MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@StatusLabel(context.Status)</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="">
+                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined"
+                            StartIcon="@Icons.Material.Filled.Visibility"
+                            Href="@($"/perf/instances/{context.Id}")">ดู</MudButton>
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private string _searchTerm = string.Empty;
+    private long? _filterPeriodId;
+    private PerfInstanceStatus? _filterStatus;
+
+    private bool _hasSearched;
+    private bool _loading;
+
+    private List<Perf_EvaluationPeriod> _periods = new();
+    private Dictionary<long, string> _periodNames = new();
+    private List<Perf_EvaluationInstance> _results = new();
+
+    private static readonly PerfInstanceStatus[] _allStatuses = Enum.GetValues<PerfInstanceStatus>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId))
+            return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _periods = await context.Perf_EvaluationPeriods
+            .Where(p => p.CompanyId == _companyId)
+            .OrderByDescending(p => p.StartDate)
+            .ToListAsync();
+        _periodNames = _periods.ToDictionary(p => p.Id, p => p.Name);
+
+        // PDPA: this page lists employee performance data (personal). Record the
+        // access event — a list view never touches SaveChanges, so the automatic
+        // audit hook can't cover it (see CLAUDE.md / WfEmployeeAdmin precedent).
+        await AuditLogger.LogAccessAsync("Perf_EvaluationInstance", null, isSensitive: true,
+            note: "evaluation instance list view");
+    }
+
+    private void OnSearchTermChanged(string value) => _searchTerm = value ?? string.Empty;
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter")
+            await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId))
+            return;
+
+        _loading = true;
+        _hasSearched = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            // Perf_EvaluationInstance has no CompanyId of its own — it is scoped
+            // to the company through its EvaluationPeriod. Restrict to the periods
+            // that belong to the current user's company.
+            var companyPeriodIds = _periods.Select(p => p.Id).ToList();
+
+            var query = context.Perf_EvaluationInstances
+                .Where(i => companyPeriodIds.Contains(i.EvaluationPeriodId));
+
+            if (_filterPeriodId is long pid)
+                query = query.Where(i => i.EvaluationPeriodId == pid);
+
+            if (_filterStatus is PerfInstanceStatus st)
+                query = query.Where(i => i.Status == st);
+
+            query = EntitySearchHelper.ApplyTextSearch(query, _searchTerm,
+                nameof(Perf_EvaluationInstance.SnapshotEmpName),
+                nameof(Perf_EvaluationInstance.SnapshotEmpNo),
+                nameof(Perf_EvaluationInstance.SnapshotPositionName),
+                nameof(Perf_EvaluationInstance.SnapshotOrganizationName),
+                nameof(Perf_EvaluationInstance.InstanceCode));
+
+            _results = await query
+                .OrderBy(i => i.SnapshotEmpNo)
+                .ThenByDescending(i => i.Id)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _searchTerm = string.Empty;
+        _filterPeriodId = null;
+        _filterStatus = null;
+        _hasSearched = false;
+        _results = new();
+        await Task.CompletedTask;
+    }
+
+    private string PeriodName(long id) => _periodNames.TryGetValue(id, out var name) ? name : $"#{id}";
+
+    private static string StatusLabel(PerfInstanceStatus s) => s switch
+    {
+        PerfInstanceStatus.Draft => "ร่าง (ยังไม่ให้คะแนน)",
+        PerfInstanceStatus.InProgress => "กำลังให้คะแนน",
+        PerfInstanceStatus.PendingApproval => "รออนุมัติ",
+        PerfInstanceStatus.Approved => "อนุมัติแล้ว",
+        PerfInstanceStatus.Rejected => "ถูกปฏิเสธ",
+        PerfInstanceStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(PerfInstanceStatus s) => s switch
+    {
+        PerfInstanceStatus.Draft => Color.Default,
+        PerfInstanceStatus.InProgress => Color.Info,
+        PerfInstanceStatus.PendingApproval => Color.Warning,
+        PerfInstanceStatus.Approved => Color.Success,
+        PerfInstanceStatus.Rejected => Color.Error,
+        PerfInstanceStatus.Cancelled => Color.Dark,
+        _ => Color.Default,
+    };
+
+    private static Color GradeColor(string grade)
+    {
+        var g = grade.Trim().ToUpperInvariant();
+        var head = g.Length > 0 ? g[0] : ' ';
+        return head switch
+        {
+            'A' => Color.Success,
+            'B' => Color.Info,
+            'C' => Color.Warning,
+            'D' or 'E' or 'F' => Color.Error,
+            _ => Color.Default,
+        };
+    }
+}

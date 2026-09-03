@@ -24,7 +24,7 @@
                 <span></span>
             }
             <MudTextField T="string" Value="_searchTerm" Immediate="true" DebounceInterval="300"
-                ValueChanged="OnSearchChanged" Label="ค้นหา" Placeholder="พิมพ์คำค้นหา..."
+                ValueChanged="OnSearchChanged" Label="ค้นหา" Placeholder="@SearchPlaceholder" HelperText="@SearchHelperText"
                 Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mud-width-full" Style="max-width:400px;" />
         </MudStack>
 
@@ -90,6 +90,11 @@
     [Parameter] public bool IsPdpaSensitive { get; set; }
     [Parameter, EditorRequired] public bool CanEdit { get; set; }
     [Parameter] public string EntityTypeName { get; set; } = typeof(TEntity).Name;
+    // Guided search: pages pass a placeholder that lists the searchable fields of
+    // their table (e.g. "ค้นหา: รหัส / ชื่อ") so the box is never a bare, confusing
+    // input. Defaults keep every existing scaffold page unchanged.
+    [Parameter] public string SearchPlaceholder { get; set; } = "พิมพ์คำค้นหา...";
+    [Parameter] public string? SearchHelperText { get; set; }
 
     // LoadListAsync/SaveAsync are entity-specific (different DbSet, different
     // validation) — the scaffold only owns the surrounding shell (search,

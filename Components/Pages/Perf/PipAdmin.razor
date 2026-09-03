@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Perf
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -63,7 +64,15 @@
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h6" Class="mb-2">รายการ PIP ทั้งหมด</MudText>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudText Typo="Typo.h6">รายการ PIP ทั้งหมด</MudText>
+        <MudTextField T="string" Value="_searchTerm" Immediate="true" DebounceInterval="300"
+            ValueChanged="OnSearchChanged" Label="ค้นหา"
+            Placeholder="ค้นหา: รหัสแผน / รหัส-ชื่อพนักงาน / เหตุผล"
+            HelperText="ค้นหาข้ามช่อง: รหัสแผน, รหัส/ชื่อพนักงาน, เหตุผล"
+            Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+            Clearable="true" Class="mud-width-full" Style="max-width:420px;" />
+    </MudStack>
     <MudTable Items="_plans" Dense="true" Hover="true">
         <HeaderContent>
             <MudTh>พนักงาน</MudTh>
@@ -79,7 +88,7 @@
             <MudTd>@context.Reason</MudTd>
             <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/perf/pip/{context.Id}")">ดูรายละเอียด</MudButton></MudTd>
         </RowTemplate>
-        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มี PIP ในระบบ</MudText></NoRecordsContent>
+        <NoRecordsContent><MudText Typo="Typo.body2">@(string.IsNullOrWhiteSpace(_searchTerm) ? "ยังไม่มี PIP ในระบบ" : "ไม่พบ PIP ที่ตรงกับคำค้น")</MudText></NoRecordsContent>
     </MudTable>
 </MudPaper>
 
@@ -91,6 +100,7 @@
     public long? SourceInstanceId { get; set; }
 
     private string? _companyId;
+    private string _searchTerm = "";
     private List<Perf_ImprovementPlan> _plans = new();
     private Dictionary<long, Hremployee> _employees = new();
 
@@ -135,14 +145,47 @@
         _error = null;
     }
 
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term ?? "";
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
         if (string.IsNullOrEmpty(_companyId)) return;
-        _plans = await PipService.GetAllPlansAsync(_companyId);
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var employeeIds = _plans.Select(p => p.HremployeeId).Distinct().ToList();
-        _employees = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToDictionaryAsync(e => e.id);
+
+        var companyEmpIds = await context.Hremployee
+            .Where(e => e.companyid == _companyId).Select(e => e.id).ToListAsync();
+
+        var query = context.Perf_ImprovementPlans.Where(p => companyEmpIds.Contains(p.HremployeeId));
+
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            var term = _searchTerm.Trim();
+
+            // AI single-box search: the PIP's own text columns via EntitySearchHelper (real SQL LIKE)...
+            var textMatchedIds = await EntitySearchHelper.ApplyTextSearch(
+                    context.Perf_ImprovementPlans.Where(p => companyEmpIds.Contains(p.HremployeeId)),
+                    term, nameof(Perf_ImprovementPlan.PlanCode), nameof(Perf_ImprovementPlan.Reason), nameof(Perf_ImprovementPlan.OutcomeNote))
+                .Select(p => p.Id).ToListAsync();
+
+            // ...OR'd with the employee no/name, which lives on Hremployee (not on the plan entity).
+            var empMatchedIds = await context.Hremployee
+                .Where(e => e.companyid == _companyId && (e.EmpNo.Contains(term)
+                    || (e.EmpName != null && e.EmpName.Contains(term))
+                    || (e.EmpSurname != null && e.EmpSurname.Contains(term))))
+                .Select(e => e.id).ToListAsync();
+
+            query = query.Where(p => textMatchedIds.Contains(p.Id) || empMatchedIds.Contains(p.HremployeeId));
+        }
+
+        _plans = await query.OrderByDescending(p => p.CreatedDate).ToListAsync();
+
+        var neededIds = _plans.Select(p => p.HremployeeId).Distinct().ToList();
+        _employees = await context.Hremployee.Where(e => neededIds.Contains(e.id)).ToDictionaryAsync(e => e.id);
     }
 
     private string GetEmployeeLabel(long hremployeeId)
