@@ -1,0 +1,150 @@
+@using HRM.Models
+@using HRM.Services.Workflow
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+
+@* Reusable, self-contained workflow-history table. Give it a JobMasterId and it
+   loads its own job (via the engine), resolves every approver's Thai display
+   name, pulls per-level attachments from doc_center, and renders the full
+   ordered decision history — including reject / send-back rounds — top to
+   bottom. Ports the history table, ApproverName/LoadApproverNamesAsync and
+   LoadAttachmentsAsync patterns from Wf/WfMyInboxDetail.razor. *@
+
+@if (_job is null)
+{
+    <MudAlert Severity="Severity.Info" Dense="true">ไม่พบข้อมูลการพิจารณา</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.subtitle2" Class="mb-1">ประวัติการพิจารณา</MudText>
+    <MudTable Items="_rows" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>รอบ</MudTh>
+            <MudTh>ผู้อนุมัติ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>วันที่</MudTh>
+            <MudTh>ความเห็น</MudTh>
+            <MudTh>เอกสารแนบ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ระดับ">@context.wlevel</MudTd>
+            <MudTd DataLabel="รอบ">@(context.jobseq ?? 0)</MudTd>
+            <MudTd DataLabel="ผู้อนุมัติ">@ApproverName(context.userid)</MudTd>
+            <MudTd DataLabel="สถานะ">
+                <MudChip T="string" Size="Size.Small" Color="StatusColor(context.jobstatus)">@context.jobstatus</MudChip>
+            </MudTd>
+            <MudTd DataLabel="วันที่">@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="ความเห็น">@context.comment</MudTd>
+            <MudTd DataLabel="เอกสารแนบ">
+                @if (_attachments.TryGetValue(context.jobapproverid, out var files) && files.Count > 0)
+                {
+                    <MudStack Spacing="0">
+                        @foreach (var f in files)
+                        {
+                            <MudLink Href="@($"/wf/files/attachment/{f.id}")" Target="_blank">@f.files</MudLink>
+                        }
+                    </MudStack>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public long JobMasterId { get; set; }
+
+    private job_master? _job;
+    private List<job_user_list> _rows = new();
+    private Dictionary<long, string> _approverNames = new();
+    private Dictionary<long, List<doc_center>> _attachments = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _job = await Engine.GetJobDetailAsync(JobMasterId);
+        if (_job is null)
+        {
+            _rows = new();
+            _approverNames = new();
+            _attachments = new();
+            return;
+        }
+
+        // Full chronological history: round (jobseq) first so send-back / reject
+        // bounces read top-to-bottom, then level, then the row id as a stable
+        // tiebreaker.
+        _rows = _job.job_user_lists
+            .OrderBy(a => a.jobseq ?? 0)
+            .ThenBy(a => a.wlevel ?? 0)
+            .ThenBy(a => a.jobapproverid)
+            .ToList();
+
+        await LoadApproverNamesAsync();
+        await LoadAttachmentsAsync();
+    }
+
+    // Resolve every approver userid to a Thai display name once
+    // (sc_user.userid -> empid -> Hremployee EmpName+EmpSurname), falling back to
+    // loginname then "#id" so a name is never blank.
+    private async Task LoadApproverNamesAsync()
+    {
+        _approverNames = new();
+        if (_job is null) return;
+
+        var userIds = _job.job_user_lists
+            .Where(a => a.userid.HasValue)
+            .Select(a => a.userid!.Value)
+            .Distinct()
+            .ToList();
+        if (userIds.Count == 0) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var users = await context.sc_users
+            .Where(u => userIds.Contains(u.userid))
+            .Select(u => new { u.userid, u.empid, u.loginname })
+            .ToListAsync();
+
+        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var emps = await context.Hremployee
+            .Where(e => empIds.Contains(e.EmpNo))
+            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .ToListAsync();
+        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+
+        foreach (var u in users)
+        {
+            var name = u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n
+                : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}");
+            _approverNames[u.userid] = name;
+        }
+    }
+
+    private string ApproverName(long? userid)
+        => userid is long id && _approverNames.TryGetValue(id, out var n) ? n : $"#{userid?.ToString() ?? "?"}";
+
+    // Attachments per approval row — doc_center rows keyed by
+    // refid = job_user_list.jobapproverid, doctypecode = "WF_ATTACHMENT".
+    private async Task LoadAttachmentsAsync()
+    {
+        _attachments = new();
+        if (_job is null) return;
+
+        var approverIds = _job.job_user_lists.Select(a => a.jobapproverid).ToList();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var docs = await context.doc_centers
+            .Where(d => d.doctypecode == "WF_ATTACHMENT" && d.refid != null && approverIds.Contains(d.refid.Value) && d.isActive != false)
+            .ToListAsync();
+        _attachments = docs.GroupBy(d => d.refid!.Value).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private static Color StatusColor(string? status) => status switch
+    {
+        "APPROVED" => Color.Success,
+        "REJECTED" => Color.Error,
+        "RETURNED" => Color.Warning,
+        _ => Color.Default,
+    };
+}

@@ -42,34 +42,9 @@
         <MudText Typo="Typo.body2">@L.Translate("WfRequesterLabel"): @RequesterName() @(_job.createdate is not null ? $"({_job.createdate:dd/MM/yyyy HH:mm})" : "")</MudText>
         <MudText Typo="Typo.body2">@string.Format(L.Translate("WfJobStatusLevelLine"), _job.status, _job.lastLevel, _job.maxlevel)</MudText>
 
-        @* Progress bar: shows the whole approval path (who at each level) and
-           which step the job is currently sitting on, so an approver/requester
-           can see at a glance where it is and where it goes next. *@
-        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">เส้นทางอนุมัติ</MudText>
-        <div style="overflow-x:auto;" class="mb-2">
-            <div style="display:flex;align-items:stretch;gap:0;min-width:max-content;">
-                @{ var steps = BuildSteps(); }
-                @for (var i = 0; i < steps.Count; i++)
-                {
-                    var s = steps[i];
-                    <div style="@StepBoxStyle(s.State)">
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <MudIcon Icon="@StepIcon(s.State)" Size="Size.Small" />
-                            <b>ระดับ @s.Level</b>
-                        </div>
-                        <div style="font-size:0.85rem;font-weight:600;">@s.Names</div>
-                        <div style="font-size:0.72rem;opacity:0.85;">
-                            @StepLabel(s.State)@(s.Date is not null ? $" · {s.Date:dd/MM/yyyy HH:mm}" : "")
-                        </div>
-                    </div>
-                    @if (i < steps.Count - 1)
-                    {
-                        <div style="display:flex;align-items:center;padding:0 4px;">
-                            <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                        </div>
-                    }
-                }
-            </div>
+        @* Reusable front-steps progress stepper (self-loads by job id). *@
+        <div class="mt-3 mb-2">
+            <WorkflowStepper JobMasterId="JobMasterId" />
         </div>
 
         var docLink = BuildDocumentLink(_job);
@@ -142,7 +117,6 @@
     private job_master? _job;
     private job_user_list? _myPendingRow;
     private Dictionary<long, string> _approverNames = new();
-    private List<(int Level, string Label)> _stageDefs = new();
     private bool _currentIsTop;          // current level is the terminal (istop) level -> Decline allowed
     private int? _currentBackwardLevel;  // current level has a configured backwardlevel -> Send Back allowed
     private string _approveLabel = "อนุมัติ"; // forward-button caption, configurable per level (displayName)
@@ -245,25 +219,21 @@
     // whole path from the start (epms's approach: drive the stepper from the
     // wf_sub_workflow_master definition + job_master.lastLevel, not from the
     // per-approver rows that only materialise as the job advances).
+    // Reads the CURRENT level's config (istop / backwardlevel / displayName) from
+    // wf_sub_workflow_master — this drives which action buttons appear on the
+    // WorkflowActionPanel and the forward button's caption. The full-path stepper
+    // now lives in the reusable <WorkflowStepper>, which loads its own stage defs.
     private async Task LoadStageDefsAsync()
     {
-        _stageDefs = new();
         _currentIsTop = false;
         _currentBackwardLevel = null;
         _approveLabel = "อนุมัติ";
         if (_job is null) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var defs = await context.wf_sub_workflow_masters
-            .Where(s => s.workflowid == _job.workflowid)
-            .OrderBy(s => s.wlevel)
-            .Select(s => new { s.wlevel, s.subject, s.istop, s.backwardlevel, s.displayName })
-            .ToListAsync();
-        _stageDefs = defs.Select(d => (d.wlevel, d.subject ?? "")).ToList();
-
-        // The current level's config drives which action buttons appear and the
-        // forward button's caption — all read from wf_sub_workflow_master (the
-        // fixed workflow definition), never hardcoded per module.
-        var cur = defs.FirstOrDefault(d => d.wlevel == (_job.lastLevel ?? 0));
+        var cur = await context.wf_sub_workflow_masters
+            .Where(s => s.workflowid == _job.workflowid && s.wlevel == (_job.lastLevel ?? 0))
+            .Select(s => new { s.istop, s.backwardlevel, s.displayName })
+            .FirstOrDefaultAsync();
         if (cur is not null)
         {
             _currentIsTop = cur.istop;
@@ -271,91 +241,6 @@
             if (!string.IsNullOrWhiteSpace(cur.displayName)) _approveLabel = cur.displayName!;
         }
     }
-
-    private record StepInfo(int Level, string Names, string State, DateTime? Date);
-
-    // Definition-driven stepper (epms pattern). The path comes from the workflow
-    // definition (_stageDefs) so every stage shows up front; each stage's status
-    // overlays the real per-approver rows when they exist (so approved vs
-    // rejected is distinguishable, which epms's purely-positional coloring can't
-    // do), and falls back to positional (vs job_master.lastLevel) for stages not
-    // yet reached — showing the stage's own label as the who-will-approve hint.
-    private List<StepInfo> BuildSteps()
-    {
-        var steps = new List<StepInfo>();
-        if (_job is null) return steps;
-
-        var current = _job.lastLevel ?? 0;
-        // Scope to the CURRENT round (jobseq) — after a "ส่งกลับแก้ไข" bounce, a
-        // later level can carry a stale RETURNED/APPROVED row from a superseded
-        // round; the stepper must reflect where the job sits NOW, matching the
-        // engine's own round-scoping (job.jobseq). Non-bounced jobs keep jobseq
-        // null (0) throughout, so this is a no-op for them.
-        var currentSeq = _job.jobseq ?? 0;
-        var byLevel = _job.job_user_lists
-            .Where(a => (a.jobseq ?? 0) == currentSeq)
-            .GroupBy(a => a.wlevel ?? 0)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        // Full path from the definition; if it couldn't be loaded, fall back to
-        // whatever runtime levels exist so the bar still renders.
-        var levels = _stageDefs.Count > 0
-            ? _stageDefs.Select(d => d.Level).ToList()
-            : byLevel.Keys.OrderBy(k => k).ToList();
-
-        foreach (var lvl in levels)
-        {
-            if (byLevel.TryGetValue(lvl, out var rows) && rows.Count > 0)
-            {
-                // Reached stage: concrete approver(s) + their real decision.
-                var names = string.Join(" / ", rows.Select(r => ApproverName(r.userid)).Distinct());
-                string state;
-                DateTime? date = null;
-                if (rows.Any(r => r.jobstatus == "REJECTED")) state = "rejected";
-                else if (rows.All(r => r.jobstatus == "APPROVED")) { state = "approved"; date = rows.Max(r => r.approvedate); }
-                else state = "pending";
-                steps.Add(new StepInfo(lvl, names, state, date));
-            }
-            else
-            {
-                // Not-yet-reached stage: show the stage's definition label as the
-                // who-will-approve hint, colored positionally against lastLevel.
-                var label = _stageDefs.FirstOrDefault(d => d.Level == lvl).Label;
-                var state = lvl < current ? "approved" : (lvl == current ? "pending" : "waiting");
-                var name = string.IsNullOrWhiteSpace(label) ? "(ระดับถัดไป)" : label;
-                steps.Add(new StepInfo(lvl, name, state, null));
-            }
-        }
-        return steps;
-    }
-
-    private static string StepBoxStyle(string state)
-    {
-        var (bg, border) = state switch
-        {
-            "approved" => ("var(--mud-palette-success-hover)", "var(--mud-palette-success)"),
-            "rejected" => ("var(--mud-palette-error-hover)", "var(--mud-palette-error)"),
-            "pending" => ("var(--mud-palette-info-hover)", "var(--mud-palette-info)"),
-            _ => ("var(--mud-palette-background-grey)", "var(--mud-palette-lines-default)"),
-        };
-        return $"border:2px solid {border};background:{bg};border-radius:8px;padding:6px 12px;min-width:150px;display:flex;flex-direction:column;gap:2px;";
-    }
-
-    private static string StepIcon(string state) => state switch
-    {
-        "approved" => Icons.Material.Filled.CheckCircle,
-        "rejected" => Icons.Material.Filled.Cancel,
-        "pending" => Icons.Material.Filled.HourglassTop,
-        _ => Icons.Material.Filled.RadioButtonUnchecked,
-    };
-
-    private static string StepLabel(string state) => state switch
-    {
-        "approved" => "อนุมัติแล้ว",
-        "rejected" => "ปฏิเสธ",
-        "pending" => "กำลังพิจารณา",
-        _ => "รอถึงคิว",
-    };
 
     // The reusable <WorkflowActionPanel> now owns the buttons, confirm-before-
     // acting step, and engine calls; this page only reacts once an action

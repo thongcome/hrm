@@ -415,6 +415,7 @@ builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.A
 // ----- end Pay_* module -----
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
+builder.Services.AddScoped<HRM.Services.Workflow.WorkflowButtonService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
@@ -770,6 +771,11 @@ if (app.Environment.IsDevelopment())
     // to advadmin, so the workflow engine is actually demonstrable in the
     // presentation (owner request 2026-09-03, revised same day).
     await HRM.Services.Dev.WorkflowAutoApproveSeeder.SeedAsync(app.Services);
+    // Dev scaffolding for config-driven buttons: seed wf_button_master's core
+    // definitions (Approve/Send Back/Decline) if empty. Changes no runtime
+    // behaviour on its own — WorkflowButtonService returns empty (safe fallback)
+    // until an admin maps buttons per level in wf_button.
+    await HRM.Services.Dev.WorkflowButtonSeeder.SeedAsync(app.Services);
 }
 if (app.Environment.IsDevelopment())
 {
