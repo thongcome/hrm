@@ -531,7 +531,10 @@ else
             var state = await AuthProvider.GetAuthenticationStateAsync();
             var actorEmpNo = state.User.FindFirstValue("empno");
             var jobId = await LeaveRequestSvc.SubmitAsync(requestId, _actorUserId, actorEmpNo);
-            _info = $"ส่งขออนุมัติสำเร็จ (Job #{jobId})";
+            var approvers = await Engine.GetPendingApproverNamesAsync(jobId);
+            _info = string.IsNullOrEmpty(approvers)
+                ? $"ส่งขออนุมัติสำเร็จ (Job #{jobId})"
+                : $"ส่งขออนุมัติสำเร็จ — ส่งไปยัง: {approvers} เพื่ออนุมัติ (Job #{jobId})";
             await RefreshAsync();
         }
         catch (InvalidOperationException ex)

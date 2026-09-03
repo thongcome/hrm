@@ -1,0 +1,159 @@
+@using HRM.Services.Workflow
+@using MudBlazor
+@inject WorkflowEngineService Engine
+@inject ISnackbar Snackbar
+
+@*
+    Reusable, config-driven workflow action panel — the single place the
+    approve / send-back / decline buttons + their confirm-before-acting step are
+    written, so ANY page that shows a job for approval drops in one line:
+
+        <WorkflowActionPanel JobApproverId="@row.jobapproverid" ActorUserId="@uid"
+            IsTop="@isTop" BackwardLevel="@backwardLevel" ApproveLabel="@label"
+            OnActed="Reload" />
+
+    Which buttons appear is decided by the level config passed in (component-base,
+    epms-style): Decline only when this is the terminal (istop) level, Send Back
+    only when the level has a configured backwardlevel, Approve always. Every
+    action requires an explicit confirm (mis-click guard); Send Back / Decline
+    also require a reason.
+*@
+
+<MudPaper Outlined="true" Class="pa-3 mt-3">
+    <MudText Typo="Typo.h6">การพิจารณาของฉัน</MudText>
+    <MudStack Row="true" Spacing="1" Class="mt-2" Wrap="Wrap.Wrap">
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
+            StartIcon="@Icons.Material.Filled.Check"
+            OnClick="@(() => OpenConfirm(WfAction.Approve))">@ApproveLabel</MudButton>
+        @if (BackwardLevel is not null)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" Disabled="_busy"
+                StartIcon="@Icons.Material.Filled.Undo"
+                OnClick="@(() => OpenConfirm(WfAction.SendBack))">ส่งกลับแก้ไข</MudButton>
+        }
+        @if (IsTop)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy"
+                StartIcon="@Icons.Material.Filled.Block"
+                OnClick="@(() => OpenConfirm(WfAction.Decline))">ไม่อนุมัติ</MudButton>
+        }
+    </MudStack>
+    @if (!IsTop && BackwardLevel is null)
+    {
+        <MudText Typo="Typo.caption" Class="mt-2" Style="display:block;opacity:.7;">
+            * ระดับนี้ไม่ได้เปิด "ส่งกลับแก้ไข" และไม่ใช่ระดับสุดท้าย — หากไม่เห็นด้วยต้องให้ผู้ดูแลตั้งค่า backwardlevel ก่อน
+        </MudText>
+    }
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+    }
+</MudPaper>
+
+<MudDialog @bind-Visible="_showConfirm" Options="_confirmOptions">
+    <TitleContent><MudText Typo="Typo.h6">@ConfirmTitle</MudText></TitleContent>
+    <DialogContent>
+        @if (_pendingAction == WfAction.Approve)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-2">ยืนยัน "<b>@ApproveLabel</b>" คำขอนี้ และส่งต่อไปยังระดับถัดไป?</MudAlert>
+            <MudTextField @bind-Value="_actionComment" Label="ความเห็น (ถ้ามี)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
+        }
+        else if (_pendingAction == WfAction.SendBack)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-2">ส่งคำขอ<b>กลับไปยังระดับ @BackwardLevel</b> เพื่อแก้ไข — งาน<b>ยังไม่จบ</b> โปรดระบุสิ่งที่ต้องแก้</MudAlert>
+            <MudTextField @bind-Value="_actionComment" Label="เหตุผล / สิ่งที่ต้องแก้ (จำเป็น)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">ไม่อนุมัติคำขอนี้ = <b>จบ workflow (ปฏิเสธถาวร)</b> โปรดระบุเหตุผล</MudAlert>
+            <MudTextField @bind-Value="_actionComment" Label="เหตุผลที่ไม่อนุมัติ (จำเป็น)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CancelConfirm">ยกเลิก</MudButton>
+        <MudButton Variant="Variant.Filled" Disabled="ConfirmDisabled" OnClick="ExecuteConfirmedAsync"
+            Color="@(_pendingAction == WfAction.Decline ? Color.Error : _pendingAction == WfAction.SendBack ? Color.Warning : Color.Success)">
+            ยืนยัน
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // The pending approver row this panel acts on, and who is acting.
+    [Parameter, EditorRequired] public long JobApproverId { get; set; }
+    [Parameter, EditorRequired] public long ActorUserId { get; set; }
+    // Level config that decides which buttons show + the forward-button caption.
+    [Parameter] public bool IsTop { get; set; }
+    [Parameter] public int? BackwardLevel { get; set; }
+    [Parameter] public string ApproveLabel { get; set; } = "อนุมัติ";
+    // Raised after any action succeeds so the host can reload / navigate.
+    [Parameter] public EventCallback OnActed { get; set; }
+
+    private enum WfAction { Approve, SendBack, Decline }
+    private bool _showConfirm;
+    private bool _busy;
+    private string? _error;
+    private WfAction _pendingAction;
+    private string _actionComment = "";
+    private static readonly DialogOptions _confirmOptions =
+        new() { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    private string ConfirmTitle => _pendingAction switch
+    {
+        WfAction.Approve => $"ยืนยัน{ApproveLabel}",
+        WfAction.SendBack => "ยืนยันส่งกลับแก้ไข",
+        WfAction.Decline => "ยืนยันไม่อนุมัติ",
+        _ => "ยืนยัน",
+    };
+
+    // Send Back / Decline require a reason; Approve's comment is optional.
+    private bool ConfirmDisabled =>
+        _busy || (_pendingAction != WfAction.Approve && string.IsNullOrWhiteSpace(_actionComment));
+
+    private void OpenConfirm(WfAction action)
+    {
+        _pendingAction = action;
+        _actionComment = "";
+        _error = null;
+        _showConfirm = true;
+    }
+
+    private void CancelConfirm() => _showConfirm = false;
+
+    private async Task ExecuteConfirmedAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            switch (_pendingAction)
+            {
+                case WfAction.Approve:
+                    await Engine.ApproveAsync(JobApproverId, ActorUserId, _actionComment);
+                    Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
+                    break;
+                case WfAction.SendBack:
+                    await Engine.SendBackAsync(JobApproverId, ActorUserId, _actionComment);
+                    Snackbar.Add("ส่งกลับแก้ไขเรียบร้อย", Severity.Success);
+                    break;
+                case WfAction.Decline:
+                    await Engine.DeclineAsync(JobApproverId, ActorUserId, _actionComment);
+                    Snackbar.Add("บันทึกการไม่อนุมัติเรียบร้อย", Severity.Success);
+                    break;
+            }
+            _showConfirm = false;
+            await OnActed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            // Engine guards (stale-level, istop-only Decline, backwardlevel-not-set
+            // Send Back, ...) surface here.
+            _error = ex.Message;
+            _showConfirm = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

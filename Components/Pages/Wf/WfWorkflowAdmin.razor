@@ -31,8 +31,48 @@
     </HeaderColumns>
 </CrudScaffold>
 
+@* Deactivating a workflow is destructive at company scale — a single stray click
+   used to disable it and break every new request for that flow. This dialog makes
+   it deliberate: the admin must type the exact workflow code before the confirm
+   button unlocks (the "type the repo name to delete" pattern). *@
+<MudDialog @bind-Visible="_showDeactivateConfirm" Options="_deactivateDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6" Color="Color.Error">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" Style="vertical-align:middle;" />
+            ปิดใช้งาน Workflow — โปรดอ่านก่อน
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_deactivateTarget is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">
+                การปิด <b>@_deactivateTarget.workflowcode</b> (@_deactivateTarget.wname) จะทำให้
+                <b>ทุกคำขอใหม่ที่ใช้ workflow นี้ทั้งบริษัทส่งไม่ได้ทันที</b>
+                และงานที่กำลังรออนุมัติจะสะดุด — ทำเฉพาะเมื่อคุณตั้งใจเลิกใช้จริงเท่านั้น
+            </MudAlert>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                ถ้ายืนยัน ให้พิมพ์รหัส <b>@_deactivateTarget.workflowcode</b> ลงในช่องด้านล่าง:
+            </MudText>
+            <MudTextField @bind-Value="_deactivateTyped" Immediate="true"
+                Placeholder="@_deactivateTarget.workflowcode" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CancelDeactivate">ยกเลิก (แนะนำ)</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled"
+            Disabled="@(_deactivateTarget is null || _deactivateTyped != _deactivateTarget.workflowcode)"
+            OnClick="ConfirmDeactivateAsync">ปิดใช้งานถาวร</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private bool _canEdit;
+
+    private bool _showDeactivateConfirm;
+    private wf_workflow? _deactivateTarget;
+    private string _deactivateTyped = "";
+    private static readonly DialogOptions _deactivateDialogOptions =
+        new() { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,20 +146,45 @@
         return await query.OrderBy(e => e.workflowcode).ToListAsync();
     }
 
-    private async Task DeactivateAsync(wf_workflow e)
+    // Opens the type-to-confirm dialog instead of deactivating on the spot —
+    // the actual write happens in ConfirmDeactivateAsync only after the admin
+    // has typed the exact workflow code.
+    private void DeactivateAsync(wf_workflow e)
     {
+        _deactivateTarget = e;
+        _deactivateTyped = "";
+        _showDeactivateConfirm = true;
+    }
+
+    private void CancelDeactivate()
+    {
+        _showDeactivateConfirm = false;
+        _deactivateTarget = null;
+        _deactivateTyped = "";
+    }
+
+    private async Task ConfirmDeactivateAsync()
+    {
+        var e = _deactivateTarget;
+        // Defence in depth: never write unless the typed code still matches
+        // exactly, even though the button is disabled until it does.
+        if (e is null || _deactivateTyped != e.workflowcode)
+            return;
+
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.wf_workflows.FirstOrDefaultAsync(x => x.workflowid == e.workflowid);
         if (existing is null)
         {
             Snackbar.Add("ไม่พบ workflow นี้ในระบบแล้ว", Severity.Error);
+            CancelDeactivate();
             return;
         }
 
         existing.isactive = false;
         await context.SaveChangesAsync();
         e.isactive = false; // reflect immediately in the currently-open view panel
-        Snackbar.Add("ยกเลิกการใช้งาน workflow นี้แล้ว — สร้าง workflow ใหม่ถ้าต้องการปรับรูปแบบ", Severity.Info);
+        Snackbar.Add($"ยกเลิกการใช้งาน '{e.workflowcode}' แล้ว — คำขอใหม่ที่ใช้ workflow นี้จะส่งไม่ได้จนกว่าจะเปิดใหม่", Severity.Warning);
+        CancelDeactivate();
     }
 
     private async Task<wf_workflow> SaveAsync(wf_workflow entity)

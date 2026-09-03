@@ -765,8 +765,10 @@ await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
 if (app.Environment.IsDevelopment())
 {
-    // Dev-only: auto-approve the demo/testing workflows so end-to-end flows
-    // complete without a human approver (owner request 2026-09-03).
+    // Dev-only demo config: make the business workflows RUN real approval
+    // routing (auto-approve OFF) and repoint the leftover test_payroll approver
+    // to advadmin, so the workflow engine is actually demonstrable in the
+    // presentation (owner request 2026-09-03, revised same day).
     await HRM.Services.Dev.WorkflowAutoApproveSeeder.SeedAsync(app.Services);
 }
 if (app.Environment.IsDevelopment())

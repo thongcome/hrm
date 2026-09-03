@@ -41,6 +41,10 @@ public class WorkflowEngineService
     public const string StatusRejected = "REJECTED";
     public const string StatusCompleted = "COMPLETED";
     public const string StatusCancelled = "CANCELLED";
+    // "ส่งกลับแก้ไข" — a non-terminal return to an earlier level for rework.
+    // Distinct from StatusRejected (a terminal Decline) so the history shows
+    // which of the two negative actions happened (owner's two-action model).
+    public const string StatusReturned = "RETURNED";
 
     // Block 6 (Mix Approval): job_user_list.reason rows for a vertical
     // pre-check hop always start with this marker, so hop-completion count
@@ -352,6 +356,110 @@ public class WorkflowEngineService
             new { status = StatusPending }, new { status = StatusCancelled, reason }, isSensitive: false, ct);
         Serilog.Log.Information("Job {JobMasterId} cancelled by user {ActorUserId} (admin override: {IsAdminOverride})",
             jobMasterId, actorUserId, isAdminOverride);
+    }
+
+    // "ไม่อนุมัติ (Decline)" — the terminal NO, allowed ONLY at the istop
+    // (final) level per the owner's two-action model: a mid-flow approver who
+    // disagrees must "ส่งกลับแก้ไข" (SendBackAsync) instead, never kill the job
+    // outright. Requires a reason. Closes the job; nothing advances.
+    public async Task DeclineAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var approverRow = await context.job_user_lists.FirstOrDefaultAsync(a => a.jobapproverid == jobApproverId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบรายการอนุมัติ id {jobApproverId}");
+        if (!string.Equals(approverRow.jobstatus, StatusPending, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("รายการนี้ถูกดำเนินการไปแล้ว");
+        if (approverRow.userid != actorUserId)
+            throw new InvalidOperationException("คุณไม่ใช่ผู้ได้รับมอบหมายให้ดำเนินการรายการนี้");
+        if (string.IsNullOrWhiteSpace(comment))
+            throw new InvalidOperationException("กรุณาระบุเหตุผลในการไม่อนุมัติ");
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == approverRow.jobmasterid, ct)
+            ?? throw new InvalidOperationException("ไม่พบ job_master ของรายการนี้");
+        if (job.isJobClosed == true)
+            throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถดำเนินการต่อได้");
+        if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
+            throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+
+        var snapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
+            ?? throw new InvalidOperationException("ไม่พบ config ระดับนี้ของงานนี้");
+        if (!snapshot.istop)
+            throw new InvalidOperationException("\"ไม่อนุมัติ (Decline)\" ทำได้เฉพาะระดับสุดท้ายเท่านั้น — ระดับกลางที่ไม่เห็นด้วยให้ใช้ \"ส่งกลับแก้ไข\" แทน");
+
+        approverRow.jobstatus = StatusRejected;
+        approverRow.approvedate = DateTime.Now;
+        approverRow.comment = comment;
+        approverRow.isLast = false;
+
+        job.status = StatusRejected; // terminal "ไม่อนุมัติ" — a clear declined state, not RETURNED (rework)
+        job.isJobClosed = true;
+        job.reasonClosed = comment;
+        job.approvedDate = DateTime.Now;
+        job.approvedUserID = actorUserId;
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { jobstatus = StatusPending }, new { jobstatus = StatusRejected, action = "Decline", comment }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} DECLINED (terminal) at istop level {Level} by user {ActorUserId}",
+            job.jobmasterid, approverRow.wlevel, actorUserId);
+
+        await NotifyRequesterAsync(context, job, WorkflowOutcome.Rejected, ct);
+    }
+
+    // "ส่งกลับแก้ไข (Send Back)" — the holder returns the document to the
+    // earlier level configured on this level's backwardlevel, for rework; the
+    // job stays OPEN. This is the ONLY way to reverse a decision once it has
+    // left an approver's hands (there is deliberately no self-recall — see the
+    // owner's "paper on the desk" model). Requires a reason. Routes through the
+    // existing bounce logic so isLast/jobseq/new-round rows are handled exactly
+    // like an engine-initiated bounce.
+    public async Task SendBackAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var approverRow = await context.job_user_lists.FirstOrDefaultAsync(a => a.jobapproverid == jobApproverId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบรายการอนุมัติ id {jobApproverId}");
+        if (!string.Equals(approverRow.jobstatus, StatusPending, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("รายการนี้ถูกดำเนินการไปแล้ว");
+        if (approverRow.userid != actorUserId)
+            throw new InvalidOperationException("คุณไม่ใช่ผู้ได้รับมอบหมายให้ดำเนินการรายการนี้");
+        if (string.IsNullOrWhiteSpace(comment))
+            throw new InvalidOperationException("กรุณาระบุเหตุผลในการส่งกลับแก้ไข");
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == approverRow.jobmasterid, ct)
+            ?? throw new InvalidOperationException("ไม่พบ job_master ของรายการนี้");
+        if (job.isJobClosed == true)
+            throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถดำเนินการต่อได้");
+        if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
+            throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+
+        var snapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
+            ?? throw new InvalidOperationException("ไม่พบ config ระดับนี้ของงานนี้");
+        if (snapshot.backwardlevel is null)
+            throw new InvalidOperationException("workflow นี้ไม่ได้เปิดให้ \"ส่งกลับแก้ไข\" ที่ระดับนี้ (ไม่ได้ตั้ง backwardlevel) — โปรดตั้งค่าที่ระดับการอนุมัติก่อน");
+
+        approverRow.jobstatus = StatusReturned;
+        approverRow.approvedate = DateTime.Now;
+        approverRow.comment = comment;
+
+        // Route back exactly like an engine bounce (increments round, resets the
+        // target level, issues a fresh approver round, flips isLast). Returns
+        // false only for an invalid backwardlevel config — nothing persisted yet
+        // in that case, so throwing leaves the context clean.
+        var bounced = await TryBounceBackAsync(context, job, snapshot, ct);
+        if (!bounced)
+            throw new InvalidOperationException("ส่งกลับไม่สำเร็จ — ตรวจสอบการตั้งค่า backwardlevel ของ workflow (ต้องเป็นระดับก่อนหน้าที่มีอยู่จริง)");
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { jobstatus = StatusPending }, new { jobstatus = StatusReturned, action = "SendBack", toLevel = snapshot.backwardlevel, comment }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} SENT BACK from level {Level} to level {ToLevel} by user {ActorUserId}",
+            job.jobmasterid, approverRow.wlevel, snapshot.backwardlevel, actorUserId);
+
+        await NotifyRequesterAsync(context, job, WorkflowOutcome.BouncedBack, ct);
     }
 
     // Admin-only: fills a vacant approver slot (userid == null, created by
@@ -841,6 +949,17 @@ public class WorkflowEngineService
         // text) since wf_sub_workflow_master only has one "pending" label.
         job.status = level.standstatus ?? StatusPending;
 
+        // isLast marks the currently-active approver round (epms parity): the
+        // moment a new round (a vertical hop, the level's real round, the next
+        // level, or a bounce-back round) is issued below, every previously
+        // active row stops being "last". The rows this call adds are the new
+        // active set (isLast = true on each). Lets any reader find "who is this
+        // sitting with right now" without re-deriving it from wlevel + jobseq.
+        var priorLastRows = await context.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.isLast == true)
+            .ToListAsync(ct);
+        foreach (var r in priorLastRows) r.isLast = false;
+
         var neededHops = level.isNeedsupervisorapprove ?? 0;
         string? precheckReasonPrefix = null;
         List<(long UserId, string? EmpId)> candidates;
@@ -897,6 +1016,7 @@ public class WorkflowEngineService
                     reason = precheckReasonPrefix,
                     andPercent = andWeight,
                     jobseq = job.jobseq,
+                    isLast = true,
                 });
             }
             return WorkflowOutcome.StillOpen;
@@ -920,6 +1040,7 @@ public class WorkflowEngineService
                     ? "ตำแหน่งผู้อนุมัติว่าง — ข้ามอัตโนมัติ (isAutoApproveAllow)"
                     : $"{precheckReasonPrefix} | ตำแหน่งว่าง — ข้ามอัตโนมัติ (isAutoApproveAllow)",
                 jobseq = job.jobseq,
+                isLast = true,
             });
             await context.SaveChangesAsync(ct);
             return await TryAdvanceLevelAsync(context, job, level.wlevel, null, ct);
@@ -943,6 +1064,7 @@ public class WorkflowEngineService
                 ? "ตำแหน่งผู้อนุมัติว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)"
                 : $"{precheckReasonPrefix} | ตำแหน่งว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)",
             jobseq = job.jobseq,
+            isLast = true,
         });
         return WorkflowOutcome.StillOpen;
     }
@@ -1139,5 +1261,40 @@ public class WorkflowEngineService
         {
             Serilog.Log.Error(ex, "Failed to send workflow closure notification for job {JobMasterId}", job.jobmasterid);
         }
+    }
+
+    // Display names of the approver(s) a freshly-submitted (or in-flight) job is
+    // currently waiting on — resolved from the lowest level that still has
+    // PENDING rows. Lets a requester see exactly who their request just went to.
+    // Returns "" when nothing is pending (e.g. the job already closed/auto-approved).
+    public async Task<string> GetPendingApproverNamesAsync(long jobMasterId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var pending = await context.job_user_lists
+            .Where(a => a.jobmasterid == jobMasterId && a.jobstatus == StatusPending)
+            .Select(a => new { a.wlevel, a.userid })
+            .ToListAsync(ct);
+        if (pending.Count == 0) return "";
+
+        var minLevel = pending.Min(p => p.wlevel ?? 0);
+        var userIds = pending.Where(p => (p.wlevel ?? 0) == minLevel && p.userid.HasValue)
+            .Select(p => p.userid!.Value).Distinct().ToList();
+
+        var users = await context.sc_users
+            .Where(u => userIds.Contains(u.userid))
+            .Select(u => new { u.userid, u.empid, u.loginname })
+            .ToListAsync(ct);
+        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var emps = await context.Hremployee
+            .Where(e => empIds.Contains(e.EmpNo))
+            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .ToListAsync(ct);
+        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+
+        var names = users.Select(u =>
+            u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n
+                : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
+        return string.Join(" / ", names.Distinct());
     }
 }
