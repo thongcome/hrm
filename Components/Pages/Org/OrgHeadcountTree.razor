@@ -26,7 +26,7 @@
         return;
     }
 
-    <MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
+    <MudStack Row="true" Spacing="2" Class="mb-3" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
         <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(false))">ย่อทั้งหมด</MudButton>
         <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SetAllExpanded(true))">ขยายทั้งหมด</MudButton>
         <MudDatePicker Label="ดูอัตราว่าง ณ วันที่" @bind-Date="_asOfDate" DateFormat="dd/MM/yyyy"
@@ -47,10 +47,12 @@
     }
     else
     {
-        @foreach (var root in _roots)
-        {
-            @RenderNode(root, 0)
-        }
+        <div style="overflow-x:auto;">
+            @foreach (var root in _roots)
+            {
+                @RenderNode(root, 0)
+            }
+        </div>
     }
 </MudPaper>
 
