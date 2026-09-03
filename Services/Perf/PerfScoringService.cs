@@ -65,7 +65,11 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
     public record ScoringFormData(
         Perf_RaterAssignment RaterAssignment, Perf_EvaluationInstance Instance,
         List<IndicatorForScoring> Indicators, int MaxScorePoint,
-        List<Perf_RatingScaleDescription> ScaleDescriptions);
+        List<Perf_RatingScaleDescription> ScaleDescriptions,
+        // GradeDirect support: the type's grading method plus the period's grade
+        // bands, so a GradeDirect form can offer a grade picker instead of the
+        // indicator grid. MethodType defaults to ScaleWeighted for legacy types.
+        PerfEvalMethod MethodType, List<Perf_GradeBand> GradeBands);
 
     public async Task<ScoringFormData> GetScoringFormAsync(long raterAssignmentId, CancellationToken ct = default)
     {
@@ -119,7 +123,72 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
             .ToListAsync(ct);
         var maxScorePoint = scaleDescriptions.Count > 0 ? scaleDescriptions.Max(d => d.ScorePoint) : 5;
 
-        return new ScoringFormData(rater, rater.EvaluationInstance, rows.OrderBy(r => r.TopicId).ThenBy(r => r.SubTopicId).ThenBy(r => r.IndicatorCode).ToList(), maxScorePoint, scaleDescriptions);
+        var evalType = await context.Perf_EvaluationTypes
+            .FirstOrDefaultAsync(t => t.Id == rater.EvaluationInstance.EvaluationTypeId, ct);
+        var gradeBands = await context.Perf_GradeBands
+            .Where(g => g.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId && g.IsActive)
+            .OrderBy(g => g.SortOrder).ToListAsync(ct);
+
+        return new ScoringFormData(rater, rater.EvaluationInstance,
+            rows.OrderBy(r => r.TopicId).ThenBy(r => r.SubTopicId).ThenBy(r => r.IndicatorCode).ToList(),
+            maxScorePoint, scaleDescriptions,
+            evalType?.MethodType ?? PerfEvalMethod.ScaleWeighted, gradeBands);
+    }
+
+    // GradeDirect submission: the rater chooses a grade directly. We store the
+    // grade plus its band's midpoint percent (so the instance-level aggregation
+    // treats this rater like any scored one) and enforce the same
+    // extreme-grade-justification rule as the scored path.
+    public async Task SubmitDirectGradeAsync(
+        long raterAssignmentId, string grade,
+        string? strengths, string? areasToImprove, PerfEthicsRating? ethicsRating,
+        string? qualityJustification = null, string? quantityJustification = null, string? efficiencyJustification = null,
+        CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var rater = await context.Perf_RaterAssignments.Include(r => r.EvaluationInstance)
+            .FirstOrDefaultAsync(r => r.Id == raterAssignmentId, ct)
+            ?? throw new InvalidOperationException("ไม่พบรายการที่ต้องประเมินนี้แล้ว");
+
+        if (rater.Status == PerfRaterStatus.Skipped)
+            throw new InvalidOperationException("รายการนี้ถูกข้ามไปแล้ว (ไม่มีผู้ประเมินจริง) ให้คะแนนไม่ได้");
+        if (rater.Status == PerfRaterStatus.Submitted)
+            throw new InvalidOperationException("ส่งคะแนนไปแล้ว แก้ไขซ้ำไม่ได้");
+        if (string.IsNullOrWhiteSpace(grade))
+            throw new InvalidOperationException("กรุณาเลือกเกรด");
+
+        var gradeBands = await context.Perf_GradeBands
+            .Where(g => g.EvaluationPeriodId == rater.EvaluationInstance.EvaluationPeriodId && g.IsActive)
+            .OrderBy(g => g.SortOrder).ToListAsync(ct);
+        var band = gradeBands.FirstOrDefault(g => g.Grade == grade)
+            ?? throw new InvalidOperationException("เกรดที่เลือกไม่อยู่ในเกณฑ์เกรดของรอบนี้แล้ว");
+
+        if (band.RequiresJustification &&
+            (string.IsNullOrWhiteSpace(qualityJustification) || string.IsNullOrWhiteSpace(quantityJustification) || string.IsNullOrWhiteSpace(efficiencyJustification)))
+        {
+            throw new InvalidOperationException(
+                $"เกรด {band.Grade} ต้องชี้แจงคุณภาพ/ปริมาณงาน/ประสิทธิภาพให้ครบทั้ง 3 ช่องก่อนส่ง");
+        }
+
+        rater.DirectGrade = band.Grade;
+        rater.DirectScorePercent = Math.Round((band.MinPercent + band.MaxPercent) / 2m, 2);
+        rater.Status = PerfRaterStatus.Submitted;
+        rater.SubmittedDate = DateTime.Now;
+        rater.Strengths = strengths;
+        rater.AreasToImprove = areasToImprove;
+        rater.EthicsRating = ethicsRating;
+        rater.QualityJustification = qualityJustification;
+        rater.QuantityJustification = quantityJustification;
+        rater.EfficiencyJustification = efficiencyJustification;
+
+        if (rater.EvaluationInstance.Status == PerfInstanceStatus.Draft)
+            rater.EvaluationInstance.Status = PerfInstanceStatus.InProgress;
+
+        var instanceId = rater.EvaluationInstanceId;
+        await context.SaveChangesAsync(ct);
+
+        await RecomputeInstanceScoreAsync(instanceId, ct);
     }
 
     public async Task SubmitScoreAsync(
@@ -257,6 +326,9 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         {
             var familyPercents = family.Select(r =>
             {
+                // GradeDirect raters carry their percent directly; scored raters
+                // derive it from their weighted indicator scores.
+                if (r.DirectScorePercent is decimal direct) return direct;
                 var scores = scoresByRater.Where(s => s.RaterAssignmentId == r.Id).ToDictionary(s => s.IndicatorId, s => s.ScorePoint);
                 return ComputeWeightedPercent(indicatorWeights, scores, maxScorePoint);
             }).ToList();

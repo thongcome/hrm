@@ -54,5 +54,16 @@ public class Perf_RaterAssignment
     [StringLength(1000)]
     public string? EfficiencyJustification { get; set; }
 
+    // GradeDirect method (Perf_EvaluationType.MethodType == GradeDirect): the
+    // rater picks a grade outright instead of scoring indicators one by one.
+    // DirectGrade is the chosen Perf_GradeBand.Grade; DirectScorePercent is
+    // that band's representative percent (midpoint), stored so aggregation in
+    // RecomputeInstanceScoreAsync can treat this rater exactly like a scored
+    // one. Both null for the ScaleWeighted/RankByResult paths.
+    [StringLength(10)]
+    public string? DirectGrade { get; set; }
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? DirectScorePercent { get; set; }
+
     public virtual Perf_EvaluationInstance EvaluationInstance { get; set; } = null!;
 }

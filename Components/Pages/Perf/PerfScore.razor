@@ -41,6 +41,28 @@
         return;
     }
 
+    @if (_form.MethodType == PerfEvalMethod.GradeDirect)
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true">
+            <MudText Typo="Typo.h6">เลือกเกรด</MudText>
+            <MudText Typo="Typo.caption">แบบประเมินนี้ให้เกรดโดยตรง (ไม่ต้องให้คะแนนรายตัวชี้วัด) — เลือกเกรดที่เหมาะสมกับผลงานโดยรวม</MudText>
+            @if (_form.GradeBands.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-2">รอบนี้ยังไม่ได้ตั้งเกณฑ์เกรด — ให้ HR ตั้งค่าเกรดของรอบก่อน</MudAlert>
+            }
+            else
+            {
+                <MudSelect T="string" @bind-Value="_directGrade" Label="เกรด" Class="mt-2" Variant="Variant.Outlined">
+                    @foreach (var g in _form.GradeBands)
+                    {
+                        <MudSelectItem T="string" Value="@g.Grade">@g.Grade (@g.MinPercent.ToString("0.#")–@g.MaxPercent.ToString("0.#")%)@(g.RequiresJustification ? " — ต้องชี้แจง" : "")</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudPaper>
+    }
+    else
+    {
     @if (_form.ScaleDescriptions.Count > 0)
     {
         <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
@@ -95,6 +117,7 @@
             }
         </MudPaper>
     }
+    }
 
     <MudPaper Class="pa-3 mt-3" Outlined="true">
         <MudText Typo="Typo.h6">ภาพรวม</MudText>
@@ -137,6 +160,7 @@
     private string? _qualityJustification;
     private string? _quantityJustification;
     private string? _efficiencyJustification;
+    private string? _directGrade;
     private string? _error;
     private bool _notAuthorized;
 
@@ -173,6 +197,7 @@
         _qualityJustification = _form.RaterAssignment.QualityJustification;
         _quantityJustification = _form.RaterAssignment.QuantityJustification;
         _efficiencyJustification = _form.RaterAssignment.EfficiencyJustification;
+        _directGrade = _form.RaterAssignment.DirectGrade;
     }
 
     private decimal GetScore(long indicatorId) => _scores.TryGetValue(indicatorId, out var v) ? v : 0;
@@ -185,8 +210,16 @@
         _error = null;
         try
         {
-            await ScoringService.SubmitScoreAsync(RaterAssignmentId, _scores, _comments, _strengths, _areasToImprove, _ethicsRating,
-                _qualityJustification, _quantityJustification, _efficiencyJustification);
+            if (_form?.MethodType == PerfEvalMethod.GradeDirect)
+            {
+                await ScoringService.SubmitDirectGradeAsync(RaterAssignmentId, _directGrade ?? "", _strengths, _areasToImprove, _ethicsRating,
+                    _qualityJustification, _quantityJustification, _efficiencyJustification);
+            }
+            else
+            {
+                await ScoringService.SubmitScoreAsync(RaterAssignmentId, _scores, _comments, _strengths, _areasToImprove, _ethicsRating,
+                    _qualityJustification, _quantityJustification, _efficiencyJustification);
+            }
             Snackbar.Add("ส่งคะแนนสำเร็จ", Severity.Success);
             Nav.NavigateTo("/perf/my-evaluations");
         }
