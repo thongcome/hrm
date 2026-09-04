@@ -4,6 +4,8 @@
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
+@inject HRM.Services.Perf.PerfKpiSetService KpiSetService
+@inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
 
 <PageTitle>Topic / SubTopic / ตัวชี้วัด — @(_evalType?.Name)</PageTitle>
@@ -49,6 +51,32 @@ else
             }
         }
     </MudPaper>
+
+    @if (_topics.Count == 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Outlined="true">
+            <MudText Typo="Typo.subtitle1"><MudIcon Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Class="mr-1" />คัดลอกชุดตัวชี้วัดจากแบบประเมินอื่น</MudText>
+            <MudText Typo="Typo.caption" Class="mb-2">ไม่ต้องสร้างใหม่ทั้งหมด — เลือกแบบประเมินที่มีโครงสร้าง Topic/SubTopic/ตัวชี้วัดครบแล้ว ระบบจะคัดลอกทั้งชุดมาให้ (ใช้ได้เฉพาะตอนที่ยังไม่มีตัวชี้วัด)</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" @bind-Value="_cloneSourceTypeId" Label="แบบประเมินต้นทาง" Variant="Variant.Outlined" Dense="true">
+                        @foreach (var t in _otherTypes)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)t.Id)">@t.Code — @t.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" Class="d-flex align-center">
+                    <MudButton Color="Color.Secondary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.ContentCopy"
+                        OnClick="CloneTreeAsync" Disabled="_cloneSourceTypeId is null || _busy">คัดลอกชุดตัวชี้วัด</MudButton>
+                </MudItem>
+            </MudGrid>
+            @if (_otherTypes.Count == 0)
+            {
+                <MudText Typo="Typo.caption" Class="mt-2">ยังไม่มีแบบประเมินอื่นที่มีตัวชี้วัดให้คัดลอก</MudText>
+            }
+        </MudPaper>
+    }
 
     @foreach (var topic in _topics)
     {
@@ -123,7 +151,21 @@ else
 
                             @if (_showIndicatorFormForSubTopicId != subTopic.Id)
                             {
-                                <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => OpenIndicatorForm(subTopic.Id))">เพิ่มตัวชี้วัด</MudButton>
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-2 flex-wrap">
+                                    <MudButton Color="Color.Primary" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => OpenIndicatorForm(subTopic.Id))">เพิ่มตัวชี้วัด</MudButton>
+                                    @if (_posExecTypes.Count > 0)
+                                    {
+                                        <MudSelect T="long?" Value="@GetKpiSeedSource(subTopic.Id)" ValueChanged="@(v => SetKpiSeedSource(subTopic.Id, v))"
+                                            Label="ดึง KPI จากกลุ่มตำแหน่ง" Dense="true" Style="max-width:260px;" Clearable="true">
+                                            @foreach (var pet in _posExecTypes)
+                                            {
+                                                <MudSelectItem T="long?" Value="@((long?)pet.Id)">@pet.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudButton Color="Color.Tertiary" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Download"
+                                            OnClick="@(() => SeedFromKpiAsync(subTopic.Id))" Disabled="GetKpiSeedSource(subTopic.Id) is null || _busy">ดึงเข้ามาเป็นตัวชี้วัด</MudButton>
+                                    }
+                                </MudStack>
                             }
                             else
                             {
@@ -180,6 +222,17 @@ else
     private List<Comp_Competency> _competencies = new();
     private Dictionary<long, string> _competencyNames = new();
 
+    // KPI-set helpers (AutoX gap #1): clone a whole tree from another type,
+    // or pull a position-group's Job_ProfileKpi into a SubTopic.
+    private List<Perf_EvaluationType> _otherTypes = new();
+    private List<Pos_ExecType> _posExecTypes = new();
+    private long? _cloneSourceTypeId;
+    private readonly Dictionary<long, long?> _kpiSeedSourceBySubTopic = new();
+    private bool _busy;
+
+    private long? GetKpiSeedSource(long subTopicId) => _kpiSeedSourceBySubTopic.TryGetValue(subTopicId, out var v) ? v : null;
+    private void SetKpiSeedSource(long subTopicId, long? v) => _kpiSeedSourceBySubTopic[subTopicId] = v;
+
     private void OpenTopicForm()
     {
         _newTopicCode = ""; _newTopicName = ""; _newTopicWeight = 0;
@@ -235,6 +288,50 @@ else
 
         _competencies = await context.Comp_Competencies.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         _competencyNames = _competencies.ToDictionary(c => c.Id, c => c.Name);
+
+        // Clone-source candidates: other types that actually HAVE a tree to copy.
+        var typesWithTopics = await context.Perf_Topics.Where(t => t.IsActive).Select(t => t.EvaluationTypeId).Distinct().ToListAsync();
+        _otherTypes = await context.Perf_EvaluationTypes
+            .Where(t => t.Id != EvaluationTypeId && t.IsActive && typesWithTopics.Contains(t.Id))
+            .OrderBy(t => t.Code).ToListAsync();
+
+        // Position-groups that have KPIs to pull in.
+        var groupsWithKpi = await context.Job_ProfileKpis.Where(k => k.IsActive).Select(k => k.PosExecTypeId).Distinct().ToListAsync();
+        _posExecTypes = await context.Pos_ExecTypes
+            .Where(p => groupsWithKpi.Contains(p.Id))
+            .OrderBy(p => p.Name).ToListAsync();
+    }
+
+    private async Task CloneTreeAsync()
+    {
+        _error = null;
+        if (_cloneSourceTypeId is not long src) return;
+        _busy = true;
+        try
+        {
+            var n = await KpiSetService.CloneTopicTreeAsync(src, EvaluationTypeId);
+            Snackbar.Add($"คัดลอกชุดตัวชี้วัดสำเร็จ ({n} ตัวชี้วัด)", Severity.Success);
+            _cloneSourceTypeId = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; Snackbar.Add(ex.Message, Severity.Warning); }
+        finally { _busy = false; }
+    }
+
+    private async Task SeedFromKpiAsync(long subTopicId)
+    {
+        _error = null;
+        if (GetKpiSeedSource(subTopicId) is not long petId) return;
+        _busy = true;
+        try
+        {
+            var n = await KpiSetService.SeedIndicatorsFromJobKpiAsync(subTopicId, petId);
+            Snackbar.Add(n == 0 ? "ไม่มีตัวชี้วัดใหม่ให้เพิ่ม (มีครบแล้ว)" : $"ดึง KPI เข้ามาเป็นตัวชี้วัด {n} รายการ", n == 0 ? Severity.Info : Severity.Success);
+            SetKpiSeedSource(subTopicId, null);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; Snackbar.Add(ex.Message, Severity.Warning); }
+        finally { _busy = false; }
     }
 
     private decimal SubTopicWeightTotal(long topicId) => _subTopics.Where(s => s.TopicId == topicId).Sum(s => s.Weight);

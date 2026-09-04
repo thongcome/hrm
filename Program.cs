@@ -452,6 +452,7 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfMeritService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfGoalService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
+builder.Services.AddScoped<HRM.Services.Perf.PerfKpiSetService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
