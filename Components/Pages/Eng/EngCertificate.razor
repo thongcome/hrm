@@ -1,0 +1,119 @@
+@page "/eng/certificate/{RecognitionId:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>เกียรติบัตร Kudos</PageTitle>
+
+@if (!_loaded)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+    return;
+}
+@if (_recognition is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบรายการชื่นชมนี้</MudAlert>
+    return;
+}
+
+<div class="cert-toolbar">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" OnClick="PrintAsync">พิมพ์ / บันทึกเป็น PDF</MudButton>
+    <MudButton Variant="Variant.Text" Href="/ess/recognition">กลับ</MudButton>
+</div>
+
+<div class="cert-sheet">
+    <div class="cert-frame">
+        <div class="cert-seal">★</div>
+        <div class="cert-kicker">CERTIFICATE OF RECOGNITION</div>
+        <div class="cert-title">ใบประกาศเกียรติคุณ</div>
+        <div class="cert-sub">มอบให้เพื่อแสดงว่า</div>
+        <div class="cert-name">@_toName</div>
+        @if (!string.IsNullOrWhiteSpace(_recognition.CoreValueTag))
+        {
+            <div class="cert-tag">@_recognition.CoreValueTag</div>
+        }
+        <div class="cert-body">&ldquo;@_recognition.Message&rdquo;</div>
+        @if (_recognition.Points > 0)
+        {
+            <div class="cert-points">+@_recognition.Points แต้มสะสม</div>
+        }
+        <div class="cert-footer">
+            <div class="cert-foot-col">
+                <div class="cert-foot-line">@_fromName</div>
+                <div class="cert-foot-label">ผู้มอบ (Recognized by)</div>
+            </div>
+            <div class="cert-foot-col">
+                <div class="cert-foot-line">@_recognition.CreatedDate.ToString("d MMMM yyyy")</div>
+                <div class="cert-foot-label">วันที่ (Date)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .cert-toolbar { display:flex; gap:.5rem; padding:1rem; }
+    .cert-sheet { display:flex; justify-content:center; padding:0 1rem 2rem; }
+    .cert-frame {
+        position:relative; width:100%; max-width:900px; aspect-ratio: 1.414 / 1;
+        background:#fffdf7; border:2px solid #b8892b;
+        box-shadow:0 0 0 10px #fffdf7, 0 0 0 12px #d9b45a, 0 12px 40px rgba(0,0,0,.18);
+        padding:6% 8%; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center;
+        font-family: Georgia, 'Times New Roman', serif; color:#33291a;
+    }
+    .cert-seal {
+        position:absolute; top:6%; right:8%; width:56px; height:56px; border-radius:50%;
+        background:radial-gradient(circle at 35% 30%, #f4d987, #c8912f); color:#fff;
+        display:flex; align-items:center; justify-content:center; font-size:26px;
+        box-shadow:0 3px 8px rgba(0,0,0,.25);
+    }
+    .cert-kicker { letter-spacing:.35em; font-size:.8rem; color:#b8892b; font-weight:bold; }
+    .cert-title { font-size:2rem; margin:.2rem 0 1.2rem; font-weight:bold; }
+    .cert-sub { font-size:1rem; color:#6b5b3e; }
+    .cert-name { font-size:2.6rem; margin:.3rem 0; border-bottom:2px solid #d9b45a; padding:0 1rem .3rem; line-height:1.2; }
+    .cert-tag { display:inline-block; margin-top:.5rem; padding:.15rem .9rem; border:1px solid #b8892b; border-radius:999px; color:#8a6a24; font-size:.85rem; letter-spacing:.05em; }
+    .cert-body { font-size:1.15rem; font-style:italic; margin:1.2rem 6% 0; color:#4a3f2b; line-height:1.5; }
+    .cert-points { margin-top:1rem; font-weight:bold; color:#b8892b; }
+    .cert-footer { display:flex; gap:14%; margin-top:auto; padding-top:2rem; width:100%; justify-content:center; }
+    .cert-foot-col { min-width:160px; }
+    .cert-foot-line { border-top:1.5px solid #8a6a24; padding-top:.35rem; font-size:1.05rem; }
+    .cert-foot-label { font-size:.75rem; color:#6b5b3e; letter-spacing:.05em; }
+
+    @@media print {
+        .cert-toolbar { display:none !important; }
+        .cert-sheet { padding:0; }
+        .cert-frame { box-shadow:none; border-color:#b8892b; }
+    }
+</style>
+
+@code {
+    [Parameter] public long RecognitionId { get; set; }
+
+    private bool _loaded;
+    private Eng_Recognition? _recognition;
+    private string _fromName = "";
+    private string _toName = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loaded = false;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _recognition = await context.Eng_Recognitions.FirstOrDefaultAsync(r => r.Id == RecognitionId && r.IsActive);
+        if (_recognition is not null)
+        {
+            var names = await context.Hremployee
+                .Where(e => e.id == _recognition.FromHremployeeId || e.id == _recognition.ToHremployeeId)
+                .Select(e => new { e.id, Name = $"{e.EmpName} {e.EmpSurname}".Trim() })
+                .ToDictionaryAsync(e => e.id, e => e.Name);
+            _fromName = names.GetValueOrDefault(_recognition.FromHremployeeId, $"#{_recognition.FromHremployeeId}");
+            _toName = names.GetValueOrDefault(_recognition.ToHremployeeId, $"#{_recognition.ToHremployeeId}");
+        }
+        _loaded = true;
+    }
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("window.print");
+}
