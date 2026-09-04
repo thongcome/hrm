@@ -386,7 +386,10 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
     }
 
     public record QuestionResult(long QuestionId, string Text, Eng_QuestionType QuestionType,
-        double? AverageRating, int? YesCount, int? NoCount, List<TextAnswerRow> TextAnswers, Dictionary<string, int> ChoiceDistribution);
+        double? AverageRating, int? YesCount, int? NoCount, List<TextAnswerRow> TextAnswers, Dictionary<string, int> ChoiceDistribution,
+        // Rating questions only: how many answers fell on each 1–5 point, and the
+        // total rated, so the UI can show favourable-% (4–5) and a distribution.
+        Dictionary<int, int> RatingDistribution, int RatingCount);
 
     public record TextAnswerRow(string Text);
 
@@ -431,12 +434,16 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
             int? yesCount = null, noCount = null;
             var textAnswers = new List<TextAnswerRow>();
             var choiceDist = new Dictionary<string, int>();
+            var ratingDist = new Dictionary<int, int>();
+            var ratingCount = 0;
 
             switch (q.QuestionType)
             {
                 case Eng_QuestionType.Rating:
                     var ratings = qAnswers.Where(a => a.RatingValue != null).Select(a => a.RatingValue!.Value).ToList();
                     if (ratings.Count > 0) avgRating = Math.Round(ratings.Average(), 2);
+                    ratingCount = ratings.Count;
+                    foreach (var rv in ratings) ratingDist[rv] = ratingDist.GetValueOrDefault(rv) + 1;
                     break;
                 case Eng_QuestionType.YesNo:
                     yesCount = qAnswers.Count(a => a.YesNoValue == true);
@@ -452,7 +459,7 @@ public class SurveyService(IDbContextFactory<HRMContext> dbFactory)
                     break;
             }
 
-            questionResults.Add(new QuestionResult(q.Id, q.Text, q.QuestionType, avgRating, yesCount, noCount, textAnswers, choiceDist));
+            questionResults.Add(new QuestionResult(q.Id, q.Text, q.QuestionType, avgRating, yesCount, noCount, textAnswers, choiceDist, ratingDist, ratingCount));
         }
 
         return new CampaignResults(campaign.ResponseCount, campaign.InvitedCount, npsScore, promoters, passives, detractors, questionResults);

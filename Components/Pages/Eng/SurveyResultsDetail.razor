@@ -19,37 +19,77 @@
     <MudText Typo="Typo.body2" Style="opacity:.7;">คำตอบไม่ระบุตัวตน — แสดงได้เฉพาะภาพรวม ไม่สามารถดูได้ว่าใครตอบหรือยังไม่ตอบเป็นรายบุคคล</MudText>
 
     <MudGrid Class="mt-3">
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Outlined="true">
-                <MudText Typo="Typo.caption">จำนวนคำตอบ</MudText>
-                <MudText Typo="Typo.h5">@_results.ResponseCount</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Outlined="true">
-                <MudText Typo="Typo.caption">จำนวนที่เชิญ</MudText>
-                <MudText Typo="Typo.h5">@_results.InvitedCount</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Outlined="true">
-                <MudText Typo="Typo.caption">อัตราตอบกลับ</MudText>
-                <MudText Typo="Typo.h5">@ResponseRateLabel()</MudText>
-            </MudPaper>
-        </MudItem>
-        @if (_campaign.CampaignType == Eng_CampaignType.ENPS && _results.NpsScore is not null)
+        @if (_campaign.CampaignType == Eng_CampaignType.ENPS && _results.NpsScore is double nps)
         {
-            <MudItem xs="6" sm="3">
-                <MudPaper Class="pa-3" Outlined="true">
-                    <MudText Typo="Typo.caption">คะแนน eNPS</MudText>
-                    <MudText Typo="Typo.h5">@_results.NpsScore</MudText>
-                    <MudText Typo="Typo.caption" Style="opacity:.7;">Promoter @_results.PromoterCount / Passive @_results.PassiveCount / Detractor @_results.DetractorCount</MudText>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Style="@($"height:100%;background:{EnpsHex(nps)};color:#fff;")" Elevation="2">
+                    <MudText Typo="Typo.overline" Style="opacity:.9;">คะแนน eNPS</MudText>
+                    <MudText Typo="Typo.h3">@nps.ToString("0")</MudText>
+                    @{ var tot = (_results.PromoterCount ?? 0) + (_results.PassiveCount ?? 0) + (_results.DetractorCount ?? 0); }
+                    @if (tot > 0)
+                    {
+                        <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin:.4rem 0;">
+                            <div style="@Seg("#43A047", _results.PromoterCount ?? 0, tot)"></div>
+                            <div style="@Seg("#BDBDBD", _results.PassiveCount ?? 0, tot)"></div>
+                            <div style="@Seg("#E53935", _results.DetractorCount ?? 0, tot)"></div>
+                        </div>
+                    }
+                    <MudText Typo="Typo.caption" Style="opacity:.9;">เชียร์ @_results.PromoterCount · เฉยๆ @_results.PassiveCount · ตำหนิ @_results.DetractorCount</MudText>
                 </MudPaper>
             </MudItem>
         }
+        @if (_engagementIndexPct is double idx)
+        {
+            <MudItem xs="6" sm="@(_campaign.CampaignType == Eng_CampaignType.ENPS ? 4 : 3)">
+                <MudPaper Class="pa-3" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.caption">ดัชนีความผูกพัน</MudText>
+                    <MudText Typo="Typo.h4">@idx.ToString("0.#")%</MudText>
+                    <MudProgressLinear Color="@IndexColor(idx)" Value="@idx" Class="my-1" Style="height:6px;" Rounded="true" />
+                    <MudText Typo="Typo.caption" Style="opacity:.7;">เชิงบวก (4-5): @_favorablePct.ToString("0.#")%</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+        <MudItem xs="6" sm="@(_campaign.CampaignType == Eng_CampaignType.ENPS ? 4 : 3)">
+            <MudPaper Class="pa-3" Outlined="true" Style="height:100%;">
+                <MudText Typo="Typo.caption">อัตราตอบกลับ</MudText>
+                <MudText Typo="Typo.h4">@ResponseRateLabel()</MudText>
+                <MudText Typo="Typo.caption" Style="opacity:.7;">ตอบ @_results.ResponseCount จาก @_results.InvitedCount</MudText>
+            </MudPaper>
+        </MudItem>
     </MudGrid>
 
+    @if (_strengths.Count > 0 || _concerns.Count > 0)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-3" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Success"><MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" Class="mr-1" Style="vertical-align:middle;" />จุดแข็ง (Top Drivers)</MudText>
+                    @foreach (var q in _strengths)
+                    {
+                        <div class="mt-2">
+                            <div class="d-flex justify-space-between"><MudText Typo="Typo.body2">@q.Text</MudText><b>@q.AverageRating?.ToString("0.0")</b></div>
+                            <MudProgressLinear Color="Color.Success" Value="@((q.AverageRating ?? 0) / 5 * 100)" Style="height:6px;" Rounded="true" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-3" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Error"><MudIcon Icon="@Icons.Material.Filled.PriorityHigh" Size="Size.Small" Class="mr-1" Style="vertical-align:middle;" />จุดที่ต้องพัฒนา (Focus Areas)</MudText>
+                    @foreach (var q in _concerns)
+                    {
+                        <div class="mt-2">
+                            <div class="d-flex justify-space-between"><MudText Typo="Typo.body2">@q.Text</MudText><b>@q.AverageRating?.ToString("0.0")</b></div>
+                            <MudProgressLinear Color="Color.Error" Value="@((q.AverageRating ?? 0) / 5 * 100)" Style="height:6px;" Rounded="true" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+
     <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6" Class="mb-2">รายละเอียดรายคำถาม</MudText>
 
     @foreach (var q in _results.Questions)
     {
@@ -58,7 +98,31 @@
 
             @if (q.QuestionType == Eng_QuestionType.Rating)
             {
-                <MudText Typo="Typo.body2">คะแนนเฉลี่ย: @(q.AverageRating?.ToString("0.00") ?? "ยังไม่มีคำตอบ") / 5</MudText>
+                @if (q.RatingCount == 0)
+                {
+                    <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มีคำตอบ</MudText>
+                }
+                else
+                {
+                    <div class="d-flex align-center gap-3 mt-1">
+                        <MudText Typo="Typo.h6" Style="min-width:70px;">@q.AverageRating?.ToString("0.00")<span style="font-size:.6em;opacity:.6;">/5</span></MudText>
+                        <div style="flex-grow:1;">
+                            <MudProgressLinear Color="@RatingColor(q.AverageRating)" Value="@((q.AverageRating ?? 0) / 5 * 100)" Style="height:10px;" Rounded="true" />
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">เชิงบวก @FavorablePct(q).ToString("0")%</MudChip>
+                    </div>
+                    <div class="d-flex gap-1 mt-2" style="align-items:flex-end;height:36px;">
+                        @for (var p = 1; p <= 5; p++)
+                        {
+                            var c = q.RatingDistribution.GetValueOrDefault(p);
+                            var h = q.RatingCount == 0 ? 0 : (int)Math.Round(c * 100.0 / q.RatingCount);
+                            <MudTooltip Text="@($"{p} ดาว: {c} คน ({h}%)")">
+                                <div style="@($"width:28px;height:{Math.Max(3, h)}%;min-height:3px;background:{StarBar(p)};border-radius:2px;")"></div>
+                            </MudTooltip>
+                        }
+                        <MudText Typo="Typo.caption" Class="ml-2" Style="opacity:.6;">1→5</MudText>
+                    </div>
+                }
             }
             else if (q.QuestionType == Eng_QuestionType.YesNo)
             {
@@ -149,12 +213,31 @@
     private SurveyService.CampaignResults? _results;
     private List<SurveyService.SeriesTrendRow> _seriesTrend = new();
 
+    // derived driver analysis
+    private double? _engagementIndexPct;
+    private double _favorablePct;
+    private List<SurveyService.QuestionResult> _strengths = new();
+    private List<SurveyService.QuestionResult> _concerns = new();
+
     protected override async Task OnInitializedAsync()
     {
         _campaign = await SurveyService.GetCampaignAsync(Id);
         if (_campaign is null) return;
         _results = await SurveyService.GetResultsAsync(Id);
         _seriesTrend = await SurveyService.GetSeriesTrendAsync(Id);
+
+        // Driver analysis from rating questions that actually got answers.
+        var rated = _results.Questions.Where(q => q.QuestionType == Eng_QuestionType.Rating && q.AverageRating != null && q.RatingCount > 0).ToList();
+        if (rated.Count > 0)
+        {
+            _engagementIndexPct = Math.Round(rated.Average(q => q.AverageRating!.Value) / 5 * 100, 1);
+            var favorable = rated.Sum(q => q.RatingDistribution.Where(kv => kv.Key >= 4).Sum(kv => kv.Value));
+            var totalRated = rated.Sum(q => q.RatingCount);
+            _favorablePct = totalRated == 0 ? 0 : Math.Round(favorable * 100.0 / totalRated, 1);
+            var ordered = rated.OrderByDescending(q => q.AverageRating).ToList();
+            _strengths = ordered.Take(3).ToList();
+            _concerns = ordered.AsEnumerable().Reverse().Take(3).Where(q => !_strengths.Contains(q)).ToList();
+        }
     }
 
     private string ResponseRateLabel()
@@ -163,4 +246,13 @@
         var pct = _results.ResponseCount * 100.0 / _results.InvitedCount;
         return $"{pct:0.0}%";
     }
+
+    private static double FavorablePct(SurveyService.QuestionResult q)
+        => q.RatingCount == 0 ? 0 : Math.Round(q.RatingDistribution.Where(kv => kv.Key >= 4).Sum(kv => kv.Value) * 100.0 / q.RatingCount, 0);
+
+    private static string EnpsHex(double e) => e >= 30 ? "#2E7D32" : e >= 0 ? "#F9A825" : "#C62828";
+    private static string Seg(string color, int part, int total) => $"width:{(total == 0 ? 0 : part * 100.0 / total):0.#}%;background:{color};";
+    private static Color IndexColor(double pct) => pct >= 75 ? Color.Success : pct >= 60 ? Color.Info : pct >= 45 ? Color.Warning : Color.Error;
+    private static Color RatingColor(double? avg) => avg is null ? Color.Default : avg >= 4 ? Color.Success : avg >= 3 ? Color.Info : avg >= 2 ? Color.Warning : Color.Error;
+    private static string StarBar(int point) => point >= 4 ? "#43A047" : point == 3 ? "#90A4AE" : "#E53935";
 }

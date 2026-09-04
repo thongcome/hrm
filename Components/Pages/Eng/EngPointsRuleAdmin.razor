@@ -34,14 +34,18 @@
     </div>
     <MudTable Items="_rules" Dense="true" Elevation="0">
         <HeaderContent>
-            <MudTh>แหล่งที่มา</MudTh>
-            <MudTh Style="text-align:right">แต้ม</MudTh>
+            <MudTh>กิจกรรม</MudTh>
+            <MudTh>ได้แต้มอย่างไร</MudTh>
+            <MudTh Style="text-align:right">แต้ม/ครั้ง</MudTh>
             <MudTh Style="text-align:center">ใช้งาน</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@SourceLabel(context.Source)<br /><MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Description</MudText></MudTd>
-            <MudTd Style="text-align:right"><MudNumericField T="int" @bind-Value="context.Points" Min="0" Margin="Margin.Dense" Style="max-width:120px;margin-left:auto;" /></MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@SourceColor(context.Source)">@SourceLabel(context.Source)</MudChip>
+            </MudTd>
+            <MudTd><MudText Typo="Typo.body2" Class="mud-text-secondary">@HowEarned(context.Source)</MudText></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="int" @bind-Value="context.Points" Min="0" Margin="Margin.Dense" Style="max-width:110px;margin-left:auto;" /></MudTd>
             <MudTd Style="text-align:center"><MudCheckBox T="bool" @bind-Value="context.IsActive" /></MudTd>
             <MudTd Style="text-align:right"><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => SaveRuleAsync(context))">บันทึก</MudButton></MudTd>
         </RowTemplate>
@@ -120,6 +124,14 @@
         EngPointsSource.TenureAnniversary => "ครบรอบปีการทำงาน",
         EngPointsSource.Manual => "HR ให้แต้มพิเศษ",
         _ => s.ToString(),
+    };
+
+    private static string HowEarned(EngPointsSource s) => s switch
+    {
+        EngPointsSource.TrainingCompletion => "อัตโนมัติเมื่อพนักงานมีสถานะ \"จบแล้ว\" ในหลักสูตร LMS (มอบ 1 ครั้งต่อ 1 หลักสูตรที่จบ) — กด \"คำนวณแต้มย้อนหลัง\" เพื่อประมวลผล",
+        EngPointsSource.TenureAnniversary => "อัตโนมัติเมื่อพนักงานทำงานครบรอบปี (มอบ 1 ครั้งต่อ 1 ปีที่ครบ นับจากวันเริ่มงาน) — กด \"คำนวณแต้มย้อนหลัง\"",
+        EngPointsSource.Manual => "HR มอบแต้มพิเศษให้เป็นรายกรณี (ไม่อัตโนมัติ)",
+        _ => "",
     };
 
     private static Color SourceColor(EngPointsSource s) => s switch
