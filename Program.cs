@@ -467,6 +467,11 @@ builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.HeadcountByDeptReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PerfGradeDistributionReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PayrollByCostCenterReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TurnoverReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.NewHireReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.LeaveUsageSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PayrollStatutorySummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.HeadcountByEmploymentTypeReport>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
@@ -781,6 +786,7 @@ await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
 // claims can route through the engine. Idempotent by workflowcode.
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
 await HRM.Services.Workflow.WorkflowStateChangeSeeder.EnsureAsync(app.Services);
+await HRM.Services.Engagement.EngRedeemWorkflowSeeder.EnsureAsync(app.Services);
 if (app.Environment.IsDevelopment())
 {
     // Dev-only demo config: make the business workflows RUN real approval

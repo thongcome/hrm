@@ -148,6 +148,10 @@ else if (_result is not null)
             new BreadcrumbItem(_report.Name, null, disabled: true),
         };
 
+        // seed any declared defaults so the form isn't blank on first open
+        foreach (var p in _report.Parameters.Where(p => !string.IsNullOrEmpty(p.DefaultValue)))
+            _args[p.Key] = p.DefaultValue;
+
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company") ?? "";
         long.TryParse(state.User.FindFirstValue("sc_userid"), out _userId);
