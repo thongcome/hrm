@@ -1,0 +1,150 @@
+@page "/competency/analytics"
+@using System.Security.Claims
+@using HRM.Services.Comp
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject CompetencyAnalyticsService Analytics
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:JOBCOMP_ADMIN")]
+
+<PageTitle>ภาพรวมสมรรถนะ (Competency Analytics)</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else if (_ov is null)
+{
+    <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+}
+else
+{
+    <MudText Typo="Typo.h5" Class="mb-1">ภาพรวมสมรรถนะองค์กร (Competency Analytics)</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+        ช่องว่างสมรรถนะ = ระดับที่ตำแหน่งต้องการ − ระดับที่ประเมินได้จริง (ใช้ผลประเมินของหัวหน้าก่อน ถ้าไม่มีใช้ประเมินตนเอง)
+    </MudText>
+
+    @if (_ov.CompetencyCount == 0)
+    {
+        <MudAlert Severity="Severity.Info">ยังไม่มีการกำหนดสมรรถนะที่ต้องการต่อตำแหน่ง (Job_CompetencyRequirement) สำหรับพนักงานในบริษัทนี้ — ตั้งค่าที่หน้าโปรไฟล์ตำแหน่งก่อน</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-4" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.overline" Class="mud-text-secondary">สมรรถนะที่ติดตาม</MudText>
+                    <MudText Typo="Typo.h4">@_ov.CompetencyCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-4" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.overline" Class="mud-text-secondary">ความครอบคลุมการประเมิน</MudText>
+                    <MudText Typo="Typo.h4">@_ov.CoveragePercent.ToString("0.#")%</MudText>
+                    <MudProgressLinear Color="@(_ov.CoveragePercent >= 70 ? Color.Success : _ov.CoveragePercent >= 40 ? Color.Warning : Color.Error)" Value="@_ov.CoveragePercent" Class="my-1" Style="height:6px;" Rounded="true" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">ประเมินแล้ว @_ov.AssessedEmployees จาก @_ov.EmployeesInScope คน</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-4" Style="height:100%;background:#C62828;color:#fff;">
+                    <MudText Typo="Typo.overline" Style="opacity:.9;">ช่องว่างวิกฤต (Critical)</MudText>
+                    <MudText Typo="Typo.h4">@_ov.TotalCriticalGaps</MudText>
+                    <MudText Typo="Typo.caption" Style="opacity:.9;">จุดที่ต่ำกว่าเกณฑ์ในสมรรถนะสำคัญ</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-4" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.overline" Class="mud-text-secondary">ต่ำกว่าเกณฑ์ทั้งหมด</MudText>
+                    <MudText Typo="Typo.h4">@_ov.TotalBelowTarget</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">คน-สมรรถนะที่ยังไม่ถึงระดับที่ต้องการ</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-4 mb-4">
+                    <MudText Typo="Typo.h6" Class="mb-2">สมรรถนะเรียงตามช่องว่าง (ควรพัฒนา/อบรมก่อน)</MudText>
+                    <div style="overflow-x:auto;">
+                        <MudTable Items="_ov.Rows" Dense="true" Hover="true" Striped="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>สมรรถนะ</MudTh>
+                                <MudTh>หมวด</MudTh>
+                                <MudTh Style="text-align:right">ต้องมี</MudTh>
+                                <MudTh Style="text-align:right">มีจริง</MudTh>
+                                <MudTh Style="width:22%">ช่องว่าง</MudTh>
+                                <MudTh Style="text-align:right">ถึงเกณฑ์</MudTh>
+                                <MudTh Style="text-align:right">วิกฤต</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="สมรรถนะ">@context.Name</MudTd>
+                                <MudTd DataLabel="หมวด"><MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Category</MudText></MudTd>
+                                <MudTd DataLabel="ต้องมี" Style="text-align:right">@context.AvgRequired.ToString("0.#")</MudTd>
+                                <MudTd DataLabel="มีจริง" Style="text-align:right">@(context.AvgCurrent?.ToString("0.#") ?? "—")</MudTd>
+                                <MudTd DataLabel="ช่องว่าง">
+                                    @if (context.AvgGap is double g)
+                                    {
+                                        <div class="d-flex align-center gap-2">
+                                            <MudProgressLinear Color="@GapColor(g)" Value="@GapBar(g)" Style="height:8px;flex-grow:1;" Rounded="true" />
+                                            <b style="min-width:34px;text-align:right;">@(g > 0 ? "+" + g.ToString("0.#") : g.ToString("0.#"))</b>
+                                        </div>
+                                    }
+                                    else { <MudText Typo="Typo.caption" Class="mud-text-secondary">ยังไม่ประเมิน</MudText> }
+                                </MudTd>
+                                <MudTd DataLabel="ถึงเกณฑ์" Style="text-align:right">@context.Meeting/@context.Assessed</MudTd>
+                                <MudTd DataLabel="วิกฤต" Style="text-align:right">
+                                    @if (context.CriticalGaps > 0)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error">@context.CriticalGaps</MudChip>
+                                    }
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                    <MudText Typo="Typo.h6" Class="mb-2">สรุปตามหมวด</MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var c in _ov.Categories)
+                        {
+                            <MudListItem T="string">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <MudText Typo="Typo.body2"><b>@c.Category</b></MudText>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@c.Competencies สมรรถนะ · ช่องว่างเฉลี่ย @(c.AvgGap?.ToString("0.#") ?? "—")</MudText>
+                                    </div>
+                                    @if (c.CriticalGaps > 0)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error">@c.CriticalGaps วิกฤต</MudChip>
+                                    }
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                    <MudDivider Class="my-2" />
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/ess/lms/catalog" StartIcon="@Icons.Material.Filled.School">ไปหลักสูตรอบรม (ปิดช่องว่าง)</MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private CompetencyAnalyticsService.CompetencyOverview? _ov;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        _ov = await Analytics.GetOverviewAsync(_companyId);
+    }
+
+    private static Color GapColor(double gap) => gap <= 0 ? Color.Success : gap >= 1.5 ? Color.Error : Color.Warning;
+    private static double GapBar(double gap) => Math.Min(100, Math.Max(0, gap / 3.0 * 100)); // 0..3 levels → 0..100%
+}

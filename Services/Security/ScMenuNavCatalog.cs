@@ -249,6 +249,7 @@ public static class ScMenuNavCatalog
         new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/job/levels", "ระดับสายอาชีพ (Job Level)", "Job Levels", "Icons.Material.Filled.Stairs", 20),
         new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/categories", "หมวดสมรรถนะ", "Competency Categories", "Icons.Material.Filled.Category", 30),
         new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/library", "คลังสมรรถนะ", "Competency Library", "Icons.Material.Filled.MenuBook", 40),
+        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/analytics", "ภาพรวมสมรรถนะ (ช่องว่าง)", "Competency Analytics", "Icons.Material.Filled.Insights", 45),
 
         // ---- GRP_PERF (group guarded by HasAny("PERF_ADMIN","PERF_ACCESS")) ----
         new("GRP_PERF", "PERF_ADMIN", "/perf/periods", "รอบการประเมิน", "Evaluation Periods", "Icons.Material.Filled.DateRange", 10),

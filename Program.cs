@@ -518,6 +518,7 @@ builder.Services.AddScoped<HRM.Services.Hr.SeparationRequestService>();
 
 // ----- Idp_* module (Individual Development Plan) -----
 builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
+builder.Services.AddScoped<HRM.Services.Comp.CompetencyAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 
