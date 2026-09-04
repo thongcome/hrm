@@ -34,8 +34,8 @@ else
         <MudAutocomplete T="Hremployee" Label="ค้นหาพนักงาน (รหัส / ชื่อ / นามสกุล)"
                          Value="_selected" ValueChanged="OnEmployeeSelected"
                          SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
-                         ResetValueOnEmptyText="true" CoerceText="true"
-                         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Immediate="false" />
+                         ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0"
+                         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" />
     </MudPaper>
 
     @if (_loading)
@@ -156,7 +156,7 @@ else
         _companyId = state.User.FindFirstValue("payroll_company");
     }
 
-    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string? value, CancellationToken ct)
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string value, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(_companyId)) return Enumerable.Empty<Hremployee>();
         await using var db = await DbFactory.CreateDbContextAsync(ct);
