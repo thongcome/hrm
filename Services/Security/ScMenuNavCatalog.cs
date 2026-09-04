@@ -309,6 +309,7 @@ public static class ScMenuNavCatalog
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/action-plans", "แผนปฏิบัติการ", "Action Plans", "Icons.Material.Filled.Checklist", 40),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeem-items", "ของรางวัลแลกแต้ม", "Redeem Catalog", "Icons.Material.Filled.Redeem", 50),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeems", "อนุมัติแลกของรางวัล", "Redeem Approvals", "Icons.Material.Filled.CardGiftcard", 60),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/points-rules", "กติกาสะสมแต้ม & ประวัติ", "Points Rules & Ledger", "Icons.Material.Filled.Stars", 70),
 
         // ---- GRP_REPORTS (group guarded by Has("REPORT_CENTER")) ----
         new("GRP_REPORTS", "REPORT_CENTER", "/reports", "ศูนย์รายงาน", "Report Center", "Icons.Material.Filled.Assessment", 10),

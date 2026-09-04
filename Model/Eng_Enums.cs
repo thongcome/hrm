@@ -18,6 +18,16 @@ public enum Eng_ActionPlanStatus { Planned = 1, InProgress = 2, Completed = 3, C
 
 public enum Eng_MilestoneStatus { Pending = 1, Completed = 2, Cancelled = 3 }
 
+// Ways an employee earns engagement points besides peer kudos. Kudos points
+// stay on Eng_Recognition; these are the activity-based sources credited into
+// Eng_PointsLedger by EngPointsService, driven by Eng_PointsRule config.
+public enum EngPointsSource
+{
+    TrainingCompletion = 1, // จบหลักสูตรอบรม (LMS)
+    TenureAnniversary = 2,  // ครบรอบปีการทำงาน
+    Manual = 3,             // HR ให้แต้มพิเศษเอง
+}
+
 // Recognition/kudos side of the Engagement module: points earned from peer
 // kudos are redeemed for rewards through the shared workflow engine.
 public enum EngRedeemStatus

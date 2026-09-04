@@ -30,9 +30,17 @@ public class EngagementService(IDbContextFactory<HRMContext> dbFactory, Workflow
 
     private static async Task<BalanceSummary> ComputeBalanceAsync(HRMContext context, long hremployeeId, CancellationToken ct)
     {
-        var earned = await context.Eng_Recognitions
+        var kudosPoints = await context.Eng_Recognitions
             .Where(k => k.ToHremployeeId == hremployeeId && k.IsActive)
             .SumAsync(k => (int?)k.Points, ct) ?? 0;
+
+        // Activity-based points (training completion, tenure, manual) earned
+        // alongside kudos — see EngPointsService.
+        var activityPoints = await context.Eng_PointsLedgers
+            .Where(l => l.HremployeeId == hremployeeId && l.IsActive)
+            .SumAsync(l => (int?)l.Points, ct) ?? 0;
+
+        var earned = kudosPoints + activityPoints;
 
         var spent = await context.Eng_RedeemRequests
             .Where(r => r.HremployeeId == hremployeeId && r.IsActive && CommittedStatuses.Contains(r.Status))

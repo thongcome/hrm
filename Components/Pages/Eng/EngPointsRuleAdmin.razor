@@ -1,0 +1,132 @@
+@page "/eng/points-rules"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject EngPointsService PointsService
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>กติกาสะสมแต้ม & ประวัติ</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">กติกาสะสมแต้มจากกิจกรรม</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        นอกจาก kudos จากเพื่อนร่วมงาน พนักงานยังได้แต้มจากกิจกรรมอื่นตามกติกาด้านล่าง — ตั้งจำนวนแต้มและเปิด/ปิดได้ แล้วกด "คำนวณแต้มย้อนหลัง" เพื่อให้ระบบมอบแต้มจากกิจกรรมที่ทำไปแล้ว
+    </MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex flex-wrap align-center gap-2 mb-2">
+        <MudText Typo="Typo.h6">กติกา</MudText>
+        <MudSpacer />
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Sync"
+            OnClick="SyncAsync" Disabled="_busy">คำนวณแต้มย้อนหลัง (Sync)</MudButton>
+    </div>
+    <MudTable Items="_rules" Dense="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>แหล่งที่มา</MudTh>
+            <MudTh Style="text-align:right">แต้ม</MudTh>
+            <MudTh Style="text-align:center">ใช้งาน</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@SourceLabel(context.Source)<br /><MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Description</MudText></MudTd>
+            <MudTd Style="text-align:right"><MudNumericField T="int" @bind-Value="context.Points" Min="0" Margin="Margin.Dense" Style="max-width:120px;margin-left:auto;" /></MudTd>
+            <MudTd Style="text-align:center"><MudCheckBox T="bool" @bind-Value="context.IsActive" /></MudTd>
+            <MudTd Style="text-align:right"><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => SaveRuleAsync(context))">บันทึก</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">กำลังตั้งค่าเริ่มต้น...</MudText></NoRecordsContent>
+    </MudTable>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">หมายเหตุ: การตอบแบบสำรวจไม่ให้แต้มรายบุคคล เพราะแบบสำรวจไม่ระบุตัวตน (anonymous)</MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6" Class="mb-2">ประวัติการมอบแต้มจากกิจกรรม (ล่าสุด)</MudText>
+    <MudTable Items="_ledger" Dense="true" Hover="true" Striped="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>วันที่</MudTh><MudTh>พนักงาน</MudTh><MudTh>แหล่งที่มา</MudTh><MudTh>รายละเอียด</MudTh><MudTh Style="text-align:right">แต้ม</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EarnedDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.EmpName</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@SourceColor(context.Source)">@SourceLabel(context.Source)</MudChip></MudTd>
+            <MudTd>@context.Note</MudTd>
+            <MudTd Style="text-align:right"><b>+@context.Points</b></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการมอบแต้มจากกิจกรรม — กด "คำนวณแต้มย้อนหลัง"</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private long _userId;
+    private bool _busy;
+    private List<Eng_PointsRule> _rules = new();
+    private List<EngPointsService.LedgerRow> _ledger = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        long.TryParse(state.User.FindFirstValue("sc_userid"), out _userId);
+        if (string.IsNullOrEmpty(_companyId)) return;
+
+        await PointsService.EnsureDefaultRulesAsync(_companyId);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _rules = (await PointsService.GetRulesAsync(_companyId!)).OrderBy(r => r.Source).ToList();
+        _ledger = await PointsService.GetLedgerAsync(_companyId!);
+    }
+
+    private async Task SaveRuleAsync(Eng_PointsRule rule)
+    {
+        try
+        {
+            await PointsService.SaveRuleAsync(rule);
+            Snackbar.Add("บันทึกกติกาแล้ว", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task SyncAsync()
+    {
+        _busy = true;
+        try
+        {
+            var n = await PointsService.SyncEarnedPointsAsync(_companyId!, _userId);
+            Snackbar.Add(n == 0 ? "ไม่มีแต้มใหม่ให้มอบ (คำนวณครบแล้ว)" : $"มอบแต้มจากกิจกรรม {n} รายการ", n == 0 ? Severity.Info : Severity.Success);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private static string SourceLabel(EngPointsSource s) => s switch
+    {
+        EngPointsSource.TrainingCompletion => "จบหลักสูตรอบรม",
+        EngPointsSource.TenureAnniversary => "ครบรอบปีการทำงาน",
+        EngPointsSource.Manual => "HR ให้แต้มพิเศษ",
+        _ => s.ToString(),
+    };
+
+    private static Color SourceColor(EngPointsSource s) => s switch
+    {
+        EngPointsSource.TrainingCompletion => Color.Info,
+        EngPointsSource.TenureAnniversary => Color.Success,
+        EngPointsSource.Manual => Color.Warning,
+        _ => Color.Default,
+    };
+}

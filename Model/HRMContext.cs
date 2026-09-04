@@ -449,6 +449,8 @@ public partial class HRMContext : DbContext
     // Engagement (Eng_*) — points redemption on top of Eng_Recognition kudos
     public virtual DbSet<Eng_RedeemItem> Eng_RedeemItems { get; set; }
     public virtual DbSet<Eng_RedeemRequest> Eng_RedeemRequests { get; set; }
+    public virtual DbSet<Eng_PointsRule> Eng_PointsRules { get; set; }
+    public virtual DbSet<Eng_PointsLedger> Eng_PointsLedgers { get; set; }
 
     // Workflow state-change requests (deactivate/reactivate a wf_workflow via approval)
     public virtual DbSet<Wf_WorkflowStateChangeRequest> Wf_WorkflowStateChangeRequests { get; set; }

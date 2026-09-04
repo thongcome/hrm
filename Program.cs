@@ -456,6 +456,7 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfKpiSetService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngagementService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngagementAnalyticsService>();
+builder.Services.AddScoped<HRM.Services.Engagement.EngPointsService>();
 
 // Reporting framework — config-first: register a report as IReportDefinition
 // and an export format as IReportExporter; the registry/viewer/endpoint pick
