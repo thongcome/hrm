@@ -450,6 +450,9 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Eng_RedeemItem> Eng_RedeemItems { get; set; }
     public virtual DbSet<Eng_RedeemRequest> Eng_RedeemRequests { get; set; }
 
+    // Workflow state-change requests (deactivate/reactivate a wf_workflow via approval)
+    public virtual DbSet<Wf_WorkflowStateChangeRequest> Wf_WorkflowStateChangeRequests { get; set; }
+
     public virtual DbSet<Idp_CompetencyAssessment> Idp_CompetencyAssessments { get; set; }
     public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
     public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }

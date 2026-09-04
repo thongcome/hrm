@@ -8,6 +8,8 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
+@inject HRM.Services.Workflow.WorkflowStateChangeService StateChangeService
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
 <PageTitle>จัดการ Workflow</PageTitle>
@@ -37,31 +39,33 @@
    button unlocks (the "type the repo name to delete" pattern). *@
 <MudDialog @bind-Visible="_showDeactivateConfirm" Options="_deactivateDialogOptions">
     <TitleContent>
-        <MudText Typo="Typo.h6" Color="Color.Error">
-            <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" Style="vertical-align:middle;" />
-            ปิดใช้งาน Workflow — โปรดอ่านก่อน
+        <MudText Typo="Typo.h6" Color="Color.Warning">
+            <MudIcon Icon="@Icons.Material.Filled.Gavel" Class="mr-2" Style="vertical-align:middle;" />
+            ขอปิดใช้งาน Workflow — ต้องผ่านการอนุมัติ
         </MudText>
     </TitleContent>
     <DialogContent>
         @if (_deactivateTarget is not null)
         {
-            <MudAlert Severity="Severity.Error" Class="mb-3">
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
                 การปิด <b>@_deactivateTarget.workflowcode</b> (@_deactivateTarget.wname) จะทำให้
-                <b>ทุกคำขอใหม่ที่ใช้ workflow นี้ทั้งบริษัทส่งไม่ได้ทันที</b>
-                และงานที่กำลังรออนุมัติจะสะดุด — ทำเฉพาะเมื่อคุณตั้งใจเลิกใช้จริงเท่านั้น
+                <b>ทุกคำขอใหม่ที่ใช้ workflow นี้ทั้งบริษัทส่งไม่ได้</b> จึงไม่สามารถกดปิดได้ทันที —
+                ระบบจะส่ง <b>คำขอเปลี่ยนสถานะเข้าสายอนุมัติ (WF_STATE_CHANGE)</b> และจะปิดจริงก็ต่อเมื่อผู้มีสิทธิ์อนุมัติแล้วเท่านั้น
             </MudAlert>
+            <MudTextField @bind-Value="_deactivateReason" Label="เหตุผลของการขอปิด (จำเป็น)" Lines="2"
+                Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
             <MudText Typo="Typo.body2" Class="mb-2">
-                ถ้ายืนยัน ให้พิมพ์รหัส <b>@_deactivateTarget.workflowcode</b> ลงในช่องด้านล่าง:
+                ยืนยันการส่งคำขอ ให้พิมพ์รหัส <b>@_deactivateTarget.workflowcode</b> ลงในช่องด้านล่าง:
             </MudText>
             <MudTextField @bind-Value="_deactivateTyped" Immediate="true"
                 Placeholder="@_deactivateTarget.workflowcode" Variant="Variant.Outlined" Margin="Margin.Dense" />
         }
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="CancelDeactivate">ยกเลิก (แนะนำ)</MudButton>
-        <MudButton Color="Color.Error" Variant="Variant.Filled"
-            Disabled="@(_deactivateTarget is null || _deactivateTyped != _deactivateTarget.workflowcode)"
-            OnClick="ConfirmDeactivateAsync">ปิดใช้งานถาวร</MudButton>
+        <MudButton OnClick="CancelDeactivate">ยกเลิก</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Filled"
+            Disabled="@(_deactivateTarget is null || _deactivateTyped != _deactivateTarget.workflowcode || string.IsNullOrWhiteSpace(_deactivateReason))"
+            OnClick="ConfirmDeactivateAsync">ส่งคำขออนุมัติปิดใช้งาน</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -71,6 +75,7 @@
     private bool _showDeactivateConfirm;
     private wf_workflow? _deactivateTarget;
     private string _deactivateTyped = "";
+    private string _deactivateReason = "";
     private static readonly DialogOptions _deactivateDialogOptions =
         new() { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
 
@@ -159,32 +164,39 @@
     private void CancelDeactivate()
     {
         _showDeactivateConfirm = false;
+        _deactivateReason = "";
         _deactivateTarget = null;
         _deactivateTyped = "";
     }
 
+    // Deactivating a workflow is no longer a direct write — it files a
+    // state-change request that routes through the WF_STATE_CHANGE approval
+    // workflow. The target's isactive flips only after that approval completes
+    // (WorkflowStateChangeService.ApplyApprovedAsync), so a mis-click can't
+    // take a company-wide workflow offline.
     private async Task ConfirmDeactivateAsync()
     {
         var e = _deactivateTarget;
-        // Defence in depth: never write unless the typed code still matches
-        // exactly, even though the button is disabled until it does.
-        if (e is null || _deactivateTyped != e.workflowcode)
+        if (e is null || _deactivateTyped != e.workflowcode || string.IsNullOrWhiteSpace(_deactivateReason))
             return;
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var existing = await context.wf_workflows.FirstOrDefaultAsync(x => x.workflowid == e.workflowid);
-        if (existing is null)
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var userId);
+        var empId = state.User.FindFirst("empno")?.Value;
+
+        try
         {
-            Snackbar.Add("ไม่พบ workflow นี้ในระบบแล้ว", Severity.Error);
-            CancelDeactivate();
+            await StateChangeService.RequestStateChangeAsync(e.workflowid, setActive: false, _deactivateReason, userId, empId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
             return;
         }
 
-        existing.isactive = false;
-        await context.SaveChangesAsync();
-        e.isactive = false; // reflect immediately in the currently-open view panel
-        Snackbar.Add($"ยกเลิกการใช้งาน '{e.workflowcode}' แล้ว — คำขอใหม่ที่ใช้ workflow นี้จะส่งไม่ได้จนกว่าจะเปิดใหม่", Severity.Warning);
+        Snackbar.Add($"ส่งคำขอปิดใช้งาน '{e.workflowcode}' เข้าสายอนุมัติแล้ว — จะปิดจริงเมื่อผู้อนุมัติเห็นชอบ", Severity.Success);
         CancelDeactivate();
+        Nav.NavigateTo("/wf/state-change-requests");
     }
 
     private async Task<wf_workflow> SaveAsync(wf_workflow entity)

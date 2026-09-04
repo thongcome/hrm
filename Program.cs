@@ -415,6 +415,7 @@ builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.A
 // ----- end Pay_* module -----
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
+builder.Services.AddScoped<HRM.Services.Workflow.WorkflowStateChangeService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowButtonService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
@@ -779,6 +780,7 @@ await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
 // Required (not demo) config: the WELFARE_CLAIM approval workflow so welfare
 // claims can route through the engine. Idempotent by workflowcode.
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
+await HRM.Services.Workflow.WorkflowStateChangeSeeder.EnsureAsync(app.Services);
 if (app.Environment.IsDevelopment())
 {
     // Dev-only demo config: make the business workflows RUN real approval

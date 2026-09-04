@@ -1,0 +1,91 @@
+@page "/wf/state-change-requests"
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject WorkflowStateChangeService StateChangeService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+<PageTitle>คำขอเปลี่ยนสถานะ Workflow</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2">
+        <MudIcon Icon="@Icons.Material.Filled.Gavel" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">คำขอเปลี่ยนสถานะ Workflow</MudText>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+        การปิด/เปิดใช้งาน workflow ต้องผ่านการอนุมัติ (WF_STATE_CHANGE) — เมื่อผู้อนุมัติเห็นชอบครบ ระบบจะเปลี่ยนสถานะจริงให้อัตโนมัติเมื่อเปิดหน้านี้
+    </MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    @if (_loading)
+    {
+        <div class="d-flex justify-center py-6"><MudProgressCircular Indeterminate="true" /></div>
+    }
+    else
+    {
+        @if (_justApplied > 0)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-3">เปลี่ยนสถานะที่อนุมัติแล้ว @_justApplied รายการ</MudAlert>
+        }
+        <MudTable Items="_rows" Dense="true" Hover="true" Striped="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Workflow</MudTh>
+                <MudTh>คำขอ</MudTh>
+                <MudTh>เหตุผล</MudTh>
+                <MudTh>สถานะอนุมัติ</MudTh>
+                <MudTh>วันที่ขอ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Workflow"><b>@context.WorkflowCode</b><br /><MudText Typo="Typo.caption" Class="mud-text-secondary">@context.WorkflowName</MudText></MudTd>
+                <MudTd DataLabel="คำขอ">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.SetActive ? Color.Success : Color.Warning)">
+                        @(context.SetActive ? "เปิดใช้งาน" : "ปิดใช้งาน")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="เหตุผล">@context.Reason</MudTd>
+                <MudTd DataLabel="สถานะอนุมัติ">
+                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(context)">@StatusLabel(context)</MudChip>
+                </MudTd>
+                <MudTd DataLabel="วันที่ขอ">@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีคำขอเปลี่ยนสถานะ</MudText></NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+    private int _justApplied;
+    private List<WorkflowStateChangeService.StateChangeRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Apply-on-read: flip any newly-approved requests before listing.
+        _justApplied = await StateChangeService.ApplyApprovedAsync();
+        _rows = await StateChangeService.GetRequestsAsync();
+        _loading = false;
+    }
+
+    private static string StatusLabel(WorkflowStateChangeService.StateChangeRow r)
+        => r.IsApplied ? "ดำเนินการแล้ว" : r.StatusText switch
+        {
+            "COMPLETED" => "อนุมัติแล้ว (รอปรับใช้)",
+            "APPROVED" => "อนุมัติแล้ว (รอปรับใช้)",
+            "PENDING" => "รออนุมัติ",
+            "REJECTED" => "ไม่อนุมัติ",
+            "RETURNED" => "ส่งกลับแก้ไข",
+            "CANCELLED" => "ยกเลิก",
+            _ => r.StatusText,
+        };
+
+    private static Color StatusColor(WorkflowStateChangeService.StateChangeRow r)
+        => r.IsApplied ? Color.Success : r.StatusText switch
+        {
+            "COMPLETED" or "APPROVED" => Color.Info,
+            "REJECTED" => Color.Error,
+            "RETURNED" => Color.Warning,
+            _ => Color.Default,
+        };
+}

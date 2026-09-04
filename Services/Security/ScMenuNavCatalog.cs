@@ -323,6 +323,7 @@ public static class ScMenuNavCatalog
         // ---- GRP_WF_ENGINE (group itself ungated; per-link gates inside) ----
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/canvas", "ภาพรวม Workflow", "Workflow Overview", "Icons.Material.Filled.ViewKanban", 10),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/workflows", "จัดการ Workflow", "Manage Workflows", "Icons.Material.Filled.Route", 20),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/state-change-requests", "คำขอเปลี่ยนสถานะ Workflow", "Workflow State-Change Requests", "Icons.Material.Filled.Gavel", 25),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wfworkflows", "จัดการ Workflow (ระบบเดิม)", "Workflow (Legacy)", "Icons.Material.Filled.Route", 30), // legacy scaffold CRUD, superseded by /wf/workflows
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/sub-workflow-levels", "จัดการระดับการอนุมัติ", "Approval Levels", "Icons.Material.Filled.Layers", 40),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/custom-users", "ผู้อนุมัติเจาะจง (Custom User)", "Specific Approvers (Custom User)", "Icons.Material.Filled.Person", 50),
