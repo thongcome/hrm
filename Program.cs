@@ -519,6 +519,7 @@ builder.Services.AddScoped<HRM.Services.Hr.SeparationRequestService>();
 // ----- Idp_* module (Individual Development Plan) -----
 builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
 builder.Services.AddScoped<HRM.Services.Comp.CompetencyAnalyticsService>();
+builder.Services.AddScoped<HRM.Services.Talent.TalentReviewService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 
@@ -531,6 +532,7 @@ builder.Services.AddScoped<HRM.Services.Lms.LmsMandatoryTrainingService>();
 
 // ----- Km_* module (Knowledge Management, HRD Phase 6) -----
 builder.Services.AddScoped<HRM.Services.Km.KmArticleService>();
+builder.Services.AddScoped<HRM.Services.Km.KmAnalyticsService>();
 // ----- end Km_* module -----
 
 // ----- Talent_* module (Talent Management / 9-Box) -----

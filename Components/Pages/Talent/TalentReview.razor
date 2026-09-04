@@ -1,0 +1,240 @@
+@page "/talent/review"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Talent
+@using HRM.Services.Shared
+@using HRM.Services.Audit
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject TalentReviewService Review
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject IAuditLogger Audit
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:TALENT_ADMIN")]
+
+<PageTitle>บัตรทาเลนต์รายบุคคล (Talent Review Card)</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">
+    บัตรทาเลนต์รายบุคคล
+    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-2">PDPA</MudChip>
+</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    มุมมองเดียวสำหรับคณะกรรมการ calibration — รวมผลประเมิน, ตำแหน่งใน 9-box, ช่องว่างสมรรถนะ, แผนพัฒนา (IDP), สถานะผู้สืบทอด และการเป็นสมาชิก Talent Pool
+</MudText>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-4" Outlined="true">
+        <MudAutocomplete T="Hremployee" Label="ค้นหาพนักงาน (รหัส / ชื่อ / นามสกุล)"
+                         Value="_selected" ValueChanged="OnEmployeeSelected"
+                         SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
+                         ResetValueOnEmptyText="true" CoerceText="true"
+                         AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Immediate="false" />
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+    }
+    else if (_card is not null)
+    {
+        <MudGrid>
+            <!-- Identity + 9-box hero -->
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Outlined="true" Style="height:100%;">
+                    <MudText Typo="Typo.h6">@_card.EmpName</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">@_card.EmpNo</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">@(_card.PositionName ?? "—")</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@(_card.OrgName ?? "")</MudText>
+
+                    <MudDivider Class="my-3" />
+
+                    <MudText Typo="Typo.overline" Class="mud-text-secondary">ตำแหน่งใน 9-Box</MudText>
+                    @if (_card.NineBox > 0)
+                    {
+                        <div class="my-2">@RenderNineBox(_card.NineBox)</div>
+                        <MudChip T="string" Color="@NineBoxColor(_card.NineBox)" Size="Size.Small">@_card.NineBoxLabel</MudChip>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1" Style="display:block;">
+                            ผลงาน: @PerfBandTh(_card.PerformanceBand) · ศักยภาพ: @PotentialTh(_card.Potential)
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@_card.NineBoxLabel (ต้องมีทั้งผลประเมินและการประเมินศักยภาพ)</MudAlert>
+                    }
+
+                    @if (_card.InTalentPool)
+                    {
+                        <MudChip T="string" Color="Color.Tertiary" Icon="@Icons.Material.Filled.Star" Size="Size.Small" Class="mt-2">อยู่ใน Talent Pool</MudChip>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <!-- Signals -->
+            <MudItem xs="12" md="8">
+                <MudGrid>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-3" Outlined="true">
+                            <MudText Typo="Typo.overline" Class="mud-text-secondary">ผลประเมินล่าสุด</MudText>
+                            <MudText Typo="Typo.h4">@(_card.PerfGrade ?? "—")</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @(_card.PerfScorePercent is null ? "ยังไม่มีผล" : $"{_card.PerfScorePercent:0.#}%")
+                                @(_card.PerfApproved ? " · อนุมัติแล้ว" : "")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="display:block;">@(_card.PerfPeriod ?? "")</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-3" Outlined="true">
+                            <MudText Typo="Typo.overline" Class="mud-text-secondary">สมรรถนะที่ผ่าน</MudText>
+                            <MudText Typo="Typo.h4">@_card.CompetencyMet<span style="font-size:0.5em;color:gray;">/@_card.CompetencyTotal</span></MudText>
+                            <MudText Typo="Typo.caption" Color="@(_card.CompetencyCritical > 0 ? Color.Error : Color.Default)">
+                                @(_card.CompetencyCritical > 0 ? $"ขาด {_card.CompetencyCritical} ตัวชี้วัดวิกฤต" : "ครบตัวชี้วัดวิกฤต")
+                            </MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-3" Outlined="true">
+                            <MudText Typo="Typo.overline" Class="mud-text-secondary">แผนพัฒนา (IDP)</MudText>
+                            <MudText Typo="Typo.h6" Class="mt-1">@IdpStatusTh(_card.IdpStatus)</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@_card.IdpActionCount กิจกรรม</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-3" Outlined="true">
+                            <MudText Typo="Typo.overline" Class="mud-text-secondary">ผู้สืบทอดตำแหน่ง</MudText>
+                            <MudText Typo="Typo.h4">@_card.Successor.Count</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">ตำแหน่งสำคัญ</MudText>
+                        </MudPaper>
+                    </MudItem>
+
+                    @if (_card.Successor.Any())
+                    {
+                        <MudItem xs="12">
+                            <MudPaper Class="pa-4" Outlined="true">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">เป็นผู้สืบทอดของตำแหน่งสำคัญ</MudText>
+                                <MudTable Items="_card.Successor" Dense="true" Elevation="0" Hover="true">
+                                    <HeaderContent><MudTh>ตำแหน่ง</MudTh><MudTh>ความพร้อม</MudTh><MudTh>สถานะ</MudTh></HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.PositionName</MudTd>
+                                        <MudTd>@ReadinessTh(context.Readiness)</MudTd>
+                                        <MudTd>
+                                            <MudChip T="string" Size="Size.Small" Color="@(context.Approved ? Color.Success : Color.Default)">
+                                                @(context.Approved ? "อนุมัติแล้ว" : "เสนอชื่อ")
+                                            </MudChip>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudItem>
+        </MudGrid>
+    }
+    else if (_searched)
+    {
+        <MudAlert Severity="Severity.Info">ไม่พบข้อมูลพนักงานที่เลือก</MudAlert>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private Hremployee? _selected;
+    private TalentReviewService.TalentCard? _card;
+    private bool _loading, _searched;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_companyId)) return Enumerable.Empty<Hremployee>();
+        await using var db = await DbFactory.CreateDbContextAsync(ct);
+        var q = db.Hremployee.Where(e => e.companyid == _companyId);
+        q = EntitySearchHelper.ApplyTextSearch(q, value, nameof(Hremployee.EmpNo), nameof(Hremployee.EmpName), nameof(Hremployee.EmpSurname));
+        return await q.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnEmployeeSelected(Hremployee? emp)
+    {
+        _selected = emp;
+        _card = null;
+        _searched = false;
+        if (emp is null) return;
+
+        _loading = true;
+        StateHasChanged();
+        _card = await Review.GetCardAsync(emp.id);
+        _searched = true;
+        _loading = false;
+
+        // PDPA: viewing an employee's consolidated talent profile is sensitive access
+        await Audit.LogAccessAsync(nameof(Hremployee), emp.id.ToString(), isSensitive: true, note: "talent-review");
+    }
+
+    private static string PerfBandTh(string band) => band switch
+    {
+        "high" => "สูง", "medium" => "กลาง", "low" => "ต่ำ", _ => "—"
+    };
+    private static string PotentialTh(PotentialLevel? p) => p switch
+    {
+        PotentialLevel.High => "สูง", PotentialLevel.Medium => "กลาง", PotentialLevel.Low => "ต่ำ", _ => "—"
+    };
+    private static string IdpStatusTh(IdpPlanStatus? s) => s switch
+    {
+        IdpPlanStatus.Draft => "ร่าง",
+        IdpPlanStatus.PendingApproval => "รออนุมัติ",
+        IdpPlanStatus.Approved => "อนุมัติแล้ว",
+        IdpPlanStatus.Rejected => "ไม่อนุมัติ",
+        _ => "ยังไม่มีแผน"
+    };
+    private static string ReadinessTh(ReadinessLevel r) => r switch
+    {
+        ReadinessLevel.ReadyNow => "พร้อมทันที",
+        ReadinessLevel.Ready1To2Years => "พร้อมใน 1–2 ปี",
+        ReadinessLevel.Ready3To5Years => "พร้อมใน 3–5 ปี",
+        _ => "ต้องพัฒนาเพิ่ม"
+    };
+    private static Color NineBoxColor(int box) => box switch
+    {
+        9 => Color.Success,
+        6 or 8 => Color.Info,
+        3 or 5 or 7 => Color.Primary,
+        2 or 4 => Color.Warning,
+        _ => Color.Default
+    };
+
+    // Small 3×3 grid with the employee's cell highlighted. Box numbering:
+    // box = (potential-1)*3 + performance, so performance is the column
+    // (left→right low→high) and potential the row (bottom→top low→high).
+    private RenderFragment RenderNineBox(int box) => builder =>
+    {
+        int seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "style", "display:grid;grid-template-columns:repeat(3,26px);grid-template-rows:repeat(3,26px);gap:3px;");
+        // render rows top (potential High=3) to bottom (Low=1)
+        for (int pot = 3; pot >= 1; pot--)
+        {
+            for (int perf = 1; perf <= 3; perf++)
+            {
+                int cell = (pot - 1) * 3 + perf;
+                bool active = cell == box;
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "style",
+                    $"width:26px;height:26px;border-radius:4px;{(active ? "background:var(--mud-palette-primary);" : "background:var(--mud-palette-action-disabled-background);")}");
+                builder.CloseElement();
+            }
+        }
+        builder.CloseElement();
+    };
+}

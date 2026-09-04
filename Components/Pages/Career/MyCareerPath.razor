@@ -95,7 +95,19 @@ else
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                             <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" />
                             <MudText Typo="Typo.subtitle1">@transition.ToPosExecTypeName</MudText>
+                            <MudSpacer />
+                            @{ var rd = Readiness(transitionGaps); }
+                            @if (rd.Total > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="@ReadinessColor(rd.Pct)">
+                                    ความพร้อม @rd.Pct% (ผ่าน @rd.Met/@rd.Total@(rd.Critical > 0 ? $" · ขาดวิกฤต {rd.Critical}" : ""))
+                                </MudChip>
+                            }
                         </MudStack>
+                        @if (Readiness(transitionGaps).Total > 0)
+                        {
+                            <MudProgressLinear Color="@ReadinessColor(Readiness(transitionGaps).Pct)" Value="@Readiness(transitionGaps).Pct" Class="mt-1" Style="height:6px;" Rounded="true" />
+                        }
                         @if (!string.IsNullOrWhiteSpace(transition.Note))
                         {
                             <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.8;">@transition.Note</MudText>
@@ -244,6 +256,20 @@ else
         var posName = await context.Pos_ExecTypes.Where(p => p.Id == keyPosition.PosExecTypeId).Select(p => p.Name).FirstOrDefaultAsync();
         _successionInfo = new(posName ?? $"#{keyPosition.PosExecTypeId}", nomination.ReadinessLevel);
     }
+
+    // At-a-glance readiness for a move: how many required competencies the
+    // person already meets (gap <= 0), how many critical ones still short, and
+    // the percentage met — computed from the same gap rows shown below.
+    private static (int Met, int Total, int Critical, int Pct) Readiness(List<IdpAssessmentService.CompetencyGapRow> rows)
+    {
+        var scored = rows.Where(r => r.Gap is not null).ToList();
+        if (scored.Count == 0) return (0, 0, 0, 0);
+        var met = scored.Count(r => r.Gap <= 0);
+        var critical = scored.Count(r => r.IsCritical && r.Gap > 0);
+        return (met, scored.Count, critical, (int)Math.Round(met * 100.0 / scored.Count));
+    }
+
+    private static Color ReadinessColor(int pct) => pct >= 80 ? Color.Success : pct >= 50 ? Color.Warning : Color.Error;
 
     private string ReadinessLabel(ReadinessLevel v) => v switch
     {

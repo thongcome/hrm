@@ -1,0 +1,95 @@
+@page "/km/analytics"
+@using System.Security.Claims
+@using HRM.Services.Km
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject KmAnalyticsService Analytics
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:KM_ADMIN")]
+
+<PageTitle>ภาพรวมคลังความรู้ (KM Analytics)</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else if (_ov is null)
+{
+    <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+}
+else
+{
+    <MudText Typo="Typo.h5" Class="mb-3">ภาพรวมคลังความรู้ (KM Analytics)</MudText>
+
+    <MudGrid>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.overline" Class="mud-text-secondary">เผยแพร่แล้ว</MudText><MudText Typo="Typo.h4">@_ov.Published</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.overline" Class="mud-text-secondary">ยอดอ่านรวม</MudText><MudText Typo="Typo.h4">@_ov.TotalViews.ToString("#,0")</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.overline" Class="mud-text-secondary">รออนุมัติ</MudText><MudText Typo="Typo.h4" Color="@(_ov.Pending > 0 ? Color.Warning : Color.Default)">@_ov.Pending</MudText></MudPaper></MudItem>
+        <MudItem xs="6" md="3"><MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.overline" Class="mud-text-secondary">ร่าง / จัดเก็บ</MudText><MudText Typo="Typo.h4">@_ov.Draft / @_ov.Archived</MudText></MudPaper></MudItem>
+    </MudGrid>
+
+    @if (_ov.Total == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">ยังไม่มีบทความในคลังความรู้ของบริษัทนี้</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Class="mr-1" Style="vertical-align:middle;" />บทความยอดนิยม</MudText>
+                    <MudTable Items="_ov.TopArticles" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent><MudTh>บทความ</MudTh><MudTh>หมวด</MudTh><MudTh Style="text-align:right">อ่าน</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd><MudLink Href="@($"/km/articles/{context.Id}")">@context.Title</MudLink></MudTd>
+                            <MudTd><MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Category</MudText></MudTd>
+                            <MudTd Style="text-align:right"><b>@context.ViewCount.ToString("#,0")</b></MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีบทความเผยแพร่</MudText></NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" Class="mr-1" Style="vertical-align:middle;" />ผู้แบ่งปันความรู้สูงสุด</MudText>
+                    <MudTable Items="_ov.TopAuthors" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent><MudTh>พนักงาน</MudTh><MudTh Style="text-align:right">บทความ</MudTh><MudTh Style="text-align:right">ยอดอ่าน</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Name</MudTd>
+                            <MudTd Style="text-align:right">@context.Published</MudTd>
+                            <MudTd Style="text-align:right">@context.TotalViews.ToString("#,0")</MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent><MudText Typo="Typo.body2">—</MudText></NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 mb-4">
+                    <MudText Typo="Typo.h6" Class="mb-2">ความรู้ตามหมวด</MudText>
+                    <MudTable Items="_ov.Categories" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent><MudTh>หมวด</MudTh><MudTh Style="text-align:right">จำนวนบทความ</MudTh><MudTh Style="text-align:right">ยอดอ่านรวม</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Category</MudTd>
+                            <MudTd Style="text-align:right">@context.Published</MudTd>
+                            <MudTd Style="text-align:right">@context.TotalViews.ToString("#,0")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+}
+
+@code {
+    private string? _companyId;
+    private KmAnalyticsService.KmOverview? _ov;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        _ov = await Analytics.GetOverviewAsync(_companyId);
+    }
+}

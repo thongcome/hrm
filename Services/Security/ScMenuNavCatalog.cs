@@ -272,6 +272,7 @@ public static class ScMenuNavCatalog
         new("GRP_TALENT", "TALENT_ACCESS", "/talent/team-rating", "ให้คะแนนศักยภาพทีม", "Rate Team Potential", "Icons.Material.Filled.Star", 10),
         new("GRP_TALENT", "TALENT_ADMIN", "/talent/nine-box", "9-Box Grid ทั้งบริษัท", "Company-wide 9-Box Grid", "Icons.Material.Filled.GridOn", 20),
         new("GRP_TALENT", "TALENT_ADMIN", "/talent/pool", "Talent Pool", "Talent Pool", "Icons.Material.Filled.EmojiEvents", 30),
+        new("GRP_TALENT", "TALENT_ADMIN", "/talent/review", "บัตรทาเลนต์รายบุคคล", "Talent Review Card", "Icons.Material.Filled.Badge", 40),
 
         // ---- GRP_IDP (group guarded by HasAny("IDP_ACCESS","IDP_ADMIN")) ----
         new("GRP_IDP", "IDP_ACCESS", "/idp/my-plans", "สมรรถนะ+แผนของฉัน", "My Competencies & Plan", "Icons.Material.Filled.Person", 10),
@@ -302,6 +303,7 @@ public static class ScMenuNavCatalog
         new("GRP_KM", "KM_ACCESS", "/km/experts", "ผู้เชี่ยวชาญภายในองค์กร", "Internal Experts", "Icons.Material.Filled.Person", 20),
         new("GRP_KM", "KM_ADMIN", "/km/categories", "หมวดหมู่ความรู้", "Knowledge Categories", "Icons.Material.Filled.Category", 30),
         new("GRP_KM", "KM_ADMIN", "/km/articles", "จัดการบทความ", "Manage Articles", "Icons.Material.Filled.Edit", 40),
+        new("GRP_KM", "KM_ADMIN", "/km/analytics", "ภาพรวมคลังความรู้", "KM Analytics", "Icons.Material.Filled.Insights", 50),
 
         // ---- GRP_ENGAGEMENT (group guarded by Has("ENG_ADMIN")) ----
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/dashboard", "ภาพรวม", "Overview", "Icons.Material.Filled.Dashboard", 10),
