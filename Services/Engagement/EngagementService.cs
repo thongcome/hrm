@@ -1,4 +1,5 @@
 using HRM.Models;
+using HRM.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Services.Engagement;
@@ -12,7 +13,7 @@ namespace HRM.Services.Engagement;
 // explicit admin action here (JobMasterId is reserved for wiring the shared
 // workflow engine next), and every redeem re-checks the balance at approve
 // time so concurrent requests can't overspend.
-public class EngagementService(IDbContextFactory<HRMContext> dbFactory)
+public class EngagementService(IDbContextFactory<HRMContext> dbFactory, WorkflowEngineService engine)
 {
     // Redeem statuses that have committed the employee's points (can't be spent
     // twice). Rejected/Cancelled release the points back into the balance.
@@ -71,7 +72,62 @@ public class EngagementService(IDbContextFactory<HRMContext> dbFactory)
         };
         context.Eng_RedeemRequests.Add(request);
         await context.SaveChangesAsync(ct);
+
+        // Route the redeem through the shared engine like leave/OT/welfare — the
+        // ENG_REDEEM workflow's approvers act in /wf/my-inbox, and SyncRedeemsAsync
+        // applies the outcome back. Points are already committed (PendingApproval)
+        // so the balance reflects the pending spend immediately.
+        var approvalWorkflow = await context.wf_workflows
+            .FirstOrDefaultAsync(w => w.workflowcode == EngRedeemWorkflowSeeder.WorkflowCode, ct);
+        if (approvalWorkflow is not null && approvalWorkflow.isactive == true)
+        {
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct);
+            var jobId = await engine.StartJobAsync(
+                approvalWorkflow.workflowid, "Eng_RedeemRequest", request.Id.ToString(),
+                actorUserId, emp?.EmpNo, $"ขอแลกของรางวัล: {item.Name} ({item.PointsCost} แต้ม)", item.PointsCost, ct);
+            request.JobMasterId = jobId;
+            await context.SaveChangesAsync(ct);
+        }
         return request;
+    }
+
+    // Apply-on-read for the workflow path: reflect each PendingApproval redeem's
+    // job outcome — COMPLETED → Approved (and decrement stock once); closed but
+    // not completed (declined) → Rejected, which releases the committed points.
+    // Called before listing so any read shows the current state. Admin can also
+    // act directly via ApproveRedeemAsync/RejectRedeemAsync (both guarded).
+    public async Task<int> SyncRedeemsAsync(string companyId, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var pending = await context.Eng_RedeemRequests
+            .Where(r => r.CompanyId == companyId && r.IsActive
+                && r.Status == EngRedeemStatus.PendingApproval && r.JobMasterId != null)
+            .ToListAsync(ct);
+        if (pending.Count == 0) return 0;
+
+        var jobIds = pending.Select(r => r.JobMasterId!.Value).ToList();
+        var jobs = await context.job_masters.Where(j => jobIds.Contains(j.jobmasterid)).ToDictionaryAsync(j => j.jobmasterid, ct);
+
+        var changed = 0;
+        foreach (var req in pending)
+        {
+            if (!jobs.TryGetValue(req.JobMasterId!.Value, out var job) || job.isJobClosed != true) continue;
+
+            if (job.status == WorkflowEngineService.StatusCompleted)
+            {
+                var item = await context.Eng_RedeemItems.FirstOrDefaultAsync(i => i.Id == req.RedeemItemId, ct);
+                if (item?.StockQty is int stock && stock > 0) item.StockQty = stock - 1;
+                req.Status = EngRedeemStatus.Approved;
+            }
+            else
+            {
+                req.Status = EngRedeemStatus.Rejected; // declined/cancelled at the engine → release points
+            }
+            changed++;
+        }
+        await context.SaveChangesAsync(ct);
+        return changed;
     }
 
     // Admin approves: re-check affordability (other redeems may have landed),
@@ -136,6 +192,8 @@ public class EngagementService(IDbContextFactory<HRMContext> dbFactory)
     public async Task<List<RedeemView>> GetRedeemsAsync(
         string companyId, long? hremployeeId, EngRedeemStatus? status, int take = 200, CancellationToken ct = default)
     {
+        await SyncRedeemsAsync(companyId, ct); // reflect any workflow outcomes before listing
+
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
         var q = context.Eng_RedeemRequests.Where(r => r.CompanyId == companyId && r.IsActive);
