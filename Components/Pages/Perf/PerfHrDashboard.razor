@@ -5,14 +5,19 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using HRM.Services.Audit
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PERF_ADMIN")]
 
 <PageTitle>ภาพรวมการประเมิน (HR Dashboard)</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    <MudText Typo="Typo.h5">ภาพรวมการประเมินผลปฏิบัติงาน</MudText>
+    <div class="d-flex align-center gap-2">
+        <MudText Typo="Typo.h5">ภาพรวมการประเมินผลปฏิบัติงาน</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
 
     @if (string.IsNullOrEmpty(_companyId))
     {
@@ -62,7 +67,69 @@
         <MudAlert Severity="Severity.Warning" Class="mt-3">มีผู้ประเมินที่ยังไม่ให้คะแนน @pendingScoring.Count รายการ</MudAlert>
     }
 
-    <MudTable Items="_instances" Dense="true" Hover="true" Class="mt-4">
+    @{
+        var dist = BuildDistribution();
+        var gradedTotal = dist.Sum(d => d.ActualCount);
+    }
+    <MudPaper Class="pa-3 mt-4" Outlined="true">
+        <div class="d-flex align-center gap-2 mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.BarChart" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">การกระจายเกรด vs เป้าหมาย (Bell Curve)</MudText>
+        </div>
+        <MudText Typo="Typo.caption" Class="mb-2">
+            เทียบสัดส่วนจริงของผู้ที่ได้เกรดนั้น (จาก @gradedTotal คนที่ให้เกรดแล้ว) กับ % เป้าหมายที่ตั้งไว้ต่อเกรด — คลิกที่แถวเพื่อดูรายชื่อคนในเกรดนั้น
+        </MudText>
+        @if (gradedTotal == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">ยังไม่มีผู้ได้รับเกรดในรอบนี้</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="dist" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>เกรด</MudTh>
+                    <MudTh Style="text-align:right">จำนวน</MudTh>
+                    <MudTh Style="width:32%">สัดส่วนจริง</MudTh>
+                    <MudTh Style="text-align:right">จริง %</MudTh>
+                    <MudTh Style="text-align:right">เป้าหมาย %</MudTh>
+                    <MudTh Style="text-align:center">ผลต่าง</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="เกรด">
+                        <MudButton Size="Size.Small" Variant="@(_gradeFilter == context.Grade ? Variant.Filled : Variant.Text)"
+                            Color="Color.Primary" OnClick="@(() => ToggleGradeFilter(context.Grade))">@context.Grade</MudButton>
+                    </MudTd>
+                    <MudTd DataLabel="จำนวน" Style="text-align:right">@context.ActualCount</MudTd>
+                    <MudTd DataLabel="สัดส่วนจริง">
+                        <MudProgressLinear Color="@VarianceColor(context.Status)" Value="@((double)context.ActualPercent)" Class="my-1" Style="height:12px;" Rounded="true" />
+                    </MudTd>
+                    <MudTd DataLabel="จริง %" Style="text-align:right">@context.ActualPercent.ToString("0.#")%</MudTd>
+                    <MudTd DataLabel="เป้าหมาย %" Style="text-align:right">@(context.TargetPercent is decimal tp ? tp.ToString("0.#") + "%" : "—")</MudTd>
+                    <MudTd DataLabel="ผลต่าง" Style="text-align:center">
+                        @if (context.TargetPercent is null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">ยังไม่ตั้งเป้า</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@VarianceColor(context.Status)">
+                                @(context.Status == "ok" ? "ตรงเป้า" : (context.VariancePercent > 0 ? $"เกิน +{context.VariancePercent:0.#}%" : $"ขาด {context.VariancePercent:0.#}%"))
+                            </MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    @if (_gradeFilter is not null)
+    {
+        <MudChip T="string" Class="mt-3" Color="Color.Primary" OnClose="@(() => _gradeFilter = null)" CloseIcon="@Icons.Material.Filled.Close">
+            กรองเฉพาะเกรด @_gradeFilter — คลิกกากบาทเพื่อล้าง
+        </MudChip>
+    }
+
+    <MudTable Items="FilteredInstances" Dense="true" Hover="true" Class="mt-4">
         <HeaderContent>
             <MudTh>รหัส</MudTh>
             <MudTh>ชื่อ</MudTh>
@@ -93,6 +160,57 @@
     private long? _selectedPeriodId;
     private List<Perf_EvaluationInstance> _instances = new();
     private List<Perf_RaterAssignment> _raterAssignments = new();
+    private List<Perf_GradeBand> _gradeBands = new();
+    private string? _gradeFilter;
+
+    private record GradeDistRow(string Grade, int SortOrder, int ActualCount, decimal ActualPercent, decimal? TargetPercent, decimal? VariancePercent, string Status);
+
+    private IEnumerable<Perf_EvaluationInstance> FilteredInstances =>
+        _gradeFilter is null ? _instances : _instances.Where(i => i.FinalGrade == _gradeFilter);
+
+    private void ToggleGradeFilter(string grade) => _gradeFilter = _gradeFilter == grade ? null : grade;
+
+    private static Color VarianceColor(string status) => status switch
+    {
+        "over" => Color.Warning,
+        "under" => Color.Info,
+        "ok" => Color.Success,
+        _ => Color.Default,
+    };
+
+    // Actual grade spread of everyone already graded (scored + approved) vs the
+    // period's configured bell-curve target per band — the same over/under lens
+    // as calibration, but on the final result so execs can see grade inflation
+    // after the fact. Bands with no target show as "ยังไม่ตั้งเป้า".
+    private List<GradeDistRow> BuildDistribution()
+    {
+        var graded = _instances.Where(i => !string.IsNullOrEmpty(i.FinalGrade)).ToList();
+        var total = graded.Count;
+        var countByGrade = graded.GroupBy(i => i.FinalGrade!).ToDictionary(g => g.Key, g => g.Count());
+
+        var rows = new List<GradeDistRow>();
+        foreach (var band in _gradeBands.OrderBy(b => b.SortOrder))
+        {
+            var actual = countByGrade.TryGetValue(band.Grade, out var c) ? c : 0;
+            var actualPct = total == 0 ? 0m : Math.Round(actual * 100m / total, 1);
+            decimal? variance = null;
+            string status;
+            if (band.TargetDistributionPercent is decimal target)
+            {
+                variance = Math.Round(actualPct - target, 1);
+                status = variance > 0m ? "over" : variance < 0m ? "under" : "ok";
+            }
+            else status = "no-target";
+            rows.Add(new GradeDistRow(band.Grade, band.SortOrder, actual, actualPct, band.TargetDistributionPercent, variance, status));
+        }
+        // grades present on instances but with no matching band (shouldn't happen, but don't hide people)
+        foreach (var kv in countByGrade.Where(kv => _gradeBands.All(b => b.Grade != kv.Key)))
+        {
+            var actualPct = total == 0 ? 0m : Math.Round(kv.Value * 100m / total, 1);
+            rows.Add(new GradeDistRow(kv.Key, 999, kv.Value, actualPct, null, null, "no-target"));
+        }
+        return rows;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,12 +225,17 @@
     private async Task OnPeriodChangedAsync(long? periodId)
     {
         _selectedPeriodId = periodId;
+        _gradeFilter = null;
         if (periodId is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _instances = await context.Perf_EvaluationInstances.Where(i => i.EvaluationPeriodId == periodId).ToListAsync();
         var instanceIds = _instances.Select(i => i.Id).ToList();
         _raterAssignments = await context.Perf_RaterAssignments.Where(r => instanceIds.Contains(r.EvaluationInstanceId)).ToListAsync();
+        _gradeBands = await context.Perf_GradeBands.Where(g => g.EvaluationPeriodId == periodId && g.IsActive).ToListAsync();
+
+        // PDPA: the dashboard lists individual names, scores and grades.
+        await AuditLogger.LogAccessAsync("Perf_EvaluationInstance", null, isSensitive: true, note: $"HR dashboard: period {periodId}");
     }
 
     private int CountByStatus(PerfInstanceStatus s) => _instances.Count(i => i.Status == s);
