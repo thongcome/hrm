@@ -487,6 +487,11 @@ builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Service
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.SensitiveAccessLogReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TrainingCompletionReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TrainingByCourseReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.RecruitmentPipelineReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.ExpenseClaimSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.DisciplinaryCaseSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.GrievanceSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.InsuranceEnrollmentReport>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
