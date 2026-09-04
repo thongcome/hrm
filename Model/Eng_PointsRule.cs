@@ -17,7 +17,14 @@ public class Eng_PointsRule
     [Required, StringLength(20)]
     public string CompanyId { get; set; } = null!;
 
-    public EngPointsSource Source { get; set; }
+    // The pluggable activity this rule enrols (IPointEarningActivity.Code).
+    // A rule = "this company gives N points for this activity". Name is a
+    // snapshot of the provider's display name at enrol time.
+    [Required, StringLength(40)]
+    public string ActivityCode { get; set; } = null!;
+
+    [StringLength(100)]
+    public string? ActivityName { get; set; }
 
     public int Points { get; set; }
 

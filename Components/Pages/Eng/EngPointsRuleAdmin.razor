@@ -21,19 +21,21 @@
 <MudPaper Class="pa-4 mb-4">
     <MudText Typo="Typo.h5">กติกาสะสมแต้มจากกิจกรรม</MudText>
     <MudText Typo="Typo.body2" Class="mud-text-secondary">
-        นอกจาก kudos จากเพื่อนร่วมงาน พนักงานยังได้แต้มจากกิจกรรมอื่นตามกติกาด้านล่าง — ตั้งจำนวนแต้มและเปิด/ปิดได้ แล้วกด "คำนวณแต้มย้อนหลัง" เพื่อให้ระบบมอบแต้มจากกิจกรรมที่ทำไปแล้ว
+        นอกจาก kudos จากเพื่อนร่วมงาน พนักงานยังได้แต้มจากกิจกรรมที่ลงทะเบียนไว้ด้านล่าง — แต่ละกิจกรรมมี "รหัส (code)" ของตัวเอง โมดูล/กิจกรรมอื่นเพิ่มเข้าร่วมโครงการได้ด้วยปุ่ม "เพิ่มกิจกรรม"
     </MudText>
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4">
     <div class="d-flex flex-wrap align-center gap-2 mb-2">
-        <MudText Typo="Typo.h6">กติกา</MudText>
+        <MudText Typo="Typo.h6">กิจกรรมที่แจกแต้ม</MudText>
         <MudSpacer />
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Sync"
+        <MudButton Color="Color.Secondary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Sync"
             OnClick="SyncAsync" Disabled="_busy">คำนวณแต้มย้อนหลัง (Sync)</MudButton>
     </div>
+
     <MudTable Items="_rules" Dense="true" Elevation="0">
         <HeaderContent>
+            <MudTh>รหัส (Code)</MudTh>
             <MudTh>กิจกรรม</MudTh>
             <MudTh>ได้แต้มอย่างไร</MudTh>
             <MudTh Style="text-align:right">แต้ม/ครั้ง</MudTh>
@@ -41,41 +43,63 @@
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>
-                <MudChip T="string" Size="Size.Small" Color="@SourceColor(context.Source)">@SourceLabel(context.Source)</MudChip>
-            </MudTd>
-            <MudTd><MudText Typo="Typo.body2" Class="mud-text-secondary">@HowEarned(context.Source)</MudText></MudTd>
+            <MudTd><code>@context.ActivityCode</code></MudTd>
+            <MudTd>@(context.ActivityName ?? PointsService.ActivityDisplayName(context.ActivityCode))</MudTd>
+            <MudTd><MudText Typo="Typo.caption" Class="mud-text-secondary">@PointsService.ActivityHowEarned(context.ActivityCode)</MudText></MudTd>
             <MudTd Style="text-align:right"><MudNumericField T="int" @bind-Value="context.Points" Min="0" Margin="Margin.Dense" Style="max-width:110px;margin-left:auto;" /></MudTd>
             <MudTd Style="text-align:center"><MudCheckBox T="bool" @bind-Value="context.IsActive" /></MudTd>
             <MudTd Style="text-align:right"><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => SaveRuleAsync(context))">บันทึก</MudButton></MudTd>
         </RowTemplate>
-        <NoRecordsContent><MudText Typo="Typo.body2">กำลังตั้งค่าเริ่มต้น...</MudText></NoRecordsContent>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีกิจกรรมแจกแต้ม — เพิ่มด้วยปุ่มด้านล่าง</MudText></NoRecordsContent>
     </MudTable>
-    <MudText Typo="Typo.caption" Class="mud-text-secondary">หมายเหตุ: การตอบแบบสำรวจไม่ให้แต้มรายบุคคล เพราะแบบสำรวจไม่ระบุตัวตน (anonymous)</MudText>
+
+    <MudDivider Class="my-3" />
+    <MudText Typo="Typo.subtitle2" Class="mb-1">เพิ่มกิจกรรมเข้าร่วมโครงการแจกแต้ม</MudText>
+    @if (_available.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">ทุกกิจกรรมที่ระบบรองรับถูกเพิ่มครบแล้ว (โมดูลอื่นที่ลงทะเบียน provider ใหม่จะปรากฏที่นี่ให้เลือก)</MudText>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap align-end gap-2">
+            <MudSelect T="string" @bind-Value="_pickCode" Label="เลือกกิจกรรม (code)" Variant="Variant.Outlined" Dense="true" Style="min-width:320px;">
+                @foreach (var a in _available)
+                {
+                    <MudSelectItem T="string" Value="@a.Code">@a.Code — @a.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add"
+                OnClick="AddActivityAsync" Disabled="string.IsNullOrEmpty(_pickCode) || _busy">เพิ่มกิจกรรม</MudButton>
+        </div>
+    }
+    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">หมายเหตุ: แบบสำรวจไม่แจกแต้มรายบุคคล เพราะไม่ระบุตัวตน (anonymous)</MudText>
 </MudPaper>
 
 <MudPaper Class="pa-4">
     <MudText Typo="Typo.h6" Class="mb-2">ประวัติการมอบแต้มจากกิจกรรม (ล่าสุด)</MudText>
     <MudTable Items="_ledger" Dense="true" Hover="true" Striped="true" Elevation="0">
         <HeaderContent>
-            <MudTh>วันที่</MudTh><MudTh>พนักงาน</MudTh><MudTh>แหล่งที่มา</MudTh><MudTh>รายละเอียด</MudTh><MudTh Style="text-align:right">แต้ม</MudTh>
+            <MudTh>วันที่</MudTh><MudTh>พนักงาน</MudTh><MudTh>กิจกรรม</MudTh><MudTh>รายละเอียด</MudTh><MudTh Style="text-align:right">แต้ม</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.EarnedDate.ToString("dd/MM/yyyy")</MudTd>
             <MudTd>@context.EmpName</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="@SourceColor(context.Source)">@SourceLabel(context.Source)</MudChip></MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Info">@context.ActivityName</MudChip></MudTd>
             <MudTd>@context.Note</MudTd>
             <MudTd Style="text-align:right"><b>+@context.Points</b></MudTd>
         </RowTemplate>
         <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการมอบแต้มจากกิจกรรม — กด "คำนวณแต้มย้อนหลัง"</MudText></NoRecordsContent>
     </MudTable>
+    <MudButton Variant="Variant.Text" Href="/eng/points-balances" Class="mt-2" StartIcon="@Icons.Material.Filled.AccountBalanceWallet">ดูยอดแต้มรายพนักงาน</MudButton>
 </MudPaper>
 
 @code {
     private string? _companyId;
     private long _userId;
     private bool _busy;
+    private string? _pickCode;
     private List<Eng_PointsRule> _rules = new();
+    private List<IPointEarningActivity> _available = new();
     private List<EngPointsService.LedgerRow> _ledger = new();
 
     protected override async Task OnInitializedAsync()
@@ -91,17 +115,24 @@
 
     private async Task ReloadAsync()
     {
-        _rules = (await PointsService.GetRulesAsync(_companyId!)).OrderBy(r => r.Source).ToList();
+        _rules = (await PointsService.GetRulesAsync(_companyId!)).OrderBy(r => r.ActivityCode).ToList();
+        _available = await PointsService.GetAvailableActivitiesAsync(_companyId!);
         _ledger = await PointsService.GetLedgerAsync(_companyId!);
+        _pickCode = _available.FirstOrDefault()?.Code;
+    }
+
+    private async Task AddActivityAsync()
+    {
+        if (string.IsNullOrEmpty(_pickCode)) return;
+        _busy = true;
+        try { await PointsService.AddRuleAsync(_companyId!, _pickCode); Snackbar.Add("เพิ่มกิจกรรมแล้ว", Severity.Success); await ReloadAsync(); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
     }
 
     private async Task SaveRuleAsync(Eng_PointsRule rule)
     {
-        try
-        {
-            await PointsService.SaveRuleAsync(rule);
-            Snackbar.Add("บันทึกกติกาแล้ว", Severity.Success);
-        }
+        try { await PointsService.SaveRuleAsync(rule); Snackbar.Add("บันทึกกติกาแล้ว", Severity.Success); }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
 
@@ -118,27 +149,4 @@
         finally { _busy = false; }
     }
 
-    private static string SourceLabel(EngPointsSource s) => s switch
-    {
-        EngPointsSource.TrainingCompletion => "จบหลักสูตรอบรม",
-        EngPointsSource.TenureAnniversary => "ครบรอบปีการทำงาน",
-        EngPointsSource.Manual => "HR ให้แต้มพิเศษ",
-        _ => s.ToString(),
-    };
-
-    private static string HowEarned(EngPointsSource s) => s switch
-    {
-        EngPointsSource.TrainingCompletion => "อัตโนมัติเมื่อพนักงานมีสถานะ \"จบแล้ว\" ในหลักสูตร LMS (มอบ 1 ครั้งต่อ 1 หลักสูตรที่จบ) — กด \"คำนวณแต้มย้อนหลัง\" เพื่อประมวลผล",
-        EngPointsSource.TenureAnniversary => "อัตโนมัติเมื่อพนักงานทำงานครบรอบปี (มอบ 1 ครั้งต่อ 1 ปีที่ครบ นับจากวันเริ่มงาน) — กด \"คำนวณแต้มย้อนหลัง\"",
-        EngPointsSource.Manual => "HR มอบแต้มพิเศษให้เป็นรายกรณี (ไม่อัตโนมัติ)",
-        _ => "",
-    };
-
-    private static Color SourceColor(EngPointsSource s) => s switch
-    {
-        EngPointsSource.TrainingCompletion => Color.Info,
-        EngPointsSource.TenureAnniversary => Color.Success,
-        EngPointsSource.Manual => Color.Warning,
-        _ => Color.Default,
-    };
 }

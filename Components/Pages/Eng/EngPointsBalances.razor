@@ -1,0 +1,83 @@
+@page "/eng/points-balances"
+@using System.Security.Claims
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject EngPointsService PointsService
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>ยอดแต้มรายพนักงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2">
+        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">ยอดแต้ม/coin รายพนักงาน</MudText>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+        ยอดรวมของแต่ละคน = แต้มจาก kudos + แต้มจากกิจกรรม − แต้มที่ใช้แลกของรางวัลไปแล้ว
+    </MudText>
+    <MudTextField T="string" Value="_search" Immediate="true" DebounceInterval="250"
+        Placeholder="ค้นหา: ชื่อ / รหัสพนักงาน" Variant="Variant.Outlined" Class="mt-3"
+        Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+        ValueChanged="OnSearch" />
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    @if (_loading)
+    {
+        <div class="d-flex justify-center py-6"><MudProgressCircular Indeterminate="true" /></div>
+    }
+    else
+    {
+        <MudText Typo="Typo.subtitle2" Class="mud-text-secondary mb-2">พบ @_rows.Count คน</MudText>
+        <MudTable Items="_rows" Dense="true" Hover="true" Striped="true" Elevation="0" HorizontalScrollbar="true">
+            <HeaderContent>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่อ-สกุล</MudTh>
+                <MudTh Style="text-align:right">kudos</MudTh>
+                <MudTh Style="text-align:right">กิจกรรม</MudTh>
+                <MudTh Style="text-align:right">ได้รับรวม</MudTh>
+                <MudTh Style="text-align:right">ใช้ไป</MudTh>
+                <MudTh Style="text-align:right">คงเหลือ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="รหัส">@context.EmpNo</MudTd>
+                <MudTd DataLabel="ชื่อ-สกุล">@context.EmpName</MudTd>
+                <MudTd DataLabel="kudos" Style="text-align:right">@context.KudosPoints</MudTd>
+                <MudTd DataLabel="กิจกรรม" Style="text-align:right">@context.ActivityPoints</MudTd>
+                <MudTd DataLabel="ได้รับรวม" Style="text-align:right">@context.Earned</MudTd>
+                <MudTd DataLabel="ใช้ไป" Style="text-align:right">@context.Spent</MudTd>
+                <MudTd DataLabel="คงเหลือ" Style="text-align:right"><b>@context.Available</b></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีพนักงานที่มีแต้ม</MudText></NoRecordsContent>
+        </MudTable>
+        <MudButton Variant="Variant.Text" Href="/eng/points-rules" Class="mt-2">ไปหน้ากติกาสะสมแต้ม</MudButton>
+    }
+</MudPaper>
+
+@code {
+    private string? _companyId;
+    private string _search = "";
+    private bool _loading = true;
+    private List<EngPointsService.EmployeeBalanceRow> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrEmpty(_companyId)) { _loading = false; return; }
+        await LoadAsync();
+    }
+
+    private async Task OnSearch(string v) { _search = v; await LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _loading = true;
+        _rows = await PointsService.GetEmployeeBalancesAsync(_companyId, _search);
+        _loading = false;
+    }
+}

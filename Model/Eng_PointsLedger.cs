@@ -22,7 +22,10 @@ public class Eng_PointsLedger
 
     public long HremployeeId { get; set; }
 
-    public EngPointsSource Source { get; set; }
+    // The activity code that earned these points (IPointEarningActivity.Code,
+    // or "MANUAL" for an HR discretionary award).
+    [Required, StringLength(40)]
+    public string ActivityCode { get; set; } = null!;
 
     public int Points { get; set; }
 

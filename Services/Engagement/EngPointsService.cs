@@ -4,103 +4,113 @@ using Microsoft.EntityFrameworkCore;
 namespace HRM.Services.Engagement;
 
 // Activity-based points earning — the "earn coins from doing things, not just
-// kudos" side of engagement (AutoX ask). Rules (Eng_PointsRule) say how many
-// points each source is worth per company; SyncEarnedPointsAsync scans for
-// qualifying activity that hasn't been credited yet and writes idempotent
-// Eng_PointsLedger rows (RefTable+RefId prevents double-award). There is no
-// scheduler in this app, so the sync runs on demand from the admin page and
-// whenever the balance is read. Kudos points stay on Eng_Recognition; this only
-// covers the non-kudos sources.
-public class EngPointsService(IDbContextFactory<HRMContext> dbFactory)
+// kudos" side (AutoX ask), now pluggable: each earning activity is an
+// IPointEarningActivity provider with its own Code, an Eng_PointsRule enrols it
+// per company with a point value, and SyncEarnedPointsAsync asks each enrolled
+// provider what qualifies and writes idempotent Eng_PointsLedger rows
+// (RefTable+RefId dedup). Another module joins the program by shipping a
+// provider and being enrolled from the setup page — no change here.
+public class EngPointsService(IDbContextFactory<HRMContext> dbFactory, PointActivityRegistry registry)
 {
+    public const string ManualCode = "MANUAL";
+
+    // Redeem statuses that have committed points (mirror EngagementService).
+    private static readonly EngRedeemStatus[] CommittedStatuses =
+        { EngRedeemStatus.PendingApproval, EngRedeemStatus.Approved, EngRedeemStatus.Fulfilled };
+
+    // sensible default points when enrolling a known activity
+    private static readonly Dictionary<string, int> DefaultPoints = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LMS_COMPLETION"] = 20,
+        ["TENURE_ANNIVERSARY"] = 50,
+    };
+
     public async Task<int> GetActivityPointsAsync(long hremployeeId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        return await context.Eng_PointsLedgers
-            .Where(l => l.HremployeeId == hremployeeId && l.IsActive)
+        return await context.Eng_PointsLedgers.Where(l => l.HremployeeId == hremployeeId && l.IsActive)
             .SumAsync(l => (int?)l.Points, ct) ?? 0;
     }
 
-    public record SourceTotal(EngPointsSource Source, int Points, int Count);
-
-    public async Task<List<SourceTotal>> GetBreakdownAsync(long hremployeeId, CancellationToken ct = default)
+    // ---- rules (enrolment) ----
+    public async Task<List<Eng_PointsRule>> GetRulesAsync(string companyId, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var rows = await context.Eng_PointsLedgers.Where(l => l.HremployeeId == hremployeeId && l.IsActive).ToListAsync(ct);
-        return rows.GroupBy(l => l.Source)
-            .Select(g => new SourceTotal(g.Key, g.Sum(x => x.Points), g.Count()))
-            .OrderByDescending(s => s.Points).ToList();
+        return await context.Eng_PointsRules.Where(r => r.CompanyId == companyId).ToListAsync(ct);
     }
 
-    // Scans activity for the company and credits any not-yet-recorded events.
-    // Returns how many ledger rows were created. Safe to run repeatedly.
+    // Activities registered in code but not yet enrolled for this company —
+    // the choices the setup page's "add activity" button offers.
+    public async Task<List<IPointEarningActivity>> GetAvailableActivitiesAsync(string companyId, CancellationToken ct = default)
+    {
+        var enrolled = (await GetRulesAsync(companyId, ct)).Select(r => r.ActivityCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return registry.All.Where(a => !enrolled.Contains(a.Code)).ToList();
+    }
+
+    public async Task AddRuleAsync(string companyId, string activityCode, CancellationToken ct = default)
+    {
+        var activity = registry.Find(activityCode) ?? throw new InvalidOperationException("ไม่พบกิจกรรมนี้ในระบบ");
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        if (await context.Eng_PointsRules.AnyAsync(r => r.CompanyId == companyId && r.ActivityCode == activityCode, ct))
+            throw new InvalidOperationException("กิจกรรมนี้ถูกเพิ่มไปแล้ว");
+        context.Eng_PointsRules.Add(new Eng_PointsRule
+        {
+            CompanyId = companyId, ActivityCode = activity.Code, ActivityName = activity.Name,
+            Points = DefaultPoints.GetValueOrDefault(activity.Code, 10), IsActive = true,
+        });
+        await context.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveRuleAsync(Eng_PointsRule rule, CancellationToken ct = default)
+    {
+        if (rule.Points < 0) throw new InvalidOperationException("คะแนนต้องไม่ติดลบ");
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var existing = await context.Eng_PointsRules.FirstOrDefaultAsync(r => r.Id == rule.Id, ct)
+            ?? throw new InvalidOperationException("ไม่พบกติกานี้แล้ว");
+        existing.Points = rule.Points;
+        existing.IsActive = rule.IsActive;
+        await context.SaveChangesAsync(ct);
+    }
+
+    // Enrol every registered activity that isn't enrolled yet, so points work
+    // out of the box; HR still adds future ones via the button and can disable
+    // or re-point any of these.
+    public async Task EnsureDefaultRulesAsync(string companyId, CancellationToken ct = default)
+    {
+        var available = await GetAvailableActivitiesAsync(companyId, ct);
+        foreach (var a in available)
+            await AddRuleAsync(companyId, a.Code, ct);
+    }
+
+    // ---- earning ----
     public async Task<int> SyncEarnedPointsAsync(string companyId, long? actorUserId = null, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var rules = await context.Eng_PointsRules
-            .Where(r => r.CompanyId == companyId && r.IsActive)
-            .ToListAsync(ct);
+        var rules = await context.Eng_PointsRules.Where(r => r.CompanyId == companyId && r.IsActive).ToListAsync(ct);
         if (rules.Count == 0) return 0;
 
-        var existing = await context.Eng_PointsLedgers
-            .Where(l => l.CompanyId == companyId && l.RefTable != null)
-            .Select(l => l.RefTable + "|" + l.RefId)
-            .ToListAsync(ct);
-        var seen = existing.ToHashSet();
+        var existing = (await context.Eng_PointsLedgers
+                .Where(l => l.CompanyId == companyId && l.RefTable != null)
+                .Select(l => l.RefTable + "|" + l.RefId).ToListAsync(ct))
+            .ToHashSet();
+
         var toAdd = new List<Eng_PointsLedger>();
-
-        // ---- Training completion (LMS) ----
-        var trainingRule = rules.FirstOrDefault(r => r.Source == EngPointsSource.TrainingCompletion);
-        if (trainingRule is not null)
+        foreach (var rule in rules)
         {
-            var completions = await (
-                from e in context.Lms_Enrollments
-                join emp in context.Hremployee on e.HremployeeId equals emp.id
-                where e.Status == EnrollmentStatus.Completed && emp.companyid == companyId
-                select new { e.Id, e.HremployeeId }).ToListAsync(ct);
-
-            foreach (var c in completions)
+            var provider = registry.Find(rule.ActivityCode);
+            if (provider is null) continue; // enrolled code with no provider (module removed) — skip
+            var events = await provider.DetectAsync(context, companyId, ct);
+            foreach (var ev in events)
             {
-                var key = "Lms_Enrollment|" + c.Id;
-                if (seen.Contains(key)) continue;
+                var key = ev.RefTable + "|" + ev.RefId;
+                if (!existing.Add(key)) continue;
                 toAdd.Add(new Eng_PointsLedger
                 {
-                    CompanyId = companyId, HremployeeId = c.HremployeeId, Source = EngPointsSource.TrainingCompletion,
-                    Points = trainingRule.Points, RefTable = "Lms_Enrollment", RefId = c.Id.ToString(),
-                    Note = "จบหลักสูตรอบรม", AwardedByUserId = actorUserId, EarnedDate = DateTime.Now, IsActive = true,
+                    CompanyId = companyId, HremployeeId = ev.HremployeeId, ActivityCode = rule.ActivityCode,
+                    Points = rule.Points, RefTable = ev.RefTable, RefId = ev.RefId, Note = ev.Note,
+                    AwardedByUserId = actorUserId, EarnedDate = DateTime.Now, IsActive = true,
                 });
-                seen.Add(key);
-            }
-        }
-
-        // ---- Tenure anniversary ----
-        var tenureRule = rules.FirstOrDefault(r => r.Source == EngPointsSource.TenureAnniversary);
-        if (tenureRule is not null)
-        {
-            var today = DateTime.Today;
-            var emps = await context.Hremployee
-                .Where(e => e.companyid == companyId && e.ResignDate == null && e.WorkDate != null)
-                .Select(e => new { e.id, e.WorkDate })
-                .ToListAsync(ct);
-
-            foreach (var e in emps)
-            {
-                var wd = e.WorkDate!.Value.Date;
-                // full years completed as of today (only if the anniversary has passed)
-                var years = today.Year - wd.Year;
-                if (wd.AddYears(years) > today) years--;
-                if (years < 1) continue;
-
-                var key = "TenureAnniversary|" + e.id + ":" + years;
-                if (seen.Contains(key)) continue;
-                toAdd.Add(new Eng_PointsLedger
-                {
-                    CompanyId = companyId, HremployeeId = e.id, Source = EngPointsSource.TenureAnniversary,
-                    Points = tenureRule.Points, RefTable = "TenureAnniversary", RefId = e.id + ":" + years,
-                    Note = $"ครบ {years} ปีการทำงาน", AwardedByUserId = actorUserId, EarnedDate = DateTime.Now, IsActive = true,
-                });
-                seen.Add(key);
             }
         }
 
@@ -116,19 +126,19 @@ public class EngPointsService(IDbContextFactory<HRMContext> dbFactory)
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         context.Eng_PointsLedgers.Add(new Eng_PointsLedger
         {
-            CompanyId = companyId, HremployeeId = hremployeeId, Source = EngPointsSource.Manual,
+            CompanyId = companyId, HremployeeId = hremployeeId, ActivityCode = ManualCode,
             Points = points, Note = note, AwardedByUserId = actorUserId, EarnedDate = DateTime.Now, IsActive = true,
         });
         await context.SaveChangesAsync(ct);
     }
 
-    public record LedgerRow(long Id, long HremployeeId, string EmpName, EngPointsSource Source, int Points, string? Note, DateTime EarnedDate);
+    // ---- ledger + activity-name resolution ----
+    public record LedgerRow(long Id, long HremployeeId, string EmpName, string ActivityCode, string ActivityName, int Points, string? Note, DateTime EarnedDate);
 
     public async Task<List<LedgerRow>> GetLedgerAsync(string companyId, int take = 300, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var rows = await context.Eng_PointsLedgers
-            .Where(l => l.CompanyId == companyId && l.IsActive)
+        var rows = await context.Eng_PointsLedgers.Where(l => l.CompanyId == companyId && l.IsActive)
             .OrderByDescending(l => l.EarnedDate).Take(take).ToListAsync(ct);
         if (rows.Count == 0) return new();
 
@@ -139,48 +149,54 @@ public class EngPointsService(IDbContextFactory<HRMContext> dbFactory)
 
         return rows.Select(r => new LedgerRow(
             r.Id, r.HremployeeId, names.GetValueOrDefault(r.HremployeeId, $"#{r.HremployeeId}"),
-            r.Source, r.Points, r.Note, r.EarnedDate)).ToList();
+            r.ActivityCode, ActivityDisplayName(r.ActivityCode), r.Points, r.Note, r.EarnedDate)).ToList();
     }
 
-    public async Task<List<Eng_PointsRule>> GetRulesAsync(string companyId, CancellationToken ct = default)
-    {
-        await using var context = await dbFactory.CreateDbContextAsync(ct);
-        return await context.Eng_PointsRules.Where(r => r.CompanyId == companyId).ToListAsync(ct);
-    }
+    public string ActivityDisplayName(string code)
+        => code == ManualCode ? "HR ให้แต้มพิเศษ" : registry.Find(code)?.Name ?? code;
 
-    public async Task SaveRuleAsync(Eng_PointsRule rule, CancellationToken ct = default)
-    {
-        if (rule.Points < 0) throw new InvalidOperationException("คะแนนต้องไม่ติดลบ");
-        await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var existing = await context.Eng_PointsRules.FirstOrDefaultAsync(r => r.Id == rule.Id, ct)
-            ?? throw new InvalidOperationException("ไม่พบกติกานี้แล้ว");
-        existing.Points = rule.Points;
-        existing.IsActive = rule.IsActive;
-        existing.Description = rule.Description;
-        await context.SaveChangesAsync(ct);
-    }
+    public string ActivityHowEarned(string code)
+        => code == ManualCode ? "HR มอบแต้มให้เป็นรายกรณี" : registry.Find(code)?.HowEarned ?? "";
 
-    // Idempotent default rules so activity-earning works out of the box; HR can
-    // change points or disable a source afterward.
-    public async Task EnsureDefaultRulesAsync(string companyId, CancellationToken ct = default)
+    // ---- per-employee balances (HR view: who has how many points) ----
+    public record EmployeeBalanceRow(long HremployeeId, string EmpNo, string EmpName, int KudosPoints, int ActivityPoints, int Earned, int Spent, int Available);
+
+    public async Task<List<EmployeeBalanceRow>> GetEmployeeBalancesAsync(string companyId, string? search, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var have = await context.Eng_PointsRules.Where(r => r.CompanyId == companyId).Select(r => r.Source).ToListAsync(ct);
-        var defaults = new (EngPointsSource Source, int Points, string Desc)[]
+
+        var kudos = await context.Eng_Recognitions.Where(k => k.CompanyId == companyId && k.IsActive)
+            .GroupBy(k => k.ToHremployeeId).Select(g => new { Id = g.Key, P = g.Sum(x => x.Points) }).ToListAsync(ct);
+        var activity = await context.Eng_PointsLedgers.Where(l => l.CompanyId == companyId && l.IsActive)
+            .GroupBy(l => l.HremployeeId).Select(g => new { Id = g.Key, P = g.Sum(x => x.Points) }).ToListAsync(ct);
+        var spent = await context.Eng_RedeemRequests.Where(r => r.CompanyId == companyId && r.IsActive && CommittedStatuses.Contains(r.Status))
+            .GroupBy(r => r.HremployeeId).Select(g => new { Id = g.Key, P = g.Sum(x => x.PointsSpent) }).ToListAsync(ct);
+
+        var kudosMap = kudos.ToDictionary(x => x.Id, x => x.P);
+        var actMap = activity.ToDictionary(x => x.Id, x => x.P);
+        var spentMap = spent.ToDictionary(x => x.Id, x => x.P);
+
+        var empIds = kudosMap.Keys.Concat(actMap.Keys).Concat(spentMap.Keys).Distinct().ToList();
+        if (empIds.Count == 0) return new();
+
+        var emps = await context.Hremployee.Where(e => empIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpNo, Name = (e.EmpName ?? "") + " " + (e.EmpSurname ?? "") }).ToListAsync(ct);
+
+        var rows = emps.Select(e =>
         {
-            (EngPointsSource.TrainingCompletion, 20, "แต้มเมื่อจบหลักสูตรอบรม"),
-            (EngPointsSource.TenureAnniversary, 50, "แต้มเมื่อครบรอบปีการทำงาน"),
-            (EngPointsSource.Manual, 0, "ให้แต้มพิเศษโดย HR"),
-        };
-        var added = false;
-        foreach (var d in defaults.Where(d => !have.Contains(d.Source)))
+            var k = kudosMap.GetValueOrDefault(e.id);
+            var a = actMap.GetValueOrDefault(e.id);
+            var s = spentMap.GetValueOrDefault(e.id);
+            return new EmployeeBalanceRow(e.id, e.EmpNo, e.Name.Trim(), k, a, k + a, s, k + a - s);
+        });
+
+        if (!string.IsNullOrWhiteSpace(search))
         {
-            context.Eng_PointsRules.Add(new Eng_PointsRule
-            {
-                CompanyId = companyId, Source = d.Source, Points = d.Points, Description = d.Desc, IsActive = true,
-            });
-            added = true;
+            var q = search.Trim();
+            rows = rows.Where(r => r.EmpName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (r.EmpNo?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
         }
-        if (added) await context.SaveChangesAsync(ct);
+
+        return rows.OrderByDescending(r => r.Available).ToList();
     }
 }

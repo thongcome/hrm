@@ -457,6 +457,9 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfKpiSetService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngagementService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngagementAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngPointsService>();
+builder.Services.AddScoped<HRM.Services.Engagement.PointActivityRegistry>();
+builder.Services.AddScoped<HRM.Services.Engagement.IPointEarningActivity, HRM.Services.Engagement.Activities.LmsCompletionActivity>();
+builder.Services.AddScoped<HRM.Services.Engagement.IPointEarningActivity, HRM.Services.Engagement.Activities.TenureAnniversaryActivity>();
 
 // Reporting framework — config-first: register a report as IReportDefinition
 // and an export format as IReportExporter; the registry/viewer/endpoint pick
