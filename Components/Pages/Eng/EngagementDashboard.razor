@@ -8,6 +8,7 @@
 @inject SurveyService SurveyService
 @inject ActionPlanService ActionPlanService
 @inject RecognitionService RecognitionService
+@inject EngagementAnalyticsService Analytics
 @inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
 
@@ -17,32 +18,164 @@
 {
     <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
 }
+else if (_ov is null)
+{
+    <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+}
 else
 {
-    <MudPaper Class="pa-4 mb-4">
-        <MudText Typo="Typo.h5">ภาพรวม Employee Engagement</MudText>
-        <MudGrid Class="mt-3">
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_campaigns.Count</MudText><MudText Typo="Typo.caption">แคมเปญทั้งหมด</MudText></MudPaper>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CampaignCountByStatus(Eng_CampaignStatus.Open)</MudText><MudText Typo="Typo.caption">กำลังเปิดรับคำตอบ</MudText></MudPaper>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@CampaignCountByStatus(Eng_CampaignStatus.Closed)</MudText><MudText Typo="Typo.caption">ปิดแล้ว</MudText></MudPaper>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_actionPlans.Count</MudText><MudText Typo="Typo.caption">แผนปฏิบัติการ</MudText></MudPaper>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_actionPlans.Count(p => p.Status == Eng_ActionPlanStatus.Completed)</MudText><MudText Typo="Typo.caption">แผนที่เสร็จแล้ว</MudText></MudPaper>
-            </MudItem>
-            <MudItem xs="6" sm="2">
-                <MudPaper Class="pa-3" Outlined="true"><MudText Typo="Typo.h4">@_recognitionFeed.Count</MudText><MudText Typo="Typo.caption">Kudos ล่าสุด</MudText></MudPaper>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+    <MudText Typo="Typo.h5" Class="mb-1">ภาพรวม Employee Engagement</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">พนักงานที่ปฏิบัติงาน @_ov.ActiveHeadcount คน · ข้อมูล ณ @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</MudText>
 
+    <MudGrid>
+        @* ---- eNPS hero ---- *@
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Style="@HeroStyleFor(_ov.Enps)" Elevation="2">
+                <MudText Typo="Typo.overline" Style="opacity:.9;">eNPS (ความภักดี)</MudText>
+                <MudText Typo="Typo.h3">@(_ov.Enps is double e ? e.ToString("0") : "—")</MudText>
+                @if (_ov.NpsResponses > 0)
+                {
+                    <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin:.4rem 0;">
+                        <div style="@BarSeg("#43A047", _ov.Promoters, _ov.NpsResponses)"></div>
+                        <div style="@BarSeg("#BDBDBD", _ov.Passives, _ov.NpsResponses)"></div>
+                        <div style="@BarSeg("#E53935", _ov.Detractors, _ov.NpsResponses)"></div>
+                    </div>
+                    <MudText Typo="Typo.caption" Style="opacity:.9;">เชียร์ @_ov.Promoters · เฉยๆ @_ov.Passives · ตำหนิ @_ov.Detractors (@_ov.NpsResponses คำตอบ)</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Style="opacity:.9;">ยังไม่มีผลสำรวจ eNPS</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* ---- engagement index ---- *@
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">ดัชนีความผูกพัน</MudText>
+                <MudText Typo="Typo.h3">@(_ov.EngagementIndexPercent is double i ? i.ToString("0.#") + "%" : "—")</MudText>
+                @if (_ov.EngagementIndexRaw is double raw)
+                {
+                    <MudProgressLinear Color="@IndexColor(_ov.EngagementIndexPercent)" Value="@(_ov.EngagementIndexPercent ?? 0)" Class="my-1" Style="height:8px;" Rounded="true" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">เฉลี่ย @raw.ToString("0.00") / 5 · @(_ov.IndexCampaignTitle ?? "")</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">ยังไม่มีคะแนนแบบสำรวจ</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* ---- participation ---- *@
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">อัตราการตอบแบบสำรวจ</MudText>
+                <MudText Typo="Typo.h3">@_ov.ParticipationRatePercent.ToString("0.#")%</MudText>
+                <MudProgressLinear Color="Color.Info" Value="@_ov.ParticipationRatePercent" Class="my-1" Style="height:8px;" Rounded="true" />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ตอบ @_ov.TotalResponses จาก @_ov.TotalInvited ที่เชิญ</MudText>
+            </MudPaper>
+        </MudItem>
+
+        @* ---- recognition this month ---- *@
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">การชื่นชมเดือนนี้</MudText>
+                <MudText Typo="Typo.h3">@_ov.KudosThisMonth <span style="font-size:.4em;opacity:.7;">kudos</span></MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @_ov.PointsThisMonth แต้ม · มีส่วนร่วม @_ov.RecognitionParticipationPercent.ToString("0.#")% ของพนักงาน
+                    @if (!string.IsNullOrWhiteSpace(_ov.TopCoreValue)) { <text><br />ค่านิยมเด่น: <b>@_ov.TopCoreValue</b> (@_ov.TopCoreValueCount)</text> }
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-1">
+        @* ---- recognition leaderboard ---- *@
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.EmojiEvents" Color="Color.Warning" Class="mr-1" Style="vertical-align:middle;" />ผู้ได้รับการชื่นชมสูงสุด (เดือนนี้)</MudText>
+                @if (_ov.TopReceivers.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-2">ยังไม่มีการชื่นชมในเดือนนี้</MudText>
+                }
+                else
+                {
+                    <MudList T="string" Dense="true" Class="mt-1">
+                        @{ var rank = 0; }
+                        @foreach (var l in _ov.TopReceivers)
+                        {
+                            rank++;
+                            <MudListItem T="string" Icon="@RankIcon(rank)" IconColor="@RankColor(rank)">
+                                <div class="d-flex justify-space-between">
+                                    <span>@l.Name</span>
+                                    <b>@l.Points แต้ม <span style="opacity:.6;font-weight:normal;">(@l.Count)</span></b>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+                @if (_ov.TopGivers.Count > 0)
+                {
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.caption" class="mud-text-secondary">ผู้ให้ kudos มากสุด: @string.Join(", ", _ov.TopGivers.Take(3).Select(g => $"{g.Name} ({g.Count})"))</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* ---- eNPS trend ---- *@
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                <MudText Typo="Typo.h6">แนวโน้ม eNPS</MudText>
+                @if (_ov.EnpsTrend.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-2">ยังไม่มีชุดข้อมูล eNPS ให้เทียบ</MudText>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Class="mt-1" Style="background:transparent;">
+                        @foreach (var t in _ov.EnpsTrend)
+                        {
+                            <tr>
+                                <td style="width:45%;">@t.Label</td>
+                                <td style="width:40%;">
+                                    <MudProgressLinear Color="@EnpsColor(t.Enps)" Value="@((t.Enps + 100) / 2)" Style="height:8px;" Rounded="true" />
+                                </td>
+                                <td style="text-align:right;"><b>@t.Enps.ToString("0")</b></td>
+                            </tr>
+                        }
+                    </MudSimpleTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        @* ---- action plan status ---- *@
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4" Style="height:100%;">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">แผนปฏิบัติการ</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Href="/eng/action-plans">จัดการ</MudButton>
+                </MudStack>
+                <div class="d-flex gap-2 mt-2">
+                    <MudPaper Class="pa-2 flex-grow-1" Outlined="true" Style="text-align:center;">
+                        <MudText Typo="Typo.h5" Color="Color.Default">@_ov.ActionPlanned</MudText><MudText Typo="Typo.caption">วางแผน</MudText>
+                    </MudPaper>
+                    <MudPaper Class="pa-2 flex-grow-1" Outlined="true" Style="text-align:center;">
+                        <MudText Typo="Typo.h5" Color="Color.Info">@_ov.ActionInProgress</MudText><MudText Typo="Typo.caption">ดำเนินการ</MudText>
+                    </MudPaper>
+                    <MudPaper Class="pa-2 flex-grow-1" Outlined="true" Style="text-align:center;">
+                        <MudText Typo="Typo.h5" Color="Color.Success">@_ov.ActionCompleted</MudText><MudText Typo="Typo.caption">เสร็จแล้ว</MudText>
+                    </MudPaper>
+                </div>
+                @if (_ov.ActionTotal > 0)
+                {
+                    <MudProgressLinear Color="Color.Success" Value="@(_ov.ActionCompleted * 100.0 / _ov.ActionTotal)" Class="mt-3" Style="height:8px;" Rounded="true" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">เสร็จ @_ov.ActionCompleted จาก @_ov.ActionTotal แผน</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ---- recent campaigns + kudos (kept) ---- *@
     <MudGrid>
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4 mb-4">
@@ -50,22 +183,12 @@ else
                     <MudText Typo="Typo.h6">แคมเปญล่าสุด</MudText>
                     <MudButton Size="Size.Small" Variant="Variant.Text" Href="/eng/campaigns">ดูทั้งหมด</MudButton>
                 </MudStack>
-                <MudTable Items="_campaigns.Take(8)" Dense="true" Hover="true" Class="mt-2">
+                <MudTable Items="_campaigns.Take(6)" Dense="true" Hover="true" Class="mt-2">
                     <HeaderContent>
-                        <MudTh>ชื่อ</MudTh>
-                        <MudTh>สถานะ</MudTh>
-                        <MudTh>คำตอบ/เชิญ</MudTh>
+                        <MudTh>ชื่อ</MudTh><MudTh>สถานะ</MudTh><MudTh>คำตอบ/เชิญ</MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd>
-                            <MudLink Href="@($"/eng/campaigns/{context.Id}")">@context.Title</MudLink>
-                            @if (IsPartOfSeries(context))
-                            {
-                                <MudTooltip Text="เป็นชุดแบบสำรวจที่เปิดซ้ำหลายรอบ">
-                                    <MudIcon Icon="@Icons.Material.Filled.Repeat" Size="Size.Small" Style="vertical-align:middle;opacity:.6;" Class="ml-1" />
-                                </MudTooltip>
-                            }
-                        </MudTd>
+                        <MudTd><MudLink Href="@($"/eng/campaigns/{context.Id}")">@context.Title</MudLink></MudTd>
                         <MudTd>@StatusLabel(context.Status)</MudTd>
                         <MudTd>@context.ResponseCount / @context.InvitedCount</MudTd>
                     </RowTemplate>
@@ -73,7 +196,6 @@ else
                 </MudTable>
             </MudPaper>
         </MudItem>
-
         <MudItem xs="12" md="6">
             <MudPaper Class="pa-4 mb-4">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
@@ -81,10 +203,13 @@ else
                     <MudButton Size="Size.Small" Variant="Variant.Text" Href="/ess/recognition">ดูทั้งหมด</MudButton>
                 </MudStack>
                 <MudStack Spacing="2" Class="mt-2">
-                    @foreach (var r in _recognitionFeed.Take(8))
+                    @foreach (var r in _recognitionFeed.Take(6))
                     {
                         <MudPaper Class="pa-2" Outlined="true">
-                            <MudText Typo="Typo.body2"><b>@r.FromName</b> → <b>@r.ToName</b></MudText>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2"><b>@r.FromName</b> → <b>@r.ToName</b></MudText>
+                                @if (r.Points > 0) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">+@r.Points</MudChip> }
+                            </div>
                             <MudText Typo="Typo.body2" Style="opacity:.8;">@r.Message</MudText>
                         </MudPaper>
                     }
@@ -100,8 +225,8 @@ else
 
 @code {
     private string? _companyId;
+    private EngagementAnalyticsService.EngagementOverview? _ov;
     private List<Eng_SurveyCampaign> _campaigns = new();
-    private List<ActionPlanService.ActionPlanRow> _actionPlans = new();
     private List<RecognitionService.RecognitionRow> _recognitionFeed = new();
 
     protected override async Task OnInitializedAsync()
@@ -110,22 +235,31 @@ else
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
+        _ov = await Analytics.GetOverviewAsync(_companyId);
         _campaigns = await SurveyService.GetCampaignsForAdminAsync(_companyId);
-        _relaunchParentIds = _campaigns.Where(c => c.RelaunchedFromCampaignId != null)
-            .Select(c => c.RelaunchedFromCampaignId!.Value).ToHashSet();
-        _actionPlans = await ActionPlanService.GetActionPlansAsync(_companyId);
         _recognitionFeed = await RecognitionService.GetFeedAsync(_companyId);
     }
 
-    private int CampaignCountByStatus(Eng_CampaignStatus status) => _campaigns.Count(c => c.Status == status);
+    private static string HeroStyle(string color) => $"height:100%;background:{color};color:#fff;";
 
-    // A campaign is part of a relaunch series if it points at a parent, or if
-    // another campaign points at it. _campaigns already holds every campaign
-    // for the company, so this is a pure in-memory check.
-    private HashSet<long> _relaunchParentIds = new();
+    // eNPS colour: >=30 great, >=0 ok, <0 poor
+    private static string EnpsColorHex(double? e) => e is null ? "#607D8B" : e >= 30 ? "#2E7D32" : e >= 0 ? "#F9A825" : "#C62828";
+    private static string HeroStyleFor(double? e) => $"height:100%;background:{EnpsColorHex(e)};color:#fff;";
+    private static Color EnpsColor(double? e) => e is null ? Color.Default : e >= 30 ? Color.Success : e >= 0 ? Color.Warning : Color.Error;
 
-    private bool IsPartOfSeries(Eng_SurveyCampaign c)
-        => c.RelaunchedFromCampaignId != null || _relaunchParentIds.Contains(c.Id);
+    private static Color IndexColor(double? pct) => pct is null ? Color.Default : pct >= 75 ? Color.Success : pct >= 60 ? Color.Info : pct >= 45 ? Color.Warning : Color.Error;
+
+    private static string BarSeg(string color, int part, int total)
+        => $"width:{(total == 0 ? 0 : part * 100.0 / total):0.#}%;background:{color};";
+
+    private static string RankIcon(int rank) => rank switch
+    {
+        1 => Icons.Material.Filled.LooksOne,
+        2 => Icons.Material.Filled.LooksTwo,
+        3 => Icons.Material.Filled.Looks3,
+        _ => Icons.Material.Filled.Star,
+    };
+    private static Color RankColor(int rank) => rank switch { 1 => Color.Warning, 2 => Color.Default, 3 => Color.Tertiary, _ => Color.Default };
 
     private static string StatusLabel(Eng_CampaignStatus s) => s switch
     {
