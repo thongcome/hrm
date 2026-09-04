@@ -454,6 +454,18 @@ builder.Services.AddScoped<HRM.Services.Perf.PerfConfigCarryForwardService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfCalibrationService>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfKpiSetService>();
 builder.Services.AddScoped<HRM.Services.Engagement.EngagementService>();
+
+// Reporting framework — config-first: register a report as IReportDefinition
+// and an export format as IReportExporter; the registry/viewer/endpoint pick
+// them up with no further wiring.
+builder.Services.AddScoped<HRM.Services.Reporting.ReportRegistry>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.Reporting.CsvReportExporter>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.Reporting.ExcelReportExporter>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.Reporting.PdfReportExporter>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.Reporting.WordReportExporter>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.HeadcountByDeptReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PerfGradeDistributionReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PayrollByCostCenterReport>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
@@ -619,6 +631,7 @@ app.MapAdditionalIdentityEndpoints();
 
 app.MapRazorPages();  // �Դ��ҹ��鹷ҧ Razor Pages �ͧ Identity
 app.MapPayrollFileEndpoints();
+app.MapReportEndpoints();
 
 // Login/logout endpoints — see Endpoints/LoginEndpoints.cs. Routing sign-in
 // through a real HTTP endpoint (not a Blazor circuit event handler) is

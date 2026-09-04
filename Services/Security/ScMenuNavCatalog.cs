@@ -94,6 +94,8 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", "Workflow (Engine)", "Workflow (Engine)", "Icons.Material.Filled.Rule", 240),
         // guard: HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")
         new("GRP_WF_SCAFFOLD", "ข้อมูลอ้างอิง Workflow", "Workflow Reference Data", "Icons.Material.Filled.AccountTree", 250),
+        // guard: Has("REPORT_CENTER")
+        new("GRP_REPORTS", "รายงาน (Reports)", "Reports", "Icons.Material.Filled.Assessment", 235),
         // guard: Has("HR_ANALYTICS")
         new("GRP_HR_ANALYTICS", "HR Analytics", "HR Analytics", "Icons.Material.Filled.QueryStats", 260),
         // guard: Has("SYS_ADMIN")
@@ -307,6 +309,9 @@ public static class ScMenuNavCatalog
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/action-plans", "แผนปฏิบัติการ", "Action Plans", "Icons.Material.Filled.Checklist", 40),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeem-items", "ของรางวัลแลกแต้ม", "Redeem Catalog", "Icons.Material.Filled.Redeem", 50),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeems", "อนุมัติแลกของรางวัล", "Redeem Approvals", "Icons.Material.Filled.CardGiftcard", 60),
+
+        // ---- GRP_REPORTS (group guarded by Has("REPORT_CENTER")) ----
+        new("GRP_REPORTS", "REPORT_CENTER", "/reports", "ศูนย์รายงาน", "Report Center", "Icons.Material.Filled.Assessment", 10),
 
         // ---- GRP_ORGDEV (group guarded by Has("ORGDEV_ADMIN")) ----
         new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/dashboard", "ภาพรวมสุขภาพองค์กร", "Org Health Overview", "Icons.Material.Filled.Dashboard", 10),

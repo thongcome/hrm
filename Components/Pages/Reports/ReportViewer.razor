@@ -1,0 +1,215 @@
+@page "/reports/{Code}"
+@using System.Security.Claims
+@using HRM.Models.Reporting
+@using HRM.Services.Reporting
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject ReportRegistry Registry
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:REPORT_CENTER")]
+
+<PageTitle>@(_report?.Name ?? "รายงาน")</PageTitle>
+
+@if (_report is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบรายงานนี้</MudAlert>
+    <MudButton Href="/reports" Variant="Variant.Text">กลับศูนย์รายงาน</MudButton>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudBreadcrumbs Items="_crumbs" Class="pa-0 mb-2" />
+    <MudText Typo="Typo.h5">@_report.Name</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">@_report.Description</MudText>
+
+    @if (_report.Parameters.Count > 0)
+    {
+        <MudGrid Class="mt-2">
+            @foreach (var p in _report.Parameters)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    @switch (p.Type)
+                    {
+                        case ReportParamType.Number:
+                        case ReportParamType.Year:
+                            <MudTextField T="string" Value="@Get(p.Key)" ValueChanged="v => Set(p.Key, v)" InputType="InputType.Number"
+                                Label="@p.Label" HelperText="@p.HelperText" Variant="Variant.Outlined" />
+                            break;
+                        case ReportParamType.Date:
+                            <MudTextField T="string" Value="@Get(p.Key)" ValueChanged="v => Set(p.Key, v)" InputType="InputType.Date"
+                                Label="@p.Label" HelperText="@p.HelperText" Variant="Variant.Outlined" />
+                            break;
+                        case ReportParamType.Select:
+                        case ReportParamType.Period:
+                        case ReportParamType.Organization:
+                            <MudSelect T="string" Value="@Get(p.Key)" ValueChanged="v => Set(p.Key, v)"
+                                Label="@p.Label" HelperText="@p.HelperText" Variant="Variant.Outlined">
+                                @foreach (var o in OptionsFor(p))
+                                {
+                                    <MudSelectItem T="string" Value="@o.Value">@o.Label</MudSelectItem>
+                                }
+                            </MudSelect>
+                            break;
+                        default:
+                            <MudTextField T="string" Value="@Get(p.Key)" ValueChanged="v => Set(p.Key, v)"
+                                Label="@p.Label" HelperText="@p.HelperText" Variant="Variant.Outlined" />
+                            break;
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow"
+            OnClick="RunAsync" Disabled="_running">แสดงรายงาน</MudButton>
+        @if (_result is not null)
+        {
+            @foreach (var ex in Registry.Exporters)
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@ExportIcon(ex.Format)" Href="@ExportUrl(ex.Format)" Target="_blank">@ex.Label</MudButton>
+            }
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">@_error</MudAlert>
+    }
+</MudPaper>
+
+@if (_running)
+{
+    <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+}
+else if (_result is not null)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">@_result.Title</MudText>
+        @if (!string.IsNullOrWhiteSpace(_result.Subtitle))
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@_result.Subtitle</MudText>
+        }
+        <div style="overflow-x:auto;">
+            <MudTable Items="_result.Rows" Dense="true" Hover="true" Striped="true" Class="mt-2" Elevation="0">
+                <HeaderContent>
+                    @foreach (var c in _result.Columns)
+                    {
+                        <MudTh Style="@(c.IsNumeric ? "text-align:right" : "")">@c.Label</MudTh>
+                    }
+                </HeaderContent>
+                <RowTemplate>
+                    @foreach (var c in _result.Columns)
+                    {
+                        <MudTd DataLabel="@c.Label" Style="@(c.IsNumeric ? "text-align:right" : "")">@Cell(context, c)</MudTd>
+                    }
+                </RowTemplate>
+                <FooterContent>
+                    @if (_result.Totals is not null)
+                    {
+                        @foreach (var c in _result.Columns)
+                        {
+                            <MudTh Style="@(c.IsNumeric ? "text-align:right;font-weight:bold" : "font-weight:bold")">@Cell(_result.Totals, c)</MudTh>
+                        }
+                    }
+                </FooterContent>
+            </MudTable>
+        </div>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">พบ @_result.Rows.Count แถว</MudText>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private IReportDefinition? _report;
+    private readonly Dictionary<string, string?> _args = new();
+    private readonly Dictionary<string, IReadOnlyList<ReportParamOption>> _dynamicOptions = new();
+    private ReportResult? _result;
+    private bool _running;
+    private string? _error;
+    private string _companyId = "";
+    private long _userId;
+    private List<BreadcrumbItem> _crumbs = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _report = Registry.Find(Code);
+        _result = null;
+        _error = null;
+        _args.Clear();
+        _dynamicOptions.Clear();
+        if (_report is null) return;
+
+        _crumbs = new()
+        {
+            new BreadcrumbItem("ศูนย์รายงาน", "/reports"),
+            new BreadcrumbItem(_report.Name, null, disabled: true),
+        };
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company") ?? "";
+        long.TryParse(state.User.FindFirstValue("sc_userid"), out _userId);
+
+        // preload dynamic option lists for select-style params
+        if (_report is IReportDynamicOptions dyn)
+        {
+            var ctx = new ReportContext(_companyId, _userId);
+            foreach (var p in _report.Parameters.Where(p =>
+                p.Type is ReportParamType.Select or ReportParamType.Period or ReportParamType.Organization
+                && (p.Options is null || p.Options.Count == 0)))
+            {
+                try { _dynamicOptions[p.Key] = await dyn.GetOptionsAsync(p.Key, ctx); }
+                catch { _dynamicOptions[p.Key] = Array.Empty<ReportParamOption>(); }
+            }
+        }
+    }
+
+    private string? Get(string key) => _args.TryGetValue(key, out var v) ? v : null;
+    private void Set(string key, string? value) => _args[key] = value;
+
+    private IReadOnlyList<ReportParamOption> OptionsFor(ReportParameter p)
+        => p.Options is { Count: > 0 } ? p.Options
+           : _dynamicOptions.TryGetValue(p.Key, out var o) ? o
+           : Array.Empty<ReportParamOption>();
+
+    private static string Cell(IReadOnlyDictionary<string, object?> row, ReportColumn c)
+    {
+        row.TryGetValue(c.Key, out var v);
+        return ReportFormatting.Text(v, c.Type);
+    }
+
+    private async Task RunAsync()
+    {
+        if (_report is null) return;
+        _error = null;
+        _running = true;
+        _result = null;
+        try
+        {
+            var ctx = new ReportContext(_companyId, _userId);
+            _result = await _report.RunAsync(_args, ctx);
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+        catch (Exception ex) { _error = "เกิดข้อผิดพลาดในการสร้างรายงาน: " + ex.Message; }
+        finally { _running = false; }
+    }
+
+    private string ExportUrl(string format)
+    {
+        var qs = string.Join("&", _args
+            .Where(a => !string.IsNullOrEmpty(a.Value))
+            .Select(a => $"{Uri.EscapeDataString(a.Key)}={Uri.EscapeDataString(a.Value!)}"));
+        var url = $"/reports/export/{Code}/{format}";
+        return string.IsNullOrEmpty(qs) ? url : $"{url}?{qs}";
+    }
+
+    private static string ExportIcon(string format) => format switch
+    {
+        "excel" => Icons.Material.Filled.GridOn,
+        "pdf" => Icons.Material.Filled.PictureAsPdf,
+        "word" => Icons.Material.Filled.Description,
+        _ => Icons.Material.Filled.Download,
+    };
+}

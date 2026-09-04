@@ -1,0 +1,70 @@
+@page "/reports"
+@using HRM.Services.Reporting
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@inject ReportRegistry Registry
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:REPORT_CENTER")]
+
+<PageTitle>ศูนย์รายงาน (Report Center)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center gap-2">
+        <MudIcon Icon="@Icons.Material.Filled.Assessment" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">ศูนย์รายงาน</MudText>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+        เลือกรายงานที่ต้องการ — ดูออนไลน์ได้ทันที และส่งออกเป็น Excel / PDF / Word / CSV ได้ทุกฉบับ
+    </MudText>
+    <MudTextField T="string" @bind-Value="_search" Immediate="true" DebounceInterval="200"
+        Placeholder="ค้นหารายงาน: ชื่อ / หมวด / คำอธิบาย" Variant="Variant.Outlined" Class="mt-3"
+        Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+</MudPaper>
+
+@foreach (var group in Filtered.GroupBy(r => r.Category))
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-2"><b>@group.Key</b></MudText>
+        <MudGrid>
+            @foreach (var r in group)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Outlined="true" Class="h-100" Style="cursor:pointer;" @onclick="@(() => Open(r.Code))">
+                        <MudCardContent>
+                            <MudText Typo="Typo.subtitle2"><b>@r.Name</b></MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@r.Description</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Size="Size.Small" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ChevronRight"
+                                OnClick="@(() => Open(r.Code))">เปิดรายงาน</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+}
+
+@if (!Filtered.Any())
+{
+    <MudPaper Class="pa-8" Elevation="0">
+        <div class="d-flex flex-column align-center mud-text-secondary">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Class="mb-2" />
+            <MudText Typo="Typo.h6" Class="mud-text-secondary">ไม่พบรายงานที่ตรงกับคำค้น</MudText>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private string _search = "";
+
+    private IEnumerable<IReportDefinition> Filtered =>
+        string.IsNullOrWhiteSpace(_search)
+            ? Registry.All
+            : Registry.All.Where(r =>
+                r.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                || r.Category.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                || (r.Description?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private void Open(string code) => Nav.NavigateTo($"/reports/{code}");
+}
