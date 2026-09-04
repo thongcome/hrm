@@ -481,6 +481,12 @@ builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Service
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.WorkAnniversaryReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.SalaryByDeptReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PerfCompletionStatusReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.OvertimeSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.AttendanceExceptionReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.WelfareClaimSummaryReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.SensitiveAccessLogReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TrainingCompletionReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TrainingByCourseReport>();
 builder.Services.AddScoped<HRM.Services.Perf.PerfImprovementPlanService>();
 // ----- end Perf_* module -----
 
