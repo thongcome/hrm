@@ -1,0 +1,112 @@
+@page "/eng/redeem-items"
+@using HRM.Models
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>ของรางวัลแลกแต้ม (Redeem Catalog)</PageTitle>
+
+<CrudScaffold TEntity="Eng_RedeemItem"
+    Title="ของรางวัลแลกแต้ม (Redeem Catalog)"
+    SearchPlaceholder="ค้นหา: รหัส / ชื่อ / รายละเอียด"
+    IsPdpaSensitive="false"
+    CanEdit="_canEdit"
+    LoadListAsync="LoadListAsync"
+    GetId="e => e.Id.ToString()"
+    SaveAsync="SaveAsync"
+    CreateNew="CreateNewItem"
+    RowColumns="RenderRowColumns"
+    ViewFields="RenderViewFields"
+    EditFields="RenderEditFields">
+    <HeaderColumns>
+        <MudTh>รหัส</MudTh>
+        <MudTh>ชื่อ</MudTh>
+        <MudTh Style="text-align:right">แต้มที่ใช้</MudTh>
+        <MudTh>คงเหลือ</MudTh>
+        <MudTh>สถานะ</MudTh>
+    </HeaderColumns>
+</CrudScaffold>
+
+@code {
+    private bool _canEdit;
+    private string? _companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = state.User.HasClaim("menu_edit", "ENG_ADMIN");
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+    }
+
+    private Eng_RedeemItem CreateNewItem() => new() { CompanyId = _companyId ?? "001", IsActive = true };
+
+    private RenderFragment RenderRowColumns(Eng_RedeemItem row) => @<text>
+        <MudTd>@row.Code</MudTd>
+        <MudTd>@row.Name</MudTd>
+        <MudTd Style="text-align:right">@($"{row.PointsCost:N0} แต้ม")</MudTd>
+        <MudTd>@(row.StockQty is null ? "ไม่จำกัด" : row.StockQty.Value.ToString("N0"))</MudTd>
+        <MudTd>@(row.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")</MudTd>
+    </text>;
+
+    private RenderFragment RenderViewFields(Eng_RedeemItem e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.Code" Label="รหัส" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField Value="@e.Name" Label="ชื่อ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@e.Description" Label="รายละเอียด" ReadOnly="true" Lines="3" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@($"{e.PointsCost:N0} แต้ม")" Label="แต้มที่ใช้แลก" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.StockQty is null ? "ไม่จำกัด" : e.StockQty.Value.ToString("N0"))" Label="จำนวนคงเหลือ" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@e.SortOrder.ToString()" Label="ลำดับการแสดง" ReadOnly="true" /></MudItem>
+            <MudItem xs="12"><MudTextField Value="@(e.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")" Label="สถานะ" ReadOnly="true" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private RenderFragment RenderEditFields(Eng_RedeemItem e) => @<text>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.Code" Label="รหัส" Required="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="e.Name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="e.Description" Label="รายละเอียด" Lines="3" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="e.PointsCost" Label="แต้มที่ใช้แลก" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.StockQty" Label="จำนวนคงเหลือ" HelperText="เว้นว่าง = ไม่จำกัด" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="e.SortOrder" Label="ลำดับการแสดง" /></MudItem>
+            <MudItem xs="12"><MudCheckBox T="bool" @bind-Value="e.IsActive" Label="ใช้งาน" /></MudItem>
+        </MudGrid>
+    </text>;
+
+    private async Task<List<Eng_RedeemItem>> LoadListAsync(string term)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Eng_RedeemItems.Where(e => e.CompanyId == _companyId);
+        query = EntitySearchHelper.ApplyTextSearch(query, term,
+            nameof(Eng_RedeemItem.Code), nameof(Eng_RedeemItem.Name), nameof(Eng_RedeemItem.Description));
+        return await query.OrderBy(e => e.SortOrder).ThenBy(e => e.Code).ToListAsync();
+    }
+
+    private async Task<Eng_RedeemItem> SaveAsync(Eng_RedeemItem entity)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (entity.Id == 0)
+        {
+            context.Eng_RedeemItems.Add(entity);
+        }
+        else
+        {
+            var existing = await context.Eng_RedeemItems.FirstOrDefaultAsync(e => e.Id == entity.Id)
+                ?? throw new InvalidOperationException("ไม่พบของรางวัลนี้แล้ว");
+            existing.Code = entity.Code;
+            existing.Name = entity.Name;
+            existing.Description = entity.Description;
+            existing.PointsCost = entity.PointsCost;
+            existing.StockQty = entity.StockQty;
+            existing.SortOrder = entity.SortOrder;
+            existing.IsActive = entity.IsActive;
+            entity = existing;
+        }
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}

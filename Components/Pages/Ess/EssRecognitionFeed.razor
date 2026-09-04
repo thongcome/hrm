@@ -8,6 +8,8 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject RecognitionService RecognitionService
+@inject EngagementService EngagementService
+@inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
@@ -27,6 +29,18 @@
     return;
 }
 
+<MudPaper Class="pa-4 mb-4" Style="background:linear-gradient(135deg,#0d47a1,#1976d2);color:#fff;">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.overline" Style="opacity:.85;">แต้มสะสมของฉัน (Kudos Points)</MudText>
+            <MudText Typo="Typo.h4">@_balance.Available <span style="font-size:.5em;opacity:.85;">แต้มใช้ได้</span></MudText>
+            <MudText Typo="Typo.caption" Style="opacity:.85;">ได้รับสะสม @_balance.Earned · ใช้ไปแล้ว @_balance.Spent</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Surface" StartIcon="@Icons.Material.Filled.Redeem"
+            OnClick="@(() => Nav.NavigateTo("/ess/rewards"))">แลกของรางวัล</MudButton>
+    </MudStack>
+</MudPaper>
+
 <MudPaper Class="pa-4 mb-4">
     <MudText Typo="Typo.h5">@L.Translate("KudosGiveTitle")</MudText>
     <MudGrid Class="mt-2">
@@ -35,8 +49,11 @@
                 SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e == null ? null : $"{e.EmpNo} — {e.EmpName} {e.EmpSurname}")"
                 ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
         </MudItem>
-        <MudItem xs="12" sm="4">
+        <MudItem xs="8" sm="3">
             <MudTextField @bind-Value="_coreValueTag" Label="@L.Translate("KudosTagLabel")" Placeholder="@L.Translate("KudosTagPlaceholder")" />
+        </MudItem>
+        <MudItem xs="4" sm="1">
+            <MudNumericField T="int" @bind-Value="_points" Label="แต้ม" Min="0" Max="100" />
         </MudItem>
         <MudItem xs="12">
             <MudTextField @bind-Value="_message" Label="@L.Translate("KudosMessageLabel")" Lines="3" />
@@ -65,6 +82,10 @@
                         {
                             <MudChip T="string" Size="Size.Small" Class="mt-1">@r.CoreValueTag</MudChip>
                         }
+                        @if (r.Points > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Stars" Class="mt-1">+@r.Points แต้ม</MudChip>
+                        }
                     </div>
                     <MudText Typo="Typo.caption" Style="opacity:.6;white-space:nowrap;">@r.CreatedDate.ToString("dd/MM/yyyy HH:mm")</MudText>
                 </MudStack>
@@ -84,8 +105,10 @@
 
     private Hremployee? _toEmployee;
     private string? _coreValueTag;
+    private int _points = RecognitionService.DefaultKudosPoints;
     private string _message = "";
     private string? _error;
+    private EngagementService.BalanceSummary _balance = new(0, 0, 0);
 
     protected override async Task OnInitializedAsync()
     {
@@ -95,6 +118,7 @@
         if (_employee is not null)
         {
             _feed = await RecognitionService.GetFeedAsync(_employee.companyid);
+            _balance = await EngagementService.GetBalanceAsync(_employee.id);
         }
         _loaded = true;
     }
@@ -120,7 +144,7 @@
 
         try
         {
-            await RecognitionService.GiveAsync(_employee!.companyid, _employee.id, _toEmployee.id, _message, _coreValueTag);
+            await RecognitionService.GiveAsync(_employee!.companyid, _employee.id, _toEmployee.id, _message, _coreValueTag, _points);
         }
         catch (InvalidOperationException ex)
         {
@@ -131,6 +155,7 @@
         Snackbar.Add(L.Translate("KudosSentSuccess"), Severity.Success);
         _toEmployee = null;
         _coreValueTag = null;
+        _points = RecognitionService.DefaultKudosPoints;
         _message = "";
         _feed = await RecognitionService.GetFeedAsync(_employee.companyid);
     }

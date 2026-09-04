@@ -445,6 +445,11 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Job_ProfileDuty> Job_ProfileDuties { get; set; }
     public virtual DbSet<Job_ProfileQualification> Job_ProfileQualifications { get; set; }
     public virtual DbSet<Job_ProfileKpi> Job_ProfileKpis { get; set; }
+
+    // Engagement (Eng_*) — points redemption on top of Eng_Recognition kudos
+    public virtual DbSet<Eng_RedeemItem> Eng_RedeemItems { get; set; }
+    public virtual DbSet<Eng_RedeemRequest> Eng_RedeemRequests { get; set; }
+
     public virtual DbSet<Idp_CompetencyAssessment> Idp_CompetencyAssessments { get; set; }
     public virtual DbSet<Idp_Plan> Idp_Plans { get; set; }
     public virtual DbSet<Idp_DevelopmentAction> Idp_DevelopmentActions { get; set; }

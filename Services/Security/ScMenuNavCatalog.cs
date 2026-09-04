@@ -135,6 +135,7 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "HR_ANNOUNCE_ACCESS", "/hr/announcements", "ประกาศ", "Announcements", "Icons.Material.Filled.Campaign", 130), // same Url also listed under GRP_ANNOUNCE
         new("GRP_ESS", "ESS_ACCESS", "/ess/surveys", "แบบสำรวจของฉัน", "My Surveys", "Icons.Material.Filled.Poll", 140),
         new("GRP_ESS", "ESS_ACCESS", "/ess/recognition", "Kudos / คำชื่นชม", "Kudos / Recognition", "Icons.Material.Filled.EmojiEvents", 150),
+        new("GRP_ESS", "ESS_ACCESS", "/ess/rewards", "แลกของรางวัล", "Rewards", "Icons.Material.Filled.Redeem", 151),
         new("GRP_ESS", "EXP_ACCESS", "/exp/my-claims", "เบิกค่าใช้จ่าย", "Expense Claims", "Icons.Material.Filled.ReceiptLong", 160),
         new("GRP_ESS", "ESS_ACCESS", "/ess/grievance/new", "แจ้งเรื่องร้องเรียน", "Submit a Grievance", "Icons.Material.Filled.ReportProblem", 170),
         new("GRP_ESS", "ESS_ACCESS", "/ess/grievance/my", "เรื่องร้องเรียนของฉัน", "My Grievances", "Icons.Material.Filled.ListAlt", 180),
@@ -304,6 +305,8 @@ public static class ScMenuNavCatalog
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/campaigns", "แคมเปญ Survey/Pulse/eNPS", "Survey/Pulse/eNPS Campaigns", "Icons.Material.Filled.Poll", 20),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/question-bank", "คลังคำถาม", "Question Bank", "Icons.Material.Filled.QuestionAnswer", 30),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/action-plans", "แผนปฏิบัติการ", "Action Plans", "Icons.Material.Filled.Checklist", 40),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeem-items", "ของรางวัลแลกแต้ม", "Redeem Catalog", "Icons.Material.Filled.Redeem", 50),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeems", "อนุมัติแลกของรางวัล", "Redeem Approvals", "Icons.Material.Filled.CardGiftcard", 60),
 
         // ---- GRP_ORGDEV (group guarded by Has("ORGDEV_ADMIN")) ----
         new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/dashboard", "ภาพรวมสุขภาพองค์กร", "Org Health Overview", "Icons.Material.Filled.Dashboard", 10),

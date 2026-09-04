@@ -1,0 +1,197 @@
+@page "/ess/rewards"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject EngagementService EngagementService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>แลกของรางวัล (Rewards)</PageTitle>
+
+@if (!_loaded)
+{
+    <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    return;
+}
+
+@if (_employee is null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">ไม่พบข้อมูลพนักงานที่ผูกกับบัญชีของคุณ</MudAlert>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4" Style="background:linear-gradient(135deg,#4a148c,#7b1fa2);color:#fff;">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.overline" Style="opacity:.85;">แต้มที่ใช้แลกได้ (Available)</MudText>
+            <MudText Typo="Typo.h4">@_balance.Available <span style="font-size:.5em;opacity:.85;">แต้ม</span></MudText>
+            <MudText Typo="Typo.caption" Style="opacity:.85;">ได้รับสะสม @_balance.Earned · ใช้ไปแล้ว @_balance.Spent</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Surface" StartIcon="@Icons.Material.Filled.EmojiEvents"
+            OnClick="@(() => Nav.NavigateTo("/ess/recognition"))">ให้ kudos เพื่อน / ดูฟีด</MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5" Class="mb-3">ของรางวัล</MudText>
+    @if (_items.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มีของรางวัลให้แลกในขณะนี้</MudText>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var item in _items)
+            {
+                var outOfStock = item.StockQty is int q && q <= 0;
+                var cannotAfford = _balance.Available < item.PointsCost;
+                var disabled = outOfStock || cannotAfford || _submitting;
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Outlined="true" Style="height:100%;display:flex;flex-direction:column;">
+                        <MudCardContent Style="flex:1;">
+                            <MudText Typo="Typo.h6">@item.Name</MudText>
+                            @if (!string.IsNullOrWhiteSpace(item.Description))
+                            {
+                                <MudText Typo="Typo.body2" Class="mt-1" Style="opacity:.8;">@item.Description</MudText>
+                            }
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-3">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Stars">@item.PointsCost แต้ม</MudChip>
+                                @if (item.StockQty is int stock)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="@(stock <= 0 ? Color.Error : Color.Default)">เหลือ @stock</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">ไม่จำกัด</MudChip>
+                                }
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Redeem"
+                                Disabled="disabled" OnClick="@(() => RedeemAsync(item))">แลก</MudButton>
+                            @if (outOfStock)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Error" Class="ml-2">หมด</MudText>
+                            }
+                            else if (cannotAfford)
+                            {
+                                <MudText Typo="Typo.caption" Style="opacity:.7;" Class="ml-2">แต้มไม่พอ</MudText>
+                            }
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5" Class="mb-3">ประวัติการแลกของฉัน</MudText>
+    <MudTable Items="_myRedeems" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
+        <HeaderContent>
+            <MudTh>ของรางวัล</MudTh>
+            <MudTh>แต้มที่ใช้</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>วันที่ขอ</MudTh>
+            <MudTh>วันที่มอบ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="ของรางวัล">@context.ItemName</MudTd>
+            <MudTd DataLabel="แต้มที่ใช้">@context.PointsSpent</MudTd>
+            <MudTd DataLabel="สถานะ">
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip>
+            </MudTd>
+            <MudTd DataLabel="วันที่ขอ">@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="วันที่มอบ">@(context.FulfilledDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2" Style="opacity:.7;">ยังไม่มีการแลกของรางวัล</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private bool _submitting;
+    private Hremployee? _employee;
+    private long _actorUserId;
+    private EngagementService.BalanceSummary _balance = new(0, 0, 0);
+    private List<Eng_RedeemItem> _items = new();
+    private List<EngagementService.RedeemView> _myRedeems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userIdClaim = state.User.FindFirst("sc_userid")?.Value;
+        _actorUserId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            await ReloadAsync(context);
+        }
+        _loaded = true;
+    }
+
+    private async Task ReloadAsync(HRMContext context)
+    {
+        _items = await context.Eng_RedeemItems
+            .Where(i => i.CompanyId == _employee!.companyid && i.IsActive)
+            .OrderBy(i => i.SortOrder).ThenBy(i => i.Code)
+            .ToListAsync();
+        _balance = await EngagementService.GetBalanceAsync(_employee!.id);
+        _myRedeems = await EngagementService.GetRedeemsAsync(_employee.companyid, _employee.id, null, 100);
+    }
+
+    private async Task RedeemAsync(Eng_RedeemItem item)
+    {
+        if (_submitting) return;
+        _submitting = true;
+        try
+        {
+            await EngagementService.RequestRedeemAsync(
+                _employee!.companyid, _employee.id, item.Id, null, _actorUserId);
+            Snackbar.Add($"ส่งคำขอแลก \"{item.Name}\" เรียบร้อยแล้ว", Severity.Success);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await ReloadAsync(context);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private static Color StatusColor(EngRedeemStatus status) => status switch
+    {
+        EngRedeemStatus.PendingApproval => Color.Warning,
+        EngRedeemStatus.Approved => Color.Info,
+        EngRedeemStatus.Fulfilled => Color.Success,
+        EngRedeemStatus.Rejected => Color.Error,
+        EngRedeemStatus.Cancelled => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(EngRedeemStatus status) => status switch
+    {
+        EngRedeemStatus.Draft => "ร่าง",
+        EngRedeemStatus.PendingApproval => "รออนุมัติ",
+        EngRedeemStatus.Approved => "อนุมัติแล้ว",
+        EngRedeemStatus.Rejected => "ไม่อนุมัติ",
+        EngRedeemStatus.Cancelled => "ยกเลิก",
+        EngRedeemStatus.Fulfilled => "มอบแล้ว",
+        _ => status.ToString(),
+    };
+}

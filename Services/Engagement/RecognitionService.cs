@@ -8,10 +8,17 @@ using Microsoft.EntityFrameworkCore;
 // deals in real employee identities throughout.
 public class RecognitionService(IDbContextFactory<HRMContext> dbFactory)
 {
-    public async Task GiveAsync(string companyId, long fromHremployeeId, long toHremployeeId, string message, string? coreValueTag, CancellationToken ct = default)
+    // Points a kudos grants the receiver by default (spendable in the redeem
+    // catalog). Kept as a flat, code-level default so recognition stays simple;
+    // the form may pass a different value within reason.
+    public const int DefaultKudosPoints = 10;
+
+    public async Task GiveAsync(string companyId, long fromHremployeeId, long toHremployeeId, string message, string? coreValueTag, int? points = null, CancellationToken ct = default)
     {
         if (fromHremployeeId == toHremployeeId)
             throw new InvalidOperationException("ไม่สามารถให้ kudos ตัวเองได้");
+        var pts = points ?? DefaultKudosPoints;
+        if (pts < 0) throw new InvalidOperationException("คะแนนต้องไม่ติดลบ");
 
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         context.Eng_Recognitions.Add(new Eng_Recognition
@@ -21,13 +28,14 @@ public class RecognitionService(IDbContextFactory<HRMContext> dbFactory)
             ToHremployeeId = toHremployeeId,
             Message = message,
             CoreValueTag = coreValueTag,
+            Points = pts,
             CreatedDate = DateTime.Now,
             IsActive = true,
         });
         await context.SaveChangesAsync(ct);
     }
 
-    public record RecognitionRow(long Id, string FromName, string ToName, string Message, string? CoreValueTag, DateTime CreatedDate);
+    public record RecognitionRow(long Id, string FromName, string ToName, string Message, string? CoreValueTag, int Points, DateTime CreatedDate);
 
     // Company-wide feed, newest first — the shared ESS/admin recognition view.
     public async Task<List<RecognitionRow>> GetFeedAsync(string companyId, int take = 50, CancellationToken ct = default)
@@ -49,7 +57,7 @@ public class RecognitionService(IDbContextFactory<HRMContext> dbFactory)
             r.Id,
             names.GetValueOrDefault(r.FromHremployeeId, $"#{r.FromHremployeeId}"),
             names.GetValueOrDefault(r.ToHremployeeId, $"#{r.ToHremployeeId}"),
-            r.Message, r.CoreValueTag, r.CreatedDate)).ToList();
+            r.Message, r.CoreValueTag, r.Points, r.CreatedDate)).ToList();
     }
 
     public async Task HideAsync(long recognitionId, CancellationToken ct = default)

@@ -26,6 +26,13 @@ public class Eng_Recognition
     [StringLength(50)]
     public string? CoreValueTag { get; set; }
 
+    // Reward points this kudos grants the receiver, spendable in the redeem
+    // catalog (Eng_RedeemItem). Defaults to a flat value per kudos; the giver
+    // can adjust within limits on the recognition form. Balance is computed as
+    // sum of points received minus points committed to redeems — see
+    // EngagementService, no denormalized total.
+    public int Points { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.Now;
 
     // Soft-hide (e.g. reported as inappropriate) rather than hard delete.

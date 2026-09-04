@@ -1,0 +1,328 @@
+@page "/eng/redeems"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Engagement
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject EngagementService Engagement
+@inject IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ENG_ADMIN")]
+
+<PageTitle>อนุมัติการแลกของรางวัล (Redeem Approvals)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <div class="d-flex flex-wrap align-center gap-2 mb-1">
+        <MudIcon Icon="@Icons.Material.Filled.Redeem" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h5">อนุมัติการแลกของรางวัล (Redeem Approvals)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        คิวงานอนุมัติคำขอแลกของรางวัลด้วยแต้มของพนักงาน — เลือกสถานะแล้วกด "แสดง" เพื่อดึงรายการ จากนั้นอนุมัติ / ไม่อนุมัติ / มอบของ ในแต่ละแถว
+    </MudText>
+</MudPaper>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ จึงไม่สามารถแสดงรายการได้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="mr-1" />เลือกเงื่อนไข
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="EngRedeemStatus?" @bind-Value="_statusFilter" Label="สถานะ"
+                    Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)null)">ทั้งหมด</MudSelectItem>
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)EngRedeemStatus.PendingApproval)">รออนุมัติ</MudSelectItem>
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)EngRedeemStatus.Approved)">อนุมัติแล้ว</MudSelectItem>
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)EngRedeemStatus.Fulfilled)">มอบแล้ว</MudSelectItem>
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)EngRedeemStatus.Rejected)">ไม่อนุมัติ</MudSelectItem>
+                    <MudSelectItem T="EngRedeemStatus?" Value="@((EngRedeemStatus?)EngRedeemStatus.Cancelled)">ยกเลิก</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="5">
+                <MudTextField T="string" @bind-Value="_searchTerm" Immediate="true" DebounceInterval="300"
+                    Label="กรองรายการ"
+                    Placeholder="ค้นหา: ชื่อพนักงาน / ของรางวัล"
+                    HelperText="กรองรายการที่โหลดมาแล้ว"
+                    Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                    Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+        </MudGrid>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.ManageSearch"
+                OnClick="LoadAsync" Disabled="_loading">แสดง</MudButton>
+        </div>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        @if (!_hasLoaded)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.Redeem" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">เลือกสถานะแล้วกด "แสดง"</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                    ค่าเริ่มต้นคือคำขอที่ "รออนุมัติ" — กด "แสดง" เพื่อดึงรายการ
+                </MudText>
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="d-flex justify-center py-8">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (_filteredRows.Count == 0)
+        {
+            <div class="d-flex flex-column align-center justify-center py-12 mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Class="mb-2" />
+                <MudText Typo="Typo.h6" Class="mud-text-secondary">ไม่พบคำขอ</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ไม่มีคำขอตามสถานะที่เลือก หรือคำค้นไม่ตรง</MudText>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap align-center gap-2 mb-3">
+                <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">พบ @_filteredRows.Count รายการ</MudText>
+            </div>
+
+            <MudTable Items="_filteredRows" Dense="true" Hover="true" Striped="true"
+                HorizontalScrollbar="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                <HeaderContent>
+                    <MudTh>พนักงาน</MudTh>
+                    <MudTh>ของรางวัล</MudTh>
+                    <MudTh Style="text-align:right">แต้ม</MudTh>
+                    <MudTh>สถานะ</MudTh>
+                    <MudTh>วันที่ขอ</MudTh>
+                    <MudTh Style="text-align:right">การดำเนินการ</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="พนักงาน">
+                        <MudText Typo="Typo.body2"><b>@context.EmpName</b></MudText>
+                    </MudTd>
+                    <MudTd DataLabel="ของรางวัล">@context.ItemName</MudTd>
+                    <MudTd DataLabel="แต้ม" Style="text-align:right">@context.PointsSpent</MudTd>
+                    <MudTd DataLabel="สถานะ">
+                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)" Variant="Variant.Filled">@StatusLabel(context.Status)</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="วันที่ขอ">@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd DataLabel="การดำเนินการ" Style="text-align:right">
+                        @if (context.Status == EngRedeemStatus.PendingApproval)
+                        {
+                            <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                StartIcon="@Icons.Material.Filled.Check" Class="mr-1"
+                                Disabled="_busy" OnClick="() => ApproveAsync(context.Id)">อนุมัติ</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                StartIcon="@Icons.Material.Filled.Close"
+                                Disabled="_busy" OnClick="() => OpenRejectDialog(context)">ไม่อนุมัติ</MudButton>
+                        }
+                        else if (context.Status == EngRedeemStatus.Approved)
+                        {
+                            <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                StartIcon="@Icons.Material.Filled.CardGiftcard"
+                                Disabled="_busy" OnClick="() => FulfillAsync(context.Id)">มอบของแล้ว</MudButton>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">—</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    </MudPaper>
+}
+
+<MudDialog @bind-Visible="_rejectDialogOpen">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Close" Class="mr-1" />ไม่อนุมัติคำขอ
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_rejectTarget is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                @_rejectTarget.EmpName — @_rejectTarget.ItemName (@_rejectTarget.PointsSpent แต้ม)
+            </MudText>
+        }
+        <MudTextField T="string" @bind-Value="_rejectReason" Label="เหตุผล (ถ้ามี)"
+            Lines="3" Variant="Variant.Outlined" Placeholder="เหตุผลที่ไม่อนุมัติ" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseRejectDialog" Disabled="_busy">ยกเลิก</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" Disabled="_busy" OnClick="ConfirmRejectAsync">ยืนยันไม่อนุมัติ</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string? _companyId;
+    private EngRedeemStatus? _statusFilter = EngRedeemStatus.PendingApproval;
+    private string _searchTerm = string.Empty;
+
+    private bool _hasLoaded;
+    private bool _loading;
+    private bool _busy;
+    private string? _error;
+
+    private List<EngagementService.RedeemView> _rows = new();
+
+    private bool _rejectDialogOpen;
+    private EngagementService.RedeemView? _rejectTarget;
+    private string _rejectReason = string.Empty;
+
+    private List<EngagementService.RedeemView> _filteredRows => string.IsNullOrWhiteSpace(_searchTerm)
+        ? _rows
+        : _rows.Where(r =>
+            (r.EmpName?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (r.ItemName?.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ?? false))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId))
+            return;
+
+        _loading = true;
+        _hasLoaded = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _rows = await Engagement.GetRedeemsAsync(_companyId, null, _statusFilter, 300);
+
+            // PDPA: this page shows individual employees' names + redeem activity (personal data).
+            await AuditLogger.LogAccessAsync("Eng_RedeemRequest", null, isSensitive: true,
+                note: $"redeem approvals queue: status {(_statusFilter?.ToString() ?? "all")}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ApproveAsync(long id)
+    {
+        _busy = true;
+        try
+        {
+            await Engagement.ApproveRedeemAsync(id);
+            Snackbar.Add("อนุมัติคำขอเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task FulfillAsync(long id)
+    {
+        _busy = true;
+        try
+        {
+            await Engagement.FulfillRedeemAsync(id);
+            Snackbar.Add("บันทึกการมอบของรางวัลเรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OpenRejectDialog(EngagementService.RedeemView row)
+    {
+        _rejectTarget = row;
+        _rejectReason = string.Empty;
+        _rejectDialogOpen = true;
+    }
+
+    private void CloseRejectDialog()
+    {
+        _rejectDialogOpen = false;
+        _rejectTarget = null;
+        _rejectReason = string.Empty;
+    }
+
+    private async Task ConfirmRejectAsync()
+    {
+        if (_rejectTarget is null)
+            return;
+
+        var id = _rejectTarget.Id;
+        var reason = string.IsNullOrWhiteSpace(_rejectReason) ? null : _rejectReason.Trim();
+        _busy = true;
+        try
+        {
+            await Engagement.RejectRedeemAsync(id, reason, cancelledByOwner: false);
+            Snackbar.Add("ไม่อนุมัติคำขอเรียบร้อย", Severity.Success);
+            _rejectDialogOpen = false;
+            _rejectTarget = null;
+            _rejectReason = string.Empty;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static Color StatusColor(EngRedeemStatus status) => status switch
+    {
+        EngRedeemStatus.PendingApproval => Color.Warning,
+        EngRedeemStatus.Approved => Color.Info,
+        EngRedeemStatus.Fulfilled => Color.Success,
+        EngRedeemStatus.Rejected => Color.Error,
+        EngRedeemStatus.Cancelled => Color.Default,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(EngRedeemStatus status) => status switch
+    {
+        EngRedeemStatus.Draft => "ร่าง",
+        EngRedeemStatus.PendingApproval => "รออนุมัติ",
+        EngRedeemStatus.Approved => "อนุมัติแล้ว",
+        EngRedeemStatus.Rejected => "ไม่อนุมัติ",
+        EngRedeemStatus.Cancelled => "ยกเลิก",
+        EngRedeemStatus.Fulfilled => "มอบแล้ว",
+        _ => status.ToString(),
+    };
+}

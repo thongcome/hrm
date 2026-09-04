@@ -17,3 +17,15 @@ public enum Eng_TargetType { All = 1, Organization = 2, Employee = 3 }
 public enum Eng_ActionPlanStatus { Planned = 1, InProgress = 2, Completed = 3, Cancelled = 4 }
 
 public enum Eng_MilestoneStatus { Pending = 1, Completed = 2, Cancelled = 3 }
+
+// Recognition/kudos side of the Engagement module: points earned from peer
+// kudos are redeemed for rewards through the shared workflow engine.
+public enum EngRedeemStatus
+{
+    Draft = 1,          // สร้างคำขอ ยังไม่ส่งอนุมัติ
+    PendingApproval = 2, // ส่งเข้า workflow รออนุมัติ
+    Approved = 3,        // อนุมัติแล้ว หักแต้มแล้ว
+    Rejected = 4,        // ไม่อนุมัติ คืนแต้ม
+    Cancelled = 5,       // ผู้ขอยกเลิกเอง
+    Fulfilled = 6,       // มอบของรางวัลแล้ว
+}
