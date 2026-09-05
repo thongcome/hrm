@@ -87,7 +87,7 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.wlevel</MudTd>
-                <MudTd>@ApproverName(context.userid)</MudTd>
+                <MudTd>@(!string.IsNullOrWhiteSpace(context.username) ? context.username : ApproverName(context.userid))</MudTd>
                 <MudTd>@context.jobstatus</MudTd>
                 <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
                 <MudTd>@context.comment</MudTd>
@@ -170,9 +170,9 @@
     }
 
     // Resolve every userid on this job (approvers + requester) to a Thai
-    // display name once, so the table and the progress bar show people, not
-    // raw ids. Falls back to loginname, then "#id", if an employee row is
-    // missing — never blank.
+    // display name once, as a fallback for rows without a name snapshot. Order:
+    // authoritative Hremployee name → sc_user firstname+lastname → loginname →
+    // empno — never a raw "#id" code (the CEO's complaint) and never blank.
     private async Task LoadApproverNamesAsync()
     {
         _approverNames = new();
@@ -186,7 +186,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         var users = await context.sc_users
             .Where(u => userIds.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid, u.loginname })
+            .Select(u => new { u.userid, u.empid, u.loginname, u.firstname, u.lastname })
             .ToListAsync();
 
         var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
@@ -198,20 +198,24 @@
 
         foreach (var u in users)
         {
+            var scName = $"{u.firstname} {u.lastname}".Trim();
             var name = u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
-                : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}");
+                : !string.IsNullOrWhiteSpace(scName) ? scName
+                : !string.IsNullOrWhiteSpace(u.loginname) ? u.loginname!
+                : (u.empid ?? "(ไม่พบชื่อ)");
             _approverNames[u.userid] = name;
         }
     }
 
     private string ApproverName(long? userid)
-        => userid is long id && _approverNames.TryGetValue(id, out var n) ? n : $"#{userid?.ToString() ?? "?"}";
+        => userid is long id && _approverNames.TryGetValue(id, out var n) ? n : "(ไม่ระบุผู้อนุมัติ)";
 
     private string RequesterName()
     {
         if (_job is null) return "-";
         if (!string.IsNullOrWhiteSpace(_job.createusername)) return _job.createusername!;
+        if (!string.IsNullOrWhiteSpace(_job.reqName)) return _job.reqName!;
         if (_job.createuserid is long ruid && _approverNames.TryGetValue(ruid, out var n)) return n;
         return _job.createby ?? "-";
     }

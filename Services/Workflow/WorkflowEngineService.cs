@@ -113,15 +113,27 @@ public class WorkflowEngineService
         // against.
         string? requesterOrgCode = null;
         string? requesterCostCenter = null;
+        string? requesterName = null;
         if (!string.IsNullOrWhiteSpace(requesterEmpId))
         {
             var requesterEmp = await context.Hremployee
                 .Where(e => e.EmpNo == requesterEmpId)
-                .Select(e => new { e.orgcode, e.CostCenterCode })
+                .Select(e => new { e.orgcode, e.CostCenterCode, e.EmpName, e.EmpSurname })
                 .FirstOrDefaultAsync(ct);
             requesterOrgCode = requesterEmp?.orgcode;
             requesterCostCenter = requesterEmp?.CostCenterCode;
+            if (requesterEmp is not null)
+                requesterName = $"{requesterEmp.EmpName} {requesterEmp.EmpSurname}".Trim();
         }
+        // epms parity: snapshot the requester's real name onto the job so an
+        // approver's inbox shows WHO asked, never an id/empno code. Prefer the
+        // authoritative Hremployee name; fall back to the submitting sc_user.
+        var submitter = await context.sc_users
+            .Where(u => u.userid == requesterUserId)
+            .Select(u => new { u.firstname, u.lastname, u.loginname })
+            .FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(requesterName) && submitter is not null)
+            requesterName = $"{submitter.firstname} {submitter.lastname}".Trim();
 
         var job = new job_master
         {
@@ -139,6 +151,10 @@ public class WorkflowEngineService
             refid = refid,
             createuserid = requesterUserId,
             empid = requesterEmpId,
+            reqName = requesterName,
+            reqForName = requesterName,
+            createusername = requesterName,
+            createby = submitter?.loginname,
             reqOrg = requesterOrgCode,
             createdate = DateTime.Now,
             reqdate = DateTime.Now,
@@ -1001,8 +1017,24 @@ public class WorkflowEngineService
         {
             Serilog.Log.Information("Job {JobMasterId} level {Level}{HopInfo}: resolved {Count} candidate(s)",
                 job.jobmasterid, level.wlevel, precheckReasonPrefix is null ? "" : " (vertical pre-check hop)", candidates.Count);
+
+            // epms parity: snapshot each resolved approver's real name onto the
+            // inbox row so the approval screens show a name, not an id/empno.
+            // Prefer the authoritative Hremployee name; fall back to sc_user.
+            var candEmpIds = candidates.Where(c => c.EmpId != null).Select(c => c.EmpId!).Distinct().ToList();
+            var candUserIds = candidates.Select(c => c.UserId).Distinct().ToList();
+            var empNames = (await context.Hremployee.Where(e => candEmpIds.Contains(e.EmpNo))
+                    .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname }).ToListAsync(ct))
+                .ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+            var userNames = (await context.sc_users.Where(u => candUserIds.Contains(u.userid))
+                    .Select(u => new { u.userid, u.firstname, u.lastname }).ToListAsync(ct))
+                .ToDictionary(u => u.userid, u => $"{u.firstname} {u.lastname}".Trim());
+
             foreach (var (userId, empId) in candidates)
             {
+                var approverName = empId != null && empNames.TryGetValue(empId, out var en) && !string.IsNullOrWhiteSpace(en)
+                    ? en
+                    : userNames.TryGetValue(userId, out var un) && !string.IsNullOrWhiteSpace(un) ? un : null;
                 context.job_user_lists.Add(new job_user_list
                 {
                     jobmasterid = job.jobmasterid,
@@ -1010,6 +1042,7 @@ public class WorkflowEngineService
                     wlevel = level.wlevel,
                     userid = userId,
                     empid = empId,
+                    username = approverName,
                     subworkflowmasterid = level.subworkflowid,
                     jobstatus = StatusPending,
                     sendDate = DateTime.Now,
