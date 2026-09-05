@@ -38,6 +38,16 @@ public class Pay_PayrollRun
     public long? CalculatedByUserId { get; set; }
     public DateTime? CalculatedDate { get; set; }
 
+    // Background-calculation state (Phase A). The calculation runs as a
+    // detached server job so it survives the HR user closing the page; these
+    // columns let any page/browser see that a job is in flight and let a
+    // startup check detect a job that was interrupted by a server restart
+    // (IsCalculating=true with no live job in PayrollCalcJobRegistry).
+    public bool IsCalculating { get; set; }
+    public DateTime? CalcStartedAt { get; set; }
+    [StringLength(1000)]
+    public string? CalcError { get; set; }
+
     public long? ReviewedByUserId { get; set; }
     public DateTime? ReviewedDate { get; set; }
 

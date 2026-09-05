@@ -36,7 +36,7 @@ public class PayrollWorkflowService
     };
 
     public Task<PayrollRunCalculationSummary> CalculateAsync(long runId, long actorUserId, CancellationToken ct = default)
-        => _calculationService.CalculateAsync(runId, actorUserId, ct);
+        => _calculationService.CalculateAsync(runId, actorUserId, progress: null, ct: ct);
 
     public async Task SubmitForReviewAsync(long runId, long actorUserId, CancellationToken ct = default)
     {

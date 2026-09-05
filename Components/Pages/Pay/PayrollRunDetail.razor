@@ -18,6 +18,9 @@
 @inject GLExportService GLExportService
 @inject PayrollAnomalyDetectionService AnomalyDetectionService
 @inject JsonLocalizationService L
+@inject PayrollCalcJobRegistry CalcJobs
+@inject PayrollCalcJobService CalcJobService
+@implements IDisposable
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>@string.Format(L.Translate("RunDetailPageTitle"), RunId)</PageTitle>
@@ -79,9 +82,39 @@ else
         <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
             @if (_allowed.Contains(PayrollAction.Calculate))
             {
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CalculateAsync" Disabled="_busy">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CalculateAsync" Disabled="@(_busy || _calcRunning)">
                     @(_employees.Count == 0 ? L.Translate("CalculateButton") : L.Translate("RecalculateButton"))
                 </MudButton>
+            }
+            @if (_calcRunning)
+            {
+                @* Background job progress (Phase A). The job runs server-side
+                   independent of this page — closing the tab does not stop it; the
+                   bar here is just polling PayrollCalcJobRegistry. *@
+                <MudPaper Class="pa-3 mt-3" Outlined="true" Style="width:100%;">
+                    <div class="d-flex align-center" style="gap:12px;">
+                        <MudProgressCircular Indeterminate="@(_calcTotal == 0)" Value="@_calcPercent" Size="Size.Small" Color="Color.Primary" />
+                        <div style="flex:1 1 auto;">
+                            <MudText Typo="Typo.subtitle2">
+                                กำลังคำนวณเงินเดือน… @(_calcTotal > 0 ? $"{_calcDone:#,0} / {_calcTotal:#,0} คน ({_calcPercent:0.#}%)" : "กำลังเตรียมข้อมูล")
+                            </MudText>
+                            <MudProgressLinear Color="Color.Primary" Indeterminate="@(_calcTotal == 0)" Value="@_calcPercent" Rounded="true" Size="Size.Large" Class="mt-1" />
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                งานนี้รันอยู่ที่เซิร์ฟเวอร์ — ปิดหน้านี้ได้ ระบบจะคำนวณต่อจนเสร็จ กลับมาดูความคืบหน้าได้ทุกเมื่อ
+                            </MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            }
+            else if (_run.IsCalculating && !string.IsNullOrEmpty(_run.CalcError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">การคำนวณครั้งก่อนล้มเหลว: @_run.CalcError — กด "คำนวณ" เพื่อลองใหม่</MudAlert>
+            }
+            else if (_run.IsCalculating)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3">
+                    พบว่าการคำนวณครั้งก่อนถูกขัดจังหวะ (เช่น เซิร์ฟเวอร์รีสตาร์ต) ตั้งแต่ @_run.CalcStartedAt?.ToString("dd/MM/yyyy HH:mm") — กด "คำนวณ" ใหม่ได้ ระบบจะล้างผลเก่าแล้วคำนวณซ้ำให้
+                </MudAlert>
             }
             @if (_allowed.Contains(PayrollAction.SubmitForReview))
             {
@@ -320,6 +353,15 @@ else
     private bool _forbidden;
     private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
     private bool _busy;
+
+    // Background-calc observer state (Phase A). Polled from the singleton
+    // registry so it survives this page being closed and reopened.
+    private bool _calcRunning;
+    private int _calcDone;
+    private int _calcTotal;
+    private double _calcPercent;
+    private System.Threading.Timer? _calcPoll;
+
     private int _negativeCount;
     private int _pendingAdhocCount;
     private int _unconsumedApprovedAdhocCount;
@@ -357,7 +399,13 @@ else
     private record EmployeeRow(Pay_PayrollEmployee Employee);
     private List<EmployeeRow> _employees = new();
 
-    protected override async Task OnParametersSetAsync() => await LoadAsync();
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+        // Resume observing a calculation that is already in flight for this run
+        // (started from this page earlier, another tab, or another user).
+        if (CalcJobs.IsRunning(RunId)) StartCalcPolling();
+    }
 
     private async Task LoadAsync()
     {
@@ -491,9 +539,63 @@ else
         }
     }
 
-    private Task CalculateAsync() => RunActionAsync(
-        async uid => await WorkflowService.CalculateAsync(RunId, uid),
-        L.Translate("CalculatedSuccess"));
+    // Phase A: start the calculation as a detached SERVER job and just observe
+    // it. Closing this page no longer cancels a half-finished run — the job
+    // has its own DI scope + DbContext and is driven by CancellationToken.None.
+    private async Task CalculateAsync()
+    {
+        try
+        {
+            var uid = await GetCurrentUserIdAsync();
+            var started = await CalcJobService.StartAsync(RunId, uid);
+            if (!started)
+                Snackbar.Add("กำลังคำนวณรอบนี้อยู่แล้ว — แสดงความคืบหน้าให้", Severity.Info);
+            StartCalcPolling();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void StartCalcPolling()
+    {
+        _calcRunning = true;
+        _calcDone = 0; _calcTotal = 0; _calcPercent = 0;
+        _calcPoll?.Dispose();
+        // Timer fires on a thread-pool thread — every UI touch must go through
+        // InvokeAsync so Blazor re-renders on its own dispatcher.
+        _calcPoll = new System.Threading.Timer(_ => _ = InvokeAsync(PollCalcAsync), null, 0, 1000);
+    }
+
+    private async Task PollCalcAsync()
+    {
+        var state = CalcJobs.Get(RunId);
+        if (state is null || state.Status == PayrollCalcJobRegistry.JobStatus.Running)
+        {
+            if (state is not null) { _calcDone = state.Done; _calcTotal = state.Total; _calcPercent = state.Percent; }
+            StateHasChanged();
+            return;
+        }
+
+        // Finished (Done or Failed): stop polling, reload the grid, tell the user.
+        _calcPoll?.Dispose(); _calcPoll = null;
+        _calcRunning = false;
+        if (state.Status == PayrollCalcJobRegistry.JobStatus.Done)
+            Snackbar.Add(L.Translate("CalculatedSuccess"), Severity.Success);
+        else
+            Snackbar.Add($"คำนวณไม่สำเร็จ: {state.Error}", Severity.Error);
+        CalcJobs.Clear(RunId);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        // Only the OBSERVER stops here — the background job itself keeps running.
+        _calcPoll?.Dispose();
+        _calcPoll = null;
+    }
 
     private Task SubmitForReviewAsync() => RunActionAsync(
         async uid => await WorkflowService.SubmitForReviewAsync(RunId, uid),

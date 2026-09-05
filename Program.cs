@@ -521,6 +521,10 @@ builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
 builder.Services.AddScoped<HRM.Services.Comp.CompetencyAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Talent.TalentReviewService>();
 builder.Services.AddScoped<HRM.Services.Hrd.HrdCycleService>();
+// Phase A payroll: pay-date default from config + background (circuit-independent) calculation
+builder.Services.AddScoped<HRM.Services.Pay.PayDateService>();
+builder.Services.AddSingleton<HRM.Services.Pay.PayrollCalcJobRegistry>();
+builder.Services.AddSingleton<HRM.Services.Pay.PayrollCalcJobService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 

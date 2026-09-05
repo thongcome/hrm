@@ -84,7 +84,11 @@
         <MudText Typo="Typo.body2" Class="mb-2">
             @L.Translate("FiscalYearSectionDesc")
         </MudText>
-        <MudSelect T="int" @bind-Value="_settings.FiscalYearStartMonth" Label="@L.Translate("FiscalYearStartMonthLabel")" Class="mud-width-full" Style="max-width: 300px;">
+        <MudNumericField T="int" @bind-Value="_settings.PayDayOfMonth" Label="วันจ่ายเงินเดือนประจำเดือน (1-31)" Min="1" Max="31" Style="max-width: 300px;"
+            HelperText="ใช้ตั้งวันจ่ายเริ่มต้นตอนสร้างรอบ เช่น 28 = จ่ายทุกวันที่ 28" />
+        <MudSwitch T="bool" @bind-Value="_settings.PayDateAdjustBackward" Color="Color.Primary" Class="mt-2"
+            Label="ถ้าตรงวันหยุด/เสาร์-อาทิตย์ ให้เลื่อนวันจ่ายเข้ามาเป็นวันทำงานก่อนหน้า" />
+        <MudSelect T="int" @bind-Value="_settings.FiscalYearStartMonth" Label="@L.Translate("FiscalYearStartMonthLabel")" Class="mud-width-full mt-3" Style="max-width: 300px;">
             @for (var m = 1; m <= 12; m++)
             {
                 var month = m;
@@ -332,6 +336,8 @@
         }
 
         existing.FiscalYearStartMonth = _settings.FiscalYearStartMonth;
+        existing.PayDayOfMonth = Math.Clamp(_settings.PayDayOfMonth, 1, 31);
+        existing.PayDateAdjustBackward = _settings.PayDateAdjustBackward;
         existing.ModifiedDate = DateTime.Now;
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();

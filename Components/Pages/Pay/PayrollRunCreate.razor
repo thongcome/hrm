@@ -9,6 +9,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Navigation
 @inject JsonLocalizationService L
+@inject HRM.Services.Pay.PayDateService PayDates
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>@L.Translate("PayRunCreatePageTitle")</PageTitle>
@@ -23,8 +24,12 @@
             <MudSelectItem Value="PayrollRunType.Regular">@L.Translate("PayRunTypeRegular")</MudSelectItem>
             <MudSelectItem Value="PayrollRunType.Bonus">@L.Translate("PayRunTypeBonus")</MudSelectItem>
         </MudSelect>
-        <MudDatePicker @bind-Date="_periodMonth" Label="@L.Translate("PayRunFieldPeriodMonth")" Class="mt-3" />
-        <MudDatePicker @bind-Date="_payDate" Label="@L.Translate("PayRunFieldPayDate")" Class="mt-3" />
+        @* Date/DateChanged (not @bind-Date) so picking a month can recompute
+           the default pay date from company config — mixing @bind-Date with an
+           explicit handler is the RZ10010 compile error. *@
+        <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodMonthChangedAsync" Label="@L.Translate("PayRunFieldPeriodMonth")" Class="mt-3" />
+        <MudDatePicker @bind-Date="_payDate" Label="@L.Translate("PayRunFieldPayDate")" Class="mt-3"
+            HelperText="ค่าเริ่มต้นจาก config (วันจ่ายประจำเดือน เลื่อนเข้าถ้าตรงวันหยุด) — แก้ทับได้" />
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -55,6 +60,23 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _model.CompanyId = state.User.FindFirstValue("payroll_company") ?? "";
+        // Pay date used to default to "today", which is meaningless for the
+        // period being created (and produced dates like 30/09 for a January
+        // run). Default it from company config for the selected month instead.
+        await RecomputeDefaultPayDateAsync();
+    }
+
+    private async Task OnPeriodMonthChangedAsync(DateTime? value)
+    {
+        _periodMonth = value;
+        await RecomputeDefaultPayDateAsync();
+    }
+
+    private async Task RecomputeDefaultPayDateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null) return;
+        var d = await PayDates.ComputeDefaultPayDateAsync(_model.CompanyId, _periodMonth.Value.Year, _periodMonth.Value.Month);
+        _payDate = d.ToDateTime(TimeOnly.MinValue);
     }
 
     private async Task SaveAsync()

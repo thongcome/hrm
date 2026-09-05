@@ -62,6 +62,18 @@ public class Pay_PayslipSettings
     // year-to-date window and period grouping.
     public int FiscalYearStartMonth { get; set; } = 1;
 
+    // Default pay date: which day of the period's month salary is paid on
+    // (1-31, default 28). Used to pre-fill the pay date when a payroll run is
+    // created, so HR doesn't type it every time. A value past the month's last
+    // day is clamped to the last day.
+    public int PayDayOfMonth { get; set; } = 28;
+
+    // When true (default), if the computed pay day lands on a weekend or a
+    // company holiday, the pay date is moved BACKWARD to the nearest earlier
+    // working day (so employees are never paid late) — the common Thai payroll
+    // convention. When false the raw day is used as-is.
+    public bool PayDateAdjustBackward { get; set; } = true;
+
     // Calendar days (not business days) from Hremployee.WorkDate to the
     // suggested probation end date — Thai employers commonly use 119 days
     // to stay just under the Section 118 (120-day) severance threshold.

@@ -43,7 +43,10 @@ public class PayrollCalculationService
         _logger = logger;
     }
 
-    public async Task<PayrollRunCalculationSummary> CalculateAsync(long payrollRunId, long actorUserId, CancellationToken ct = default)
+    // `progress` (optional) receives (done, total) as employees are processed —
+    // throttled to ~100 reports per run so a 7,000-employee company doesn't
+    // flood the caller. Callers that don't care pass null.
+    public async Task<PayrollRunCalculationSummary> CalculateAsync(long payrollRunId, long actorUserId, IProgress<(int Done, int Total)>? progress = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -186,8 +189,20 @@ public class PayrollCalculationService
         var negativeCount = 0;
         var totalNet = 0m;
 
+        // Progress reporting (Phase A): announce the total up front, then
+        // report every ~1% of employees so the progress bar moves smoothly
+        // without a report per row.
+        var progressTotal = eligibleEmployees.Count;
+        var progressEvery = Math.Max(1, progressTotal / 100);
+        var progressDone = 0;
+        progress?.Report((0, progressTotal));
+
         foreach (var emp in eligibleEmployees)
         {
+            if (progressDone > 0 && (progressDone % progressEvery == 0))
+                progress?.Report((progressDone, progressTotal));
+            progressDone++;
+
             var proration = ProrationCalculator.Calculate(
                 run.PeriodStart, run.PeriodEnd,
                 emp.WorkDate.HasValue ? DateOnly.FromDateTime(emp.WorkDate.Value) : null,
@@ -430,6 +445,12 @@ public class PayrollCalculationService
         });
 
         await context.SaveChangesAsync(ct);
+
+        // Progress reporting: the loop throttles every ~1%, so the last report
+        // lands just short of 100% — announce the true total here, before the
+        // (possibly slow) anomaly pass, so the bar reaches 100% instead of
+        // stalling at 99.x% while ML.NET runs.
+        progress?.Report((progressTotal, progressTotal));
 
         // Best-effort — anomaly detection is purely advisory and must never
         // stop a payroll run from being calculated. If ML.NET or a query in
