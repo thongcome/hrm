@@ -1221,6 +1221,32 @@ public class WorkflowEngineService
             }
         }
 
+        // isApproverSameOrg (epms parity — the strategy HRM's model had but
+        // never resolved): any other active employee in the requester's own
+        // organization unit (job.reqOrg, snapshotted at StartJobAsync from
+        // Hremployee.orgcode), same company, excluding the requester. Same
+        // sc_user resolution as isApproverSameCostCenter above.
+        if (level.isApproverSameOrg)
+        {
+            anyStrategyConfigured = true;
+            if (!string.IsNullOrWhiteSpace(requesterOrgCode) && !string.IsNullOrWhiteSpace(job.empid))
+            {
+                var requesterCompanyId = await context.Hremployee
+                    .Where(e => e.EmpNo == job.empid)
+                    .Select(e => e.companyid)
+                    .FirstOrDefaultAsync(ct);
+                var peerEmpNos = await context.Hremployee
+                    .Where(e => e.orgcode == requesterOrgCode && e.companyid == requesterCompanyId && e.EmpNo != job.empid)
+                    .Select(e => e.EmpNo)
+                    .ToListAsync(ct);
+                var peerUsers = await context.sc_users
+                    .Where(u => u.empid != null && peerEmpNos.Contains(u.empid))
+                    .Select(u => new { u.userid, u.empid })
+                    .ToListAsync(ct);
+                candidates.AddRange(peerUsers.Select(u => (u.userid, u.empid)));
+            }
+        }
+
         // isAdhocUser: per-job override via wf_adhoc_user (Phase 1's CRUD at
         // /wf/adhoc-users already lets admins set jobmasterid — null there
         // means a level-wide template row, a real value targets one specific
