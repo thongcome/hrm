@@ -90,3 +90,59 @@ footer {
 .table-hover tbody tr:hover {
     background-color: #FDECE6 !important; /* Light tint of the HumanOk orange */
 }
+
+/* ============================================================
+   Mobile responsive layer (phones) — added for the PWA / mobile
+   pass. Everything is inside the media query, so desktop layout
+   is untouched. Rides on MudBlazor's own responsive AppBar +
+   Drawer by styling its existing classes.
+   ============================================================ */
+@media (max-width: 600px) {
+    /* Reclaim horizontal space: tighter page gutters */
+    .mud-main-content .content,
+    .mud-main-content .mud-container {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    /* App bar: shrink gaps so the actions row fits a ~360px phone */
+    .mud-appbar .mud-toolbar {
+        padding-left: 8px;
+        padding-right: 4px;
+    }
+    .mud-appbar .mud-typography-h6 { font-size: 1.05rem; }
+
+    /* Drawer: readable width as a mobile overlay + bigger touch targets */
+    .mud-drawer {
+        width: min(85vw, 320px) !important;
+    }
+    .mud-drawer .mud-nav-link { min-height: 46px; }
+
+    /* Wide content (tables) scrolls inside its own box instead of
+       forcing the whole page to scroll sideways */
+    .mud-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Cards / papers: a touch less padding so content isn't cramped */
+    .mud-paper.pa-4 { padding: 12px !important; }
+
+    /* Keep big page titles from wrapping to three lines on a phone */
+    .mud-typography-h4 { font-size: 1.55rem; }
+    .mud-typography-h5 { font-size: 1.25rem; }
+
+    /* Never allow horizontal page scroll */
+    html, body { overflow-x: hidden; }
+}
+
+/* Mobile app-bar: keep action buttons on one line (never stack text
+   vertically) and make login/logout compact so the row fits a phone. */
+@media (max-width: 600px) {
+    .mud-appbar .mud-button-root { white-space: nowrap; min-width: 0; }
+    .mud-appbar a[href="/login"] .mud-button-label,
+    .mud-appbar a[href="/logout"] .mud-button-label { gap: 2px; }
+    /* Login/Logout: icon-only on phones (the page body has the real
+       login form; logout is obvious from the exit icon) */
+    .mud-appbar a[href="/login"] .mud-button-label,
+    .mud-appbar a[href="/logout"] .mud-button-label { font-size: 0; }
+    .mud-appbar a[href="/login"] .mud-icon-root,
+    .mud-appbar a[href="/logout"] .mud-icon-root { font-size: 1.5rem; }
+}
