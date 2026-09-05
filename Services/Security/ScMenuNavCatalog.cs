@@ -269,6 +269,7 @@ public static class ScMenuNavCatalog
         new("GRP_OKR", "OKR_ADMIN", "/okr/dashboard", "แดชบอร์ด OKR", "OKR Dashboard", "Icons.Material.Filled.Dashboard", 40),
 
         // ---- GRP_TALENT (group guarded by HasAny("TALENT_ADMIN","TALENT_ACCESS")) ----
+        new("GRP_TALENT", "TALENT_ADMIN", "/hrd/cycle", "รอบการบริหารคนเก่ง (HRD Cycle)", "HRD Cycle", "Icons.Material.Filled.Loop", 5),
         new("GRP_TALENT", "TALENT_ACCESS", "/talent/team-rating", "ให้คะแนนศักยภาพทีม", "Rate Team Potential", "Icons.Material.Filled.Star", 10),
         new("GRP_TALENT", "TALENT_ADMIN", "/talent/nine-box", "9-Box Grid ทั้งบริษัท", "Company-wide 9-Box Grid", "Icons.Material.Filled.GridOn", 20),
         new("GRP_TALENT", "TALENT_ADMIN", "/talent/pool", "Talent Pool", "Talent Pool", "Icons.Material.Filled.EmojiEvents", 30),

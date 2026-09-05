@@ -520,6 +520,7 @@ builder.Services.AddScoped<HRM.Services.Hr.SeparationRequestService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpAssessmentService>();
 builder.Services.AddScoped<HRM.Services.Comp.CompetencyAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Talent.TalentReviewService>();
+builder.Services.AddScoped<HRM.Services.Hrd.HrdCycleService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 

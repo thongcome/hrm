@@ -1,0 +1,119 @@
+@page "/hrd/cycle"
+@using System.Security.Claims
+@using HRM.Services.Hrd
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject HrdCycleService Cycle
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:TALENT_ADMIN")]
+
+<PageTitle>รอบการบริหารคนเก่ง (HRD Cycle)</PageTitle>
+
+@if (string.IsNullOrEmpty(_companyId))
+{
+    <MudAlert Severity="Severity.Error" Class="ma-4">บัญชีของคุณยังไม่ได้ผูกกับบริษัทใดๆ</MudAlert>
+}
+else if (_ov is null)
+{
+    <div class="d-flex justify-center py-8"><MudProgressCircular Indeterminate="true" /></div>
+}
+else
+{
+    <MudText Typo="Typo.h5" Class="mb-1">รอบการบริหารคนเก่ง (HRD Cycle) ปี @_ov.Year</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+        ลำดับงาน HRD ประจำปี — ทำทีละขั้นตามลูกศร แต่ละขั้นเชื่อมข้อมูลถึงกัน (สมรรถนะ→ผลงาน→ศักยภาพ→สืบทอด→พัฒนา)
+    </MudText>
+
+    <MudGrid Class="mb-2">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Outlined="true">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">ความคืบหน้ารอบนี้</MudText>
+                <MudText Typo="Typo.h4">@_ov.CompletedStages<span style="font-size:.5em;color:gray;">/@_ov.TotalStages ขั้น</span></MudText>
+                <MudProgressLinear Color="Color.Primary" Value="@(100.0 * _ov.CompletedStages / _ov.TotalStages)" Class="mt-2" Rounded="true" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="4">
+            <MudPaper Class="pa-4" Outlined="true">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">รอบประเมิน</MudText>
+                <MudText Typo="Typo.h6" Class="mt-1">@(_ov.PeriodName ?? "ยังไม่มีรอบที่เปิดใช้งาน")</MudText>
+                @if (!_ov.HasActivePeriod)
+                {
+                    <MudLink Href="/perf/periods" Typo="Typo.body2">เปิดรอบประเมินก่อนเริ่ม →</MudLink>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="4">
+            <MudPaper Class="pa-4" Outlined="true">
+                <MudText Typo="Typo.overline" Class="mud-text-secondary">พนักงานในบริษัท</MudText>
+                <MudText Typo="Typo.h4">@_ov.TotalEmployees.ToString("#,0")</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @foreach (var s in _ov.Stages)
+    {
+        <MudPaper Class="pa-3 mb-2" Outlined="true">
+            <div class="d-flex align-center" style="gap:14px;">
+                <MudAvatar Color="@Col(s.Status)" Variant="Variant.Filled" Size="Size.Medium">@s.Order</MudAvatar>
+                <div style="flex:1 1 auto; min-width:0;">
+                    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+                        <MudIcon Icon="@s.Icon" Size="Size.Small" />
+                        <MudText Typo="Typo.subtitle1"><b>@s.Name</b></MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@Col(s.Status)" Variant="Variant.Filled">@StatusText(s.Status)</MudChip>
+                    </div>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">@s.Description</MudText>
+                    <div class="d-flex align-center mt-1" style="gap:10px;">
+                        <MudProgressLinear Color="@Col(s.Status)" Value="@(100.0 * s.Done / Math.Max(s.Total,1))" Style="height:6px; flex:1 1 auto;" Rounded="true" />
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="white-space:nowrap;">@s.Done / @s.Total</MudText>
+                    </div>
+                </div>
+                <MudButton Variant="Variant.Filled" Color="@Col(s.Status)" Size="Size.Small"
+                           EndIcon="@Icons.Material.Filled.ArrowForward" OnClick="@(() => Nav.NavigateTo(s.Route))">
+                    ไปที่โมดูล
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-4 mt-3" Outlined="true" Style="border-style:dashed;">
+        <div class="d-flex align-center flex-wrap" style="gap:10px;">
+            <MudIcon Icon="@Icons.Material.Filled.Badge" Color="Color.Tertiary" />
+            <MudText Typo="Typo.subtitle1"><b>บัตรทาเลนต์รายบุคคล</b></MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary" Style="flex:1 1 200px;">
+                ปลายทางของรอบ — เปิดดูภาพรวมข้ามทุกโมดูลของพนักงานรายคน (ใช้ตอน calibration)
+            </MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" Size="Size.Small"
+                       EndIcon="@Icons.Material.Filled.ArrowForward" OnClick="@(() => Nav.NavigateTo("/talent/review"))">
+                เปิดบัตรทาเลนต์
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private string? _companyId;
+    private HrdCycleService.Overview? _ov;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        _ov = await Cycle.GetOverviewAsync(_companyId);
+    }
+
+    private static Color Col(HrdCycleService.StageStatus s) => s switch
+    {
+        HrdCycleService.StageStatus.Complete => Color.Success,
+        HrdCycleService.StageStatus.InProgress => Color.Info,
+        _ => Color.Default,
+    };
+    private static string StatusText(HrdCycleService.StageStatus s) => s switch
+    {
+        HrdCycleService.StageStatus.Complete => "เสร็จแล้ว",
+        HrdCycleService.StageStatus.InProgress => "กำลังดำเนินการ",
+        _ => "ยังไม่เริ่ม",
+    };
+}
