@@ -42,6 +42,12 @@ public static class DevAuthSeeder
     // the pre-login home page advertises its password as Test@12345, and
     // resetting it here would silently make that on-screen hint wrong.
     // See docs/HRM_Demo_Guide.md for who each account is in the demo.
+    //
+    // admin@local.humanok and advadmin@hrm.local (CEO, 2026-09-06) are
+    // likewise excluded from EnsureKnownDevPasswordAsync's reset loop below
+    // — both resolve to the CEO's own employee (AD0001) and are his real,
+    // daily-use logins, not test fixtures, even though their emails look
+    // synthetic. Do not add them back to any auto-reset list.
     private static readonly string[] DemoEmployeeEmails =
     {
         "test005@hrm.local",     // 005 ปราณี สุขใจ — Employee+Admin (หัวหน้า/HR persona)
@@ -55,12 +61,11 @@ public static class DevAuthSeeder
         using var scope = services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        await ResetPasswordAsync(userManager, DevAdminEmail, DevAdminPassword);
-        // ADVD demo admin (advadmin / Dev@12345): EnsureAdvdDemoAdminAsync only
-        // sets the password when it first creates the Identity user (idempotent),
-        // so an account created earlier keeps a stale/unknown password and can't
-        // log in. Reset it here every dev startup, same as the primary admin.
-        await ResetPasswordAsync(userManager, "advadmin@hrm.local", DevAdminPassword);
+        // admin@local.humanok and advadmin@hrm.local are the CEO's own daily
+        // logins (both resolve to employee AD0001) — no longer auto-reset
+        // here (see the comment on DemoEmployeeEmails above). If either ever
+        // needs a known password again for testing, reset it once by hand,
+        // not through this startup loop.
         await ResetPasswordAsync(userManager, DevEssEmail, DevEssPassword);
         foreach (var email in DemoEmployeeEmails)
             await ResetPasswordAsync(userManager, email, DevEssPassword);
