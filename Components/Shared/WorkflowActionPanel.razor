@@ -1,7 +1,10 @@
+@using HRM.Models
 @using HRM.Services.Workflow
+@using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject WorkflowEngineService Engine
 @inject WorkflowButtonService ButtonService
+@inject IDbContextFactory<HRMContext> DbFactory
 @inject ISnackbar Snackbar
 
 @*
@@ -71,18 +74,25 @@
         @if (_pendingAction == WfAction.Approve)
         {
             <MudAlert Severity="Severity.Info" Class="mb-2">ยืนยัน "<b>@ApproveLabel</b>" คำขอนี้ และส่งต่อไปยังระดับถัดไป?</MudAlert>
-            <MudTextField @bind-Value="_actionComment" Label="ความเห็น (ถ้ามี)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
         }
         else if (_pendingAction == WfAction.SendBack)
         {
             <MudAlert Severity="Severity.Warning" Class="mb-2">ส่งคำขอ<b>กลับไปยังระดับ @BackwardLevel</b> เพื่อแก้ไข — งาน<b>ยังไม่จบ</b> โปรดระบุสิ่งที่ต้องแก้</MudAlert>
-            <MudTextField @bind-Value="_actionComment" Label="เหตุผล / สิ่งที่ต้องแก้ (จำเป็น)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
         }
         else
         {
             <MudAlert Severity="Severity.Error" Class="mb-2">ไม่อนุมัติคำขอนี้ = <b>จบ workflow (ปฏิเสธถาวร)</b> โปรดระบุเหตุผล</MudAlert>
-            <MudTextField @bind-Value="_actionComment" Label="เหตุผลที่ไม่อนุมัติ (จำเป็น)" Lines="2" Immediate="true" Variant="Variant.Outlined" />
         }
+        @if (_reasons.Count > 0)
+        {
+            <MudSelect T="long?" @bind-Value="_selectedReasonId" Label="เหตุผล (จากรายการ, ถ้ามี)" Clearable="true" Class="mb-2">
+                @foreach (var r in _reasons)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)r.id)">@r.name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        <MudTextField @bind-Value="_actionComment" Label="@(_pendingAction == WfAction.Approve ? "ความเห็น (ถ้ามี)" : "เหตุผล / รายละเอียดเพิ่มเติม (จำเป็น)")" Lines="2" Immediate="true" Variant="Variant.Outlined" />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="CancelConfirm">ยกเลิก</MudButton>
@@ -117,15 +127,34 @@
     private WfAction _pendingAction;
     private string _pendingLabel = "";
     private string _actionComment = "";
+    private long? _selectedReasonId;
     private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
+    // Reason master data (mas_reason) applicable to this level: rows scoped
+    // to this exact (WorkflowId, Wlevel), or generic rows (workflowid/wlevel
+    // left null) — same "specific overrides generic" shape as everything
+    // else config-driven in this engine. Empty by default (nobody has
+    // configured any yet) => the dropdown simply doesn't render, so this is
+    // fully additive and never blocks an action that worked before it existed.
+    private List<mas_reason> _reasons = new();
     private static readonly DialogOptions _confirmOptions =
         new() { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
 
-    // Load the config-driven button set for this level (empty => built-in fallback).
+    // Load the config-driven button set + applicable reason list for this level
+    // (both empty => built-in button fallback, no reason dropdown).
     protected override async Task OnParametersSetAsync()
     {
         if (WorkflowId > 0)
+        {
             _configButtons = await ButtonService.GetButtonsForLevelAsync(WorkflowId, Wlevel, IsTop, IsAndCondition);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _reasons = await context.mas_reasons
+                .Where(r => r.isActive
+                    && (r.workflowid == null || r.workflowid == WorkflowId)
+                    && (r.wlevel == null || r.wlevel == Wlevel))
+                .OrderBy(r => r.name)
+                .ToListAsync();
+        }
     }
 
     private static Color ToColor(string colorHint) => colorHint switch
@@ -161,6 +190,7 @@
         _pendingAction = action;
         _pendingLabel = label ?? "";
         _actionComment = "";
+        _selectedReasonId = null;
         _error = null;
         _showConfirm = true;
     }
@@ -176,15 +206,15 @@
             switch (_pendingAction)
             {
                 case WfAction.Approve:
-                    await Engine.ApproveAsync(JobApproverId, ActorUserId, _actionComment);
+                    await Engine.ApproveAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
                     Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
                     break;
                 case WfAction.SendBack:
-                    await Engine.SendBackAsync(JobApproverId, ActorUserId, _actionComment);
+                    await Engine.SendBackAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
                     Snackbar.Add("ส่งกลับแก้ไขเรียบร้อย", Severity.Success);
                     break;
                 case WfAction.Decline:
-                    await Engine.DeclineAsync(JobApproverId, ActorUserId, _actionComment);
+                    await Engine.DeclineAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
                     Snackbar.Add("บันทึกการไม่อนุมัติเรียบร้อย", Severity.Success);
                     break;
             }

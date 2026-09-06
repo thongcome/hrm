@@ -73,6 +73,36 @@
     </MudTable>
 </MudPaper>
 
+@* CEO 7 ก.ย. 2569: "คนที่เกี่ยวข้องในการอนุมัติ ก็ต้องเห็นงานด้วยว่าเขาทำไปแล้วถึงไหนแล้ว"
+   — งานที่เคยผ่านมือ (อนุมัติ/ปฏิเสธ/ส่งกลับ) ไปแล้ว ไม่ใช่แค่คิวที่รออยู่ตอนนี้. *@
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">ประวัติที่ฉันเคยพิจารณา</MudText>
+    <MudTable Items="_history" Dense="true" Hover="true" Class="mt-2" Loading="_loadingHistory">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>ผลที่ฉันให้ไว้</MudTh>
+            <MudTh>วันที่ดำเนินการ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.jobmaster.subject</MudTd>
+            <MudTd>@context.jobmaster.wname</MudTd>
+            <MudTd>@context.wlevel</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@HistoryColor(context.jobstatus)">@context.jobstatus</MudChip></MudTd>
+            <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รายละเอียด</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่เคยพิจารณางานใด</MudText>
+        </NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
 @if (_isWorkflowAdmin)
 {
     <MudPaper Class="pa-4 mb-4">
@@ -97,9 +127,11 @@
 
 @code {
     private List<job_user_list> _inbox = new();
+    private List<job_user_list> _history = new();
     private List<wf_workflow> _workflows = new();
     private Dictionary<long, string> _comments = new();
     private bool _loading;
+    private bool _loadingHistory;
     private string? _error;
     private string? _info;
 
@@ -122,6 +154,7 @@
         _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
 
         await RefreshInboxAsync();
+        await RefreshHistoryAsync();
     }
 
     private async Task RefreshInboxAsync()
@@ -139,6 +172,29 @@
         }
     }
 
+    private async Task RefreshHistoryAsync()
+    {
+        _loadingHistory = true;
+        try
+        {
+            var involvement = await Engine.GetMyInvolvementAsync(_actorUserId);
+            _history = involvement.Where(a => a.jobstatus != WorkflowEngineService.StatusPending).ToList();
+        }
+        finally
+        {
+            _loadingHistory = false;
+        }
+    }
+
+    private static Color HistoryColor(string? jobstatus) => jobstatus switch
+    {
+        WorkflowEngineService.StatusApproved => Color.Success,
+        WorkflowEngineService.StatusRejected => Color.Error,
+        WorkflowEngineService.StatusReturned => Color.Warning,
+        WorkflowEngineService.StatusCancelled => Color.Default,
+        _ => Color.Default,
+    };
+
     private async Task ApproveAsync(long jobApproverId)
     {
         _error = null;
@@ -149,6 +205,7 @@
             await Engine.ApproveAsync(jobApproverId, _actorUserId, comment);
             _info = "อนุมัติสำเร็จ";
             await RefreshInboxAsync();
+            await RefreshHistoryAsync();
         }
         catch (Exception ex)
         {
@@ -166,6 +223,7 @@
             await Engine.RejectAsync(jobApproverId, _actorUserId, comment);
             _info = "ปฏิเสธรายการแล้ว";
             await RefreshInboxAsync();
+            await RefreshHistoryAsync();
         }
         catch (Exception ex)
         {

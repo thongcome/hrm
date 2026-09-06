@@ -122,6 +122,10 @@ public static class ScMenuNavCatalog
         // CEO order 31 ส.ค. 2569: the approval inbox also lives in ESS ("เอาไปอยู่ใน ESS ด้วย").
         // Same Url also listed under GRP_WF_ENGINE and GRP_MSS — the seeder keys เช็คซ้ำ by (group, url).
         new("GRP_ESS", null, "/wf/my-inbox", "งานอนุมัติของฉัน", "My Approvals", "Icons.Material.Filled.Inbox", 75), // ungated: ESS-personalized, self-scoped by userid
+        // CEO order 7 ก.ย. 2569 (approval-inbox gap #1): the requester side had
+        // no cross-module "where is my request" screen — every job the caller
+        // started (createuserid), any module. Same ungated/self-scoped shape.
+        new("GRP_ESS", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 76), // ungated: ESS-personalized, self-scoped by createuserid
 
         // ---- GRP_MSS (all self-scoped manager pages; url ซ้ำกับกลุ่มอื่นได้ per (group,url) เช็คซ้ำ) ----
         new("GRP_MSS", null, "/mss", "หน้าแรกหัวหน้างาน", "MSS Home", "Icons.Material.Filled.Dashboard", 10),
@@ -337,7 +341,15 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/loa", "ช่วงวงเงินอนุมัติ (LOA)", "Approval Limit Ranges (LOA)", "Icons.Material.Filled.Payments", 70),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/loa-users", "ผู้อนุมัติตามวงเงิน", "Approvers by Limit", "Icons.Material.Filled.PersonPin", 80),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/adhoc-users", "ผู้อนุมัติเฉพาะกิจ", "Ad-hoc Approvers", "Icons.Material.Filled.PersonAdd", 90),
+        // CEO order 7 ก.ย. 2569 (epms study: Detail.cshtml's mas_reason_id
+        // dropdown) — reason-code master list, config-first per workflow/level.
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reasons", "เหตุผลการพิจารณา", "Approval Reasons", "Icons.Material.Filled.ListAlt", 95),
         new("GRP_WF_ENGINE", null, "/wf/my-inbox", "งานรออนุมัติของฉัน", "My Pending Approvals", "Icons.Material.Filled.Inbox", 100), // TODO ungated today (ESS-personalized approval inbox, self-scoped by userid)
+        new("GRP_WF_ENGINE", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 101), // ungated: ESS-personalized, self-scoped by createuserid
+        // CEO order 7 ก.ย. 2569 (approval-inbox gap #2): cross-module search
+        // over every job_master, not just vacant slots — "ผู้ที่เกี่ยวข้อง...
+        // ต้องรู้เห็น เรียกดูงานได้".
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/jobs", "ภาพรวมงานอนุมัติ", "Approval Jobs Overview", "Icons.Material.Filled.FactCheck", 105),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/vacant-approvals", "ตำแหน่งผู้อนุมัติว่าง", "Vacant Approver Positions", "Icons.Material.Filled.PersonSearch", 110),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/ot-requests", "คำขอทำงานล่วงเวลา (OT)", "Overtime Requests", "Icons.Material.Filled.MoreTime", 120),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/on-behalf", "ลา (แทนพนักงาน)", "Leave (On Behalf)", "Icons.Material.Filled.PersonAddAlt", 130),

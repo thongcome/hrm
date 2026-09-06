@@ -71,51 +71,12 @@
 
         <MudDivider Class="my-6" />
 
-        <MudText Typo="Typo.subtitle1" Class="mb-1">สิทธิ์ปุ่ม เพิ่ม/แก้ไข/ลบ ต่อรายการ (sc_program)</MudText>
-        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">
-            แยกจากสิทธิ์เห็นเมนูด้านบน — ควบคุมว่ากลุ่มผู้ใช้นี้เห็นปุ่ม "เพิ่ม/แก้ไข/ลบ" ในหน้าไหนได้บ้าง (เฉพาะหน้าที่ผูกกลไกนี้ไว้แล้ว — ดูวิธีผูกใน CRUD skill)
-        </MudText>
-
-        @if (_programGroups.Count == 0)
-        {
-            <MudAlert Severity="Severity.Info">ยังไม่มีหน้าใดผูกกลไกนี้ไว้</MudAlert>
-        }
-        else
-        {
-            <MudSimpleTable Dense="true">
-                <thead><tr><th>รายการ</th><th>เพิ่ม</th><th>แก้ไข</th><th>ลบ</th></tr></thead>
-                <tbody>
-                    @foreach (var group in _programGroups)
-                    {
-                        <tr>
-                            <td>@group.EntityLabel</td>
-                            <td>
-                                @if (group.CreateId is long cid)
-                                {
-                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(cid)" ValueChanged="@((bool v) => ToggleProgram(cid, v))" Dense="true" />
-                                }
-                            </td>
-                            <td>
-                                @if (group.EditId is long eid)
-                                {
-                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(eid)" ValueChanged="@((bool v) => ToggleProgram(eid, v))" Dense="true" />
-                                }
-                            </td>
-                            <td>
-                                @if (group.DeleteId is long did)
-                                {
-                                    <MudCheckBox T="bool" Value="@_checkedProgramIds.Contains(did)" ValueChanged="@((bool v) => ToggleProgram(did, v))" Dense="true" />
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </MudSimpleTable>
-            @if (_rights?.CanEdit == true)
-            {
-                <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProgramsAsync">บันทึกสิทธิ์ปุ่ม</MudButton>
-            }
-        }
+        <MudAlert Severity="Severity.Info">
+            สิทธิ์ปุ่ม เพิ่ม/แก้ไข/ลบ ต่อรายการ ย้ายไปอยู่ที่หน้า
+            <MudLink Href="/admin/system/program-rights">"จัดการสิทธิ์การใช้งานรายหน้า"</MudLink>
+            แล้ว (sc_program_role, AD.CRUDManage) — กลไก sc_program/sc_role_program เดิมในหน้านี้ถูกถอดออก
+            เพราะระบบตรวจสิทธิ์จริงไม่เคยอ่านตารางนี้เลย บันทึกไว้ที่นี่ไม่มีผลใดๆ ต่อสิทธิ์จริง
+        </MudAlert>
     }
 </MudPaper>
 

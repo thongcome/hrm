@@ -151,7 +151,10 @@
             _myPendingRow = inbox.FirstOrDefault(r => r.jobmasterid == JobMasterId);
 
             var job = await Engine.GetJobDetailAsync(JobMasterId);
-            if (job is null || (_myPendingRow is null && !job.job_user_lists.Any(a => a.userid == _actorUserId)))
+            var isParticipant = job is not null && job.job_user_lists.Any(a => a.userid == _actorUserId);
+            var isRequester = job is not null && job.createuserid == _actorUserId;
+            var isWorkflowAdmin = (await AuthProvider.GetAuthenticationStateAsync()).User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
+            if (job is null || (_myPendingRow is null && !isParticipant && !isRequester && !isWorkflowAdmin))
             {
                 _notMine = true;
                 _job = null;

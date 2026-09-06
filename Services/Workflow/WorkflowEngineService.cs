@@ -237,7 +237,7 @@ public class WorkflowEngineService
         return job.jobmasterid;
     }
 
-    public async Task ApproveAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    public async Task ApproveAsync(long jobApproverId, long actorUserId, string? comment, long? reasonId = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -270,6 +270,7 @@ public class WorkflowEngineService
         approverRow.jobstatus = StatusApproved;
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
+        approverRow.mas_reason_id = reasonId;
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
@@ -284,7 +285,7 @@ public class WorkflowEngineService
             await NotifyRequesterAsync(context, job, outcome, ct);
     }
 
-    public async Task RejectAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    public async Task RejectAsync(long jobApproverId, long actorUserId, string? comment, long? reasonId = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -312,6 +313,7 @@ public class WorkflowEngineService
         approverRow.jobstatus = StatusRejected;
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
+        approverRow.mas_reason_id = reasonId;
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
@@ -378,7 +380,7 @@ public class WorkflowEngineService
     // (final) level per the owner's two-action model: a mid-flow approver who
     // disagrees must "ส่งกลับแก้ไข" (SendBackAsync) instead, never kill the job
     // outright. Requires a reason. Closes the job; nothing advances.
-    public async Task DeclineAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    public async Task DeclineAsync(long jobApproverId, long actorUserId, string? comment, long? reasonId = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -407,6 +409,7 @@ public class WorkflowEngineService
         approverRow.jobstatus = StatusRejected;
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
+        approverRow.mas_reason_id = reasonId;
         approverRow.isLast = false;
 
         job.status = StatusRejected; // terminal "ไม่อนุมัติ" — a clear declined state, not RETURNED (rework)
@@ -431,7 +434,7 @@ public class WorkflowEngineService
     // owner's "paper on the desk" model). Requires a reason. Routes through the
     // existing bounce logic so isLast/jobseq/new-round rows are handled exactly
     // like an engine-initiated bounce.
-    public async Task SendBackAsync(long jobApproverId, long actorUserId, string? comment, CancellationToken ct = default)
+    public async Task SendBackAsync(long jobApproverId, long actorUserId, string? comment, long? reasonId = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -460,6 +463,7 @@ public class WorkflowEngineService
         approverRow.jobstatus = StatusReturned;
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
+        approverRow.mas_reason_id = reasonId;
 
         // Route back exactly like an engine bounce (increments round, resets the
         // target level, issues a fresh approver round, flips isLast). Returns
@@ -518,6 +522,21 @@ public class WorkflowEngineService
             .ToListAsync(ct);
     }
 
+    // "คนที่เกี่ยวข้องในการอนุมัติต้องเห็นงานด้วยว่าเขาทำไปแล้วถึงไหนแล้ว"
+    // (CEO, 2026-09-07) — every job_user_list row this user has ever been on,
+    // any status, newest first: what's still pending (their turn or not) plus
+    // what they already approved/rejected/sent back. GetMyInboxAsync only
+    // ever returns the PENDING slice; this is the full involvement history.
+    public async Task<List<job_user_list>> GetMyInvolvementAsync(long userId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        return await context.job_user_lists
+            .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
+            .Where(a => a.userid == userId)
+            .OrderByDescending(a => a.jobmaster.createdate)
+            .ToListAsync(ct);
+    }
+
     // Vacant slots (nobody resolved, isAutoApproveAllow was false on that
     // level) waiting for an admin to call AssignApproverAsync — the "ค้างไว้
     // จน admin หาคนอนุมัติได้" case from the plan.
@@ -529,6 +548,50 @@ public class WorkflowEngineService
             .Where(a => a.userid == null && a.jobstatus == StatusPending)
             .OrderBy(a => a.jobmaster.createdate)
             .ToListAsync(ct);
+    }
+
+    // Requester-side "งานของฉัน" (CEO, 2026-09-07, REQ: approval inbox gap #1)
+    // — every job the caller started, across every module, newest first.
+    // Deliberately reads job_master directly (no per-user_list join): the
+    // requester relationship is createuserid, not a job_user_list row, so
+    // this returns jobs even before any approver has been assigned.
+    public async Task<List<job_master>> GetMyRequestsAsync(long requesterUserId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        return await context.job_masters
+            .Include(j => j.workflow)
+            .Where(j => j.createuserid == requesterUserId)
+            .OrderByDescending(j => j.createdate)
+            .ToListAsync(ct);
+    }
+
+    // Admin "ภาพรวมงานอนุมัติ" (CEO, 2026-09-07, REQ: approval inbox gap #2)
+    // — every job across every workflow/module, with the handful of filters
+    // job_master already carries columns for. All filters are optional and
+    // AND together; a blank filter set returns everything, newest first.
+    public async Task<List<job_master>> SearchJobsAsync(string? workflowCode = null, bool? isClosed = null,
+        long? requesterUserId = null, DateTime? fromDate = null, DateTime? toDate = null, string? searchText = null,
+        CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var query = context.job_masters.Include(j => j.workflow).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(workflowCode)) query = query.Where(j => j.workflowcode == workflowCode);
+        if (isClosed is bool closed) query = query.Where(j => j.isJobClosed == closed);
+        if (requesterUserId is long uid) query = query.Where(j => j.createuserid == uid);
+        if (fromDate is DateTime from) query = query.Where(j => j.createdate >= from);
+        if (toDate is DateTime to) query = query.Where(j => j.createdate < to.AddDays(1));
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var term = searchText.Trim();
+            query = query.Where(j => (j.subject != null && j.subject.Contains(term))
+                || (j.createusername != null && j.createusername.Contains(term))
+                || (j.reqName != null && j.reqName.Contains(term))
+                || (j.wname != null && j.wname.Contains(term))
+                || (j.status != null && j.status.Contains(term)));
+        }
+
+        return await query.OrderByDescending(j => j.createdate).Take(500).ToListAsync(ct);
     }
 
     public async Task<job_master?> GetJobDetailAsync(long jobMasterId, CancellationToken ct = default)

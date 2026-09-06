@@ -1,0 +1,125 @@
+@page "/wf/jobs"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@* Admin "ภาพรวมงานอนุมัติ" — CEO gap #2: a cross-module search over every
+   job_master row, since until now the only cross-job admin views were
+   vacant-slot-only (/wf/vacant-approvals) or workflow-enable/disable-only
+   (/wf/state-change-requests). Rows link into the SAME detail page approvers
+   use (/wf/my-inbox/{id}) — that page already shows the full history/stepper/
+   action panel, no separate admin detail view needed. Large-table convention:
+   nothing loads until Search is pressed. *@
+
+<PageTitle>ภาพรวมงานอนุมัติ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ภาพรวมงานอนุมัติ (ทุก Workflow)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ค้นหางานอนุมัติทั้งหมดในระบบ ไม่จำกัดว่าเป็นของใคร — ใช้ตรวจสอบว่าเรื่องหนึ่งค้างอยู่ที่ใคร หรือดูภาพรวมทั้งหมด
+    </MudText>
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="4">
+            <MudTextField T="string" @bind-Value="_search" Label="ค้นหา (เรื่อง / ผู้ขอ / สถานะ)" Immediate="true"
+                @onkeyup="@(async (KeyboardEventArgs e) => { if (e.Key == "Enter") await SearchAsync(); })" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="long?" @bind-Value="_workflowId" Label="Workflow" Clearable="true">
+                @foreach (var wf in _workflows)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect T="bool?" @bind-Value="_openFilter" Label="สถานะ" Clearable="true">
+                <MudSelectItem T="bool?" Value="false">ยังไม่จบ</MudSelectItem>
+                <MudSelectItem T="bool?" Value="true">จบแล้ว</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="1"><MudDatePicker @bind-Date="_fromDate" Label="ตั้งแต่" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="6" sm="1"><MudDatePicker @bind-Date="_toDate" Label="ถึง" DateFormat="dd/MM/yyyy" /></MudItem>
+        <MudItem xs="12" sm="1">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="SearchAsync">ค้นหา</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_searched)
+    {
+        <MudText Typo="Typo.caption" Class="mt-2 d-block">พบ @_results.Count รายการ (แสดงสูงสุด 500 รายการล่าสุด)</MudText>
+
+        <MudTable Items="_results" Dense="true" Hover="true" Class="mt-2" Loading="_loading" RowsPerPage="25">
+            <HeaderContent>
+                <MudTh>Job #</MudTh>
+                <MudTh>เรื่อง</MudTh>
+                <MudTh>ผู้ขอ</MudTh>
+                <MudTh>Workflow</MudTh>
+                <MudTh>ระดับ</MudTh>
+                <MudTh>สถานะ</MudTh>
+                <MudTh>วันที่ยื่น</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.jobmasterid</MudTd>
+                <MudTd>@context.subject</MudTd>
+                <MudTd>@(string.IsNullOrWhiteSpace(context.reqName) ? (context.createusername ?? context.empid ?? "-") : context.reqName)</MudTd>
+                <MudTd>@context.wname</MudTd>
+                <MudTd>@(context.lastLevel ?? 0) / @context.maxlevel</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.isJobClosed == true ? Color.Default : Color.Info)">@context.status</MudChip></MudTd>
+                <MudTd>@context.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รายละเอียด</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">กรุณากรอกเงื่อนไขค้นหา (หรือเว้นว่างเพื่อดูทั้งหมด) แล้วกด "ค้นหา"</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private List<wf_workflow> _workflows = new();
+    private List<job_master> _results = new();
+    private bool _loading;
+    private bool _searched;
+
+    private string? _search;
+    private long? _workflowId;
+    private bool? _openFilter;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _searched = true;
+        try
+        {
+            var workflowCode = _workflowId is long wid ? _workflows.FirstOrDefault(w => w.workflowid == wid)?.workflowcode : null;
+            _results = await Engine.SearchJobsAsync(workflowCode, _openFilter, requesterUserId: null,
+                fromDate: _fromDate, toDate: _toDate, searchText: _search);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

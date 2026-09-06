@@ -1,0 +1,163 @@
+@page "/wf/my-requests"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+@* ESS-personalized page (self-scoped by createuserid == the logged-in
+   user) — bare [Authorize] on purpose, no Menu:XXX policy, same rationale
+   as WfMyInbox.razor. Answers the CEO's approval-inbox gap #1: "คนขอเรื่อง
+   ไม่รู้เลยว่าเรื่องอยู่ไหน" — every job the caller has ever started, across
+   every module, one place, searchable. *@
+
+<PageTitle>งานที่ฉันขอไป</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานที่ฉันขอไป</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        คำขออนุมัติทุกเรื่องที่คุณเคยยื่น (ลา / OT / เบิกสวัสดิการ / อื่นๆ) รวมไว้ที่เดียว พร้อมสถานะล่าสุดและกำลังรออนุมัติที่ใคร
+    </MudText>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="5">
+            <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Label="ค้นหา (เรื่อง / Workflow / สถานะ)"
+                Immediate="true" DebounceInterval="300" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="bool?" @bind-Value="_openFilter" Label="สถานะ" Clearable="true">
+                <MudSelectItem T="bool?" Value="false">ยังไม่จบ (รออนุมัติ)</MudSelectItem>
+                <MudSelectItem T="bool?" Value="true">จบแล้ว</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="Filtered" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>รออนุมัติที่</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.subject</MudTd>
+            <MudTd>@context.wname</MudTd>
+            <MudTd>@(context.lastLevel ?? 0) / @context.maxlevel</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context)">@context.status</MudChip></MudTd>
+            <MudTd>@(_pendingWith.TryGetValue(context.jobmasterid, out var who) ? who : "-")</MudTd>
+            <MudTd>@context.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รายละเอียด</MudButton>
+                    @if (context.isJobClosed != true)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => CancelAsync(context))">ยกเลิกคำขอ</MudButton>
+                    }
+                </MudStack>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่เคยยื่นคำขอ</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<job_master> _requests = new();
+    private Dictionary<long, string> _pendingWith = new();
+    private string? _search;
+    private bool? _openFilter;
+    private bool _loading;
+    private string? _error;
+    private long _actorUserId;
+
+    private IEnumerable<job_master> Filtered
+    {
+        get
+        {
+            var q = _requests.AsEnumerable();
+            if (_openFilter is bool closed) q = q.Where(j => (j.isJobClosed == true) == closed);
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var term = _search.Trim();
+                q = q.Where(j => (j.subject?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (j.wname?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (j.status?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            return q;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _requests = await Engine.GetMyRequestsAsync(_actorUserId);
+            _pendingWith = new();
+            foreach (var job in _requests.Where(j => j.isJobClosed != true))
+            {
+                var who = await Engine.GetPendingApproverNamesAsync(job.jobmasterid);
+                if (!string.IsNullOrWhiteSpace(who)) _pendingWith[job.jobmasterid] = who;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnSearchChanged(string value) => _search = value;
+
+    private static Color StatusColor(job_master job)
+    {
+        if (job.isJobClosed != true) return Color.Info;
+        return job.status?.ToUpperInvariant() switch
+        {
+            WorkflowEngineService.StatusCompleted => Color.Success,
+            WorkflowEngineService.StatusRejected => Color.Error,
+            WorkflowEngineService.StatusCancelled => Color.Default,
+            _ => Color.Default,
+        };
+    }
+
+    private async Task CancelAsync(job_master job)
+    {
+        _error = null;
+        try
+        {
+            await Engine.CancelAsync(job.jobmasterid, _actorUserId, isAdminOverride: false, reason: "ยกเลิกโดยผู้ขอ");
+            Snackbar.Add("ยกเลิกคำขอแล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ยกเลิกไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

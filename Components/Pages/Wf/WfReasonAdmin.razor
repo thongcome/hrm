@@ -1,0 +1,174 @@
+@page "/wf/reasons"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@* mas_reason: the reason-code master list an approver picks from when
+   acting on a job (WorkflowActionPanel), same idea as epms's Detail.cshtml
+   mas_reason_id dropdown. A row scoped to a Workflow+Level applies only
+   there; leave both blank for a generic reason usable everywhere. The
+   dropdown in WorkflowActionPanel simply doesn't render when nothing here
+   applies, so this table starting empty never blocks approving/rejecting. *@
+
+<PageTitle>เหตุผลการพิจารณา (Workflow)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เหตุผลการพิจารณา (Workflow)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการเหตุผลให้ผู้อนุมัติเลือกตอนอนุมัติ/ปฏิเสธ/ส่งกลับ — เว้น Workflow และระดับว่างไว้ = ใช้ได้ทุก workflow ทุกระดับ ระบุเจาะจงเพื่อจำกัดเฉพาะจุด
+    </MudText>
+
+    <MudTable Items="_reasons" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อเหตุผล</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.code</MudTd>
+            <MudTd>@context.name</MudTd>
+            <MudTd>@(context.workflowid is long wid ? _workflows.FirstOrDefault(w => w.workflowid == wid)?.wname ?? $"#{wid}" : "(ทุก workflow)")</MudTd>
+            <MudTd>@(context.wlevel?.ToString() ?? "(ทุกระดับ)")</MudTd>
+            <MudTd>@(context.isActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">
+                    @(context.isActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีเหตุผลตั้งไว้</MudText></NoRecordsContent>
+    </MudTable>
+
+    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="mt-2" OnClick="StartAdd">เพิ่มเหตุผล</MudButton>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-3">@(_editing.id == 0 ? "เพิ่มเหตุผล" : $"แก้ไขเหตุผล #{_editing.id}")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_editing.code" Label="รหัส" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_editing.name" Label="ชื่อเหตุผล (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.name_en" Label="ชื่อเหตุผล (English)" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_editing.workflowid" Label="เจาะจง Workflow (ว่าง = ทุก workflow)" Clearable="true">
+                    @foreach (var wf in _workflows)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int?" @bind-Value="_editing.wlevel" Label="เจาะจงระดับ (ว่าง = ทุกระดับ)" Min="1" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_editing.description" Label="คำอธิบายเพิ่มเติม" Lines="2" /></MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_editError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_editError</MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private List<mas_reason> _reasons = new();
+    private List<wf_workflow> _workflows = new();
+    private mas_reason? _editing;
+    private string? _editError;
+    private string _actor = "admin";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _workflows = await context.wf_workflows.OrderBy(w => w.workflowcode).ToListAsync();
+        _reasons = await context.mas_reasons.OrderBy(r => r.name).ToListAsync();
+    }
+
+    private void StartAdd()
+    {
+        _editError = null;
+        _editing = new mas_reason { isActive = true };
+    }
+
+    private void StartEdit(mas_reason r)
+    {
+        _editError = null;
+        _editing = new mas_reason
+        {
+            id = r.id,
+            code = r.code,
+            name = r.name,
+            name_en = r.name_en,
+            workflowid = r.workflowid,
+            wlevel = r.wlevel,
+            description = r.description,
+            isActive = r.isActive,
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        _editError = null;
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.name))
+        {
+            _editError = "กรุณากรอกชื่อเหตุผล";
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editing.id == 0)
+        {
+            _editing.moddate = DateTime.Now;
+            _editing.modby = _actor;
+            context.mas_reasons.Add(_editing);
+        }
+        else
+        {
+            var existing = await context.mas_reasons.FirstOrDefaultAsync(r => r.id == _editing.id);
+            if (existing is null) { _editError = "ไม่พบเหตุผลนี้ในระบบแล้ว"; return; }
+
+            existing.code = _editing.code;
+            existing.name = _editing.name;
+            existing.name_en = _editing.name_en;
+            existing.workflowid = _editing.workflowid;
+            existing.wlevel = _editing.wlevel;
+            existing.description = _editing.description;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+        }
+
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกเรียบร้อย", Severity.Success);
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(mas_reason r)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.mas_reasons.FirstOrDefaultAsync(x => x.id == r.id);
+        if (existing is null) return;
+        existing.isActive = !existing.isActive;
+        existing.moddate = DateTime.Now;
+        existing.modby = _actor;
+        await context.SaveChangesAsync();
+        await LoadAsync();
+    }
+}
