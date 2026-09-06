@@ -1,0 +1,111 @@
+@page "/mss/team-attendance"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize]
+
+@* Manager view (customer spec REQ-137/138/140): per direct report over a date
+   range — days present, late, absent, late minutes, approved OT hours. Self-
+   scoped to the caller's own direct reports, so no Menu:XXX policy (same rule
+   as the MSS home). Reads Att_DailyAttendance, so it reflects the last
+   aggregation HR ran. *@
+
+<PageTitle>การเข้างานของทีม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">การเข้างาน / OT ของทีม</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">สรุปจากตารางลงเวลารายวันของลูกทีม (Direct Reports) ในช่วงที่เลือก — สาย/ขาด/นาทีที่สาย และชั่วโมง OT ที่อนุมัติแล้ว</MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงาน</MudAlert>
+    }
+    else if (_reports.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ไม่มีลูกทีมที่รายงานตรงถึงคุณตามผังองค์กร</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="3"><MudDatePicker Date="_from" DateChanged="@(async d => { _from = d; await LoadAsync(); })" Label="จากวันที่" DateFormat="dd/MM/yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Date="_to" DateChanged="@(async d => { _to = d; await LoadAsync(); })" Label="ถึงวันที่" DateFormat="dd/MM/yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">สายรวม @_rows.Sum(r => r.LateDays) ครั้ง</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="Color.Error">ขาดรวม @_rows.Sum(r => r.AbsentDays) วัน</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">OT รวม @_rows.Sum(r => r.OtHours).ToString("0.#") ชม.</MudChip>
+            </MudItem>
+        </MudGrid>
+        <MudTable Items="_rows" Dense="true" Hover="true" Elevation="0" Class="mt-2">
+            <HeaderContent>
+                <MudTh>รหัส</MudTh><MudTh>ชื่อ</MudTh><MudTh Style="text-align:right">วันที่มา</MudTh><MudTh Style="text-align:right">สาย (ครั้ง)</MudTh><MudTh Style="text-align:right">สายรวม (นาที)</MudTh><MudTh Style="text-align:right">ขาด (วัน)</MudTh><MudTh Style="text-align:right">WFH (วัน)</MudTh><MudTh Style="text-align:right">OT อนุมัติ (ชม.)</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd>
+                <MudTd Style="text-align:right">@context.PresentDays</MudTd>
+                <MudTd Style="text-align:right">@context.LateDays</MudTd>
+                <MudTd Style="text-align:right">@context.LateMinutes</MudTd>
+                <MudTd Style="text-align:right">@context.AbsentDays</MudTd>
+                <MudTd Style="text-align:right">@context.WfhDays</MudTd>
+                <MudTd Style="text-align:right">@context.OtHours.ToString("0.#")</MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudText Typo="Typo.caption" Class="d-block mt-2 mud-text-secondary">ข้อมูลสาย/ขาดมาจากการประมวลผลลงเวลาล่าสุดของ HR — วันที่ยังไม่ประมวลผลจะไม่ปรากฏ</MudText>
+    }
+</MudPaper>
+
+@code {
+    private record Row(string EmpNo, string Name, int PresentDays, int LateDays, int LateMinutes, int AbsentDays, int WfhDays, decimal OtHours);
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<Hremployee> _reports = new();
+    private List<Row> _rows = new();
+    private DateTime? _from = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? _to = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+            _reports = await DirectReportResolverHelper.ResolveDirectReportsAsync(context, _employee);
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_reports.Count == 0 || _from is null || _to is null) return;
+        var from = DateOnly.FromDateTime(_from.Value); var to = DateOnly.FromDateTime(_to.Value);
+        var fromDt = _from.Value.Date; var toDt = _to.Value.Date.AddDays(1);
+        var ids = _reports.Select(e => e.id).ToList();
+        var empNos = _reports.Select(e => e.EmpNo).ToList();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var days = await context.Att_DailyAttendances.AsNoTracking()
+            .Where(a => ids.Contains(a.HremployeeId) && a.WorkDate >= from && a.WorkDate <= to)
+            .Select(a => new { a.HremployeeId, a.IsLate, a.LateMinutes, a.IsAbsent, a.WorkLocation })
+            .ToListAsync();
+        var ot = await context.emp_overtime_requests.AsNoTracking()
+            .Where(o => o.approvedate != null && o.starttime >= fromDt && o.starttime < toDt && empNos.Contains(o.empid))
+            .Select(o => new { o.empid, o.hremployeeid, o.workhour })
+            .ToListAsync();
+        _rows = _reports.Select(e =>
+        {
+            var d = days.Where(x => x.HremployeeId == e.id).ToList();
+            var otHours = ot.Where(o => o.hremployeeid == e.id || o.empid == e.EmpNo).Sum(o => o.workhour ?? 0m);
+            return new Row(e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(),
+                d.Count(x => !x.IsAbsent), d.Count(x => x.IsLate), d.Sum(x => x.LateMinutes), d.Count(x => x.IsAbsent),
+                d.Count(x => x.WorkLocation == AttWorkLocation.Wfh), otHours);
+        }).OrderBy(r => r.EmpNo).ToList();
+    }
+}

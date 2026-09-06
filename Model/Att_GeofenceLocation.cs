@@ -31,5 +31,10 @@ public class Att_GeofenceLocation
 
     public int RadiusMeters { get; set; } = 100;
 
+    // QR check-in: the token is embedded in the location's QR code URL
+    // (/ess/attendance-checkin?loc=TOKEN). Regenerating it invalidates printed codes.
+    [StringLength(40)]
+    public string? QrToken { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

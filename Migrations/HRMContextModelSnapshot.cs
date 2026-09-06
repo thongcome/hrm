@@ -373,6 +373,65 @@ namespace HRM.Migrations
                     b.ToTable("Att_CompanySetting");
                 });
 
+            modelBuilder.Entity("HRM.Models.Att_CorrectionRequest", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("AppliedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmpNo")
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<long>("HremployeeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsApplied")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("JobMasterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long>("RequestedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("RequestedIn")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RequestedOut")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("WorkDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HremployeeId", "WorkDate");
+
+                    b.ToTable("Att_CorrectionRequest");
+                });
+
             modelBuilder.Entity("HRM.Models.Att_DailyAttendance", b =>
                 {
                     b.Property<long>("Id")
@@ -507,6 +566,10 @@ namespace HRM.Migrations
 
                     b.Property<int>("RadiusMeters")
                         .HasColumnType("int");
+
+                    b.Property<string>("QrToken")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
                     b.HasKey("Id");
 
@@ -651,6 +714,10 @@ namespace HRM.Migrations
                     b.Property<long?>("ImportBatchId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
                     b.Property<decimal?>("Latitude")
                         .HasColumnType("decimal(9,6)");
 
@@ -716,6 +783,15 @@ namespace HRM.Migrations
 
                     b.Property<int>("BreakMinutes")
                         .HasColumnType("int");
+
+                    b.Property<TimeOnly?>("CoreEndTime")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly?>("CoreStartTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsFlexible")
+                        .HasColumnType("bit");
 
                     b.Property<string>("CompanyId")
                         .IsRequired()

@@ -36,6 +36,10 @@ public class Att_PunchLog
     [Column(TypeName = "decimal(9,6)")]
     public decimal? Longitude { get; set; }
 
+    // Client address for self check-ins (GPS/QR) — audit trail (REQ-060).
+    [StringLength(45)]
+    public string? IpAddress { get; set; }
+
     public long? ImportBatchId { get; set; }
 
     public virtual Hremployee Hremployee { get; set; } = null!;

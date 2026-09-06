@@ -1,0 +1,177 @@
+@page "/ess/attendance-correction"
+@page "/ess/attendance-correction/{Id:long}"
+@using HRM.Models
+@using HRM.Services.Att
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject AttendanceCorrectionService CorrectionService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+@* Attendance correction (customer spec REQ-051/052/143): the employee asks to
+   fix a day's in/out, the supervisor approves in the normal workflow inbox
+   (ATT_CORRECTION), and the approved times become punches. With {Id} the page
+   shows one request — that is the link the approver opens from the inbox. *@
+
+<PageTitle>ขอแก้ไขเวลาเข้า-ออกงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ขอแก้ไขเวลาเข้า-ออกงาน</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ลืมลงเวลา ลงเวลาไม่ติด หรือออกไปพบลูกค้า — ยื่นคำขอพร้อมเวลาที่ถูกต้อง หัวหน้างานอนุมัติแล้วระบบจะบันทึกเวลาให้และคำนวณสาย/ขาดใหม่
+    </MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (Id is long)
+    {
+        @if (_one is null)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">ไม่พบคำขอนี้</MudAlert>
+        }
+        else
+        {
+            <MudPaper Class="pa-3 mt-3" Outlined="true">
+                <MudText Typo="Typo.subtitle1"><b>คำขอ #@_one.Id</b> — @_oneName (@_one.EmpNo)</MudText>
+                <MudText>วันที่: @_one.WorkDate.ToString("dd/MM/yyyy")</MudText>
+                <MudText>เวลาเข้าที่ขอ: @(_one.RequestedIn?.ToString("HH:mm") ?? "-") · เวลาออกที่ขอ: @(_one.RequestedOut?.ToString("HH:mm") ?? "-")</MudText>
+                <MudText>เหตุผล: @_one.Reason</MudText>
+                <MudText Class="mt-1">สถานะ: <MudChip T="string" Size="Size.Small" Color="@StatusColor(_one.Status)">@StatusLabel(_one.Status)</MudChip></MudText>
+                @if (_oneDay is not null)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">
+                        เวลาที่ระบบมีอยู่วันนั้น: เข้า @(_oneDay.FirstIn?.ToString("HH:mm") ?? "-") ออก @(_oneDay.LastOut?.ToString("HH:mm") ?? "-")
+                        @(_oneDay.IsAbsent ? "(ขาดงาน)" : _oneDay.IsLate ? $"(สาย {_oneDay.LateMinutes} นาที)" : "")
+                    </MudText>
+                }
+                @if (_one.JobMasterId is long jid)
+                {
+                    <MudButton Href="@($"/wf/my-inbox/{jid}")" Variant="Variant.Text" Color="Color.Primary" Class="mt-2">เปิดในกล่องอนุมัติ</MudButton>
+                }
+                <MudButton Href="/ess/attendance-correction" Variant="Variant.Text" Class="mt-2">รายการของฉัน</MudButton>
+            </MudPaper>
+        }
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงาน</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ยื่นคำขอใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_date" Label="วันที่" DateFormat="dd/MM/yyyy" MaxDate="DateTime.Today" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudTimePicker @bind-Time="_in" Label="เวลาเข้าที่ถูกต้อง" Editable="true" TimeFormat="HH:mm" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudTimePicker @bind-Time="_out" Label="เวลาออกที่ถูกต้อง" Editable="true" TimeFormat="HH:mm" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudTextField T="string" @bind-Value="_reason" Label="เหตุผล" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="_busy">ส่งขออนุมัติ</MudButton>
+                <MudText Typo="Typo.caption" Class="ml-3 mud-text-secondary">ระบุเวลาเข้าหรือออกอย่างน้อยหนึ่งช่อง</MudText>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">คำขอของฉัน</MudText>
+        <MudTable Items="_mine" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent><MudTh>วันที่</MudTh><MudTh>เข้า</MudTh><MudTh>ออก</MudTh><MudTh>เหตุผล</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.WorkDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd>@(context.RequestedIn?.ToString("HH:mm") ?? "-")</MudTd>
+                <MudTd>@(context.RequestedOut?.ToString("HH:mm") ?? "-")</MudTd>
+                <MudTd>@context.Reason</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+                <MudTd><MudLink Href="@($"/ess/attendance-correction/{context.Id}")">รายละเอียด</MudLink></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีคำขอ</MudText></NoRecordsContent>
+            <PagerContent><MudTablePager PageSizeOptions="new[] { 10, 25 }" /></PagerContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private bool _loaded, _busy;
+    private Hremployee? _employee;
+    private long _userId;
+    private List<Att_CorrectionRequest> _mine = new();
+    private Att_CorrectionRequest? _one;
+    private string _oneName = "";
+    private Att_DailyAttendance? _oneDay;
+
+    private DateTime? _date = DateTime.Today;
+    private TimeSpan? _in, _out;
+    private string _reason = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loaded = false;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+
+        if (Id is long id)
+        {
+            _one = await CorrectionService.SyncAsync(id);
+            if (_one is not null)
+            {
+                _oneName = await context.Hremployee.Where(e => e.id == _one.HremployeeId).Select(e => (e.EmpName + " " + e.EmpSurname).Trim()).FirstOrDefaultAsync() ?? "";
+                _oneDay = await context.Att_DailyAttendances.AsNoTracking().FirstOrDefaultAsync(a => a.HremployeeId == _one.HremployeeId && a.WorkDate == _one.WorkDate);
+            }
+        }
+        else if (_employee is not null)
+        {
+            _mine = await CorrectionService.ListMineAsync(_employee.id);
+        }
+        _loaded = true;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_employee is null || _date is null) return;
+        _busy = true;
+        try
+        {
+            await CorrectionService.SubmitAsync(_employee.id, _employee.companyid!, DateOnly.FromDateTime(_date.Value),
+                _in is TimeSpan i ? TimeOnly.FromTimeSpan(i) : null, _out is TimeSpan o ? TimeOnly.FromTimeSpan(o) : null,
+                _reason, _userId, _employee.EmpNo);
+            Snackbar.Add("ส่งคำขอแล้ว รอหัวหน้างานอนุมัติ", Severity.Success);
+            _in = null; _out = null; _reason = "";
+            _mine = await CorrectionService.ListMineAsync(_employee.id);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private static string StatusLabel(AttCorrectionStatus s) => s switch
+    {
+        AttCorrectionStatus.Pending => "รออนุมัติ",
+        AttCorrectionStatus.Approved => "อนุมัติแล้ว (บันทึกเวลาให้แล้ว)",
+        AttCorrectionStatus.Rejected => "ไม่อนุมัติ",
+        AttCorrectionStatus.Cancelled => "ยกเลิก",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(AttCorrectionStatus s) => s switch
+    {
+        AttCorrectionStatus.Pending => Color.Warning,
+        AttCorrectionStatus.Approved => Color.Success,
+        AttCorrectionStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+}

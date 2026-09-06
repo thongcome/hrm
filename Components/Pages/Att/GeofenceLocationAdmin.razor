@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
+@inject NavigationManager Navigation
 @attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
 
 <PageTitle>@L.Translate("GeofenceAdminPageTitle")</PageTitle>
@@ -44,6 +45,7 @@
                 <MudTh>@L.Translate("ColLongitude")</MudTh>
                 <MudTh>@L.Translate("ColRadiusMeters")</MudTh>
                 <MudTh>@L.Translate("ColStatus")</MudTh>
+                <MudTh>QR</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -53,6 +55,11 @@
                 <MudTd>@context.RadiusMeters</MudTd>
                 <MudTd>@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
                 <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.QrCode2" OnClick="@(() => ShowQrAsync(context))">
+                        @(string.IsNullOrEmpty(context.QrToken) ? "สร้าง QR" : "แสดง QR")
+                    </MudButton>
+                </MudTd>
+                <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">@L.Translate("EditButton")</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => ToggleActiveAsync(context))">
                         @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
@@ -61,6 +68,25 @@
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">@L.Translate("NoLocationsMessage")</MudText></NoRecordsContent>
         </MudTable>
+
+        @if (_qrLocation is not null && _qrPng is not null)
+        {
+            @* QR check-in (REQ-050): print this and post it at the location. The
+               employee scans it with the phone camera; it opens the ESS check-in
+               page with the location token and records a QrCheckin punch. *@
+            <MudPaper Class="pa-4 mt-3" Outlined="true" Style="max-width:520px;">
+                <MudText Typo="Typo.h6">QR เช็คอิน — @_qrLocation.Name</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">พิมพ์ติดไว้ ณ จุดปฏิบัติงาน พนักงานสแกนด้วยกล้องมือถือเพื่อเช็คอิน/เช็คเอาท์</MudText>
+                <div class="d-flex justify-center my-3">
+                    <img src="data:image/png;base64,@Convert.ToBase64String(_qrPng)" alt="QR" style="width:260px;height:260px;" />
+                </div>
+                <MudTextField T="string" Value="@_qrUrl" ReadOnly="true" Label="ลิงก์ที่ฝังใน QR" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => RegenerateQrAsync(_qrLocation))">สร้างรหัสใหม่ (QR เดิมใช้ไม่ได้)</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _qrLocation = null; _qrPng = null; })">ปิด</MudButton>
+                </MudStack>
+            </MudPaper>
+        }
 
         @if (_showForm)
         {
@@ -118,6 +144,37 @@
     {
         _searchTerm = term;
         await LoadAsync();
+    }
+
+    private Att_GeofenceLocation? _qrLocation;
+    private byte[]? _qrPng;
+    private string _qrUrl = "";
+
+    private async Task ShowQrAsync(Att_GeofenceLocation loc)
+    {
+        if (string.IsNullOrEmpty(loc.QrToken)) { await RegenerateQrAsync(loc); return; }
+        RenderQr(loc);
+    }
+
+    private async Task RegenerateQrAsync(Att_GeofenceLocation loc)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Att_GeofenceLocations.FirstOrDefaultAsync(l => l.Id == loc.Id);
+        if (row is null) return;
+        row.QrToken = Guid.NewGuid().ToString("N");
+        await context.SaveChangesAsync();
+        loc.QrToken = row.QrToken;
+        RenderQr(loc);
+        Snackbar.Add("สร้าง QR ใหม่แล้ว — QR ที่พิมพ์ไว้ก่อนหน้าใช้ไม่ได้อีก", Severity.Info);
+    }
+
+    private void RenderQr(Att_GeofenceLocation loc)
+    {
+        _qrLocation = loc;
+        _qrUrl = $"{Navigation.BaseUri.TrimEnd('/')}/ess/attendance-checkin?loc={loc.QrToken}";
+        using var gen = new QRCoder.QRCodeGenerator();
+        using var data = gen.CreateQrCode(_qrUrl, QRCoder.QRCodeGenerator.ECCLevel.M);
+        _qrPng = new QRCoder.PngByteQRCode(data).GetGraphic(8);
     }
 
     private async Task LoadAsync()

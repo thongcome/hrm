@@ -64,10 +64,14 @@ public class AttendanceAggregationService
 
             if (assignment is not null)
             {
-                var expectedIn = group.Key.WorkDate.ToDateTime(assignment.ShiftDefinition.StartTime);
-                var expectedOut = assignment.ShiftDefinition.EndTime < assignment.ShiftDefinition.StartTime
-                    ? group.Key.WorkDate.AddDays(1).ToDateTime(assignment.ShiftDefinition.EndTime)
-                    : group.Key.WorkDate.ToDateTime(assignment.ShiftDefinition.EndTime);
+                // Flexible shift: only the core hours are enforced (REQ-066).
+                var shift = assignment.ShiftDefinition;
+                var startRef = shift.IsFlexible && shift.CoreStartTime is TimeOnly cs ? cs : shift.StartTime;
+                var endRef = shift.IsFlexible && shift.CoreEndTime is TimeOnly ce ? ce : shift.EndTime;
+                var expectedIn = group.Key.WorkDate.ToDateTime(startRef);
+                var expectedOut = endRef < startRef
+                    ? group.Key.WorkDate.AddDays(1).ToDateTime(endRef)
+                    : group.Key.WorkDate.ToDateTime(endRef);
 
                 isLate = firstIn > expectedIn;
                 isEarlyLeave = lastOut < expectedOut;

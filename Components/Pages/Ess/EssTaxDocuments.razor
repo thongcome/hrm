@@ -1,0 +1,90 @@
+@page "/ess/tax-documents"
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+@* ESS: the employee's own tax documents (customer spec REQ-134). One row per
+   tax year that has payroll for this employee; the 50 ทวิ is generated on
+   download by /ess/files/withholding-cert/{year}. No Menu:PAY_* policy — the
+   page is self-scoped by the caller's own employee record. *@
+
+<PageTitle>เอกสารภาษีของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+        <MudText Typo="Typo.h5">เอกสารภาษีของฉัน</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ใช้ยื่นแบบ ภ.ง.ด.90/91 — ระบบออกให้จากยอดเงินได้และภาษีที่หักไว้จริงในปีภาษีนั้น
+    </MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงาน</MudAlert>
+    }
+    else if (_years.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">ยังไม่มีรายการเงินเดือนในระบบ จึงยังไม่มีเอกสารภาษี</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Class="mt-3">
+            <thead><tr><th>ปีภาษี</th><th>งวดที่มีเงินเดือน</th><th style="text-align:right">เงินได้รวม</th><th style="text-align:right">ภาษีหัก ณ ที่จ่าย</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var y in _years)
+                {
+                    <tr>
+                        <td>@y.Year</td>
+                        <td>@y.Periods งวด</td>
+                        <td style="text-align:right">@y.Gross.ToString("N2")</td>
+                        <td style="text-align:right">@y.Tax.ToString("N2")</td>
+                        <td><MudLink Href="@($"/ess/files/withholding-cert/{y.Year}")" Target="_blank">ดาวน์โหลด 50 ทวิ (PDF)</MudLink></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        <MudText Typo="Typo.caption" Class="d-block mt-2 mud-text-secondary">
+            ยอดของปีปัจจุบันเป็นยอดสะสมถึงงวดล่าสุด — เอกสารฉบับสมบูรณ์ของปีจะออกได้หลังงวดเดือนธันวาคม
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    private record YearRow(int Year, int Periods, decimal Gross, decimal Tax);
+    private bool _loaded;
+    private Hremployee? _employee;
+    private List<YearRow> _years = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            var empId = _employee.id;
+            _years = (await context.Pay_PayrollEmployees
+                    .Where(e => e.HremployeeId == empId && !e.IsExcluded
+                                && (e.Pay_PayrollRun.Status == PayrollRunStatus.Posted || e.Pay_PayrollRun.Status == PayrollRunStatus.Paid
+                                    || e.Pay_PayrollRun.Status == PayrollRunStatus.Approved))
+                    .Select(e => new { Year = e.Pay_PayrollRun.PeriodStart.Year, e.GrossEarnings, e.TaxAmount })
+                    .ToListAsync())
+                .GroupBy(x => x.Year)
+                .Select(g => new YearRow(g.Key, g.Count(), g.Sum(x => x.GrossEarnings), g.Sum(x => x.TaxAmount)))
+                .OrderByDescending(r => r.Year)
+                .ToList();
+        }
+        _loaded = true;
+    }
+}

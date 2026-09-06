@@ -431,6 +431,7 @@ builder.Services.AddScoped<HRM.Services.Welfare.WelfareClaimService>();
 builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
 builder.Services.AddScoped<HRM.Services.Att.AbsenteeismReportService>();
 builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
+builder.Services.AddScoped<HRM.Services.Att.AttendanceCorrectionService>();
 builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 
@@ -472,6 +473,7 @@ builder.Services.AddScoped<HRM.Services.Reporting.IReportExporter, HRM.Services.
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.HeadcountByDeptReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PerfGradeDistributionReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.PayrollByCostCenterReport>();
+builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.SocialSecurityContributionReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.TurnoverReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.NewHireReport>();
 builder.Services.AddScoped<HRM.Services.Reporting.IReportDefinition, HRM.Services.Reporting.Reports.LeaveUsageSummaryReport>();

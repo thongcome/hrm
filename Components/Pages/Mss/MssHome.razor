@@ -121,6 +121,34 @@
                 </MudItem>
             }
 
+            @if (_directReports.Count > 0)
+            {
+                @* Team attendance today (customer spec REQ-137/138): who is in,
+                   who is late, who is on leave, who has not punched yet. *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Success" />
+                            <MudText Typo="Typo.h6">การเข้างานของทีมวันนี้</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">เข้าแล้ว @_teamAttendance.Count(r => r.FirstIn is not null)</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">สาย @_teamAttendance.Count(r => r.IsLate)</MudChip>
+                        </MudStack>
+                        <MudStack Spacing="1" Class="mt-2">
+                            @foreach (var row in _teamAttendance)
+                            {
+                                <MudText Typo="Typo.body2">
+                                    @row.EmployeeName —
+                                    @if (row.OnLeave) { <span>ลา</span> }
+                                    else if (row.FirstIn is DateTime fi) { <span>เข้า @fi.ToString("HH:mm")@(row.LastOut is DateTime lo && lo != fi ? $" ออก {lo:HH:mm}" : "")@(row.IsLate ? " (สาย)" : "")@(row.Wfh ? " · WFH" : "")</span> }
+                                    else { <span style="opacity:.6;">ยังไม่ลงเวลา</span> }
+                                </MudText>
+                            }
+                        </MudStack>
+                        <MudButton Href="/mss/team-attendance" Variant="Variant.Text" Color="Color.Primary" Class="mt-2">ดูสรุปย้อนหลัง</MudButton>
+                    </MudPaper>
+                </MudItem>
+            }
+
             <MudItem xs="12" md="6">
                 <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
@@ -129,6 +157,7 @@
                     </MudStack>
                     <MudStack Spacing="1" Class="mt-2">
                         <MudButton Href="/wf/my-inbox" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Approval" Style="justify-content:flex-start;">อนุมัติงาน</MudButton>
+                        <MudButton Href="/mss/team-attendance" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Schedule" Style="justify-content:flex-start;">การเข้างาน / OT ของทีม</MudButton>
                         <MudButton Href="/leave-requests/team-calendar" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CalendarMonth" Style="justify-content:flex-start;">ปฏิทินทีม</MudButton>
                         <MudButton Href="/idp/team" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.School" Style="justify-content:flex-start;">พัฒนาทีม IDP</MudButton>
                         <MudButton Href="/talent/team-rating" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Star" Style="justify-content:flex-start;">ประเมินศักยภาพทีม</MudButton>
@@ -148,6 +177,36 @@
     private Dictionary<string, string> _positionNames = new();
 
     private record TeamLeaveRow(string EmployeeName, string LeaveTypeName, DateOnly StartDate, DateOnly EndDate);
+    private record TeamAttendanceRow(string EmployeeName, DateTime? FirstIn, DateTime? LastOut, bool IsLate, bool Wfh, bool OnLeave);
+    private List<TeamAttendanceRow> _teamAttendance = new();
+
+    // Today's punches per direct report (raw Att_PunchLog — the daily summary
+    // is only built when HR runs aggregation, so "today" reads the live punches).
+    private async Task LoadTeamAttendanceAsync(HRMContext context)
+    {
+        var reportIds = _directReports.Select(e => e.id).ToList();
+        var todayStart = DateTime.Today;
+        var todayEnd = todayStart.AddDays(1);
+        var punches = await context.Att_PunchLogs
+            .Where(p => reportIds.Contains(p.HremployeeId) && p.PunchTime >= todayStart && p.PunchTime < todayEnd)
+            .Select(p => new { p.HremployeeId, p.PunchTime, p.Source })
+            .ToListAsync();
+        var settings = _directReports.Count > 0
+            ? await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _directReports[0].companyid)
+            : null;
+        var onLeaveNames = _teamLeaves.Where(l => l.StartDate <= DateOnly.FromDateTime(todayStart) && l.EndDate >= DateOnly.FromDateTime(todayStart))
+            .Select(l => l.EmployeeName).ToHashSet();
+        _teamAttendance = _directReports.Select(e =>
+        {
+            var name = $"{e.EmpName} {e.EmpSurname}".Trim();
+            var mine = punches.Where(p => p.HremployeeId == e.id).OrderBy(p => p.PunchTime).ToList();
+            var firstIn = mine.Count > 0 ? mine[0].PunchTime : (DateTime?)null;
+            var lastOut = mine.Count > 1 ? mine[^1].PunchTime : (DateTime?)null;
+            var isLate = firstIn is DateTime fi && settings?.DefaultWorkStart is TimeOnly ws && TimeOnly.FromDateTime(fi) > ws;
+            var wfh = mine.Count > 0 && mine.All(p => p.Source == AttPunchSource.WfhSelfCheckin);
+            return new TeamAttendanceRow(name, firstIn, lastOut, isLate, wfh, onLeaveNames.Contains(name));
+        }).OrderBy(r => r.OnLeave).ThenBy(r => r.FirstIn is null).ThenBy(r => r.EmployeeName).ToList();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -174,6 +233,7 @@
             {
                 await LoadPositionNamesAsync(context);
                 await LoadTeamLeavesAsync(context);
+                await LoadTeamAttendanceAsync(context);
             }
         }
 

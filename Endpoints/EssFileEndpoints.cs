@@ -38,6 +38,24 @@ public static class EssFileEndpoints
             return Results.File(bytes, "application/pdf", fileName);
         });
 
+        // ESS self-download of the employee's OWN 50 ทวิ withholding certificate
+        // (customer spec REQ-134 "Tax Document"). Ownership rule: the employee
+        // resolved from the caller's empno claim; generated fresh like the HR
+        // route /pay/files/withholding-cert/{id}/{year}, which stays HR-only.
+        group.MapGet("/withholding-cert/{taxYear:int}", async (
+            int taxYear, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var emp = await HRM.Services.Ess.EssEmployeeResolver.ResolveAsync(context, httpContext.User);
+            if (emp is null) return Results.Forbid();
+            var data = await WithholdingCertificateDataService.BuildAsync(context, emp.id, taxYear);
+            if (data is null) return Results.NotFound();
+            await auditLogger.LogAccessAsync("WithholdingCertificate", $"{emp.id}:{taxYear}", isSensitive: true,
+                note: $"ESS self-download 50-Twi {emp.EmpNo} year {taxYear}");
+            var bytes = WithholdingCertificatePdfService.Generate(data);
+            return Results.File(bytes, "application/pdf", $"withholding_cert_{emp.EmpNo}_{taxYear}.pdf");
+        });
+
         // ESS self-download of the employee's own profile documents
         // (doc_center, doctypecode="EMPLOYEE_PROFILE_DOC" — same rows HR
         // manages on /employee/personnel-profile, whose download route

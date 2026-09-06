@@ -25,5 +25,12 @@ public class Att_ShiftDefinition
 
     public int BreakMinutes { get; set; }
 
+    // Flexible time: employees may arrive/leave freely as long as they are in
+    // during the core hours — lateness is measured against CoreStart, early
+    // leave against CoreEnd (REQ-066).
+    public bool IsFlexible { get; set; }
+    public TimeOnly? CoreStartTime { get; set; }
+    public TimeOnly? CoreEndTime { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

@@ -9,6 +9,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject GpsCheckinService CheckinService
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpCtx
 @inject IJSRuntime JsRuntime
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
@@ -54,6 +55,22 @@ else
             <MudAlert Severity="@_messageSeverity" Class="mb-3">@_message</MudAlert>
         }
 
+        @if (_qrLocation is not null)
+        {
+            @* Arrived here by scanning the location's QR code (REQ-050). *@
+            <MudAlert Severity="Severity.Info" Class="mb-3" Icon="@Icons.Material.Filled.QrCode2">
+                สแกน QR ของ <b>@_qrLocation.Name</b> — กดปุ่มเพื่อยืนยันการเข้า/ออกงาน ณ จุดนี้
+            </MudAlert>
+            <MudButton Color="Color.Secondary" Variant="Variant.Filled" Size="Size.Large" FullWidth="true" Class="mb-3"
+                StartIcon="@Icons.Material.Filled.QrCode2" OnClick="QrCheckinAsync" Disabled="_busy">
+                @_nextActionLabel ด้วย QR (@_qrLocation.Name)
+            </MudButton>
+        }
+        else if (!string.IsNullOrEmpty(Loc))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">QR code นี้ไม่ถูกต้องหรือถูกยกเลิกแล้ว</MudAlert>
+        }
+
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large" FullWidth="true"
             OnClick="CheckinAsync" Disabled="_busy">
             @if (_busy)
@@ -81,18 +98,48 @@ else
     private List<Att_PunchLog> _todaysPunches = new();
     private string _nextActionLabel = "";
 
+    // QR check-in: /ess/attendance-checkin?loc=TOKEN (token printed in the location's QR).
+    [SupplyParameterFromQuery(Name = "loc")]
+    public string? Loc { get; set; }
+    private Att_GeofenceLocation? _qrLocation;
+    private string? _clientIp;
+
     protected override async Task OnInitializedAsync()
     {
         await using var context = await DbFactory.CreateDbContextAsync();
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
         if (_employee is null) { _notFound = true; return; }
+        _clientIp = HttpCtx.HttpContext?.Connection?.RemoteIpAddress?.ToString();
 
         var settings = await context.Att_CompanySettings.FirstOrDefaultAsync(s => s.CompanyId == _employee.companyid);
-        _allowed = settings?.AllowGpsCheckin == true;
+        if (!string.IsNullOrWhiteSpace(Loc) && settings is not null && settings.TrackingMode != AttTrackingMode.None)
+            _qrLocation = await CheckinService.FindByQrTokenAsync(_employee.companyid!, Loc);
+        _allowed = settings?.AllowGpsCheckin == true || _qrLocation is not null;
         if (!_allowed) return;
 
         await RefreshTodaysPunchesAsync();
+    }
+
+    private async Task QrCheckinAsync()
+    {
+        if (_qrLocation is null || _employee is null) return;
+        _busy = true; _message = null; StateHasChanged();
+        try
+        {
+            decimal? lat = null, lng = null;
+            try
+            {
+                var geo = await JsRuntime.InvokeAsync<GeoJsResult>("humanokAtt.getCurrentPosition");
+                if (geo.success) { lat = (decimal?)geo.latitude; lng = (decimal?)geo.longitude; }
+            }
+            catch { /* GPS is optional for QR — the token proves presence */ }
+            var result = await CheckinService.QrCheckinAsync(_employee.id, _employee.companyid!, _qrLocation.QrToken!, lat, lng, _clientIp);
+            _message = result.Message;
+            _messageSeverity = result.Success ? Severity.Success : Severity.Error;
+            if (result.Success) { Snackbar.Add(result.Message, Severity.Success); await RefreshTodaysPunchesAsync(); }
+        }
+        finally { _busy = false; }
     }
 
     private async Task RefreshTodaysPunchesAsync()
@@ -119,7 +166,7 @@ else
                 return;
             }
 
-            var result = await CheckinService.CheckinAsync(_employee!.id, _employee.companyid!, (decimal)geo.latitude!.Value, (decimal)geo.longitude!.Value);
+            var result = await CheckinService.CheckinAsync(_employee!.id, _employee.companyid!, (decimal)geo.latitude!.Value, (decimal)geo.longitude!.Value, _clientIp);
             _message = result.Message;
             _messageSeverity = result.Success ? Severity.Success : Severity.Error;
 

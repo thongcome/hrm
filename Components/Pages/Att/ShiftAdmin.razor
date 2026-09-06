@@ -53,6 +53,21 @@
             <MudItem xs="12" sm="2">
                 <MudTimePicker @bind-Time="_newEndTime" Label="@L.Translate("ShiftEndTimeLabel")" />
             </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudCheckBox T="bool" @bind-Value="_newIsFlexible" Label="เวลายืดหยุ่น (Flexible time)" />
+            </MudItem>
+            @if (_newIsFlexible)
+            {
+                <MudItem xs="12" sm="2">
+                    <MudTimePicker @bind-Time="_newCoreStart" Label="ช่วงบังคับ เริ่ม (core)" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudTimePicker @bind-Time="_newCoreEnd" Label="ช่วงบังคับ สิ้นสุด (core)" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">กะยืดหยุ่น: เข้า-ออกเวลาใดก็ได้ในกรอบกะ นับสาย/ออกก่อนเฉพาะช่วงบังคับ (core hours)</MudText>
+                </MudItem>
+            }
             <MudItem xs="12" sm="2">
                 <MudStack Row="true" Spacing="2" Class="mt-2">
                     <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AddShiftAsync">@L.Translate("AddShiftButton")</MudButton>
@@ -76,7 +91,11 @@
         <RowTemplate>
             <MudTd>@context.ShiftCode</MudTd>
             <MudTd>@context.ShiftName</MudTd>
-            <MudTd>@context.StartTime.ToString("HH:mm") - @context.EndTime.ToString("HH:mm")</MudTd>
+            <MudTd>
+                @context.StartTime.ToString("HH:mm") - @context.EndTime.ToString("HH:mm")
+                @if (context.EndTime < context.StartTime) { <MudChip T="string" Size="Size.Small" Color="Color.Dark" Class="ml-1">ข้ามคืน</MudChip> }
+                @if (context.IsFlexible) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">ยืดหยุ่น core @(context.CoreStartTime?.ToString("HH:mm") ?? "-")-@(context.CoreEndTime?.ToString("HH:mm") ?? "-")</MudChip> }
+            </MudTd>
         </RowTemplate>
     </MudTable>
 
@@ -259,6 +278,10 @@
     private string _newShiftName = "";
     private TimeSpan? _newStartTime;
     private TimeSpan? _newEndTime;
+    // Flexible time (REQ-066): only core hours are enforced for late/early-leave.
+    private bool _newIsFlexible;
+    private TimeSpan? _newCoreStart;
+    private TimeSpan? _newCoreEnd;
     private string? _shiftError;
     private bool _showShiftForm;
 
@@ -345,6 +368,9 @@
             ShiftName = _newShiftName,
             StartTime = TimeOnly.FromTimeSpan(_newStartTime.Value),
             EndTime = TimeOnly.FromTimeSpan(_newEndTime.Value),
+            IsFlexible = _newIsFlexible,
+            CoreStartTime = _newIsFlexible && _newCoreStart is TimeSpan cs ? TimeOnly.FromTimeSpan(cs) : null,
+            CoreEndTime = _newIsFlexible && _newCoreEnd is TimeSpan ce ? TimeOnly.FromTimeSpan(ce) : null,
             IsActive = true,
         });
         await context.SaveChangesAsync();
@@ -354,6 +380,7 @@
         _newShiftName = "";
         _newStartTime = null;
         _newEndTime = null;
+        _newIsFlexible = false; _newCoreStart = null; _newCoreEnd = null;
         _showShiftForm = false;
         await LoadShiftsAsync();
     }

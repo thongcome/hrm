@@ -16,6 +16,9 @@ public class GpsCheckinService(IDbContextFactory<HRMContext> dbFactory)
     public record CheckinResult(bool Success, string Message, AttPunchDirection? Direction);
 
     public async Task<CheckinResult> CheckinAsync(long hremployeeId, string companyId, decimal latitude, decimal longitude, CancellationToken ct = default)
+        => await CheckinAsync(hremployeeId, companyId, latitude, longitude, ipAddress: null, ct);
+
+    public async Task<CheckinResult> CheckinAsync(long hremployeeId, string companyId, decimal latitude, decimal longitude, string? ipAddress, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
@@ -55,7 +58,8 @@ public class GpsCheckinService(IDbContextFactory<HRMContext> dbFactory)
         var todayStart = DateTime.Today;
         var todayEnd = todayStart.AddDays(1);
         var lastPunchToday = await context.Att_PunchLogs
-            .Where(p => p.HremployeeId == hremployeeId && p.PunchTime >= todayStart && p.PunchTime < todayEnd && p.Source == AttPunchSource.GpsCheckin)
+            .Where(p => p.HremployeeId == hremployeeId && p.PunchTime >= todayStart && p.PunchTime < todayEnd
+                        && (p.Source == AttPunchSource.GpsCheckin || p.Source == AttPunchSource.QrCheckin))
             .OrderByDescending(p => p.PunchTime)
             .FirstOrDefaultAsync(ct);
 
@@ -75,10 +79,63 @@ public class GpsCheckinService(IDbContextFactory<HRMContext> dbFactory)
             Source = AttPunchSource.GpsCheckin,
             Latitude = latitude,
             Longitude = longitude,
+            IpAddress = ipAddress,
         });
         await context.SaveChangesAsync(ct);
 
         return new(true, direction == AttPunchDirection.In ? "เช็คอินสำเร็จ" : "เช็คเอาท์สำเร็จ", direction);
+    }
+
+    // QR check-in (REQ-050): the employee scans the QR code posted at a location
+    // with the phone camera; it opens /ess/attendance-checkin?loc=TOKEN and the
+    // page calls this. The token proves presence at that location, so GPS is
+    // optional (recorded when the browser grants it). Direction auto-detects
+    // across GPS and QR punches together.
+    public async Task<CheckinResult> QrCheckinAsync(long hremployeeId, string companyId, string token, decimal? latitude, decimal? longitude, string? ipAddress, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        var location = await context.Att_GeofenceLocations
+            .FirstOrDefaultAsync(l => l.CompanyId == companyId && l.IsActive && l.QrToken == token, ct);
+        if (location is null)
+            return new(false, "QR code นี้ไม่ถูกต้องหรือถูกยกเลิกแล้ว กรุณาสแกน QR ที่ติดไว้ ณ จุดปฏิบัติงาน", null);
+
+        var employee = await context.Hremployee.FirstOrDefaultAsync(e => e.id == hremployeeId, ct)
+            ?? throw new InvalidOperationException("ไม่พบข้อมูลพนักงาน");
+
+        var todayStart = DateTime.Today;
+        var todayEnd = todayStart.AddDays(1);
+        var lastPunchToday = await context.Att_PunchLogs
+            .Where(p => p.HremployeeId == hremployeeId && p.PunchTime >= todayStart && p.PunchTime < todayEnd
+                        && (p.Source == AttPunchSource.GpsCheckin || p.Source == AttPunchSource.QrCheckin))
+            .OrderByDescending(p => p.PunchTime)
+            .FirstOrDefaultAsync(ct);
+        var direction = lastPunchToday is null || lastPunchToday.Direction == AttPunchDirection.Out
+            ? AttPunchDirection.In
+            : AttPunchDirection.Out;
+
+        context.Att_PunchLogs.Add(new Att_PunchLog
+        {
+            CompanyId = companyId,
+            HremployeeId = hremployeeId,
+            RawEmpCode = employee.EmpNo,
+            PunchTime = DateTime.Now,
+            Direction = direction,
+            Source = AttPunchSource.QrCheckin,
+            Latitude = latitude,
+            Longitude = longitude,
+            IpAddress = ipAddress,
+        });
+        await context.SaveChangesAsync(ct);
+
+        var verb = direction == AttPunchDirection.In ? "เช็คอิน" : "เช็คเอาท์";
+        return new(true, $"{verb}สำเร็จ ที่ {location.Name} (QR)", direction);
+    }
+
+    public async Task<Att_GeofenceLocation?> FindByQrTokenAsync(string companyId, string token, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+        return await context.Att_GeofenceLocations.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.CompanyId == companyId && l.IsActive && l.QrToken == token, ct);
     }
 
     public async Task<List<Att_PunchLog>> GetTodaysPunchesAsync(long hremployeeId, CancellationToken ct = default)
@@ -87,7 +144,7 @@ public class GpsCheckinService(IDbContextFactory<HRMContext> dbFactory)
         var todayStart = DateTime.Today;
         var todayEnd = todayStart.AddDays(1);
         return await context.Att_PunchLogs
-            .Where(p => p.HremployeeId == hremployeeId && p.PunchTime >= todayStart && p.PunchTime < todayEnd && p.Source == AttPunchSource.GpsCheckin)
+            .Where(p => p.HremployeeId == hremployeeId && p.PunchTime >= todayStart && p.PunchTime < todayEnd && (p.Source == AttPunchSource.GpsCheckin || p.Source == AttPunchSource.QrCheckin))
             .OrderBy(p => p.PunchTime)
             .ToListAsync(ct);
     }

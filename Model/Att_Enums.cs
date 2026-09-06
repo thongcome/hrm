@@ -34,7 +34,8 @@ public enum AttPunchSource
     Device = 0,
     WfhSelfCheckin = 1,
     ManualEntry = 2,
-    GpsCheckin = 3
+    GpsCheckin = 3,
+    QrCheckin = 4
 }
 
 public enum AttWorkLocation
