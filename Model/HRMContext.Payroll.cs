@@ -8,6 +8,10 @@ public partial class HRMContext
     // Phase B: per-run employee holds (skipped by the calculation engine).
     public virtual DbSet<Pay_PayrollRunHold> Pay_PayrollRunHolds { get; set; }
 
+    // Wave 1 HR gaps (2026-09-07): attendance-based deductions + salary advances.
+    public virtual DbSet<Pay_AttendanceDeductionPolicy> Pay_AttendanceDeductionPolicies { get; set; }
+    public virtual DbSet<Pay_SalaryAdvance> Pay_SalaryAdvances { get; set; }
+
     // Called from OnModelCreatingPartial (HRMContext.Security.cs).
     private static void ConfigurePayrollModel(ModelBuilder modelBuilder)
     {

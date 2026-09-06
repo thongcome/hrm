@@ -1,0 +1,163 @@
+@page "/pay/admin/attendance-deduction"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+@* HR gap wave 1 (REQ-100/101/092): how attendance facts become payroll money.
+   One policy row per company; everything OFF by default so switching on time
+   clocks never changes pay until HR decides the rule here. *@
+
+<PageTitle>นโยบายหักสาย/ขาดงาน และค่าจ้างรายวัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">นโยบายหักมาสาย / ขาดงาน และค่าจ้างรายวัน</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เครื่องคำนวณเงินเดือนอ่านตารางลงเวลารายวัน (Att_DailyAttendance) ของงวดแล้วหักตามกฎที่ตั้งไว้ที่นี่ —
+        ค่าเริ่มต้นคือ "ไม่หัก" ทั้งหมด จนกว่า HR จะเปิดใช้ รายการที่หักจะปรากฏในสลิปเป็น "หักมาสาย" / "หักขาดงาน"
+        และถือเป็นค่าจ้างที่ไม่ได้รับ (ลดฐานภาษีและฐานประกันสังคม)
+    </MudText>
+    @if (_rights is not null && !_rights.CanEdit)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    @if (_policy is not null)
+    {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">มาสาย</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="PayLateDeductionMode" @bind-Value="_policy.LateMode" Label="วิธีหักมาสาย" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayLateDeductionMode" Value="PayLateDeductionMode.None">ไม่หัก</MudSelectItem>
+                    <MudSelectItem T="PayLateDeductionMode" Value="PayLateDeductionMode.PerMinute">ตามนาทีที่สาย</MudSelectItem>
+                    <MudSelectItem T="PayLateDeductionMode" Value="PayLateDeductionMode.PerOccurrence">เหมาต่อครั้ง (ต่อวันที่สาย)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int" @bind-Value="_policy.LateGraceMinutes" Label="ผ่อนผัน (นาที/วัน) ก่อนเริ่มหัก" Min="0" Max="240" Variant="Variant.Outlined" />
+            </MudItem>
+            @if (_policy.LateMode == PayLateDeductionMode.PerMinute)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal?" @bind-Value="_policy.LateAmountPerMinute" Label="บาทต่อนาที (ว่าง = คิดจากอัตรารายชั่วโมงของพนักงาน)" Format="N2" Min="0" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+            @if (_policy.LateMode == PayLateDeductionMode.PerOccurrence)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_policy.LateAmountPerOccurrence" Label="บาทต่อครั้ง" Format="N2" Min="0" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ขาดงาน</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="PayAbsentDeductionMode" @bind-Value="_policy.AbsentMode" Label="วิธีหักขาดงาน" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayAbsentDeductionMode" Value="PayAbsentDeductionMode.None">ไม่หัก</MudSelectItem>
+                    <MudSelectItem T="PayAbsentDeductionMode" Value="PayAbsentDeductionMode.DailyRate">หักค่าจ้างรายวัน × จำนวนวันขาด</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    วันขาดงานมาจากตารางลงเวลา — เปิด "ตรวจจับวันขาดงานอัตโนมัติ" ที่หน้าตั้งค่าการลงเวลา หรือให้ HR บันทึกขาดงานเอง
+                </MudText>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ฐานคำนวณอัตรารายวัน/รายชั่วโมง</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int" @bind-Value="_policy.DaysPerMonthDivisor" Label="เงินเดือน ÷ กี่วัน = ค่าจ้างรายวัน (กฎหมายแรงงานใช้ 30)" Min="1" Max="31" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_policy.HoursPerDay" Label="ชั่วโมงทำงานต่อวัน" Format="0.#" Min="1" Max="24" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">พนักงานรายวัน</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="8">
+                <MudSelect T="PayDailyWageDaysMode" @bind-Value="_policy.DailyWageMode" Label="นับวันจ่ายค่าจ้างรายวันจาก" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.CalendarDays">วันตามปฏิทินในงวด (ตามสัดส่วนวันเข้า-ออก)</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.AttendanceDays">วันที่มีการลงเวลาและไม่ขาดงาน (ถ้าไม่มีข้อมูลลงเวลาจะกลับไปใช้วันตามปฏิทิน)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    พนักงานที่ถือว่า "รายวัน" คือคนที่มีค่าจ้างรายวัน (DAILY_WAGE) และไม่มีเงินเดือนประจำ — วันที่ขาดจะไม่ถูกจ่ายอยู่แล้ว จึงไม่หักซ้ำ
+                </MudText>
+            </MudItem>
+        </MudGrid>
+
+        @if (_rights?.CanEdit == true)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" OnClick="SaveAsync" Disabled="_busy">บันทึกนโยบาย</MudButton>
+        }
+        @if (_policy.Id > 0)
+        {
+            <MudText Typo="Typo.caption" Class="d-block mt-2 mud-text-secondary">แก้ไขล่าสุด @_policy.ModifiedDate.ToString("dd/MM/yyyy HH:mm")</MudText>
+        }
+    }
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/pay/admin/attendance-deduction";
+    private ProgramRoleService.ProgramRights? _rights;
+    private Pay_AttendanceDeductionPolicy? _policy;
+    private string _companyId = "";
+    private long _userId;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _companyId = state.User.FindFirst("payroll_company")?.Value ?? "";
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _policy = await ctx.Pay_AttendanceDeductionPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.CompanyId == _companyId)
+                  ?? new Pay_AttendanceDeductionPolicy { CompanyId = _companyId };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_policy is null) return;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Edit); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+
+        _busy = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var row = await ctx.Pay_AttendanceDeductionPolicies.FirstOrDefaultAsync(p => p.CompanyId == _companyId);
+            if (row is null) { row = new Pay_AttendanceDeductionPolicy { CompanyId = _companyId }; ctx.Pay_AttendanceDeductionPolicies.Add(row); }
+            row.LateMode = _policy.LateMode;
+            row.LateGraceMinutes = Math.Max(0, _policy.LateGraceMinutes);
+            row.LateAmountPerMinute = _policy.LateAmountPerMinute;
+            row.LateAmountPerOccurrence = Math.Max(0, _policy.LateAmountPerOccurrence);
+            row.AbsentMode = _policy.AbsentMode;
+            row.DaysPerMonthDivisor = Math.Clamp(_policy.DaysPerMonthDivisor, 1, 31);
+            row.HoursPerDay = Math.Clamp(_policy.HoursPerDay, 1m, 24m);
+            row.DailyWageMode = _policy.DailyWageMode;
+            row.IsActive = true;
+            row.ModifiedDate = DateTime.Now;
+            row.ModifiedByUserId = _userId;
+            await ctx.SaveChangesAsync();
+            _policy = row;
+            Snackbar.Add("บันทึกนโยบายแล้ว — มีผลกับรอบที่คำนวณหลังจากนี้", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}

@@ -356,6 +356,9 @@ namespace HRM.Migrations
                     b.Property<bool>("AllowWfh")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("DetectAbsence")
+                        .HasColumnType("bit");
+
                     b.Property<TimeOnly?>("DefaultWorkEnd")
                         .HasColumnType("time");
 
@@ -397,6 +400,12 @@ namespace HRM.Migrations
 
                     b.Property<bool>("IsLate")
                         .HasColumnType("bit");
+
+                    b.Property<int>("EarlyLeaveMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LateMinutes")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("LastOut")
                         .HasColumnType("datetime2");
@@ -7930,6 +7939,60 @@ namespace HRM.Migrations
                     b.ToTable("Pay_AdhocPayItem");
                 });
 
+            modelBuilder.Entity("HRM.Models.Pay_AttendanceDeductionPolicy", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AbsentMode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<int>("DailyWageMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DaysPerMonthDivisor")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("HoursPerDay")
+                        .HasColumnType("decimal(4,1)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("LateAmountPerMinute")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("LateAmountPerOccurrence")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<int>("LateGraceMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LateMode")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("ModifiedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ModifiedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId")
+                        .IsUnique();
+
+                    b.ToTable("Pay_AttendanceDeductionPolicy");
+                });
+
             modelBuilder.Entity("HRM.Models.Pay_BankFileExportBatch", b =>
                 {
                     b.Property<long>("Id")
@@ -9842,6 +9905,74 @@ namespace HRM.Migrations
                     b.HasIndex("PolicyId");
 
                     b.ToTable("Pay_ProvidentFundVestingTier");
+                });
+
+            modelBuilder.Entity("HRM.Models.Pay_SalaryAdvance", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateOnly?>("AdvanceDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(15,2)");
+
+                    b.Property<long?>("ApprovedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ApprovedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<long?>("ConsumedByPayrollRunId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("EmpNo")
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<long>("HremployeeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PaidDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("RequestDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("RequestedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetPeriod")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HremployeeId", "TargetPeriod");
+
+                    b.ToTable("Pay_SalaryAdvance");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_SalaryGrade", b =>

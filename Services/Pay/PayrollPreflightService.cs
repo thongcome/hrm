@@ -38,7 +38,7 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
 
     // Pay-item codes CalculateAsync indexes with payItemTypes["X"] — a missing one
     // is a KeyNotFoundException mid-run, so surface it here instead.
-    private static readonly string[] RequiredPayItemCodes = { "BASE", "OT", "ALLOWANCE", "SSO", "PF", "INSURANCE", "WELFAREFUND", "LOAN" };
+    private static readonly string[] RequiredPayItemCodes = { "BASE", "OT", "ALLOWANCE", "SSO", "PF", "INSURANCE", "WELFAREFUND", "LOAN", "TAX", "LATE", "ABSENT", "SAL_ADVANCE" };
 
     public async Task<Report> CheckAsync(long runId, CancellationToken ct = default)
     {
@@ -68,15 +68,15 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
             .Where(e => e.companyid == run.CompanyId
                         && e.WorkDate != null && e.WorkDate <= periodEndDt
                         && (e.ResignDate == null || e.ResignDate >= periodStartDt))
-            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosCode })
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosCode })
             .ToListAsync(ct);
 
         var issues = new List<Issue>();
         foreach (var e in eligible.Where(e => !heldIds.Contains(e.id)))
         {
             var name = $"{e.EmpName} {e.EmpSurname}".Trim();
-            if (e.SalaryAmt is null || e.SalaryAmt <= 0)
-                issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "NO_SALARY", "ไม่มีเงินเดือนฐาน — คำนวณได้ 0 บาท"));
+            if ((e.SalaryAmt ?? 0m) <= 0m && (e.DailyWage ?? 0m) <= 0m)
+                issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "NO_SALARY", "ไม่มีเงินเดือนฐานและไม่มีค่าจ้างรายวัน — คำนวณได้ 0 บาท"));
             if (string.IsNullOrWhiteSpace(e.SalexpAccid))
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_BANK_ACCOUNT", "ไม่มีเลขบัญชีธนาคาร — คำนวณได้ แต่ต้องเติมก่อนทำไฟล์โอนเงิน"));
             else if (string.IsNullOrWhiteSpace(e.SalexpBank))
@@ -111,6 +111,16 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
             var who = o.hremployeeid is long hid && nameById.TryGetValue(hid, out var w) ? w : (EmpNo: o.empid, Name: o.empid);
             pending.Add(new PendingItem("OT", o.hremployeeid, who.EmpNo, who.Name,
                 $"OT วันที่ {o.starttime:dd/MM/yyyy} {o.workhour:0.##} ชม. ยังไม่อนุมัติ → จะไม่ถูกนำมาคำนวณ"));
+        }
+
+        var pendingAdvances = await ctx.Pay_SalaryAdvances
+            .Where(a => a.CompanyId == run.CompanyId && a.TargetPeriod == run.PayrollPeriod && a.Status == PaySalaryAdvanceStatus.Pending)
+            .ToListAsync(ct);
+        foreach (var a in pendingAdvances)
+        {
+            var who = nameById.TryGetValue(a.HremployeeId, out var w) ? w : (EmpNo: a.EmpNo ?? "?", Name: a.EmpNo ?? "?");
+            pending.Add(new PendingItem("เบิกล่วงหน้า", a.HremployeeId, who.EmpNo, who.Name,
+                $"เบิกเงินเดือนล่วงหน้า {a.Amount:N2} บาท — {a.Reason} (ยังไม่อนุมัติ → จะไม่ถูกหักคืนในรอบนี้)"));
         }
 
         // ---- holds (with names) ----

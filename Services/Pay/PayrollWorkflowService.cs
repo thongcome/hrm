@@ -124,6 +124,15 @@ public class PayrollWorkflowService
             item.Status = PayAdhocItemStatus.Approved;
             item.ConsumedByPayrollRunId = null;
         }
+        // same for salary advances this run had recovered
+        var consumedAdvances = await context.Pay_SalaryAdvances
+            .Where(a => a.ConsumedByPayrollRunId == runId)
+            .ToListAsync(ct);
+        foreach (var adv in consumedAdvances)
+        {
+            adv.Status = PaySalaryAdvanceStatus.Approved;
+            adv.ConsumedByPayrollRunId = null;
+        }
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);

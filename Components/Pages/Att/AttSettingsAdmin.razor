@@ -59,6 +59,7 @@
         {
             <MudCheckBox T="bool" @bind-Value="_settings.AllowWfh" Label="@L.Translate("AllowWfhLabel")" Class="mt-3" />
             <MudCheckBox T="bool" @bind-Value="_settings.AllowGpsCheckin" Label="@L.Translate("AllowGpsCheckinLabel")" Class="mt-1" />
+            <MudCheckBox T="bool" @bind-Value="_settings.DetectAbsence" Label="ตรวจจับวันขาดงานอัตโนมัติ (วันทำงานที่ไม่มีการลงเวลา ไม่มีใบลาอนุมัติ และไม่ใช่วันหยุดบริษัท → บันทึกเป็นขาดงาน ให้เงินเดือนหักตามนโยบาย)" Class="mt-1" />
         }
 
         @if (!string.IsNullOrEmpty(_error))
@@ -118,6 +119,7 @@
 
         existing.TrackingMode = _settings.TrackingMode;
         existing.AllowWfh = _settings.AllowWfh;
+        existing.DetectAbsence = _settings.DetectAbsence;
         existing.AllowGpsCheckin = _settings.AllowGpsCheckin;
         existing.DefaultWorkStart = _settings.TrackingMode == AttTrackingMode.SimpleInOut && _workStart.HasValue
             ? TimeOnly.FromTimeSpan(_workStart.Value) : null;

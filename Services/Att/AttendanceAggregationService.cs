@@ -60,6 +60,7 @@ public class AttendanceAggregationService
 
             bool isLate = false;
             bool isEarlyLeave = false;
+            int lateMinutes = 0, earlyLeaveMinutes = 0;
 
             if (assignment is not null)
             {
@@ -70,6 +71,8 @@ public class AttendanceAggregationService
 
                 isLate = firstIn > expectedIn;
                 isEarlyLeave = lastOut < expectedOut;
+                lateMinutes = isLate ? (int)Math.Ceiling((firstIn - expectedIn).TotalMinutes) : 0;
+                earlyLeaveMinutes = isEarlyLeave ? (int)Math.Ceiling((expectedOut - lastOut).TotalMinutes) : 0;
             }
             else if (settings.TrackingMode == AttTrackingMode.SimpleInOut && settings.DefaultWorkStart.HasValue && settings.DefaultWorkEnd.HasValue)
             {
@@ -78,6 +81,8 @@ public class AttendanceAggregationService
 
                 isLate = firstIn > expectedIn;
                 isEarlyLeave = lastOut < expectedOut;
+                lateMinutes = isLate ? (int)Math.Ceiling((firstIn - expectedIn).TotalMinutes) : 0;
+                earlyLeaveMinutes = isEarlyLeave ? (int)Math.Ceiling((expectedOut - lastOut).TotalMinutes) : 0;
             }
 
             var allWfh = ordered.All(p => p.Source == AttPunchSource.WfhSelfCheckin || p.Source == AttPunchSource.ManualEntry);
@@ -97,13 +102,69 @@ public class AttendanceAggregationService
                 WorkedMinutes = workedMinutes,
                 IsLate = isLate,
                 IsEarlyLeave = isEarlyLeave,
+                LateMinutes = lateMinutes,
+                EarlyLeaveMinutes = earlyLeaveMinutes,
                 IsAbsent = false,
                 WorkLocation = workLocation,
             });
         }
 
+        // Absence detection (opt-in per company, Att_CompanySetting.DetectAbsence):
+        // a scheduled working day with no punch, no approved leave and no company
+        // holiday becomes an IsAbsent row, which payroll may deduct per
+        // Pay_AttendanceDeductionPolicy. "Scheduled" = has a shift assignment
+        // (ShiftBased) or is a company working day per the leave work-days mask
+        // (SimpleInOut). Employees count only between start date and resignation.
+        var absentRows = 0;
+        if (settings.DetectAbsence)
+        {
+            var punched = groups.Select(g => (g.Key.HremployeeId, g.Key.WorkDate)).ToHashSet();
+            var holidays = (await context.Lve_CompanyHolidays
+                    .Where(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate >= fromDate && h.HolidayDate <= toDate)
+                    .Select(h => h.HolidayDate).ToListAsync(ct)).ToHashSet();
+            var workDaysMask = HRM.Services.Leave.LeaveDayCalculator.ResolveWorkDaysMask(
+                await context.Lve_CompanySettings.Where(s => s.CompanyId == companyId).Select(s => s.WorkDaysMask).FirstOrDefaultAsync(ct));
+            var completed = HRM.Services.Workflow.WorkflowEngineService.StatusCompleted;
+            var approvedLeaves = await context.Lve_LeaveRequests
+                .Where(l => l.JobMasterId != null && l.StartDate <= toDate && l.EndDate >= fromDate
+                            && context.job_masters.Any(j => j.jobmasterid == l.JobMasterId && j.status == completed))
+                .Select(l => new { l.HremployeeId, l.StartDate, l.EndDate })
+                .ToListAsync(ct);
+            var employees = await context.Hremployee
+                .Where(e => e.companyid == companyId && e.WorkDate != null && e.WorkDate <= toDt
+                            && (e.ResignDate == null || e.ResignDate >= fromDt))
+                .Select(e => new { e.id, e.WorkDate, e.ResignDate })
+                .ToListAsync(ct);
+
+            for (var d = fromDate; d <= toDate; d = d.AddDays(1))
+            {
+                if (holidays.Contains(d)) continue;
+                var scheduledToday = settings.TrackingMode == AttTrackingMode.ShiftBased
+                    ? shiftAssignments.Where(a => a.WorkDate == d).Select(a => a.HremployeeId).ToHashSet()
+                    : null; // SimpleInOut: everyone, on company working days
+                if (scheduledToday is null && (workDaysMask & (1 << (int)d.DayOfWeek)) == 0) continue;
+
+                foreach (var e in employees)
+                {
+                    if (scheduledToday is not null && !scheduledToday.Contains(e.id)) continue;
+                    if (e.WorkDate is DateTime wd && DateOnly.FromDateTime(wd) > d) continue;
+                    if (e.ResignDate is DateTime rd && DateOnly.FromDateTime(rd) < d) continue;
+                    if (punched.Contains((e.id, d))) continue;
+                    if (approvedLeaves.Any(l => l.HremployeeId == e.id && l.StartDate <= d && l.EndDate >= d)) continue;
+                    context.Att_DailyAttendances.Add(new Att_DailyAttendance
+                    {
+                        HremployeeId = e.id, WorkDate = d, CompanyId = companyId,
+                        ShiftDefinitionId = shiftAssignments.FirstOrDefault(a => a.HremployeeId == e.id && a.WorkDate == d)?.ShiftDefinitionId,
+                        IsAbsent = true, WorkLocation = AttWorkLocation.Office,
+                        Remark = "ไม่มีการลงเวลา ไม่มีใบลาที่อนุมัติ (ระบบตรวจพบอัตโนมัติ)",
+                    });
+                    absentRows++;
+                }
+            }
+        }
+
         await context.SaveChangesAsync(ct);
 
-        return new AttendanceAggregationResult(groups.Count);
+        return new AttendanceAggregationResult(groups.Count + absentRows);
     }
 }

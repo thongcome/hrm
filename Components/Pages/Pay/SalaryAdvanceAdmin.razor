@@ -1,0 +1,281 @@
+@page "/pay/salary-advances"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
+
+@* HR gap wave 1 (REQ-104): salary advances. One advance → one full recovery
+   line in the target period's payroll. Pending advances show on the run's
+   pre-flight checklist; only Approved/Paid ones are recovered. *@
+
+<PageTitle>เบิกเงินเดือนล่วงหน้า</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+        <MudText Typo="Typo.h5">เบิกเงินเดือนล่วงหน้า (Salary Advance)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        บันทึกการเบิกล่วงหน้า อนุมัติ และติดตามการหักคืน — ระบบหักคืนเต็มจำนวนในรอบเงินเดือนของงวดที่ระบุ (รายการ "หักคืนเงินเบิกล่วงหน้า")
+        รายการที่ยังไม่อนุมัติจะขึ้นใน checklist ก่อนประมวลผลของรอบนั้น
+    </MudText>
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodChanged" Label="งวดที่หักคืน (เดือน/ปี)" DateFormat="MM/yyyy" OpenTo="OpenTo.Month" PickerVariant="PickerVariant.Dialog" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="PaySalaryAdvanceStatus?" Value="_statusFilter" ValueChanged="OnStatusChanged" Label="สถานะ" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Pending">รออนุมัติ</MudSelectItem>
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Approved">อนุมัติแล้ว</MudSelectItem>
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Paid">จ่ายเงินแล้ว</MudSelectItem>
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Deducted">หักคืนแล้ว</MudSelectItem>
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Cancelled">ยกเลิก</MudSelectItem>
+                <MudSelectItem T="PaySalaryAdvanceStatus?" Value="PaySalaryAdvanceStatus.Rejected">ปฏิเสธ</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Label="ค้นหา (รหัส / ชื่อ / เหตุผล)" Immediate="true" DebounceInterval="300"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudText Typo="Typo.body2">รวม @_filtered.Sum(r => r.Amount).ToString("N2") บาท</MudText>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_filtered" Dense="true" Hover="true" Elevation="0" Class="mt-2" Loading="_loading">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh><MudTh>พนักงาน</MudTh><MudTh Style="text-align:right">จำนวนเงิน</MudTh><MudTh>วันที่ขอ</MudTh><MudTh>วันที่จ่าย</MudTh><MudTh>งวดหักคืน</MudTh><MudTh>เหตุผล</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@(_names.TryGetValue(context.HremployeeId, out var n) ? n : "")</MudTd>
+            <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+            <MudTd>@context.RequestDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@(context.AdvanceDate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+            <MudTd>@context.TargetPeriod</MudTd>
+            <MudTd>@context.Reason</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusLabel(context.Status)</MudChip></MudTd>
+            <MudTd style="white-space:nowrap;">
+                @if (_rights?.CanEdit == true && context.Status == PaySalaryAdvanceStatus.Pending)
+                {
+                    <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Text" OnClick="@(() => SetStatusAsync(context, PaySalaryAdvanceStatus.Approved))">อนุมัติ</MudButton>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => SetStatusAsync(context, PaySalaryAdvanceStatus.Rejected))">ปฏิเสธ</MudButton>
+                }
+                @if (_rights?.CanEdit == true && context.Status == PaySalaryAdvanceStatus.Approved)
+                {
+                    <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Text" OnClick="@(() => SetStatusAsync(context, PaySalaryAdvanceStatus.Paid))">จ่ายเงินแล้ว</MudButton>
+                }
+                @if (_rights?.CanDelete == true && (context.Status == PaySalaryAdvanceStatus.Pending || context.Status == PaySalaryAdvanceStatus.Approved || context.Status == PaySalaryAdvanceStatus.Paid))
+                {
+                    <MudButton Size="Size.Small" Color="Color.Default" Variant="Variant.Text" OnClick="@(() => SetStatusAsync(context, PaySalaryAdvanceStatus.Cancelled))">ยกเลิก</MudButton>
+                }
+                @if (context.Status == PaySalaryAdvanceStatus.Deducted && context.ConsumedByPayrollRunId is long rid)
+                {
+                    <MudLink Href="@($"/pay/runs/{rid}")" Target="_blank">รอบ #@rid</MudLink>
+                }
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 20, 50, 100 }" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+@if (_rights?.CanCreate == true)
+{
+    <MudPaper Class="pa-4" MaxWidth="900px">
+        <MudText Typo="Typo.h6" Class="mb-2">บันทึกการเบิกล่วงหน้าใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_employee" ValueChanged="@(e => _employee = e)" SearchFunc="SearchEmployeesAsync"
+                                 ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" MinCharacters="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_amount" Label="จำนวนเงิน (บาท)" Format="N2" Min="0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_advanceDate" Label="วันที่จ่ายเงิน" DateFormat="dd/MM/yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_targetMonth" Label="งวดที่หักคืน" DateFormat="MM/yyyy" OpenTo="OpenTo.Month" PickerVariant="PickerVariant.Dialog" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="9">
+                <MudTextField T="string" @bind-Value="_reason" Label="เหตุผล" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="_busy">บันทึก (รออนุมัติ)</MudButton>
+                @if (_employee is not null && _employee.SalaryAmt is decimal sal && _amount > sal)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning" Class="ml-3">จำนวนเงินมากกว่าเงินเดือน @sal.ToString("N2") — หักคืนงวดเดียวอาจทำให้เงินสุทธิติดลบ</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    private const string ProgramPath = "/pay/salary-advances";
+    private ProgramRoleService.ProgramRights? _rights;
+    private string _companyId = "";
+    private long _userId;
+    private bool _loading, _busy;
+
+    private DateTime? _periodMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private PaySalaryAdvanceStatus? _statusFilter;
+    private string _search = "";
+    private List<Pay_SalaryAdvance> _all = new();
+    private List<Pay_SalaryAdvance> _filtered = new();
+    private Dictionary<long, string> _names = new();
+
+    private Hremployee? _employee;
+    private decimal _amount;
+    private DateTime? _advanceDate = DateTime.Today;
+    private DateTime? _targetMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private string _reason = "";
+
+    // Invariant culture on purpose: the circuit runs th-TH, whose default calendar
+    // renders 2026 as 2569 and would produce "256909" instead of "202609".
+    private string Period => _periodMonth is DateTime d ? d.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture) : "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _companyId = state.User.FindFirst("payroll_company")?.Value ?? "";
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _all = await ctx.Pay_SalaryAdvances.AsNoTracking()
+            .Where(a => a.CompanyId == _companyId && a.TargetPeriod == Period)
+            .OrderByDescending(a => a.RequestDate).ToListAsync();
+        var ids = _all.Select(a => a.HremployeeId).Distinct().ToList();
+        _names = await ctx.Hremployee.Where(e => ids.Contains(e.id))
+            .Select(e => new { e.id, Name = (e.EmpName + " " + e.EmpSurname).Trim() })
+            .ToDictionaryAsync(x => x.id, x => x.Name);
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private async Task OnPeriodChanged(DateTime? d) { _periodMonth = d; await LoadAsync(); }
+    private void OnStatusChanged(PaySalaryAdvanceStatus? s) { _statusFilter = s; ApplyFilter(); }
+    private void OnSearchChanged(string s) { _search = s ?? ""; ApplyFilter(); }
+
+    private void ApplyFilter()
+    {
+        var q = _all.AsEnumerable();
+        if (_statusFilter is PaySalaryAdvanceStatus st) q = q.Where(a => a.Status == st);
+        var s = _search.Trim();
+        if (s.Length > 0)
+            q = q.Where(a => (a.EmpNo?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (_names.TryGetValue(a.HremployeeId, out var n) && n.Contains(s, StringComparison.OrdinalIgnoreCase))
+                          || a.Reason.Contains(s, StringComparison.OrdinalIgnoreCase));
+        _filtered = q.ToList();
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync(ct);
+        var q = ctx.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(term))
+            q = q.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
+        return await q.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        if (_employee is null) { Snackbar.Add("เลือกพนักงาน", Severity.Warning); return; }
+        if (_amount <= 0) { Snackbar.Add("จำนวนเงินต้องมากกว่า 0", Severity.Warning); return; }
+        if (_targetMonth is null) { Snackbar.Add("ระบุงวดที่หักคืน", Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_reason)) { Snackbar.Add("ระบุเหตุผล", Severity.Warning); return; }
+
+        _busy = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var target = _targetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+            var posted = await ctx.Pay_PayrollRuns.AnyAsync(r => r.CompanyId == _companyId && r.PayrollPeriod == target && r.RunType == PayrollRunType.Regular
+                                                                 && (r.Status == PayrollRunStatus.Posted || r.Status == PayrollRunStatus.Paid));
+            if (posted) { Snackbar.Add($"งวด {target} บันทึกบัญชีแล้ว — เลือกงวดถัดไป", Severity.Warning); return; }
+
+            ctx.Pay_SalaryAdvances.Add(new Pay_SalaryAdvance
+            {
+                HremployeeId = _employee.id, EmpNo = _employee.EmpNo, CompanyId = _companyId,
+                Amount = Math.Round(_amount, 2), RequestDate = DateTime.Now,
+                AdvanceDate = _advanceDate is DateTime ad ? DateOnly.FromDateTime(ad) : null,
+                TargetPeriod = target, Reason = _reason.Trim(), Status = PaySalaryAdvanceStatus.Pending,
+                RequestedByUserId = _userId,
+            });
+            await ctx.SaveChangesAsync();
+            Snackbar.Add("บันทึกแล้ว (รออนุมัติ)", Severity.Success);
+            _employee = null; _amount = 0; _reason = "";
+            _periodMonth = _targetMonth;
+            await LoadAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task SetStatusAsync(Pay_SalaryAdvance row, PaySalaryAdvanceStatus to)
+    {
+        var action = to == PaySalaryAdvanceStatus.Cancelled ? ProgramRoleService.ProgramAction.Delete : ProgramRoleService.ProgramAction.Edit;
+        if (await RequireRightAsync(action) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var r = await ctx.Pay_SalaryAdvances.FirstOrDefaultAsync(a => a.Id == row.Id);
+            if (r is null) return;
+            if (r.Status == PaySalaryAdvanceStatus.Deducted) { Snackbar.Add("หักคืนไปแล้ว แก้ไขไม่ได้", Severity.Warning); return; }
+            r.Status = to;
+            if (to == PaySalaryAdvanceStatus.Approved) { r.ApprovedByUserId = _userId; r.ApprovedDate = DateTime.Now; }
+            if (to == PaySalaryAdvanceStatus.Paid) { r.PaidDate = DateTime.Now; if (r.ApprovedDate is null) { r.ApprovedByUserId = _userId; r.ApprovedDate = DateTime.Now; } }
+            await ctx.SaveChangesAsync();
+            Snackbar.Add($"เปลี่ยนสถานะเป็น {StatusLabel(to)} แล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private static string StatusLabel(PaySalaryAdvanceStatus s) => s switch
+    {
+        PaySalaryAdvanceStatus.Pending => "รออนุมัติ",
+        PaySalaryAdvanceStatus.Approved => "อนุมัติแล้ว",
+        PaySalaryAdvanceStatus.Paid => "จ่ายเงินแล้ว",
+        PaySalaryAdvanceStatus.Deducted => "หักคืนแล้ว",
+        PaySalaryAdvanceStatus.Cancelled => "ยกเลิก",
+        PaySalaryAdvanceStatus.Rejected => "ปฏิเสธ",
+        _ => s.ToString(),
+    };
+
+    private static Color StatusColor(PaySalaryAdvanceStatus s) => s switch
+    {
+        PaySalaryAdvanceStatus.Pending => Color.Warning,
+        PaySalaryAdvanceStatus.Approved => Color.Info,
+        PaySalaryAdvanceStatus.Paid => Color.Primary,
+        PaySalaryAdvanceStatus.Deducted => Color.Success,
+        _ => Color.Default,
+    };
+}

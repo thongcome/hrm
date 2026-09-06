@@ -25,4 +25,10 @@ public class Att_CompanySetting
     // because GPS check-in is geofence-enforced (must be physically at a
     // registered Att_GeofenceLocation), the opposite intent of WFH.
     public bool AllowGpsCheckin { get; set; }
+
+    // When on, the aggregation also creates IsAbsent rows for scheduled working
+    // days with no punch, no approved leave and no company holiday. Off by
+    // default: a company that has not rolled out time clocks to everyone must
+    // not have payroll treat "no punch" as "absent".
+    public bool DetectAbsence { get; set; }
 }

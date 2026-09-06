@@ -127,6 +127,25 @@ public class PayrollCalculationService
             .Where(p => p.IsActive && p.TaxYear == run.PeriodStart.Year)
             .ToListAsync(ct);
 
+        // Attendance → money (HR gap wave 1). Policy is per company and OFF by
+        // default; attendance rows are loaded once for the period and grouped.
+        var attendancePolicy = await context.Pay_AttendanceDeductionPolicies
+            .FirstOrDefaultAsync(p => p.CompanyId == run.CompanyId && p.IsActive, ct);
+        var attendanceByEmployee = (await context.Att_DailyAttendances
+                .Where(a => a.CompanyId == run.CompanyId && a.WorkDate >= run.PeriodStart && a.WorkDate <= run.PeriodEnd)
+                .Select(a => new { a.HremployeeId, a.IsAbsent, a.LateMinutes })
+                .ToListAsync(ct))
+            .GroupBy(a => a.HremployeeId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Salary advances recovered in this period: Approved/Paid ones, plus those
+        // already consumed by THIS run so a recalculation re-picks them idempotently.
+        var advances = await context.Pay_SalaryAdvances
+            .Where(a => a.CompanyId == run.CompanyId && a.TargetPeriod == run.PayrollPeriod
+                        && (a.Status == PaySalaryAdvanceStatus.Approved || a.Status == PaySalaryAdvanceStatus.Paid
+                            || (a.Status == PaySalaryAdvanceStatus.Deducted && a.ConsumedByPayrollRunId == run.Id)))
+            .ToListAsync(ct);
+
         var (ssoRate, ssoCap) = await _socialSecurityRateProvider.GetCurrentRateAsync(run.CompanyId, ct);
 
         var periodEndDt = run.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
@@ -248,9 +267,77 @@ public class PayrollCalculationService
             var lineItems = new List<Pay_PayrollLineItem>();
             var seq = 0;
 
-            var baseSalary = Math.Round((emp.SalaryAmt ?? 0m) * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
-            lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
-                $"ฐานเงินเดือน {(emp.SalaryAmt ?? 0m):N2} × สัดส่วนวันทำงาน {proration.ActualWorkingDays}/{proration.WorkingDaysInPeriod} วัน ({proration.ProrationFactor:P2}) = {baseSalary:N2}"));
+            var empAttendance = attendanceByEmployee.TryGetValue(emp.id, out var attRows) ? attRows : null;
+
+            // Daily-wage employees (DAILY_WAGE set, no monthly salary) are paid per
+            // day instead of a pro-rated monthly amount. Which days count is policy:
+            // calendar days in the period, or attended days once time clocks exist.
+            var isDailyWage = (emp.DailyWage ?? 0m) > 0m && (emp.SalaryAmt ?? 0m) <= 0m;
+            decimal baseSalary;
+            if (isDailyWage)
+            {
+                var useAttendance = attendancePolicy?.DailyWageMode == PayDailyWageDaysMode.AttendanceDays && empAttendance is { Count: > 0 };
+                var paidDays = useAttendance ? empAttendance!.Count(a => !a.IsAbsent) : proration.ActualWorkingDays;
+                baseSalary = Math.Round(emp.DailyWage!.Value * paidDays, 2, MidpointRounding.AwayFromZero);
+                lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
+                    $"ค่าจ้างรายวัน {emp.DailyWage.Value:N2} × {paidDays} วัน ({(useAttendance ? "วันที่มีการลงเวลา" : "วันตามปฏิทินในงวด")}) = {baseSalary:N2}"));
+            }
+            else
+            {
+                baseSalary = Math.Round((emp.SalaryAmt ?? 0m) * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
+                lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
+                    $"ฐานเงินเดือน {(emp.SalaryAmt ?? 0m):N2} × สัดส่วนวันทำงาน {proration.ActualWorkingDays}/{proration.WorkingDaysInPeriod} วัน ({proration.ProrationFactor:P2}) = {baseSalary:N2}"));
+            }
+
+            // Late / absence deductions from Att_DailyAttendance per policy. Monthly
+            // staff only — a daily-wage employee's absent day is simply not paid above.
+            var attendanceDeduction = 0m;
+            if (!isDailyWage && attendancePolicy is not null && empAttendance is { Count: > 0 })
+            {
+                var monthly = emp.SalaryAmt ?? 0m;
+                var dailyRate = attendancePolicy.DaysPerMonthDivisor > 0 ? monthly / attendancePolicy.DaysPerMonthDivisor : 0m;
+                var hourlyRate = attendancePolicy.HoursPerDay > 0 ? dailyRate / attendancePolicy.HoursPerDay : 0m;
+
+                if (attendancePolicy.LateMode != PayLateDeductionMode.None)
+                {
+                    var lateDays = empAttendance.Where(a => !a.IsAbsent && a.LateMinutes > attendancePolicy.LateGraceMinutes).ToList();
+                    if (lateDays.Count > 0)
+                    {
+                        decimal lateAmount; string lateNote;
+                        if (attendancePolicy.LateMode == PayLateDeductionMode.PerMinute)
+                        {
+                            var minutes = lateDays.Sum(a => a.LateMinutes - attendancePolicy.LateGraceMinutes);
+                            var perMinute = attendancePolicy.LateAmountPerMinute ?? Math.Round(hourlyRate / 60m, 4);
+                            lateAmount = Math.Round(minutes * perMinute, 2, MidpointRounding.AwayFromZero);
+                            lateNote = $"มาสาย {lateDays.Count} วัน รวม {minutes} นาที (หลังหักผ่อนผัน {attendancePolicy.LateGraceMinutes} นาที/วัน) × {perMinute:N4} บาท/นาที = {lateAmount:N2}";
+                        }
+                        else
+                        {
+                            lateAmount = Math.Round(lateDays.Count * attendancePolicy.LateAmountPerOccurrence, 2, MidpointRounding.AwayFromZero);
+                            lateNote = $"มาสาย {lateDays.Count} วัน × {attendancePolicy.LateAmountPerOccurrence:N2} บาท/ครั้ง = {lateAmount:N2}";
+                        }
+                        if (lateAmount > 0)
+                        {
+                            lineItems.Add(NewLine(payItemTypes["LATE"], PayLineSourceType.Adjustment, lateAmount, -1, ++seq, "Att_DailyAttendance", null, lateNote));
+                            attendanceDeduction += lateAmount;
+                        }
+                    }
+                }
+
+                if (attendancePolicy.AbsentMode == PayAbsentDeductionMode.DailyRate)
+                {
+                    var absentDays = empAttendance.Count(a => a.IsAbsent);
+                    if (absentDays > 0)
+                    {
+                        var absentAmount = Math.Round(absentDays * dailyRate, 2, MidpointRounding.AwayFromZero);
+                        lineItems.Add(NewLine(payItemTypes["ABSENT"], PayLineSourceType.Adjustment, absentAmount, -1, ++seq, "Att_DailyAttendance", null,
+                            $"ขาดงาน {absentDays} วัน × ค่าจ้างรายวัน {dailyRate:N2} (เงินเดือน {monthly:N2} ÷ {attendancePolicy.DaysPerMonthDivisor}) = {absentAmount:N2}"));
+                        attendanceDeduction += absentAmount;
+                    }
+                }
+                // Wages not earned can never exceed the wages of the period.
+                attendanceDeduction = Math.Min(attendanceDeduction, baseSalary);
+            }
 
             var otRecords = await _overtimeCalculator.GetOvertimeForPeriodAsync(emp.companyid, emp.EmpNo, run.PeriodStart, run.PeriodEnd, ct);
             var otAmount = OvertimeEarningsCalculator.SumAmount(otRecords);
@@ -293,7 +380,7 @@ public class PayrollCalculationService
             // Social-security wage base follows the Pay Element catalog flags: only
             // elements marked IsSsoWageBase count (base salary + regular allowances by
             // default; OT and one-off items are excluded, as Thai SSO defines ค่าจ้าง).
-            var ssoWageBase = (payItemTypes["BASE"].IsSsoWageBase ? baseSalary : 0m)
+            var ssoWageBase = (payItemTypes["BASE"].IsSsoWageBase ? baseSalary - attendanceDeduction : 0m)
                             + (payItemTypes["OT"].IsSsoWageBase ? otAmount : 0m)
                             + ssoWageBaseAllowance;
             var ssoAmount = SocialSecurityCalculator.Calculate(ssoWageBase, ssoRate, ssoCap);
@@ -393,7 +480,9 @@ public class PayrollCalculationService
             }
 
             grossEarnings += adhocTaxableEarnings + adhocNonTaxableEarnings;
-            var taxableGrossThisPeriod = baseSalary + otAmount + adhocTaxableEarnings + welfareTaxableAllowance;
+            // Late/absence deductions are wages not earned, so they reduce taxable
+            // income (and the SSO base above) rather than being after-tax deductions.
+            var taxableGrossThisPeriod = Math.Max(0m, baseSalary - attendanceDeduction) + otAmount + adhocTaxableEarnings + welfareTaxableAllowance;
 
             var empMonthlyElections = monthlyTaxElections.Where(e => e.HremployeeId == emp.id).ToList();
             var electedMonthlyDeduction = empMonthlyElections.Sum(e => e.AnnualAmount) / 12m;
@@ -408,7 +497,19 @@ public class PayrollCalculationService
                 lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null,
                     "ภาษีหัก ณ ที่จ่ายประจำเดือน คำนวณจากเงินได้สะสมทั้งปีเทียบตารางอัตราภาษี — ดูรายละเอียดฉบับเต็มในหัวข้อ \"บันทึกการคำนวณภาษี\" ด้านล่าง"));
 
-            var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + welfareFundEmployeeAmount + loanAmount + adhocDeductions + monthlyTax;
+            // Salary advances targeted at this period are recovered in full.
+            var advanceAmount = 0m;
+            foreach (var adv in advances.Where(a => a.HremployeeId == emp.id))
+            {
+                lineItems.Add(NewLine(payItemTypes["SAL_ADVANCE"], PayLineSourceType.Adjustment, adv.Amount, -1, ++seq, "Pay_SalaryAdvance", adv.Id,
+                    $"หักคืนเงินเบิกล่วงหน้า {adv.Amount:N2} ({adv.Reason}; อนุมัติ {adv.ApprovedDate:dd/MM/yyyy})"));
+                advanceAmount += adv.Amount;
+                adv.Status = PaySalaryAdvanceStatus.Deducted;
+                adv.ConsumedByPayrollRunId = run.Id;
+            }
+
+            var totalDeductions = ssoAmount + pf.EmployeeAmount + insuranceEmployeeAmount + welfareFundEmployeeAmount + loanAmount + adhocDeductions + monthlyTax
+                                  + attendanceDeduction + advanceAmount;
             var netPayResult = NetPayGuardService.Ensure(grossEarnings - totalDeductions);
 
             payEmp.GrossEarnings = grossEarnings;

@@ -26,6 +26,12 @@ public class Att_DailyAttendance
 
     public bool IsLate { get; set; }
     public bool IsEarlyLeave { get; set; }
+
+    // Minutes late / left early against the expected shift or default hours
+    // (0 when on time). Payroll turns these into money via
+    // Pay_AttendanceDeductionPolicy; the flags above stay for reports.
+    public int LateMinutes { get; set; }
+    public int EarlyLeaveMinutes { get; set; }
     public bool IsAbsent { get; set; }
 
     public AttWorkLocation WorkLocation { get; set; } = AttWorkLocation.Office;
