@@ -29,13 +29,21 @@ public static class CvReaderService
         if (!Enabled)
             throw new InvalidOperationException("ยังไม่ได้ติดตั้งไฟล์ tha.traineddata สำหรับ OCR");
 
-        // Run the (native, blocking) OCR off the request thread.
+        return ReadTextAsync(content, ct).ContinueWith(t => ParseText(t.Result), ct);
+    }
+
+    // Raw OCR text of an image — shared with CvTextExtractor so PDF/DOCX/image
+    // all feed the same parser. Runs the (native, blocking) OCR off the request thread.
+    public static Task<string> ReadTextAsync(byte[] content, CancellationToken ct = default)
+    {
+        if (!Enabled)
+            throw new InvalidOperationException("ยังไม่ได้ติดตั้งไฟล์ tha.traineddata สำหรับ OCR");
         return Task.Run(() =>
         {
             using var engine = new TesseractEngine(_tessdata, "tha+eng", EngineMode.Default);
             using var img = Pix.LoadFromMemory(content);
             using var page = engine.Process(img);
-            return ParseText(page.GetText());
+            return page.GetText();
         }, ct);
     }
 
@@ -64,9 +72,12 @@ public static class CvReaderService
         if (em.Success) email = em.Value;
 
         // Thai mobile number: 10 digits starting with 0, tolerating dashes/spaces
-        // (e.g. "08-1234-5678", "081 234 5678", "0812345678").
+        // (e.g. "08-1234-5678", "081 234 5678", "0812345678"). The pattern must
+        // capture 9 digits after the leading 0 (10 total) — a prior version only
+        // captured 8 (9 total), so the length check below never matched and
+        // every phone number was silently dropped.
         string? phone = null;
-        var pm = Regex.Match(t, @"(?<!\d)0[ \-]?\d[ \-]?\d[ \-]?\d[ \-]?\d[ \-]?\d[ \-]?\d[ \-]?\d[ \-]?\d(?!\d)");
+        var pm = Regex.Match(t, @"(?<!\d)0(?:[ \-]?\d){9}(?!\d)");
         if (pm.Success)
         {
             var digits = new string(pm.Value.Where(char.IsDigit).ToArray());

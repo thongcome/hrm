@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using MudBlazor
 @inject RecJobPostingService PostingService
+@inject CvParserService CvParser
 @inject ISnackbar Snackbar
 
 @* Deliberately public — no [Authorize]. The actual submission posts via a
@@ -57,18 +58,18 @@
                     <input class="form-control" name="resume" type="file" accept=".pdf,.doc,.docx" />
                 </div>
 
-                @if (CvReaderService.Enabled)
+                @if (true)
                 {
                     <div class="mb-3 pa-2" style="border:1px solid #ccc; border-radius:4px;">
-                        <MudFileUpload T="IBrowserFile" FilesChanged="OnCvFileSelected" Accept="image/*">
+                        <MudFileUpload T="IBrowserFile" FilesChanged="OnCvFileSelected" Accept=".pdf,.docx,image/*">
                             <ActivatorContent>
                                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DocumentScanner" Disabled="_cvBusy">
-                                    @(_cvBusy ? "กำลังอ่าน..." : "อ่านจาก CV (OCR)")
+                                    @(_cvBusy ? "กำลังอ่าน..." : "อ่านข้อมูลจากไฟล์ CV (PDF / DOCX / รูป)")
                                 </MudButton>
                             </ActivatorContent>
                         </MudFileUpload>
                         <MudText Typo="Typo.caption" Class="d-block mt-1">
-                            แนบรูปถ่าย/สแกน CV (JPG, PNG) เพื่อลองเติมอีเมล/เบอร์โทรอัตโนมัติ — ไม่รองรับไฟล์ PDF
+                            แนบไฟล์ CV (PDF, DOCX หรือรูปถ่าย JPG/PNG) เพื่อให้ระบบเติมอีเมล/เบอร์โทรให้ และแนะนำชื่อ-นามสกุลที่อ่านได้ — ตรวจสอบก่อนส่งทุกครั้ง
                         </MudText>
                         @if (_cvMessage is not null)
                         {
@@ -187,9 +188,14 @@
                 bytes = ms.ToArray();
             }
 
-            var extract = await CvReaderService.ReadAsync(bytes, file.ContentType);
+            // PDF / DOCX / image all go through the same parser now (CvParsing.cs);
+            // OCR is used only for images.
+            var parsed = await CvParser.ParseFileAsync(bytes, file.Name, file.ContentType);
+            var extract = new CvExtract(parsed.FullName, parsed.Email, parsed.Phone, parsed.NationalId, parsed.BirthDate);
 
             var filled = new List<string>();
+            if (!string.IsNullOrWhiteSpace(parsed.FullName))
+                filled.Add($"ชื่อที่อ่านได้: {parsed.FullName} (กรุณาพิมพ์ในช่องชื่อ-นามสกุลถ้าถูกต้อง)");
             if (string.IsNullOrWhiteSpace(_email) && !string.IsNullOrWhiteSpace(extract.Email))
             {
                 _email = extract.Email;

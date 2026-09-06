@@ -433,6 +433,9 @@ builder.Services.AddScoped<HRM.Services.Att.AbsenteeismReportService>();
 builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
 builder.Services.AddScoped<HRM.Services.Att.AttendanceCorrectionService>();
 builder.Services.AddScoped<HRM.Services.Asset.AssetService>();
+// CV parsing (config-first: swap the ICvParser implementation to plug in an LLM provider)
+builder.Services.AddSingleton<HRM.Services.Rec.ICvParser, HRM.Services.Rec.RegexCvParser>();
+builder.Services.AddScoped<HRM.Services.Rec.CvParserService>();
 builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 

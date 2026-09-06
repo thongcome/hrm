@@ -1,0 +1,198 @@
+@page "/rec/import-cv"
+@using HRM.Models
+@using HRM.Services.Rec
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject CvParserService CvParser
+@inject RecApplicationService Applications
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:REC_ADMIN")]
+
+@* HR imports CVs (PDF / DOCX / photo) in bulk: each file is read, the parser
+   suggests the fields, HR checks and corrects them, then one click creates the
+   candidate + application (+ education / experience rows) against a job
+   posting, with the original file stored as the resume. Nothing is saved
+   without a person looking at it — CV parsing is a suggestion, not a fact. *@
+
+<PageTitle>นำเข้า CV / เรซูเม่</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+        <MudText Typo="Typo.h5">นำเข้า CV / เรซูเม่ เข้าระบบสรรหา</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Default">ตัวอ่าน: @CvParser.ProviderName</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        อัปโหลด PDF / DOCX / รูปถ่าย CV ได้หลายไฟล์ ระบบอ่านชื่อ อีเมล เบอร์โทร เลขบัตร การศึกษา ประสบการณ์ ทักษะ มาให้ตรวจ — แก้ได้ทุกช่องก่อนกด "สร้างผู้สมัคร"
+    </MudText>
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="5">
+            <MudSelect T="long?" @bind-Value="_postingId" Label="ตำแหน่งที่เปิดรับ (Job Posting)" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var p in _postings) { <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" FilesChanged="OnFilesSelected" Accept=".pdf,.docx,image/*" MaximumFileCount="20">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Disabled="_busy">
+                        @(_busy ? "กำลังอ่าน..." : "เลือกไฟล์ CV (หลายไฟล์ได้)")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-center">
+            <MudCheckBox T="bool" @bind-Value="_consent" Label="ผู้สมัครยินยอมให้เก็บข้อมูล (PDPA)" />
+        </MudItem>
+    </MudGrid>
+    @if (_busy) { <MudProgressLinear Indeterminate="true" Class="mt-2" /> }
+</MudPaper>
+
+@foreach (var d in _drafts)
+{
+    <MudPaper Class="pa-4 mb-3" Outlined="true">
+        <div class="d-flex align-center flex-wrap" style="gap:8px;">
+            <MudIcon Icon="@Icons.Material.Filled.Description" />
+            <MudText Typo="Typo.subtitle1"><b>@d.FileName</b></MudText>
+            @if (d.Error is not null) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@d.Error</MudChip> }
+            else if (d.Saved) { <MudChip T="string" Size="Size.Small" Color="Color.Success">สร้างผู้สมัครแล้ว #@d.ApplicationId</MudChip> }
+            else { <MudChip T="string" Size="Size.Small" Color="Color.Info">รอตรวจ</MudChip> }
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => d.ShowText = !d.ShowText)">@(d.ShowText ? "ซ่อนข้อความที่อ่านได้" : "ดูข้อความที่อ่านได้")</MudButton>
+        </div>
+        @if (d.Error is null && !d.Saved)
+        {
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.FirstName" Label="ชื่อ *" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.LastName" Label="นามสกุล *" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.Email" Label="อีเมล *" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.Phone" Label="เบอร์โทร" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.NationalId" Label="เลขบัตรประชาชน" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="9"><MudTextField T="string" @bind-Value="d.Skills" Label="ทักษะ (คั่นด้วยจุลภาค — บันทึกในหมายเหตุผู้สมัคร)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-3">การศึกษาสูงสุด</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="2"><MudTextField T="string" @bind-Value="d.EduLevel" Label="ระดับ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.EduDegree" Label="วุฒิ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.EduMajor" Label="สาขา" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="d.EduInstitute" Label="สถาบัน" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="1"><MudTextField T="string" @bind-Value="d.EduYear" Label="ปีจบ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-3">ประสบการณ์ (@d.Experience.Count)</MudText>
+            @foreach (var x in d.Experience)
+            {
+                <MudGrid Class="align-center">
+                    <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="x.Position" Label="ตำแหน่ง" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="x.Company" Label="บริษัท" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="6" sm="1"><MudTextField T="string" @bind-Value="x.StartYear" Label="เริ่ม" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="6" sm="1"><MudTextField T="string" @bind-Value="x.EndYear" Label="สิ้นสุด" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => d.Experience.Remove(x))">ลบ</MudButton></MudItem>
+                </MudGrid>
+            }
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => d.Experience.Add(new ExpDraft()))">+ เพิ่มประสบการณ์</MudButton>
+
+            <div class="mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => SaveAsync(d))" Disabled="@(_busy || _postingId is null || !_consent)">สร้างผู้สมัคร + ใบสมัคร</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="@(() => _drafts.Remove(d))">ทิ้ง</MudButton>
+                @if (_postingId is null) { <MudText Typo="Typo.caption" Color="Color.Warning" Class="ml-2">เลือกตำแหน่งก่อน</MudText> }
+                else if (!_consent) { <MudText Typo="Typo.caption" Color="Color.Warning" Class="ml-2">ติ๊กยืนยันความยินยอม PDPA ก่อน</MudText> }
+            </div>
+        }
+        @if (d.ShowText)
+        {
+            <MudTextField T="string" Value="@d.RawText" ReadOnly="true" Lines="12" Variant="Variant.Outlined" Class="mt-2" Label="ข้อความที่อ่านได้จากไฟล์" />
+        }
+    </MudPaper>
+}
+
+@code {
+    private class ExpDraft { public string? Position; public string? Company; public string? StartYear; public string? EndYear; }
+    private class Draft
+    {
+        public string FileName = ""; public byte[] Bytes = Array.Empty<byte>(); public string? Error; public bool Saved; public long? ApplicationId; public bool ShowText;
+        public string? FirstName, LastName, Email, Phone, NationalId, Skills, EduLevel, EduDegree, EduMajor, EduInstitute, EduYear;
+        public List<ExpDraft> Experience = new();
+        public string RawText = "";
+    }
+
+    private bool _busy, _consent;
+    private long? _postingId;
+    private List<Rec_JobPosting> _postings = new();
+    private readonly List<Draft> _drafts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _postings = await ctx.Rec_JobPostings.Where(p => p.Status == PostingStatus.Open || p.Status == PostingStatus.Draft).OrderByDescending(p => p.Id).ToListAsync();
+        _postingId = _postings.FirstOrDefault(p => p.Status == PostingStatus.Open)?.Id ?? _postings.FirstOrDefault()?.Id;
+    }
+
+    private async Task OnFilesSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        _busy = true;
+        try
+        {
+            foreach (var f in files)
+            {
+                var d = new Draft { FileName = f.Name };
+                _drafts.Insert(0, d);
+                try
+                {
+                    await using var s = f.OpenReadStream(20 * 1024 * 1024);
+                    await using var ms = new MemoryStream();
+                    await s.CopyToAsync(ms);
+                    d.Bytes = ms.ToArray();
+                    var r = await CvParser.ParseFileAsync(d.Bytes, f.Name, f.ContentType);
+                    d.FirstName = r.FirstName; d.LastName = r.LastName; d.Email = r.Email; d.Phone = r.Phone; d.NationalId = r.NationalId;
+                    d.Skills = string.Join(", ", r.Skills); d.RawText = r.RawText;
+                    var edu = r.Education.OrderByDescending(e => e.FinishedYear ?? 0).FirstOrDefault();
+                    if (edu is not null) { d.EduLevel = edu.Level; d.EduDegree = edu.Degree; d.EduMajor = edu.Major; d.EduInstitute = edu.Institute; d.EduYear = edu.FinishedYear?.ToString(); }
+                    d.Experience = r.Experience.Select(x => new ExpDraft { Position = x.Position, Company = x.Company, StartYear = x.StartYear?.ToString(), EndYear = x.IsCurrent ? "ปัจจุบัน" : x.EndYear?.ToString() }).ToList();
+                }
+                catch (Exception ex) { d.Error = ex.Message; }
+                StateHasChanged();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveAsync(Draft d)
+    {
+        if (_postingId is null) return;
+        _busy = true;
+        try
+        {
+            var edu = string.IsNullOrWhiteSpace(d.EduInstitute) && string.IsNullOrWhiteSpace(d.EduDegree) ? null
+                : new RecApplicationService.EducationInput(d.EduLevel, d.EduDegree, d.EduMajor, d.EduInstitute, int.TryParse(d.EduYear, out var y) ? new DateOnly(y, 12, 31) : null);
+            var exps = d.Experience.Where(x => !string.IsNullOrWhiteSpace(x.Position) || !string.IsNullOrWhiteSpace(x.Company))
+                .Select(x => new RecApplicationService.ExperienceInput(x.Position, x.Company,
+                    int.TryParse(x.StartYear, out var sy) ? new DateOnly(sy, 1, 1) : null,
+                    int.TryParse(x.EndYear, out var ey) ? new DateOnly(ey, 12, 31) : null)).ToList();
+            var result = await Applications.ApplyPublicAsync(_postingId.Value, d.FirstName ?? "", d.LastName ?? "", d.Email ?? "", d.Phone, _consent, d.FileName, d.Bytes, edu, exps);
+            if (!result.Success) { Snackbar.Add(result.Error ?? "บันทึกไม่สำเร็จ", Severity.Error); return; }
+            d.Saved = true; d.ApplicationId = result.ApplicationId;
+            if (!string.IsNullOrWhiteSpace(d.NationalId) || !string.IsNullOrWhiteSpace(d.Skills))
+            {
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                var app = await ctx.Rec_Applications.FirstOrDefaultAsync(a => a.Id == result.ApplicationId);
+                var c = app is null ? null : await ctx.Rec_Candidates.FirstOrDefaultAsync(x => x.Id == app.CandidateId);
+                if (c is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(d.NationalId)) c.IdCard = d.NationalId;
+                    if (!string.IsNullOrWhiteSpace(d.Skills)) c.Note = string.Join("\n", new[] { c.Note, "ทักษะ (จาก CV): " + d.Skills }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                    c.Source = "CvImport";
+                    await ctx.SaveChangesAsync();
+                }
+            }
+            Snackbar.Add($"สร้างผู้สมัคร {d.FirstName} {d.LastName} แล้ว (ใบสมัคร #{result.ApplicationId})", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}
