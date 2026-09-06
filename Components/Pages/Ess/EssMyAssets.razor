@@ -1,0 +1,107 @@
+@page "/ess/my-assets"
+@using HRM.Models
+@using HRM.Services.Asset
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject AssetService Assets
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+@* ESS: "รายการทรัพย์สินส่วนตัว" from epms — what I hold, my custody history, and
+   "แจ้งครอบครอง": declare an asset I actually have by its asset number (the
+   annual physical count HR runs). Self-scoped to the caller's own employee. *@
+
+<PageTitle>ทรัพย์สินของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ทรัพย์สินบริษัทที่ฉันถืออยู่</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">รายการที่ HR มอบให้หรือที่ท่านแจ้งครอบครองไว้ — ต้องคืนครบเมื่อพ้นสภาพพนักงาน</MudText>
+
+    @if (!_loaded) { <MudProgressCircular Indeterminate="true" Class="mt-4" /> }
+    else if (_employee is null) { <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงาน</MudAlert> }
+    else
+    {
+        <MudTable Items="_held" Dense="true" Hover="true" Elevation="0" Class="mt-3">
+            <HeaderContent><MudTh>เลขทรัพย์สิน</MudTh><MudTh>รายการ</MudTh><MudTh>Tag / Serial</MudTh><MudTh>หมวด</MudTh><MudTh>สถานะ</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd><b>@context.assetNo</b></MudTd>
+                <MudTd>@context.description <span class="mud-text-secondary">@context.brand @context.model</span></MudTd>
+                <MudTd>@context.tag @(string.IsNullOrEmpty(context.serial) ? "" : $"/ {context.serial}")</MudTd>
+                <MudTd>@context.category</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Info">@context.status</MudChip></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ไม่มีทรัพย์สินที่ถืออยู่</MudText></NoRecordsContent>
+        </MudTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-1">แจ้งครอบครองทรัพย์สิน</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">พิมพ์เลขทรัพย์สินที่ติดอยู่บนอุปกรณ์ (เช่น บนสติกเกอร์) แล้วกดแจ้ง — ใช้ตอน HR ให้ตรวจนับทรัพย์สิน หรือเมื่อได้รับอุปกรณ์มาโดยยังไม่มีบันทึกในระบบ</MudText>
+        <div class="d-flex align-center flex-wrap" style="gap:8px;">
+            <MudAutocomplete T="asset_owner" Label="เลขทรัพย์สิน" Value="_pick" ValueChanged="@(a => _pick = a)" SearchFunc="SearchAssetsAsync"
+                             ToStringFunc="@(a => a is null ? "" : $"{a.assetNo} — {a.description}")" ResetValueOnEmptyText="true" MinCharacters="1" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:360px;" />
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="DeclareAsync" Disabled="@(_busy || _pick is null)">แจ้งครอบครอง</MudButton>
+        </div>
+
+        @if (_notices.Count > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mt-4 mb-1">ประวัติของฉัน</MudText>
+            <MudSimpleTable Dense="true">
+                <thead><tr><th>เลขทรัพย์สิน</th><th>สถานะ</th><th>วันที่รับ</th><th>วันที่คืน</th></tr></thead>
+                <tbody>
+                    @foreach (var n in _notices)
+                    {
+                        <tr><td>@n.assetNo</td><td>@n.status</td><td>@n.getdate?.ToString("dd/MM/yyyy")</td><td>@(n.outdate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded, _busy;
+    private Hremployee? _employee;
+    private string _login = "";
+    private long _userId;
+    private List<asset_owner> _held = new();
+    private List<asset_notice> _notices = new();
+    private asset_owner? _pick;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _login = state.User.Identity?.Name ?? "";
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(ctx, state.User);
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_employee is null) return;
+        _held = await Assets.HeldByAsync(_employee.companyid!, _employee.EmpNo);
+        _notices = await Assets.MyNoticesAsync(_employee.companyid!, _employee.EmpNo);
+    }
+
+    private async Task<IEnumerable<asset_owner>> SearchAssetsAsync(string term, CancellationToken ct)
+    {
+        if (_employee is null || string.IsNullOrWhiteSpace(term)) return Array.Empty<asset_owner>();
+        var all = await Assets.ListAsync(_employee.companyid!, term, ct);
+        return all.Take(20);
+    }
+
+    private async Task DeclareAsync()
+    {
+        if (_employee is null || _pick is null) return;
+        _busy = true;
+        try { await Assets.SelfDeclareAsync(_pick.assetNo!, _employee, _login, _userId); Snackbar.Add($"แจ้งครอบครอง {_pick.assetNo} แล้ว", Severity.Success); _pick = null; await LoadAsync(); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}

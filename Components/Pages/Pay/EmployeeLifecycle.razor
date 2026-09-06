@@ -12,6 +12,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject LifecycleTaskService LifecycleService
+@inject HRM.Services.Asset.AssetService Assets
 @inject IAuditLogger AuditLogger
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
@@ -75,6 +76,34 @@ else
             <MudText Typo="Typo.subtitle1">@L.Translate("OffboardingChecklistHeading")</MudText>
             <MudText Typo="Typo.body2" Class="mb-2">@string.Format(L.Translate("ResignDateColonTemplate"), _employee.ResignDate.Value.ToString("dd/MM/yyyy"))</MudText>
             @RenderChecklist(_offboardingTasks, LifecycleTaskDirection.Offboarding)
+        </MudPaper>
+
+        @* Asset return (roadmap Phase 2 "asset return + final pay"): the live
+           custody list replaces the free-text asset checklist item. Anything
+           still held here must be returned or deducted before final pay. *@
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle1">ทรัพย์สินบริษัทที่ยังถืออยู่ (ต้องคืนก่อนจ่ายเงินงวดสุดท้าย)</MudText>
+            @if (_heldAssets.Count == 0)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">ไม่มีทรัพย์สินค้างคืน</MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">ยังถืออยู่ @_heldAssets.Count รายการ — กด "รับคืน" เมื่อได้รับของแล้ว หรือบันทึกหักเงินที่หน้ารายการเฉพาะกิจถ้าสูญหาย</MudAlert>
+                <MudSimpleTable Dense="true" Class="mt-2">
+                    <thead><tr><th>เลขทรัพย์สิน</th><th>รายการ</th><th>Tag / Serial</th><th>มูลค่าอ้างอิง</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var a in _heldAssets)
+                        {
+                            <tr>
+                                <td><b>@a.assetNo</b></td><td>@a.description @a.brand @a.model</td><td>@a.tag @a.serial</td><td>@a.currentCost</td>
+                                <td><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => ReturnAssetAsync(a))">รับคืน</MudButton></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+            <MudButton Href="/asset/registry" Variant="Variant.Text" Color="Color.Primary" Class="mt-2">ทะเบียนทรัพย์สิน</MudButton>
         </MudPaper>
 
         <MudPaper Class="pa-4 mb-4">
@@ -159,6 +188,7 @@ else
 
         await LoadTasksAsync();
         await LoadExitInterviewAsync();
+        await LoadHeldAssetsAsync();
 
         await AuditLogger.LogAccessAsync("Hremployee", HremployeeId.ToString(), isSensitive: true, note: "lifecycle tab view");
     }
@@ -172,6 +202,27 @@ else
     private async Task LoadExitInterviewAsync()
     {
         _latestExitInterview = await LifecycleService.GetLatestExitInterviewAsync(HremployeeId);
+    }
+
+    private List<asset_owner> _heldAssets = new();
+
+    private async Task LoadHeldAssetsAsync()
+    {
+        if (_employee is null) return;
+        _heldAssets = await Assets.HeldByAsync(_employee.companyid, _employee.EmpNo);
+    }
+
+    private async Task ReturnAssetAsync(asset_owner a)
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var uid = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var u) ? u : 0;
+            await Assets.ReturnAsync(a.id, state.User.Identity?.Name ?? "", uid);
+            Snackbar.Add($"รับคืน {a.assetNo} แล้ว", Severity.Success);
+            await LoadHeldAssetsAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
 
     private async Task<long> GetActorUserIdAsync()

@@ -1,0 +1,244 @@
+@page "/asset/registry"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Asset
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject AssetService Assets
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ASSET_ADMIN")]
+
+@* Company asset custody (epms asset_owner / asset_notice, reused). HR keeps the
+   registry, hands assets to employees, records returns, and sees the custody
+   history per asset. Book value/depreciation are NOT here — accounting owns
+   them; HR owns "who has it and did it come back". *@
+
+<PageTitle>ทะเบียนทรัพย์สินที่มอบให้พนักงาน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ทะเบียนทรัพย์สิน (มอบ / คืน / ประวัติการครอบครอง)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">โน้ตบุ๊ก มือถือ บัตร ยูนิฟอร์ม กุญแจ ฯลฯ — ใครถืออยู่ มอบเมื่อไร คืนหรือยัง ใช้ตรวจตอนพนักงานลาออก</MudText>
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <div class="d-flex align-center flex-wrap mt-3" style="gap:8px;">
+        <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Label="ค้นหา (เลขทรัพย์สิน / tag / serial / รายการ / ยี่ห้อ / ผู้ถือ / หมวด / สถานที่)" Immediate="true" DebounceInterval="300"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:420px;" />
+        <MudChip T="string" Size="Size.Small" Color="Color.Default">ทั้งหมด @_items.Count</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Info">ถืออยู่ @_items.Count(a => a.status == AssetService.StatusHeld)</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Success">ว่าง @_items.Count(a => a.status == AssetService.StatusAvailable)</MudChip>
+        @if (_rights?.CanCreate == true && !_showForm)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => { _form = new asset_owner { qty = "1" }; _showForm = true; })">เพิ่มทรัพย์สิน</MudButton>
+        }
+    </div>
+
+    <MudTable Items="_items" Dense="true" Hover="true" Elevation="0" Class="mt-2" Loading="_loading">
+        <HeaderContent>
+            <MudTh>เลขทรัพย์สิน</MudTh><MudTh>Tag / Serial</MudTh><MudTh>รายการ</MudTh><MudTh>หมวด</MudTh><MudTh>สถานที่ / ศูนย์ต้นทุน</MudTh><MudTh>ผู้ถือ</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><b>@context.assetNo</b></MudTd>
+            <MudTd>@context.tag @(string.IsNullOrEmpty(context.serial) ? "" : $"/ {context.serial}")</MudTd>
+            <MudTd>@context.description <span class="mud-text-secondary">@context.brand @context.model</span></MudTd>
+            <MudTd>@context.category</MudTd>
+            <MudTd>@context.location @(string.IsNullOrEmpty(context.costCenter) ? "" : $"· {context.costCenter}")</MudTd>
+            <MudTd>@(string.IsNullOrEmpty(context.empid) ? "-" : $"{context.empid} {context.empName}")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.status)">@(context.status ?? "-")</MudChip></MudTd>
+            <MudTd style="white-space:nowrap;">
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleHistoryAsync(context))">ประวัติ</MudButton>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _form = Clone(context); _showForm = true; })">แก้ไข</MudButton>
+                    @if (context.status != AssetService.StatusDisposed)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => { _assignAsset = context; _assignEmployee = null; })">มอบให้</MudButton>
+                    }
+                    @if (!string.IsNullOrEmpty(context.empid))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => ReturnAsync(context))">รับคืน</MudButton>
+                    }
+                }
+            </MudTd>
+        </RowTemplate>
+        <ChildRowContent>
+            @if (_historyFor == context.id)
+            {
+                <MudTr><td colspan="8" style="background:var(--mud-palette-background-gray);">
+                    <MudText Typo="Typo.subtitle2" Class="ma-2">ประวัติการครอบครอง — @context.assetNo</MudText>
+                    @if (_history.Count == 0) { <MudText Typo="Typo.body2" Class="ma-2 mud-text-secondary">ยังไม่มีประวัติ</MudText> }
+                    else
+                    {
+                        <MudSimpleTable Dense="true" Class="ma-2">
+                            <thead><tr><th>ผู้ครอบครอง</th><th>หน่วยงาน</th><th>สถานะ</th><th>วันที่รับ</th><th>วันที่คืน</th><th>บันทึกโดย</th></tr></thead>
+                            <tbody>
+                                @foreach (var h in _history)
+                                {
+                                    <tr><td>@h.empid @h.empName</td><td>@h.orgcode</td><td>@h.status</td><td>@h.getdate?.ToString("dd/MM/yyyy HH:mm")</td><td>@(h.outdate?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td><td>@h.modby</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </td></MudTr>
+            }
+        </ChildRowContent>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีทรัพย์สินในทะเบียน</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" /></PagerContent>
+    </MudTable>
+
+    @if (_assignAsset is not null)
+    {
+        <MudPaper Class="pa-3 mt-3" Outlined="true">
+            <MudText Typo="Typo.subtitle1">มอบทรัพย์สิน <b>@_assignAsset.assetNo</b> @_assignAsset.description ให้พนักงาน</MudText>
+            <div class="d-flex align-center flex-wrap mt-2" style="gap:8px;">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_assignEmployee" ValueChanged="@(e => _assignEmployee = e)" SearchFunc="SearchEmployeesAsync"
+                                 ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" MinCharacters="0" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:360px;" />
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignAsync" Disabled="@(_busy || _assignEmployee is null)">ยืนยันมอบ</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _assignAsset = null)">ยกเลิก</MudButton>
+            </div>
+            @if (!string.IsNullOrEmpty(_assignAsset.empid)) { <MudText Typo="Typo.caption" Color="Color.Warning">ขณะนี้ @_assignAsset.empid ถืออยู่ — การมอบใหม่จะปิดรายการเดิมเป็น "คืนแล้ว" อัตโนมัติ</MudText> }
+        </MudPaper>
+    }
+</MudPaper>
+
+@if (_showForm)
+{
+    <MudPaper Class="pa-4" MaxWidth="1000px">
+        <MudText Typo="Typo.h6" Class="mb-2">@(_form.id > 0 ? $"แก้ไขทรัพย์สิน {_form.assetNo}" : "เพิ่มทรัพย์สิน")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.assetNo" Label="เลขทรัพย์สิน *" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.tag" Label="Tag" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.serial" Label="Serial No." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.category" Label="หมวด (เช่น โน้ตบุ๊ก, มือถือ, บัตร)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_form.description" Label="รายการ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.brand" Label="ยี่ห้อ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.model" Label="รุ่น" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.location" Label="สถานที่" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.place" Label="จุดติดตั้ง / ห้อง" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.costCenter" Label="ศูนย์ต้นทุน" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.inServiceDate" Label="วันที่เริ่มใช้งาน" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.qty" Label="จำนวน" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_form.currentCost" Label="มูลค่า (อ้างอิง)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            @if (_form.id > 0 && _form.status != AssetService.StatusHeld)
+            {
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string" @bind-Value="_form.status" Label="สถานะ" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var s in AssetService.Statuses.Where(x => x != AssetService.StatusHeld)) { <MudSelectItem T="string" Value="@s">@s</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">บันทึก</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">ยกเลิก</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    private const string ProgramPath = "/asset/registry";
+    private ProgramRoleService.ProgramRights? _rights;
+    private string _companyId = "";
+    private string _login = "";
+    private long _userId;
+    private bool _loading, _busy, _showForm;
+    private string _search = "";
+    private List<asset_owner> _items = new();
+    private asset_owner _form = new() { qty = "1" };
+    private asset_owner? _assignAsset;
+    private Hremployee? _assignEmployee;
+    private long? _historyFor;
+    private List<asset_notice> _history = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _companyId = state.User.FindFirst("payroll_company")?.Value ?? "";
+        _login = state.User.Identity?.Name ?? "";
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _items = await Assets.ListAsync(_companyId, _search);
+        _loading = false;
+    }
+
+    private async Task OnSearchChanged(string s) { _search = s ?? ""; await LoadAsync(); }
+
+    private static asset_owner Clone(asset_owner a) => new()
+    {
+        id = a.id, assetNo = a.assetNo, tag = a.tag, serial = a.serial, category = a.category, description = a.description, brand = a.brand, model = a.model,
+        location = a.location, place = a.place, costCenter = a.costCenter, inServiceDate = a.inServiceDate, qty = a.qty, currentCost = a.currentCost, status = a.status,
+        empid = a.empid, empName = a.empName, comCode = a.comCode,
+    };
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (await RequireRightAsync(_form.id > 0 ? ProgramRoleService.ProgramAction.Edit : ProgramRoleService.ProgramAction.Create) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        _busy = true;
+        try { await Assets.SaveAsync(_form, _companyId); Snackbar.Add("บันทึกแล้ว", Severity.Success); _showForm = false; await LoadAsync(); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task AssignAsync()
+    {
+        if (_assignAsset is null || _assignEmployee is null) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        _busy = true;
+        try { await Assets.AssignAsync(_assignAsset.id, _assignEmployee.id, _login, _userId); Snackbar.Add($"มอบ {_assignAsset.assetNo} ให้ {_assignEmployee.EmpNo} แล้ว", Severity.Success); _assignAsset = null; await LoadAsync(); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task ReturnAsync(asset_owner a)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        try { await Assets.ReturnAsync(a.id, _login, _userId); Snackbar.Add($"รับคืน {a.assetNo} จาก {a.empid} แล้ว", Severity.Success); await LoadAsync(); if (_historyFor == a.id) _history = await Assets.HistoryAsync(a.id); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ToggleHistoryAsync(asset_owner a)
+    {
+        if (_historyFor == a.id) { _historyFor = null; return; }
+        _historyFor = a.id;
+        _history = await Assets.HistoryAsync(a.id);
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync(ct);
+        var q = ctx.Hremployee.Where(e => e.companyid == _companyId && e.ResignDate == null);
+        if (!string.IsNullOrWhiteSpace(term))
+            q = q.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
+        return await q.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private static Color StatusColor(string? s) => s switch
+    {
+        AssetService.StatusHeld => Color.Info,
+        AssetService.StatusAvailable => Color.Success,
+        AssetService.StatusRepair => Color.Warning,
+        AssetService.StatusDisposed => Color.Dark,
+        _ => Color.Default,
+    };
+}

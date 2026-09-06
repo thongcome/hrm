@@ -432,6 +432,7 @@ builder.Services.AddScoped<HRM.Services.Att.AttendanceAggregationService>();
 builder.Services.AddScoped<HRM.Services.Att.AbsenteeismReportService>();
 builder.Services.AddScoped<HRM.Services.Att.GpsCheckinService>();
 builder.Services.AddScoped<HRM.Services.Att.AttendanceCorrectionService>();
+builder.Services.AddScoped<HRM.Services.Asset.AssetService>();
 builder.Services.AddScoped<HRM.Services.Att.TimesheetService>();
 // ----- end Att_* module -----
 
