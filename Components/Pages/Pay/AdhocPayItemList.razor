@@ -71,7 +71,7 @@
                     Required="true" ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudSelect T="int" @bind-Value="_form.PayItemTypeId" Label="@L.Translate("AdhocPayItemTypeLabel")">
+                <MudSelect T="int" @bind-Value="_form.PayItemTypeId" @bind-Value:after="ApplyTypeDefaults" Label="@L.Translate("AdhocPayItemTypeLabel")">
                     @foreach (var t in _payItemTypes)
                     {
                         <MudSelectItem T="int" Value="t.Id">@t.NameTh (@t.NameEn) — @(t.DefaultSignFlag > 0 ? L.Translate("AdhocEarningLabel") : L.Translate("AdhocDeductionLabel"))</MudSelectItem>
@@ -296,6 +296,14 @@
             _form = new CreateForm { TargetMonth = _periodMonth ?? DateTime.Today };
             _error = null;
         }
+    }
+
+    // Pay Element catalog: the type's IsTaxable flag is the default for a new
+    // ad-hoc item of that type (HR can still override per row).
+    private void ApplyTypeDefaults()
+    {
+        var t = _payItemTypes.FirstOrDefault(x => x.Id == _form.PayItemTypeId);
+        if (t is not null) _form.IsTaxable = t.IsTaxable;
     }
 
     private async Task LoadAsync()

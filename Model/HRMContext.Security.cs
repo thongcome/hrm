@@ -50,5 +50,7 @@ public partial class HRMContext
             (e.orgcodefull != null && CurrentScope.OrgExactCodes.Contains(e.orgcodefull)) ||
             (e.orgcodefull != null && CurrentScope.OrgLikePatterns.Any(p => EF.Functions.Like(e.orgcodefull, p))) ||
             (e.CostCenterCode != null && CurrentScope.CostCenterCodes.Contains(e.CostCenterCode)));
+
+        ConfigurePayrollModel(modelBuilder); // HRMContext.Payroll.cs
     }
 }

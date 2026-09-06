@@ -8502,6 +8502,15 @@ namespace HRM.Migrations
                     b.Property<bool>("IsSystemReserved")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsProrated")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSsoWageBase")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsTaxable")
+                        .HasColumnType("bit");
+
                     b.Property<string>("NameEn")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -8866,7 +8875,10 @@ namespace HRM.Migrations
                     b.HasIndex("PayrollRunId", "HremployeeId")
                         .IsUnique();
 
-                    b.ToTable("Pay_PayrollEmployee");
+                    b.ToTable("Pay_PayrollEmployee", t =>
+                        {
+                            t.HasTrigger("trg_PayrollEmployee_Immutable");
+                        });
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayrollLineItem", b =>
@@ -8912,7 +8924,10 @@ namespace HRM.Migrations
 
                     b.HasIndex("PayrollEmployeeId");
 
-                    b.ToTable("Pay_PayrollLineItem");
+                    b.ToTable("Pay_PayrollLineItem", t =>
+                        {
+                            t.HasTrigger("trg_PayrollLineItem_Immutable");
+                        });
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_PayrollPeriod", b =>
@@ -9009,6 +9024,16 @@ namespace HRM.Migrations
                     b.Property<DateTime?>("CalculatedDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CalcError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("CalcStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsCalculating")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CompanyId")
                         .IsRequired()
                         .HasMaxLength(6)
@@ -9075,6 +9100,51 @@ namespace HRM.Migrations
                         .IsUnique();
 
                     b.ToTable("Pay_PayrollRun");
+                });
+
+            modelBuilder.Entity("HRM.Models.Pay_PayrollRunHold", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("EmpNo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<long>("HeldByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("HeldDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("HremployeeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("PayrollRunId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long?>("ReleasedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ReleasedDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
+
+                    b.ToTable("Pay_PayrollRunHold");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_Payslip", b =>
@@ -9175,6 +9245,12 @@ namespace HRM.Migrations
 
                     b.Property<DateTime>("ModifiedDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("PayDateAdjustBackward")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PayDayOfMonth")
+                        .HasColumnType("int");
 
                     b.Property<string>("PasswordTemplate")
                         .IsRequired()
@@ -23674,6 +23750,17 @@ namespace HRM.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AdjustmentOfRun");
+                });
+
+            modelBuilder.Entity("HRM.Models.Pay_PayrollRunHold", b =>
+                {
+                    b.HasOne("HRM.Models.Pay_PayrollRun", "Pay_PayrollRun")
+                        .WithMany()
+                        .HasForeignKey("PayrollRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Pay_PayrollRun");
                 });
 
             modelBuilder.Entity("HRM.Models.Pay_Payslip", b =>

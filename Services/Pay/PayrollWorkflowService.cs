@@ -29,8 +29,8 @@ public class PayrollWorkflowService
         PayrollRunStatus.Calculated => new HashSet<PayrollAction> { PayrollAction.Calculate, PayrollAction.SubmitForReview, PayrollAction.Cancel },
         PayrollRunStatus.Reviewed => new HashSet<PayrollAction> { PayrollAction.Approve, PayrollAction.Cancel },
         PayrollRunStatus.Approved => new HashSet<PayrollAction> { PayrollAction.Post },
-        PayrollRunStatus.Posted => new HashSet<PayrollAction> { PayrollAction.MarkPaid, PayrollAction.CreateAdjustment },
-        PayrollRunStatus.Paid => new HashSet<PayrollAction> { PayrollAction.CreateAdjustment },
+        PayrollRunStatus.Posted => new HashSet<PayrollAction> { PayrollAction.MarkPaid, PayrollAction.CreateAdjustment, PayrollAction.Reverse },
+        PayrollRunStatus.Paid => new HashSet<PayrollAction> { PayrollAction.CreateAdjustment, PayrollAction.Reverse },
         PayrollRunStatus.Cancelled => new HashSet<PayrollAction>(),
         _ => new HashSet<PayrollAction>(),
     };
@@ -165,6 +165,120 @@ public class PayrollWorkflowService
         await context.SaveChangesAsync(ct);
 
         return adjustment.Id;
+    }
+
+
+    // BA item #2 — the ONLY way to change the numbers of a Posted/Paid run.
+    // The original stays byte-for-byte intact (a DB trigger also refuses
+    // UPDATE/DELETE on its employee/line rows once Posted); this creates a
+    // linked Adjustment run whose lines are the exact negation of the
+    // original's, already in Calculated status, so the two net to zero and
+    // the corrected figures go into a fresh run. Standard document-reversal
+    // semantics (SAP FB08 style): reverse, never edit.
+    public async Task<long> CreateReversalRunAsync(long originalRunId, long actorUserId, string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("ต้องระบุเหตุผลการกลับรายการ");
+
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var original = await LoadRunOrThrowAsync(context, originalRunId, ct);
+        EnsureAllowed(original.Status, PayrollAction.Reverse);
+
+        if (await context.Pay_PayrollRuns.AnyAsync(r => r.AdjustmentOfRunId == originalRunId && r.Remark != null && r.Remark.StartsWith("REVERSAL") && r.Status != PayrollRunStatus.Cancelled, ct))
+            throw new InvalidOperationException($"รอบ #{originalRunId} ถูกกลับรายการไปแล้ว — กลับรายการซ้ำไม่ได้");
+
+        var reversal = new Pay_PayrollRun
+        {
+            CompanyId = original.CompanyId,
+            PayrollPeriod = original.PayrollPeriod,
+            PeriodStart = original.PeriodStart,
+            PeriodEnd = original.PeriodEnd,
+            PayDate = original.PayDate,
+            RunType = PayrollRunType.Adjustment,
+            Status = PayrollRunStatus.Calculated,
+            AdjustmentOfRunId = original.Id,
+            CreatedByUserId = actorUserId,
+            CalculatedByUserId = actorUserId,
+            CalculatedDate = DateTime.Now,
+            Remark = $"REVERSAL of run #{original.Id}: {reason.Trim()}",
+        };
+        context.Pay_PayrollRuns.Add(reversal);
+        await context.SaveChangesAsync(ct);
+
+        var employees = await context.Pay_PayrollEmployees
+            .Include(e => e.Pay_PayrollLineItems)
+            .Where(e => e.PayrollRunId == originalRunId)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        foreach (var src in employees)
+        {
+            var neg = new Pay_PayrollEmployee
+            {
+                PayrollRunId = reversal.Id,
+                HremployeeId = src.HremployeeId,
+                EmpNo = src.EmpNo,
+                CompanyId = src.CompanyId,
+                ProrationFactor = src.ProrationFactor,
+                WorkingDaysInPeriod = src.WorkingDaysInPeriod,
+                ActualWorkingDays = src.ActualWorkingDays,
+                GrossEarnings = -src.GrossEarnings,
+                TotalDeductions = -src.TotalDeductions,
+                NetPay = -src.NetPay,
+                TaxAmount = -src.TaxAmount,
+                TaxDeductionAmount = -src.TaxDeductionAmount,
+                SocialSecurityAmount = -src.SocialSecurityAmount,
+                ProvidentFundEmployeeAmount = -src.ProvidentFundEmployeeAmount,
+                ProvidentFundCompanyAmount = -src.ProvidentFundCompanyAmount,
+                InsuranceEmployeeAmount = -src.InsuranceEmployeeAmount,
+                InsuranceCompanyAmount = -src.InsuranceCompanyAmount,
+                WelfareFundEmployeeAmount = -src.WelfareFundEmployeeAmount,
+                WelfareFundCompanyAmount = -src.WelfareFundCompanyAmount,
+                IsNegativeNetPayFlag = false,
+                IsExcluded = src.IsExcluded,
+                ExcludeReason = src.ExcludeReason,
+                BankCode = src.BankCode,
+                BankBranchCode = src.BankBranchCode,
+                BankAccountNo = src.BankAccountNo,
+                CostCenterCode = src.CostCenterCode,
+                Remark = $"กลับรายการจากรอบ #{original.Id}",
+            };
+            foreach (var li in src.Pay_PayrollLineItems.OrderBy(l => l.SeqNo))
+            {
+                neg.Pay_PayrollLineItems.Add(new Pay_PayrollLineItem
+                {
+                    PayItemTypeId = li.PayItemTypeId,
+                    SourceType = li.SourceType,
+                    SourceRefTable = "Pay_PayrollLineItem",
+                    SourceRefId = li.Id,
+                    Amount = -li.Amount,
+                    SignFlag = li.SignFlag,
+                    SeqNo = li.SeqNo,
+                    Description = $"กลับรายการ (reversal) ของรอบ #{original.Id}: {li.Description}",
+                });
+            }
+            context.Pay_PayrollEmployees.Add(neg);
+        }
+
+        context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
+        {
+            PayrollRunId = reversal.Id,
+            EventType = PayAuditEventType.StatusTransition,
+            ToStatus = PayrollRunStatus.Calculated,
+            ActorUserId = actorUserId,
+            Comment = $"Reversal run created from run #{original.Id} ({employees.Count} employees): {reason.Trim()}",
+        });
+        context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
+        {
+            PayrollRunId = original.Id,
+            EventType = PayAuditEventType.ManualAdjustment,
+            FromStatus = original.Status,
+            ToStatus = original.Status,
+            ActorUserId = actorUserId,
+            Comment = $"Reversed by run #{reversal.Id}: {reason.Trim()}",
+        });
+        await context.SaveChangesAsync(ct);
+        return reversal.Id;
     }
 
     private static void EnsureAllowed(PayrollRunStatus status, PayrollAction action)

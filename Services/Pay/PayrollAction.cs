@@ -8,5 +8,6 @@ public enum PayrollAction
     Post,
     MarkPaid,
     Cancel,
-    CreateAdjustment
+    CreateAdjustment,
+    Reverse
 }

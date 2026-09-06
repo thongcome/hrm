@@ -13,7 +13,7 @@ public sealed class PayrollCalcJobRegistry
 {
     public enum JobStatus { Running, Done, Failed }
 
-    public sealed record JobState(JobStatus Status, int Done, int Total, DateTime StartedAt, string? Error, PayrollRunCalculationSummary? Summary)
+    public sealed record JobState(JobStatus Status, int Done, int Total, DateTime StartedAt, string? Error, PayrollRunCalculationSummary? Summary, bool AnomalyRunning = false)
     {
         public double Percent => Total <= 0 ? 0 : Math.Round(100.0 * Done / Total, 1);
     }
@@ -24,7 +24,7 @@ public sealed class PayrollCalcJobRegistry
     // HR users (or a double-click) from calculating the same run concurrently.
     public bool TryStart(long runId)
     {
-        var fresh = new JobState(JobStatus.Running, 0, 0, DateTime.Now, null, null);
+        var fresh = new JobState(JobStatus.Running, 0, 0, DateTime.Now, null, null, false);
         if (_jobs.TryAdd(runId, fresh)) return true;
         // A finished/failed entry may be replaced; a running one may not.
         return _jobs.TryGetValue(runId, out var cur) && cur.Status != JobStatus.Running && _jobs.TryUpdate(runId, fresh, cur);
@@ -51,6 +51,13 @@ public sealed class PayrollCalcJobRegistry
     public JobState? Get(long runId) => _jobs.TryGetValue(runId, out var s) ? s : null;
 
     public bool IsRunning(long runId) => Get(runId)?.Status == JobStatus.Running;
+
+    // The ML anomaly pass runs AFTER the calculation is committed and reported
+    // Done, so the page can show final numbers immediately while this flag tells
+    // it "advisory analysis still in progress".
+    public void BeginAnomaly(long runId) { if (_jobs.TryGetValue(runId, out var cur)) _jobs[runId] = cur with { AnomalyRunning = true }; }
+    public void EndAnomaly(long runId) { if (_jobs.TryGetValue(runId, out var cur)) _jobs[runId] = cur with { AnomalyRunning = false }; }
+    public bool IsAnomalyRunning(long runId) => Get(runId)?.AnomalyRunning == true;
 
     // Called by the page once it has shown a finished/failed result, so a stale
     // entry doesn't linger forever.

@@ -20,6 +20,7 @@
 @inject JsonLocalizationService L
 @inject PayrollCalcJobRegistry CalcJobs
 @inject PayrollCalcJobService CalcJobService
+@inject PayrollPreflightService Preflight
 @implements IDisposable
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
@@ -106,7 +107,7 @@ else
                     </div>
                 </MudPaper>
             }
-            else if (_run.IsCalculating && !string.IsNullOrEmpty(_run.CalcError))
+            else if (!string.IsNullOrEmpty(_run.CalcError))
             {
                 <MudAlert Severity="Severity.Error" Class="mt-3">การคำนวณครั้งก่อนล้มเหลว: @_run.CalcError — กด "คำนวณ" เพื่อลองใหม่</MudAlert>
             }
@@ -116,6 +117,84 @@ else
                     พบว่าการคำนวณครั้งก่อนถูกขัดจังหวะ (เช่น เซิร์ฟเวอร์รีสตาร์ต) ตั้งแต่ @_run.CalcStartedAt?.ToString("dd/MM/yyyy HH:mm") — กด "คำนวณ" ใหม่ได้ ระบบจะล้างผลเก่าแล้วคำนวณซ้ำให้
                 </MudAlert>
             }
+            @* Phase B: pre-flight check — config errors, per-employee data issues,
+               the approval checklist (pending adhoc/OT that would be silently
+               excluded), and per-run employee holds with a reason. *@
+            <MudPaper Class="pa-3 mt-3" Outlined="true" Style="width:100%;">
+                <div class="d-flex align-center flex-wrap" style="gap:8px;">
+                    <MudIcon Icon="@Icons.Material.Filled.FactCheck" Color="Color.Primary" />
+                    <MudText Typo="Typo.subtitle1"><b>ตรวจสอบก่อนประมวลผล (Pre-flight)</b></MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="RunPreflightAsync" Disabled="@(_preflightBusy || _calcRunning)">
+                        @(_preflight is null ? "ตรวจสอบข้อมูล" : "ตรวจสอบอีกครั้ง")
+                    </MudButton>
+                    @if (_preflight is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@(_preflight.ErrorCount > 0 ? Color.Error : Color.Success)">ผิดพลาด @_preflight.ErrorCount</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@(_preflight.WarningCount > 0 ? Color.Warning : Color.Default)">เตือน @_preflight.WarningCount</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@(_preflight.PendingApprovals.Count > 0 ? Color.Warning : Color.Default)">รออนุมัติ @_preflight.PendingApprovals.Count</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">hold @_preflight.HeldCount</MudChip>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">จะคำนวณ @_preflight.EligibleCount.ToString("#,0") คน</MudText>
+                    }
+                </div>
+                @if (_preflightBusy) { <MudProgressLinear Indeterminate="true" Class="mt-2" /> }
+                @if (_preflight is not null)
+                {
+                    @if (_preflight.ReadyToCalculate)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">ข้อมูลพร้อม ไม่พบข้อผิดพลาดและไม่มีรายการรออนุมัติ — คำนวณได้</MudAlert>
+                    }
+                    @foreach (var ce in _preflight.ConfigErrors)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@ce</MudAlert>
+                    }
+                    @if (_preflight.PendingApprovals.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">✅ Checklist: ต้องอนุมัติก่อนประมวลผล (@_preflight.PendingApprovals.Count รายการ) — ถ้าไม่อนุมัติ รายการเหล่านี้จะไม่ถูกนำมาคำนวณ</MudText>
+                        <MudTable Items="_preflight.PendingApprovals" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent><MudTh>ประเภท</MudTh><MudTh>รหัส</MudTh><MudTh>พนักงาน</MudTh><MudTh>รายละเอียด</MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Warning">@context.Kind</MudChip></MudTd>
+                                <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Detail</MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager PageSizeOptions="new[] { 20, 50, 100 }" /></PagerContent>
+                        </MudTable>
+                    }
+                    @if (_preflight.Issues.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">ข้อมูลพนักงานที่ต้องตรวจ (@_preflight.Issues.Count)</MudText>
+                        <div class="d-flex align-center flex-wrap mb-1" style="gap:8px;">
+                            <MudTextField T="string" @bind-Value="_holdReason" Label="เหตุผลการ hold (ใช้กับปุ่ม hold ด้านล่าง)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:320px;" />
+                        </div>
+                        <MudTable Items="_preflight.Issues" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent><MudTh>ระดับ</MudTh><MudTh>รหัส</MudTh><MudTh>พนักงาน</MudTh><MudTh>ปัญหา</MudTh><MudTh></MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Severity == PayrollPreflightService.Severity.Error ? Color.Error : Color.Warning)">@(context.Severity == PayrollPreflightService.Severity.Error ? "ผิดพลาด" : "เตือน")</MudChip></MudTd>
+                                <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Message</MudTd>
+                                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info" OnClick="@(() => HoldEmployeeAsync(context.HremployeeId))" Disabled="_calcRunning">hold คนนี้</MudButton></MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager PageSizeOptions="new[] { 20, 50, 100 }" /></PagerContent>
+                        </MudTable>
+                    }
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">พนักงานที่ hold ไว้ (@_preflight.Holds.Count) — ถูกข้ามในรอบนี้ นำไปคำนวณรอบถัดไป</MudText>
+                    <div class="d-flex align-center flex-wrap mb-1" style="gap:8px;">
+                        <MudTextField T="string" @bind-Value="_holdEmpNo" Label="รหัสพนักงานที่จะ hold" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:200px;" />
+                        <MudTextField T="string" @bind-Value="_holdReason" Label="เหตุผล" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:280px;" />
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Info" OnClick="HoldByEmpNoAsync" Disabled="_calcRunning">hold</MudButton>
+                    </div>
+                    @if (_preflight.Holds.Count > 0)
+                    {
+                        <MudTable Items="_preflight.Holds" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent><MudTh>รหัส</MudTh><MudTh>พนักงาน</MudTh><MudTh>เหตุผล</MudTh><MudTh>เมื่อ</MudTh><MudTh></MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Reason</MudTd>
+                                <MudTd>@context.HeldDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => ReleaseHoldAsync(context.Id))" Disabled="_calcRunning">ปล่อย</MudButton></MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager PageSizeOptions="new[] { 20, 50, 100 }" /></PagerContent>
+                        </MudTable>
+                    }
+                }
+            </MudPaper>
             @if (_allowed.Contains(PayrollAction.SubmitForReview))
             {
                 <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="_busy">@L.Translate("SubmitForReviewButton")</MudButton>
@@ -139,6 +218,22 @@ else
             @if (_allowed.Contains(PayrollAction.CreateAdjustment))
             {
                 <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">@L.Translate("CreateAdjustmentButton")</MudButton>
+            }
+            @if (_allowed.Contains(PayrollAction.Reverse))
+            {
+                <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="@(() => _showReverse = !_showReverse)" Disabled="_busy">@L.Translate("ReverseRunButton")</MudButton>
+            }
+            @if (_showReverse && _allowed.Contains(PayrollAction.Reverse))
+            {
+                @* BA item #2: a Posted/Paid run is immutable (DB triggers refuse edits to its
+                   rows). The only correction path is a reversal run that negates every line. *@
+                <MudPaper Class="pa-3 mt-2" Outlined="true" Style="width:100%;">
+                    <MudText Typo="Typo.body2" Class="mb-2">@L.Translate("ReverseRunReasonPrompt")</MudText>
+                    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+                        <MudTextField T="string" @bind-Value="_reverseReason" Label="เหตุผล" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:360px;" />
+                        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ReverseRunAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_reverseReason))">ยืนยันกลับรายการ</MudButton>
+                    </div>
+                </MudPaper>
             }
             @if (_canGenerateDocuments)
             {
@@ -210,9 +305,13 @@ else
                         <MudSelectItem T="long?" Value="r.Id">@r.PayrollPeriod (@L.Translate("PayrollRunType_" + r.RunType))</MudSelectItem>
                     }
                 </MudSelect>
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="RerunAnomalyDetectionAsync" Disabled="_busy">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="RerunAnomalyDetectionAsync" Disabled="@(_busy || _anomalyPending)">
                     @L.Translate("AnomalyRerunButton")
                 </MudButton>
+                @if (_anomalyPending)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.HourglassTop">กำลังตรวจหาความผิดปกติ (AI) ในพื้นหลัง — ตัวเลขเงินเดือนด้านบนสมบูรณ์แล้ว</MudChip>
+                }
             </MudStack>
         }
 
@@ -221,7 +320,8 @@ else
         {
             <MudAlert Severity="Severity.Warning" Class="mt-3">
                 <MudText Typo="Typo.subtitle2" Class="mb-2">@string.Format(L.Translate("AnomalyDetectedTemplate"), pendingAnomalies.Count)</MudText>
-                @foreach (var anomaly in pendingAnomalies)
+                @if (pendingAnomalies.Count > AnomalyDisplayCap) { <MudText Typo="Typo.caption" Class="mb-2 d-block">แสดง @AnomalyDisplayCap รายการแรก (เรียงตามความรุนแรง) จากทั้งหมด @pendingAnomalies.Count.ToString("#,0") — กด "รับทราบ" หรือดูรายพนักงานเพื่อไล่ที่เหลือ</MudText> }
+                @foreach (var anomaly in pendingAnomalies.OrderByDescending(a => (int)a.Severity).Take(AnomalyDisplayCap))
                 {
                     var empNo = anomaly.PayrollEmployeeId is long peid
                         ? _employees.FirstOrDefault(e => e.Employee.Id == peid)?.Employee.EmpNo
@@ -297,6 +397,7 @@ else
                     </MudButton>
                 </MudTd>
             </RowTemplate>
+            <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" /></PagerContent>
             <NoRecordsContent>
                 <MudText>@L.Translate("NotCalculatedYetMessage")</MudText>
             </NoRecordsContent>
@@ -361,6 +462,22 @@ else
     private int _calcTotal;
     private double _calcPercent;
     private System.Threading.Timer? _calcPoll;
+
+    // Anomaly (ML) analysis runs as a second phase after the calculation is Done.
+    private bool _anomalyPending;
+    // A first-ever run with no baseline can flag 10k+ anomalies; rendering them all
+    // freezes the browser. Show the worst N, the count tells HR the true size.
+    private const int AnomalyDisplayCap = 50;
+
+    // #2 reversal of a Posted/Paid run
+    private bool _showReverse;
+    private string _reverseReason = "";
+
+    // Phase B pre-flight / holds
+    private PayrollPreflightService.Report? _preflight;
+    private bool _preflightBusy;
+    private string _holdReason = "";
+    private string _holdEmpNo = "";
 
     private int _negativeCount;
     private int _pendingAdhocCount;
@@ -546,6 +663,14 @@ else
     {
         try
         {
+            // Phase B: if the last pre-flight found blocking errors or unapproved
+            // period items, make HR confirm — those items will be excluded/wrong.
+            if (_preflight is not null && !_preflight.ReadyToCalculate)
+            {
+                var msg = $"Pre-flight พบ: ผิดพลาด {_preflight.ErrorCount} รายการ, รออนุมัติ {_preflight.PendingApprovals.Count} รายการ (จะไม่ถูกนำมาคำนวณ) — ต้องการคำนวณต่อเลยหรือไม่?";
+                var go = await DialogService.ShowMessageBox("ข้อมูลยังไม่พร้อมทั้งหมด", msg, yesText: "คำนวณต่อ", cancelText: "กลับไปแก้ก่อน");
+                if (go != true) return;
+            }
             var uid = await GetCurrentUserIdAsync();
             var started = await CalcJobService.StartAsync(RunId, uid);
             if (!started)
@@ -556,6 +681,45 @@ else
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
+    }
+
+    private async Task RunPreflightAsync()
+    {
+        _preflightBusy = true;
+        try { _preflight = await Preflight.CheckAsync(RunId); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _preflightBusy = false; }
+    }
+
+    private async Task HoldEmployeeAsync(long hremployeeId)
+    {
+        if (string.IsNullOrWhiteSpace(_holdReason)) { Snackbar.Add("กรุณาใส่เหตุผลการ hold ก่อน", Severity.Warning); return; }
+        try
+        {
+            await Preflight.HoldAsync(RunId, hremployeeId, _holdReason, await GetCurrentUserIdAsync());
+            Snackbar.Add("hold พนักงานแล้ว — จะถูกข้ามในรอบนี้", Severity.Success);
+            await RunPreflightAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task HoldByEmpNoAsync()
+    {
+        if (_run is null) return;
+        if (string.IsNullOrWhiteSpace(_holdEmpNo) || string.IsNullOrWhiteSpace(_holdReason)) { Snackbar.Add("ใส่รหัสพนักงานและเหตุผล", Severity.Warning); return; }
+        try
+        {
+            var ok = await Preflight.HoldByEmpNoAsync(RunId, _run.CompanyId, _holdEmpNo, _holdReason, await GetCurrentUserIdAsync());
+            Snackbar.Add(ok ? $"hold {_holdEmpNo} แล้ว" : $"ไม่พบพนักงาน {_holdEmpNo} ในบริษัทนี้", ok ? Severity.Success : Severity.Error);
+            if (ok) { _holdEmpNo = ""; await RunPreflightAsync(); }
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ReleaseHoldAsync(long holdId)
+    {
+        try { await Preflight.ReleaseAsync(holdId, await GetCurrentUserIdAsync()); Snackbar.Add("ปล่อย hold แล้ว", Severity.Success); await RunPreflightAsync(); }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
 
     private void StartCalcPolling()
@@ -578,15 +742,48 @@ else
             return;
         }
 
-        // Finished (Done or Failed): stop polling, reload the grid, tell the user.
+        // Calculation finished (Done or Failed). Show the numbers right away;
+        // the ML anomaly pass may still be running as a second phase — keep a
+        // light poll going until it ends, then refresh the anomaly list.
+        if (_calcRunning)
+        {
+            _calcRunning = false;
+            if (state.Status == PayrollCalcJobRegistry.JobStatus.Done)
+                Snackbar.Add(L.Translate("CalculatedSuccess"), Severity.Success);
+            else
+                Snackbar.Add($"คำนวณไม่สำเร็จ: {state.Error}", Severity.Error);
+            await SafeReloadAsync();
+        }
+
+        if (state.AnomalyRunning)
+        {
+            _anomalyPending = true;
+            StateHasChanged();
+            return;
+        }
+
         _calcPoll?.Dispose(); _calcPoll = null;
-        _calcRunning = false;
-        if (state.Status == PayrollCalcJobRegistry.JobStatus.Done)
-            Snackbar.Add(L.Translate("CalculatedSuccess"), Severity.Success);
-        else
-            Snackbar.Add($"คำนวณไม่สำเร็จ: {state.Error}", Severity.Error);
         CalcJobs.Clear(RunId);
-        await LoadAsync();
+        if (_anomalyPending)
+        {
+            _anomalyPending = false;
+            Snackbar.Add("ตรวจหาความผิดปกติ (AI) เสร็จแล้ว", Severity.Info);
+            await SafeReloadAsync();
+        }
+        StateHasChanged();
+    }
+
+    // The poll runs inside a timer callback: an exception there (typically a
+    // 30 s SQL timeout while another 7,000-employee run is calculating on the
+    // same server) would otherwise escape unobserved and leave the page frozen
+    // in its last state. Report it and let the user refresh instead.
+    private async Task SafeReloadAsync()
+    {
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"โหลดข้อมูลรอบไม่สำเร็จ (เซิร์ฟเวอร์กำลังทำงานหนัก): {ex.GetBaseException().Message} — กด Refresh หน้าอีกครั้ง", Severity.Warning);
+        }
         StateHasChanged();
     }
 
@@ -626,6 +823,26 @@ else
         if (confirmed != true) return;
 
         await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), L.Translate("RunCancelledSuccess"));
+    }
+
+    private async Task ReverseRunAsync()
+    {
+        _busy = true;
+        try
+        {
+            var actorUserId = await GetCurrentUserIdAsync();
+            var newRunId = await WorkflowService.CreateReversalRunAsync(RunId, actorUserId, _reverseReason);
+            Snackbar.Add($"สร้างรอบกลับรายการ #{newRunId} แล้ว — รอบเดิม #{RunId} ไม่ถูกแก้", Severity.Success);
+            Navigation.NavigateTo($"/pay/runs/{newRunId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task CreateAdjustmentAsync()

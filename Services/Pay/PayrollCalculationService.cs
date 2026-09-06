@@ -46,9 +46,14 @@ public class PayrollCalculationService
     // `progress` (optional) receives (done, total) as employees are processed —
     // throttled to ~100 reports per run so a 7,000-employee company doesn't
     // flood the caller. Callers that don't care pass null.
-    public async Task<PayrollRunCalculationSummary> CalculateAsync(long payrollRunId, long actorUserId, IProgress<(int Done, int Total)>? progress = null, CancellationToken ct = default)
+    public async Task<PayrollRunCalculationSummary> CalculateAsync(long payrollRunId, long actorUserId, IProgress<(int Done, int Total)>? progress = null, CancellationToken ct = default, bool runAnomalyDetection = true)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        // A 7,000-employee run commits ~23,000 rows (employees + line items + the
+        // audit interceptor's rows) in one SaveChanges; on a loaded server that
+        // legitimately exceeds the 30 s default and failed a real run with
+        // "Execution Timeout Expired" while another job and a build shared the box.
+        context.Database.SetCommandTimeout(TimeSpan.FromMinutes(15));
 
         var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == payrollRunId, ct)
             ?? throw new InvalidOperationException($"Pay_PayrollRun {payrollRunId} not found.");
@@ -64,23 +69,31 @@ public class PayrollCalculationService
 
         if (existingEmployeeIds.Count > 0)
         {
-            context.Pay_PayrollLineItems.RemoveRange(
-                context.Pay_PayrollLineItems.Where(li => existingEmployeeIds.Contains(li.PayrollEmployeeId)));
-            // Pay_PayrollAuditLog.PayrollEmployeeId is a Restrict FK (deliberately, to
-            // avoid SQL Server's "multiple cascade paths" error against the direct
-            // Run->AuditLog cascade) — it must be cleared explicitly before the
-            // employee rows can be deleted, or this throws a DbUpdateException.
-            context.Pay_PayrollAuditLogs.RemoveRange(
-                context.Pay_PayrollAuditLogs.Where(a => a.PayrollEmployeeId != null && existingEmployeeIds.Contains(a.PayrollEmployeeId.Value)));
-            // Pay_PayrollAnomaly.PayrollEmployeeId is also a Restrict FK for the same
-            // reason as the audit log above — clear it before the employee rows can be
-            // deleted. DetectAnomaliesAsync() re-detects and re-inserts fresh anomaly
-            // rows against the new Pay_PayrollEmployee rows later in this method.
-            context.Pay_PayrollAnomalies.RemoveRange(
-                context.Pay_PayrollAnomalies.Where(a => a.PayrollEmployeeId != null && existingEmployeeIds.Contains(a.PayrollEmployeeId.Value)));
-            context.Pay_PayrollEmployees.RemoveRange(
-                context.Pay_PayrollEmployees.Where(e => e.PayrollRunId == payrollRunId));
-            await context.SaveChangesAsync(ct);
+            // Bulk set-based deletes (ExecuteDeleteAsync) on purpose. The previous
+            // RemoveRange + SaveChanges path change-tracked every row and the audit
+            // interceptor wrote one AuditLog row per deleted entity — on a 6,788-
+            // employee recalculation that is ~36,000 tracked deletes (employees +
+            // line items + anomalies) and took minutes of CPU before the first
+            // employee was even processed ("กำลังเตรียมข้อมูล" hanging). These rows
+            // are derived calculation output, regenerated immediately below; the
+            // run-level Pay_PayrollAuditLog transition row is the audit record.
+            //
+            // Order matters: Pay_PayrollAuditLog.PayrollEmployeeId and
+            // Pay_PayrollAnomaly.PayrollEmployeeId are Restrict FKs (deliberately, to
+            // avoid SQL Server's "multiple cascade paths" against Run->AuditLog), so
+            // they must go before the employee rows or the delete throws.
+            await context.Pay_PayrollLineItems
+                .Where(li => li.Pay_PayrollEmployee.PayrollRunId == payrollRunId)
+                .ExecuteDeleteAsync(ct);
+            await context.Pay_PayrollAuditLogs
+                .Where(a => a.PayrollEmployeeId != null && a.Pay_PayrollEmployee!.PayrollRunId == payrollRunId)
+                .ExecuteDeleteAsync(ct);
+            await context.Pay_PayrollAnomalies
+                .Where(a => a.PayrollEmployeeId != null && a.Pay_PayrollEmployee!.PayrollRunId == payrollRunId)
+                .ExecuteDeleteAsync(ct);
+            await context.Pay_PayrollEmployees
+                .Where(e => e.PayrollRunId == payrollRunId)
+                .ExecuteDeleteAsync(ct);
         }
 
         var payItemTypes = await context.Pay_PayItemTypes.ToDictionaryAsync(t => t.Code, ct);
@@ -124,6 +137,15 @@ public class PayrollCalculationService
                         && e.WorkDate != null && e.WorkDate <= periodEndDt
                         && (e.ResignDate == null || e.ResignDate >= periodStartDt))
             .ToListAsync(ct);
+
+        // Phase B: employees HR placed on hold for THIS run (data not ready, dispute,
+        // documents pending) are skipped here and calculated in a later run.
+        var heldEmployeeIds = await context.Pay_PayrollRunHolds
+            .Where(h => h.PayrollRunId == payrollRunId && h.IsActive)
+            .Select(h => h.HremployeeId)
+            .ToListAsync(ct);
+        if (heldEmployeeIds.Count > 0)
+            eligibleEmployees = eligibleEmployees.Where(e => !heldEmployeeIds.Contains(e.id)).ToList();
 
         var pfElections = await context.Pay_ProvidentFundElections
             .Where(pe => pe.IsActive
@@ -239,7 +261,7 @@ public class PayrollCalculationService
             // Welfare monthly allowances — per-person amount via the resolver's
             // pure Pick (company default / position / individual). Emitted as
             // earning lines sourced from Wel_BenefitType.
-            decimal welfareAllowanceTotal = 0m, welfareTaxableAllowance = 0m;
+            decimal welfareAllowanceTotal = 0m, welfareTaxableAllowance = 0m, ssoWageBaseAllowance = 0m;
             if (monthlyAllowanceBenefits.Count > 0)
             {
                 long? empPos = empPosExecTypes.TryGetValue(emp.id, out var pv) ? pv : null;
@@ -250,19 +272,34 @@ public class PayrollCalculationService
                     var amt = HRM.Services.Welfare.WelfareEntitlementResolver.Pick(wb, rules, empPos, emp.id).Amount ?? 0m;
                     if (amt <= 0) continue;
                     var itemType = wb.PayItemTypeId is int pid && payItemTypesById.TryGetValue(pid, out var t) ? t : payItemTypes["ALLOWANCE"];
+                    // Pay Element flag: a pro-rated element is scaled by the same working-day
+                    // factor as base salary (a mid-month joiner gets a partial allowance).
+                    var prorateNote = "";
+                    if (itemType.IsProrated && proration.ProrationFactor != 1m)
+                    {
+                        amt = Math.Round(amt * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
+                        prorateNote = $" × สัดส่วนวันทำงาน {proration.ProrationFactor:P2}";
+                    }
                     lineItems.Add(NewLine(itemType, PayLineSourceType.Allowance, amt, 1, ++seq, "Wel_BenefitType", wb.Id,
-                        $"สวัสดิการจ่ายประจำ {wb.NameTh} = {amt:N2}"));
+                        $"สวัสดิการจ่ายประจำ {wb.NameTh}{prorateNote} = {amt:N2}"));
                     welfareAllowanceTotal += amt;
                     if (wb.IsTaxable) welfareTaxableAllowance += amt;
+                    if (itemType.IsSsoWageBase) ssoWageBaseAllowance += amt;
                 }
             }
 
             var grossEarnings = baseSalary + otAmount + welfareAllowanceTotal;
 
-            var ssoAmount = SocialSecurityCalculator.Calculate(grossEarnings, ssoRate, ssoCap);
+            // Social-security wage base follows the Pay Element catalog flags: only
+            // elements marked IsSsoWageBase count (base salary + regular allowances by
+            // default; OT and one-off items are excluded, as Thai SSO defines ค่าจ้าง).
+            var ssoWageBase = (payItemTypes["BASE"].IsSsoWageBase ? baseSalary : 0m)
+                            + (payItemTypes["OT"].IsSsoWageBase ? otAmount : 0m)
+                            + ssoWageBaseAllowance;
+            var ssoAmount = SocialSecurityCalculator.Calculate(ssoWageBase, ssoRate, ssoCap);
             if (ssoAmount != 0)
                 lineItems.Add(NewLine(payItemTypes["SSO"], PayLineSourceType.SocialSecurity, ssoAmount, -1, ++seq, null, null,
-                    $"{ssoRate:0.##}% ของค่าจ้างที่คำนวณได้ {grossEarnings:N2} (เพดานฐานคำนวณ {ssoCap:N2}) = {ssoAmount:N2}"));
+                    $"{ssoRate:0.##}% ของฐานค่าจ้างประกันสังคม {ssoWageBase:N2} (เฉพาะรายการที่ตั้งธง \"ฐาน SSO\" ในแค็ตตาล็อก; เพดาน {ssoCap:N2}) = {ssoAmount:N2}"));
 
             var election = pfElections.FirstOrDefault(pe => pe.HremployeeId == emp.id);
             var pfEmployeeRate = election?.EmployeeContributionRate ?? emp.ProvfEmprate ?? 0m;
@@ -454,14 +491,20 @@ public class PayrollCalculationService
 
         // Best-effort — anomaly detection is purely advisory and must never
         // stop a payroll run from being calculated. If ML.NET or a query in
-        // here throws, log it and let the calculation stand.
-        try
+        // here throws, log it and let the calculation stand. The background job
+        // (PayrollCalcJobService) passes runAnomalyDetection:false and runs this
+        // pass itself AFTER signalling Done, so the 2-3 min ML tail no longer
+        // sits on the critical path of a 7,000-employee run.
+        if (runAnomalyDetection)
         {
-            await _anomalyDetectionService.DetectAnomaliesAsync(payrollRunId, ct: ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Anomaly detection failed for payroll run {PayrollRunId}", payrollRunId);
+            try
+            {
+                await _anomalyDetectionService.DetectAnomaliesAsync(payrollRunId, ct: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Anomaly detection failed for payroll run {PayrollRunId}", payrollRunId);
+            }
         }
 
         return new PayrollRunCalculationSummary(eligibleEmployees.Count, negativeCount, totalNet);

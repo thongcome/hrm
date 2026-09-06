@@ -61,10 +61,29 @@ public sealed class PayrollCalcJobService(
 
         try
         {
-            var summary = await calc.CalculateAsync(runId, actorUserId, progress, CancellationToken.None);
+            // Calculation only — the ML anomaly pass is deliberately NOT on the
+            // critical path any more: numbers are committed and Done is signalled
+            // first, then the advisory analysis runs as a second phase below.
+            var summary = await calc.CalculateAsync(runId, actorUserId, progress, CancellationToken.None, runAnomalyDetection: false);
+            registry.BeginAnomaly(runId);
             registry.Complete(runId, summary);
             await ClearInFlightAsync(dbFactory, runId, error: null);
-            logger.LogInformation("Payroll run {RunId}: background calculation finished ({Count} employees).", runId, summary.EmployeeCount);
+            logger.LogInformation("Payroll run {RunId}: background calculation finished ({Count} employees); starting anomaly analysis.", runId, summary.EmployeeCount);
+
+            try
+            {
+                var anomaly = scope.ServiceProvider.GetRequiredService<PayrollAnomalyDetectionService>();
+                var found = await anomaly.DetectAnomaliesAsync(runId, ct: CancellationToken.None);
+                logger.LogInformation("Payroll run {RunId}: anomaly analysis finished ({Found} flagged).", runId, found);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Payroll run {RunId}: anomaly analysis failed (calculation itself is complete).", runId);
+            }
+            finally
+            {
+                registry.EndAnomaly(runId);
+            }
         }
         catch (Exception ex)
         {

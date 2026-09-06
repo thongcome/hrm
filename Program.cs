@@ -525,6 +525,8 @@ builder.Services.AddScoped<HRM.Services.Hrd.HrdCycleService>();
 builder.Services.AddScoped<HRM.Services.Pay.PayDateService>();
 builder.Services.AddSingleton<HRM.Services.Pay.PayrollCalcJobRegistry>();
 builder.Services.AddSingleton<HRM.Services.Pay.PayrollCalcJobService>();
+// Phase B payroll: pre-flight validation + approval checklist + per-run employee holds
+builder.Services.AddScoped<HRM.Services.Pay.PayrollPreflightService>();
 builder.Services.AddScoped<HRM.Services.Idp.IdpPlanService>();
 // ----- end Idp_* module -----
 

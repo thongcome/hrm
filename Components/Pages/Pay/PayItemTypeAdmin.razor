@@ -1,0 +1,266 @@
+@page "/pay/admin/pay-item-types"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+@* Pay Element catalog (BA item #1). Every earning/deduction the engine can
+   emit is a row here, and the row's FLAGS — not code — decide how the engine
+   treats it: taxable or not, counted in the social-security wage base or not,
+   pro-rated by working days or not, and which GL account it posts to. HR
+   adds a new element (e.g. ค่าครองชีพ, ค่าเสี่ยงภัย) without a deploy;
+   system-reserved codes the engine indexes by key can be edited but never
+   renamed or blocked. *@
+
+<PageTitle>ประเภทรายการเงินได้-เงินหัก</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center flex-wrap" style="gap:8px;">
+        <MudText Typo="Typo.h5">ประเภทรายการเงินได้-เงินหัก (Pay Element Catalog)</MudText>
+    </div>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แค็ตตาล็อกรายการที่เครื่องคำนวณเงินเดือนใช้ — ธง <b>คิดภาษี</b> / <b>ฐานประกันสังคม</b> / <b>คิดตามวันทำงาน</b> และ <b>บัญชี GL</b> ของแต่ละรายการคือสิ่งที่กำหนดพฤติกรรมตอนประมวลผล
+        รายการที่ระบบสงวนไว้ (BASE, OT, SSO, TAX …) แก้ชื่อ/ธงได้ แต่เปลี่ยนรหัสหรือปิดใช้งานไม่ได้
+    </MudText>
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Label="ค้นหา (รหัส / ชื่อ / GL)" Immediate="true" DebounceInterval="300"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mt-3" Style="max-width:420px;" />
+
+    <MudTable Items="_filtered" Dense="true" Hover="true" Elevation="0" Class="mt-2" Loading="_loading">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ (ไทย)</MudTh>
+            <MudTh>ชื่อ (EN)</MudTh>
+            <MudTh>หมวด</MudTh>
+            <MudTh>เครื่องหมาย</MudTh>
+            <MudTh>คิดภาษี</MudTh>
+            <MudTh>ฐาน SSO</MudTh>
+            <MudTh>ตามวันทำงาน</MudTh>
+            <MudTh>บัญชี GL</MudTh>
+            <MudTh>ลำดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @if (_editing?.Id == context.Id)
+            {
+                <MudTd><MudTextField T="string" @bind-Value="_editing.Code" Disabled="context.IsSystemReserved" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:130px;" /></MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="_editing.NameTh" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="_editing.NameEn" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
+                <MudTd>
+                    <MudSelect T="PayItemCategory" @bind-Value="_editing.Category" Margin="Margin.Dense" Variant="Variant.Outlined" Disabled="context.IsSystemReserved">
+                        <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Earning">เงินได้</MudSelectItem>
+                        <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Deduction">เงินหัก</MudSelectItem>
+                        <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Informational">แสดงอย่างเดียว</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+                <MudTd>
+                    <MudSelect T="int" @bind-Value="_editing.DefaultSignFlag" Margin="Margin.Dense" Variant="Variant.Outlined" Disabled="context.IsSystemReserved">
+                        <MudSelectItem T="int" Value="1">+ บวก</MudSelectItem>
+                        <MudSelectItem T="int" Value="-1">− หัก</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsTaxable" /></MudTd>
+                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsSsoWageBase" /></MudTd>
+                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsProrated" /></MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="_editing.GLAccountCode" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:110px;" /></MudTd>
+                <MudTd><MudNumericField T="int" @bind-Value="_editing.SortOrder" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:80px;" /></MudTd>
+                <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิด")</MudTd>
+                <MudTd style="white-space:nowrap;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" Size="Size.Small" OnClick="SaveEditAsync" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _editing = null)" />
+                </MudTd>
+            }
+            else
+            {
+                <MudTd><b>@context.Code</b> @if (context.IsSystemReserved) { <MudChip T="string" Size="Size.Small" Color="Color.Default">ระบบ</MudChip> }</MudTd>
+                <MudTd>@context.NameTh</MudTd>
+                <MudTd>@context.NameEn</MudTd>
+                <MudTd>@CategoryLabel(context.Category)</MudTd>
+                <MudTd>@(context.DefaultSignFlag > 0 ? "+" : "−")</MudTd>
+                <MudTd>@Flag(context.IsTaxable)</MudTd>
+                <MudTd>@Flag(context.IsSsoWageBase)</MudTd>
+                <MudTd>@Flag(context.IsProrated)</MudTd>
+                <MudTd>@context.GLAccountCode</MudTd>
+                <MudTd>@context.SortOrder</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "ใช้งาน" : "ปิด")</MudChip></MudTd>
+                <MudTd style="white-space:nowrap;">
+                    @if (_rights?.CanEdit == true)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => BeginEdit(context))" />
+                    }
+                    @if (_rights?.CanDelete == true && !context.IsSystemReserved)
+                    {
+                        <MudIconButton Icon="@(context.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.Undo)" Size="Size.Small"
+                                       Color="@(context.IsActive ? Color.Error : Color.Success)" OnClick="@(() => ToggleActiveAsync(context))" />
+                    }
+                </MudTd>
+            }
+        </RowTemplate>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+@if (_rights?.CanCreate == true)
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" Class="mb-2">เพิ่มรายการใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="2"><MudTextField T="string" @bind-Value="_new.Code" Label="รหัส (A-Z, 0-9, _)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_new.NameTh" Label="ชื่อ (ไทย)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_new.NameEn" Label="ชื่อ (EN)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="PayItemCategory" @bind-Value="_new.Category" Label="หมวด" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Earning">เงินได้</MudSelectItem>
+                    <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Deduction">เงินหัก</MudSelectItem>
+                    <MudSelectItem T="PayItemCategory" Value="PayItemCategory.Informational">แสดงอย่างเดียว</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2"><MudTextField T="string" @bind-Value="_new.GLAccountCode" Label="บัญชี GL" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsTaxable" Label="คิดภาษี" /></MudItem>
+            <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsSsoWageBase" Label="นับเป็นฐานประกันสังคม" /></MudItem>
+            <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsProrated" Label="คิดตามวันทำงาน" /></MudItem>
+            <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_new.SortOrder" Label="ลำดับ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="4"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">เพิ่ม</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    private const string ProgramPath = "/pay/admin/pay-item-types";
+    private ProgramRoleService.ProgramRights? _rights;
+    private List<Pay_PayItemType> _all = new();
+    private List<Pay_PayItemType> _filtered = new();
+    private string _search = "";
+    private bool _loading;
+    private Pay_PayItemType? _editing;
+    private Pay_PayItemType _new = new() { IsTaxable = true, SortOrder = 50 };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _all = await ctx.Pay_PayItemTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.Id).ToListAsync();
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void OnSearchChanged(string v) { _search = v ?? ""; ApplyFilter(); }
+
+    private void ApplyFilter()
+    {
+        var s = _search.Trim();
+        _filtered = string.IsNullOrEmpty(s) ? _all.ToList()
+            : _all.Where(t => (t.Code?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                           || (t.NameTh?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                           || (t.NameEn?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                           || (t.GLAccountCode?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    private void BeginEdit(Pay_PayItemType t) => _editing = new Pay_PayItemType
+    {
+        Id = t.Id, Code = t.Code, NameTh = t.NameTh, NameEn = t.NameEn, Category = t.Category, DefaultSignFlag = t.DefaultSignFlag,
+        IsSystemReserved = t.IsSystemReserved, GLAccountCode = t.GLAccountCode, IsActive = t.IsActive, SortOrder = t.SortOrder,
+        IsTaxable = t.IsTaxable, IsSsoWageBase = t.IsSsoWageBase, IsProrated = t.IsProrated,
+    };
+
+    private static string? ValidateCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "ต้องระบุรหัส";
+        if (code.Length > 20 || !code.All(c => char.IsAsciiLetterOrDigit(c) || c == '_')) return "รหัสต้องเป็น A-Z, 0-9, _ ไม่เกิน 20 ตัว";
+        return null;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_editing is null) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        _editing.Code = (_editing.Code ?? "").Trim().ToUpperInvariant();
+        if (ValidateCode(_editing.Code) is string bad) { Snackbar.Add(bad, Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_editing.NameTh) || string.IsNullOrWhiteSpace(_editing.NameEn)) { Snackbar.Add("ต้องระบุชื่อไทยและอังกฤษ", Severity.Warning); return; }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var row = await ctx.Pay_PayItemTypes.FirstOrDefaultAsync(t => t.Id == _editing.Id);
+        if (row is null) { Snackbar.Add("ไม่พบรายการ", Severity.Error); return; }
+        if (await ctx.Pay_PayItemTypes.AnyAsync(t => t.Code == _editing.Code && t.Id != _editing.Id)) { Snackbar.Add($"รหัส {_editing.Code} มีอยู่แล้ว", Severity.Warning); return; }
+        if (!row.IsSystemReserved) { row.Code = _editing.Code; row.Category = _editing.Category; row.DefaultSignFlag = _editing.DefaultSignFlag; }
+        row.NameTh = _editing.NameTh.Trim(); row.NameEn = _editing.NameEn.Trim();
+        row.GLAccountCode = string.IsNullOrWhiteSpace(_editing.GLAccountCode) ? null : _editing.GLAccountCode.Trim();
+        row.SortOrder = _editing.SortOrder;
+        row.IsTaxable = _editing.IsTaxable; row.IsSsoWageBase = _editing.IsSsoWageBase; row.IsProrated = _editing.IsProrated;
+        await ctx.SaveChangesAsync();
+        _editing = null;
+        Snackbar.Add("บันทึกแล้ว — มีผลกับรอบที่คำนวณหลังจากนี้", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        _new.Code = (_new.Code ?? "").Trim().ToUpperInvariant();
+        if (ValidateCode(_new.Code) is string bad) { Snackbar.Add(bad, Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(_new.NameTh) || string.IsNullOrWhiteSpace(_new.NameEn)) { Snackbar.Add("ต้องระบุชื่อไทยและอังกฤษ", Severity.Warning); return; }
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        if (await ctx.Pay_PayItemTypes.AnyAsync(t => t.Code == _new.Code)) { Snackbar.Add($"รหัส {_new.Code} มีอยู่แล้ว", Severity.Warning); return; }
+        ctx.Pay_PayItemTypes.Add(new Pay_PayItemType
+        {
+            Code = _new.Code, NameTh = _new.NameTh.Trim(), NameEn = _new.NameEn.Trim(), Category = _new.Category,
+            DefaultSignFlag = _new.Category == PayItemCategory.Deduction ? -1 : 1,
+            GLAccountCode = string.IsNullOrWhiteSpace(_new.GLAccountCode) ? null : _new.GLAccountCode.Trim(),
+            IsTaxable = _new.IsTaxable, IsSsoWageBase = _new.IsSsoWageBase, IsProrated = _new.IsProrated,
+            SortOrder = _new.SortOrder, IsActive = true, IsSystemReserved = false,
+        });
+        await ctx.SaveChangesAsync();
+        Snackbar.Add($"เพิ่ม {_new.Code} แล้ว", Severity.Success);
+        _new = new() { IsTaxable = true, SortOrder = 50 };
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Pay_PayItemType t)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var row = await ctx.Pay_PayItemTypes.FirstOrDefaultAsync(x => x.Id == t.Id);
+        if (row is null || row.IsSystemReserved) return;
+        row.IsActive = !row.IsActive;
+        await ctx.SaveChangesAsync();
+        Snackbar.Add(row.IsActive ? "เปิดใช้งานแล้ว" : "ปิดใช้งานแล้ว (ประวัติเดิมยังอยู่ครบ)", Severity.Success);
+        await LoadAsync();
+    }
+
+    private static string CategoryLabel(PayItemCategory c) => c switch
+    {
+        PayItemCategory.Earning => "เงินได้",
+        PayItemCategory.Deduction => "เงินหัก",
+        _ => "แสดงอย่างเดียว",
+    };
+
+    private static string Flag(bool b) => b ? "✔" : "—";
+}
