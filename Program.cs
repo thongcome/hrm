@@ -824,6 +824,14 @@ await HRM.Services.Hr.EmployeeDocTypeSeeder.SeedAsync(app.Services);
 // UserProvisioningService uses to auto-assign a role at first user setup.
 // Mapping seeds only while NULL — a human's change wins forever.
 await HRM.Services.Login.EmployeeTypeRoleSeeder.SeedAsync(app.Services);
+// Role-model expansion (CEO, 2026-09-07): position-ladder / หัวหน้าแผนก /
+// guest / vendor roles (rows only — PositionRoleSeeder never grants them),
+// then continuously reconcile who actually HOLDS each one against live
+// HR data (position, org-boss, vendor flag) every startup — see
+// DerivedRoleSyncService.cs for why this can't be a one-time grant like
+// employeetype above.
+await HRM.Services.Login.PositionRoleSeeder.SeedAsync(app.Services);
+await HRM.Services.Login.DerivedRoleSyncService.SyncAsync(app.Services);
 // Required (not demo) config: the WELFARE_CLAIM approval workflow so welfare
 // claims can route through the engine. Idempotent by workflowcode.
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);

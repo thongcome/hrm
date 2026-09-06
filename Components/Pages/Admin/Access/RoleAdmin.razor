@@ -106,6 +106,16 @@
                     }
                 </MudSelect>
             </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_editing.pos_exec_code"
+                           Label="ตำแหน่งที่ได้ role นี้อัตโนมัติ (Pos_ExecType)" Clearable="true"
+                           HelperText="เช็คใหม่ทุกครั้งที่ระบบ start (ไม่ใช่แค่ตอน set user ครั้งแรก) — เลื่อนตำแหน่ง/ย้ายแผนกแล้วได้ role ตามจริงเสมอ (เว้นว่าง = ไม่ auto-assign)">
+                    @foreach (var t in _posExecTypes)
+                    {
+                        <MudSelectItem T="string" Value="@t.Code">@($"{t.Code} — {t.Name}")</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
         </MudGrid>
 
         @if (!string.IsNullOrEmpty(_editError))
@@ -126,6 +136,7 @@
 @code {
     private List<sc_role> _roles = new();
     private List<Employeetype> _employeeTypes = new();
+    private List<Pos_ExecType> _posExecTypes = new();
     private sc_role? _editing;
     private string? _error;
     private string? _editError;
@@ -163,6 +174,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _roles = await context.sc_roles.OrderBy(r => r.roleid).ToListAsync();
         _employeeTypes = await context.employeetypes.OrderBy(t => t.code).ToListAsync();
+        _posExecTypes = await context.Pos_ExecTypes.Where(t => t.IsActive).OrderBy(t => t.Code).ToListAsync();
     }
 
     private void StartAdd()
@@ -185,6 +197,7 @@
             rolecode = role.rolecode,
             isactive = role.isactive,
             employeetype_code = role.employeetype_code,
+            pos_exec_code = role.pos_exec_code,
         };
     }
 
@@ -233,6 +246,7 @@
             existing.rolelevel = _editing.rolelevel;
             existing.upperrole = _editing.upperrole;
             existing.employeetype_code = _editing.employeetype_code;
+            existing.pos_exec_code = _editing.pos_exec_code;
             existing.moddate = DateTime.Now;
             existing.modby = _actor;
         }
