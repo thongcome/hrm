@@ -2,6 +2,7 @@ namespace HRM.Endpoints;
 
 using HRM.Data;
 using HRM.Models;
+using HRM.Services.Auth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +26,8 @@ public static class LoginEndpoints
             HttpContext httpContext,
             IDbContextFactory<HRMContext> dbFactory,
             UserManager<ApplicationUser> userManager,
-            SignInManager<ApplicationUser> signInManager) =>
+            SignInManager<ApplicationUser> signInManager,
+            LdapAuthService ldapAuth) =>
         {
             var form = await httpContext.Request.ReadFormAsync();
             var username = form["username"].ToString();
@@ -34,6 +36,16 @@ public static class LoginEndpoints
 
             await using var context = await dbFactory.CreateDbContextAsync();
             var scUser = await context.sc_users.FirstOrDefaultAsync(u => u.loginname == username);
+
+            // An account provisioned for SSO-only login (AuthProvider set to
+            // a configured ExternalAuth:Sso:Providers name, not "AD") has no
+            // usable local password — send it straight to that provider's
+            // redirect instead of failing the password form silently.
+            if (scUser is not null && !string.IsNullOrEmpty(scUser.AuthProvider) && scUser.AuthProvider != "AD")
+            {
+                var ssoReturn = string.IsNullOrEmpty(returnUrl) ? "" : $"?returnUrl={Uri.EscapeDataString(returnUrl)}";
+                return Results.LocalRedirect($"/auth/sso/{scUser.AuthProvider}/login{ssoReturn}");
+            }
 
             // sc_user-level gates Identity has no concept of — checked before
             // ever touching the Identity sign-in machinery.
@@ -46,8 +58,16 @@ public static class LoginEndpoints
                 // so this endpoint never reveals which accounts exist.
                 if (appUser is not null)
                 {
-                    var result = await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true);
-                    if (result.Succeeded)
+                    // AD/SSO scaffold (CEO, 2026-09-07): AuthProvider=="AD"
+                    // means this account's password is verified against the
+                    // configured AD/LDAP server (LDAP BIND) instead of the
+                    // local Identity hash — everything downstream (SignInAsync,
+                    // claims, audit) is identical either way.
+                    var passwordOk = scUser.AuthProvider == "AD"
+                        ? (await ldapAuth.TryBindAsync(username, password)).Succeeded
+                        : (await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true)).Succeeded;
+
+                    if (passwordOk)
                     {
                         await signInManager.SignInAsync(appUser, isPersistent: false);
 

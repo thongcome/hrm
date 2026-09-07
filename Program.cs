@@ -111,6 +111,37 @@ authenticationBuilder.AddJwtBearer("ExternalApi", jwtOptions =>
         }
     });
 
+// AD/SSO scaffold (CEO, 2026-09-07: "design for both, prepare structure
+// first — no real customer AD/IdP yet"). ExternalAuth:Sso:Providers is empty
+// by default, so this loop registers zero schemes and is completely inert
+// until a real customer IdP is configured — same safe "named, non-default
+// scheme via the same authenticationBuilder" pattern as "ExternalApi" above
+// and OpenIddict below. SignInScheme targets IdentityConstants.ExternalScheme
+// (already the DefaultSignInScheme, otherwise unused) so ExternalSsoEndpoints
+// can read SignInManager.GetExternalLoginInfoAsync() in the callback, resolve
+// it to an sc_user via ExternalIdentityProvisioningService, then promote to
+// ApplicationScheme itself — never Identity's own auto-promotion, since that
+// would need a matching ApplicationUser to already be known, which is exactly
+// what still needs resolving at that point.
+var ssoProviders = builder.Configuration.GetSection("ExternalAuth:Sso:Providers").Get<List<HRM.Services.Auth.SsoProviderConfig>>() ?? new();
+foreach (var sso in ssoProviders)
+{
+    authenticationBuilder.AddOpenIdConnect(sso.Name, oidcOptions =>
+    {
+        oidcOptions.SignInScheme = IdentityConstants.ExternalScheme;
+        oidcOptions.Authority = sso.Authority;
+        oidcOptions.ClientId = sso.ClientId;
+        oidcOptions.ClientSecret = sso.ClientSecret;
+        oidcOptions.ResponseType = "code";
+        oidcOptions.CallbackPath = sso.CallbackPath ?? $"/signin-oidc-{sso.Name}";
+        oidcOptions.SaveTokens = false;
+        oidcOptions.Scope.Clear();
+        oidcOptions.Scope.Add("openid");
+        oidcOptions.Scope.Add("email");
+        oidcOptions.Scope.Add("profile");
+    });
+}
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
@@ -287,6 +318,14 @@ builder.Services.AddTransient<EmailSender>(); // Register the concrete type
 // left in place as dead code to keep this change minimal; delete later.)
 // builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<HRM.Services.Login.UserProvisioningService>();
+
+// AD/SSO scaffold (CEO, 2026-09-07: design for both, prepare structure
+// first — no real customer AD/IdP yet). LdapAuthService is a plain
+// singleton-safe helper (reads IConfiguration per call, no per-request
+// state); ExternalIdentityProvisioningService needs a fresh DbContext per
+// call like every other *Service here, so it's scoped.
+builder.Services.AddScoped<HRM.Services.Auth.LdapAuthService>();
+builder.Services.AddScoped<HRM.Services.Auth.ExternalIdentityProvisioningService>();
 
 // AD.CRUDManage — per-action page rights read through a ~60s memory cache
 // (never login-cookie claims, so grants apply within a minute). See
@@ -689,6 +728,7 @@ app.MapReportEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
+app.MapExternalSsoEndpoints();
 app.MapForgotPasswordEndpoints();
 app.MapEssFileEndpoints();
 app.MapExpenseFileEndpoints();

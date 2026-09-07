@@ -6,9 +6,13 @@
 
 <h3>@L.Translate("Login")</h3>
 
-@if (Error == "1")
+@if (Error == "1" && string.IsNullOrEmpty(SsoError))
 {
     <div class="alert alert-danger">@L.Translate("LoginErrorMessage")</div>
+}
+@if (!string.IsNullOrEmpty(SsoError))
+{
+    <div class="alert alert-danger">@SsoError</div>
 }
 @if (ResetSuccess == "1")
 {
@@ -41,4 +45,10 @@
 
     [SupplyParameterFromQuery]
     private string? ResetSuccess { get; set; }
+
+    // Set by ExternalSsoEndpoints' callback when an SSO login couldn't be
+    // resolved to an sc_user (see ExternalIdentityProvisioningService) — a
+    // more specific message than the generic wrong-password error above.
+    [SupplyParameterFromQuery]
+    private string? SsoError { get; set; }
 }

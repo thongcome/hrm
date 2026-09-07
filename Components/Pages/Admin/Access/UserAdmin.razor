@@ -120,6 +120,10 @@
             <MudItem xs="12" sm="6">
                 <MudCheckBox T="bool" Value="@(!_editing.isdisable)" ValueChanged="@((bool v) => _editing.isdisable = !v)" Label="ใช้ระบบได้" />
             </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editing.AuthProvider" Label="โหมดยืนยันตัวตน (AuthProvider)"
+                    HelperText="เว้นว่าง = รหัสผ่านปกติ, AD = ตรวจผ่าน Active Directory, หรือใส่ชื่อผู้ให้บริการ SSO ที่ตั้งค่าไว้ใน ExternalAuth:Sso:Providers" />
+            </MudItem>
         </MudGrid>
 
         <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">กรุณาเลือกกลุ่มผู้ใช้</MudText>
@@ -283,6 +287,7 @@
             isdisable = user.isdisable,
             isActivate = user.isActivate,
             iscancel = user.iscancel,
+            AuthProvider = user.AuthProvider,
         };
     }
 
@@ -373,6 +378,7 @@
             existing.phone = _editing.phone;
             existing.empid = _editing.empid;
             existing.isdisable = _editing.isdisable;
+            existing.AuthProvider = string.IsNullOrWhiteSpace(_editing.AuthProvider) ? null : _editing.AuthProvider.Trim();
             existing.moddate = DateTime.Now;
             existing.modby = _actor;
             await context.SaveChangesAsync();

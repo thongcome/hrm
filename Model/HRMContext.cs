@@ -262,6 +262,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<sc_role_program> sc_role_programs { get; set; }
 
+    public virtual DbSet<sc_external_identity> sc_external_identities { get; set; }
+
     public virtual DbSet<sc_user> sc_users { get; set; }
 
     public virtual DbSet<sc_user_role> sc_user_roles { get; set; }

@@ -171,6 +171,18 @@ public partial class sc_user
     [Required]
     public int permversion { get; set; } = 0;
 
+    // External-auth mode for this account (AD/SSO scaffold — CEO, 2026-09-07:
+    // design for both, prepare structure only, no real customer AD/IdP yet).
+    // null/empty = local password (default, 100% of existing accounts today).
+    // "AD" = password field on /login is verified via LdapAuthService's LDAP
+    // BIND instead of the local hash — loginname must already match the
+    // AD username, same as it matches today's local login. Anything else =
+    // the name of a configured ExternalAuth:Sso:Providers entry — this
+    // account may ONLY sign in via that provider's /auth/sso/{name}/login
+    // redirect, never the password form (see LoginEndpoints.cs).
+    [StringLength(50)]
+    public string? AuthProvider { get; set; }
+
     [InverseProperty("user")]
     public virtual ICollection<emp_checkin> emp_checkins { get; set; } = new List<emp_checkin>();
 
