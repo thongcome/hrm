@@ -53,6 +53,7 @@
             <MudTd>@context.upperrole</MudTd>
             <MudTd>@(context.isactive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
             <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ShowDetailAsync(context))">รายละเอียด</MudButton>
                 @if (_rights?.CanEdit == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
@@ -72,6 +73,62 @@
         </RowTemplate>
     </MudTable>
 </MudPaper>
+
+@* CEO 2026-09-07: "เปิดหน้า Role มา ก็ต้องเห็นว่าใครอยู่ใน Role นี้ เมนูไหนผูกกับ role นี้"
+   — sc_role's own model already declares sc_user_roles/sc_role_menus as
+   inverse collections, but nothing on this page ever queried them before
+   this. Read-only here (still one place to actually EDIT membership/menu
+   grants — UserAdmin's role checkboxes, PermissionAdmin's menu tree — this
+   panel is the "see everything about this role" hub those pages don't
+   provide standing alone). *@
+@if (_detailRole is not null)
+{
+    <MudPaper Class="pa-4 mb-4" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-1">รายละเอียดกลุ่มผู้ใช้: @_detailRole.name (@_detailRole.abbr)</MudText>
+        <MudButton Size="Size.Small" Variant="Variant.Text" Class="mb-2" OnClick="@(() => _detailRole = null)">ปิด</MudButton>
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle1" Class="mb-1">ผู้ใช้ในกลุ่มนี้ (@_detailUsers.Count)</MudText>
+                <MudSimpleTable Dense="true" Style="max-height:400px; overflow-y:auto;">
+                    <thead><tr><th>ชื่อเข้าสู่ระบบ</th><th>ชื่อ-สกุล</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _detailUsers)
+                        {
+                            <tr><td>@u.loginname</td><td>@u.firstname @u.lastname</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+                @if (_detailUsers.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">ยังไม่มีผู้ใช้ในกลุ่มนี้</MudText>
+                }
+                <MudButton Size="Size.Small" Variant="Variant.Text" Href="/admin/system/users" Class="mt-1">ไปหน้าจัดการผู้ใช้ (เพิ่ม/ถอดสมาชิก)</MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle1" Class="mb-1">เมนูที่ผูกกับกลุ่มนี้ (@_detailMenus.Count)</MudText>
+                <MudSimpleTable Dense="true" Style="max-height:400px; overflow-y:auto;">
+                    <thead><tr><th>กลุ่มเมนู</th><th>เมนู</th><th>แก้ไขได้</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in _detailMenus)
+                        {
+                            <tr>
+                                <td>@m.GroupName</td>
+                                <td>@m.Menu.menuname</td>
+                                <td>@(m.CanEdit ? "✓" : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+                @if (_detailMenus.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">ยังไม่ได้ผูกเมนูใดให้กลุ่มนี้</MudText>
+                }
+                <MudButton Size="Size.Small" Variant="Variant.Text" Href="/admin/system/permissions" Class="mt-1">ไปหน้าจัดการสิทธิ์การใช้ระบบ (แก้ไขเมนู)</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
 
 @if (_editing is not null)
 {
@@ -138,6 +195,10 @@
     private List<Employeetype> _employeeTypes = new();
     private List<Pos_ExecType> _posExecTypes = new();
     private sc_role? _editing;
+    private sc_role? _detailRole;
+    private List<sc_user> _detailUsers = new();
+    private record MenuGrantRow(sc_menu Menu, string GroupName, bool CanEdit);
+    private List<MenuGrantRow> _detailMenus = new();
     private string? _error;
     private string? _editError;
     private string _actor = "admin";
@@ -175,6 +236,39 @@
         _roles = await context.sc_roles.OrderBy(r => r.roleid).ToListAsync();
         _employeeTypes = await context.employeetypes.OrderBy(t => t.code).ToListAsync();
         _posExecTypes = await context.Pos_ExecTypes.Where(t => t.IsActive).OrderBy(t => t.Code).ToListAsync();
+    }
+
+    private async Task ShowDetailAsync(sc_role role)
+    {
+        _detailRole = role;
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _detailUsers = await context.sc_user_roles
+            .Where(ur => ur.roleid == role.roleid && ur.isactive)
+            .Select(ur => ur.user)
+            .OrderBy(u => u.loginname)
+            .ToListAsync();
+
+        var grants = await context.sc_role_menus
+            .Where(rm => rm.roleid == role.roleid && rm.isactive)
+            .Select(rm => new { rm.menuid, rm.canedit })
+            .ToListAsync();
+        var menuIds = grants.Select(g => g.menuid).ToList();
+        var menus = await context.sc_menus.Where(m => menuIds.Contains(m.menuid)).ToListAsync();
+        var byCode = await context.sc_menus
+            .Where(m => m.menucode != null)
+            .ToDictionaryAsync(m => m.menucode!, m => m.menuname ?? m.menucode!);
+
+        _detailMenus = grants
+            .Select(g =>
+            {
+                var menu = menus.First(m => m.menuid == g.menuid);
+                var groupName = !string.IsNullOrWhiteSpace(menu.uppermenucode) && byCode.TryGetValue(menu.uppermenucode, out var gn)
+                    ? gn : "(บนสุด)";
+                return new MenuGrantRow(menu, groupName, g.canedit);
+            })
+            .OrderBy(r => r.GroupName).ThenBy(r => r.Menu.menuorder)
+            .ToList();
     }
 
     private void StartAdd()
