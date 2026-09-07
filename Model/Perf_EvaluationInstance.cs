@@ -66,6 +66,13 @@ public class Perf_EvaluationInstance
     public bool IsMeritApplied { get; set; }
     public DateTime? MeritAppliedDate { get; set; }
 
+    // Points at the exact Pay_PositionSalaryHistory row ApplyMeritIncreaseAsync
+    // created, so the "คำสั่งขึ้นเงินเดือน" order PDF (SalaryIncreaseOrderDataService)
+    // can pull OldSalary/NewSalary/OrderNo/OrderDate from one authoritative row
+    // instead of re-matching by employee+date. No DB FK constraint — same
+    // soft-link convention as HremployeeId above.
+    public long? MeritSalaryHistoryId { get; set; }
+
     public virtual Perf_EvaluationPeriod EvaluationPeriod { get; set; } = null!;
     public virtual Perf_EvaluationType EvaluationType { get; set; } = null!;
 }

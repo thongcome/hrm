@@ -107,6 +107,23 @@
         @if (_instance.IsMeritApplied)
         {
             <MudAlert Severity="Severity.Success">ปรับเงินเดือนแล้วเมื่อ @_instance.MeritAppliedDate?.ToString("dd/MM/yyyy HH:mm")</MudAlert>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">คำสั่งขึ้นเงินเดือน</MudText>
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_orderNo" Label="เลขที่คำสั่ง" Placeholder="เว้นว่างได้ — พิมพ์ด้วยลายมือทีหลัง" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_orderDate" Label="วันที่คำสั่ง" />
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveOrderInfoAsync">บันทึกเลขที่คำสั่ง</MudButton>
+                </MudItem>
+            </MudGrid>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                Href="@($"/perf/files/salary-increase-order/{_instance.Id}")" Target="_blank">
+                ดาวน์โหลดคำสั่งขึ้นเงินเดือน (PDF)
+            </MudButton>
         }
         else
         {
@@ -168,6 +185,8 @@
     private bool _notFound;
     private string? _error;
     private PerfMeritService.MeritPreview? _meritPreview;
+    private string? _orderNo;
+    private DateTime? _orderDate;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -193,6 +212,13 @@
             _job = await context.job_masters
                 .Include(j => j.job_user_lists.OrderBy(a => a.wlevel).ThenBy(a => a.jobapproverid))
                 .FirstOrDefaultAsync(j => j.jobmasterid == _instance.JobMasterId);
+        }
+
+        if (_instance.IsMeritApplied && _instance.MeritSalaryHistoryId is long historyId)
+        {
+            var history = await context.Pay_PositionSalaryHistories.FirstOrDefaultAsync(h => h.Id == historyId);
+            _orderNo = history?.OrderNo;
+            _orderDate = history?.OrderDate;
         }
     }
 
@@ -278,6 +304,20 @@
             // Re-run the preview so the shown numbers reflect the new adjustment
             // (effective raise = grade band % + adjustment %).
             _meritPreview = await MeritService.PreviewMeritIncreaseAsync(Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveOrderInfoAsync()
+    {
+        _error = null;
+        try
+        {
+            await MeritService.SaveOrderInfoAsync(Id, _orderNo, _orderDate);
+            Snackbar.Add("บันทึกเลขที่คำสั่งแล้ว", Severity.Success);
         }
         catch (InvalidOperationException ex)
         {

@@ -82,7 +82,7 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
         employee.SalaryAmt = newSalary;
 
         var adjustText = adjust == 0m ? "" : $" + ปรับเพิ่ม {adjust:0.#}%";
-        context.Pay_PositionSalaryHistories.Add(new Pay_PositionSalaryHistory
+        var history = new Pay_PositionSalaryHistory
         {
             HremployeeId = employee.id,
             EmpNo = employee.EmpNo,
@@ -93,11 +93,36 @@ public class PerfMeritService(IDbContextFactory<HRMContext> dbFactory)
             Reason = $"ปรับเงินเดือนตามผลประเมิน{(period is null ? "" : $" รอบ {period.Name}")} เกรด {gradeBand.Grade} (+{gradeBand.SalaryIncreasePercent:0.#}%{adjustText} = +{effectivePercent:0.#}%)",
             ChangedByUserId = actorUserId,
             ChangedDate = DateTime.Now,
-        });
+        };
+        context.Pay_PositionSalaryHistories.Add(history);
 
         instance.IsMeritApplied = true;
         instance.MeritAppliedDate = DateTime.Now;
 
+        await context.SaveChangesAsync(ct); // assigns history.Id
+        instance.MeritSalaryHistoryId = history.Id;
+        await context.SaveChangesAsync(ct);
+    }
+
+    // Sets the "เลขที่คำสั่ง"/"วันที่คำสั่ง" fields HR fills in when printing the
+    // salary-increase order (Pay_PositionSalaryHistory already had these columns,
+    // unused until now — see SalaryIncreaseOrderPdfService). Persisted onto the
+    // history row, not just the query string, so a reprint later shows the same
+    // number instead of asking HR to remember and retype it.
+    public async Task SaveOrderInfoAsync(long instanceId, string? orderNo, DateTime? orderDate, CancellationToken ct = default)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync(ct);
+
+        var instance = await context.Perf_EvaluationInstances.FirstOrDefaultAsync(i => i.Id == instanceId, ct)
+            ?? throw new InvalidOperationException("ไม่พบรายการประเมินนี้แล้ว");
+        if (instance.MeritSalaryHistoryId is not long historyId)
+            throw new InvalidOperationException("รายการนี้ยังไม่ได้ปรับเงินเดือนจริง ไม่มีคำสั่งให้ตั้งเลขที่");
+
+        var history = await context.Pay_PositionSalaryHistories.FirstOrDefaultAsync(h => h.Id == historyId, ct)
+            ?? throw new InvalidOperationException("ไม่พบประวัติการปรับเงินเดือนที่เชื่อมไว้แล้ว");
+
+        history.OrderNo = orderNo;
+        history.OrderDate = orderDate;
         await context.SaveChangesAsync(ct);
     }
 }
