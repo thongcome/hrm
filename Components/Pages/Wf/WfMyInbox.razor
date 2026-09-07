@@ -34,6 +34,7 @@
             <MudTh>Workflow</MudTh>
             <MudTh>ระดับ</MudTh>
             <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>ค้างมา</MudTh>
             <MudTh>เอกสารต้นทาง</MudTh>
             <MudTh>ความเห็น</MudTh>
             <MudTh></MudTh>
@@ -45,6 +46,14 @@
             <MudTd>@context.jobmaster.wname</MudTd>
             <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
             <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                @if (_ages.TryGetValue(context.jobmasterid, out var age))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@(age.IsOverdue ? Color.Error : Color.Default)">
+                        @age.DaysWaiting วัน@(age.IsOverdue ? $" (เกิน {age.ExpireDays} วัน)" : "")
+                    </MudChip>
+                }
+            </MudTd>
             <MudTd>
                 @{ var docLink = BuildDocumentLink(context.jobmaster); }
                 @if (docLink is not null)
@@ -128,6 +137,7 @@
 @code {
     private List<job_user_list> _inbox = new();
     private List<job_user_list> _history = new();
+    private Dictionary<long, WorkflowEngineService.JobAgeInfo> _ages = new();
     private List<wf_workflow> _workflows = new();
     private Dictionary<long, string> _comments = new();
     private bool _loading;
@@ -165,6 +175,7 @@
             _inbox = await Engine.GetMyInboxAsync(_actorUserId);
             foreach (var item in _inbox)
                 _comments.TryAdd(item.jobapproverid, "");
+            _ages = await Engine.GetJobAgesAsync(_inbox.Select(i => i.jobmaster));
         }
         finally
         {

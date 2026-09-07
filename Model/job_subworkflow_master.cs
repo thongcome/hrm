@@ -108,4 +108,89 @@ public partial class job_subworkflow_master
     public string? modby { get; set; }
 
     public int? jobseq { get; set; }
+
+    // Per-level duration tracking (CEO, 2026-09-07 follow-up): starttime is
+    // stamped the first time this level's round is issued
+    // (AssignLevelApproversAsync — a Mix Approval pre-check hop re-issuing
+    // the SAME level does NOT re-stamp it, since the level itself hasn't
+    // restarted), endtime the moment this level's involvement in the job
+    // truly concludes (TryAdvanceLevelAsync — approved/rejected/bounced/
+    // advanced to the next level; NOT set on a non-terminal vertical-chain
+    // hop, since that's still the same level continuing). Feeds the
+    // "ค้างมากี่วัน" passive-expire badge (wf_workflow.wexpireday) — no
+    // background job computes this, it's read lazily whenever a list page
+    // loads, same apply-on-read pattern as everywhere else in this engine.
+    [Column(TypeName = "datetime")]
+    public DateTime? starttime { get; set; }
+    [Column(TypeName = "datetime")]
+    public DateTime? endtime { get; set; }
+
+    // Snapshotted from wf_sub_workflow_master.wfcode = the OWNING workflow's
+    // stable wf_workflow.workflowcode (CEO, 2026-09-07 follow-up: "เผื่อมี
+    // migration DB ในอนาคต ถ้าใช้ running [workflowid] จับ มันจะเพี้ยนตอน
+    // migration") — a migration/re-import can shift auto-increment
+    // workflowid values; this stable code survives that so historical rows
+    // stay identifiable. Populated alongside workflowid, not instead of it —
+    // no existing lookup is rewired to use this yet.
+    [StringLength(50)]
+    public string? wfcode { get; set; }
+
+    // Full-level snapshot (CEO, 2026-09-07 follow-up: "field อื่นๆ คิดง่ายๆ
+    // คือเราต้องอ่าน subworkflow ที่ level เดียวกัน ไปใส่ job_subworkflowmaster
+    // ทั้งหมด" — stop hand-picking which config fields matter, just freeze
+    // every remaining wf_sub_workflow_master column onto this row too, same
+    // freeze rationale as isLOA/verticalMaxLevel/etc. above). Excluded on
+    // purpose: wf_sub_workflow_master.status (a long?, confirmed unused
+    // anywhere in epms or HRM) — collides in name with the unrelated
+    // `status` (string) column already on this table, which is populated
+    // from standstatus, not from that field.
+    public bool? isAdhocUser { get; set; }
+    public bool? iscustomApprover { get; set; }
+    [StringLength(50)]
+    public string? approvedstatus { get; set; }
+    [StringLength(50)]
+    public string? declinestatus { get; set; }
+    public bool? isReturnSender { get; set; }
+    [StringLength(50)]
+    public string? loacode { get; set; }
+    public bool? isAutoApproveAllow { get; set; }
+    public bool? isNeedBudgetApproval { get; set; }
+    [StringLength(50)]
+    public string? sitinstatus { get; set; }
+    public int? aa_id { get; set; }
+    public int? aa_level { get; set; }
+    [StringLength(250)]
+    public string? controller { get; set; }
+    [StringLength(250)]
+    public string? action { get; set; }
+    [StringLength(250)]
+    public string? displayName { get; set; }
+    public long? userid1 { get; set; }
+    public long? userid2 { get; set; }
+    public long? userid3 { get; set; }
+    [StringLength(250)]
+    public string? subject { get; set; }
+    [StringLength(250)]
+    public string? subjectBiz { get; set; }
+    [StringLength(500)]
+    public string? describeBiz { get; set; }
+    [StringLength(500)]
+    public string? describe { get; set; }
+    [StringLength(250)]
+    public string? actionEdit { get; set; }
+    [StringLength(250)]
+    public string? subject_en { get; set; }
+    [StringLength(250)]
+    public string? subjectBiz_en { get; set; }
+    [StringLength(250)]
+    public string? describeBiz_en { get; set; }
+    [StringLength(250)]
+    public string? describe_en { get; set; }
+    public bool? isApproverSameOrg { get; set; }
+    public bool? isApproverSameCostCenter { get; set; }
+    public bool? isManualButton { get; set; }
+    [StringLength(250)]
+    public string? ApproveController { get; set; }
+    [StringLength(250)]
+    public string? ApproveAction { get; set; }
 }

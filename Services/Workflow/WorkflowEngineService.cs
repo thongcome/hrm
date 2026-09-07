@@ -61,6 +61,12 @@ public class WorkflowEngineService
     // final approval; these hops ARE the final approval, whichever one turns
     // out to be last.
     private const string VerticalChainMarker = "VERTICAL_CHAIN";
+    // Fixed-count org-chart climb (CEO, 2026-09-07 follow-up, empLevel) —
+    // see AssignEmpLevelClimbAsync. Distinct from VerticalChainMarker: that
+    // mechanism self-terminates the WHOLE JOB once its climb finishes; this
+    // one finishes the LEVEL and falls through to whatever comes next
+    // (e.g. a role-based HR step), same as an ordinary level would.
+    private const string EmpLevelClimbMarker = "EMP_LEVEL_CLIMB";
 
     // public only so the pure AND/OR/unanimous level decision below can be
     // unit-tested directly (WorkflowEvaluateLevelTests) — same "expose the
@@ -168,6 +174,10 @@ public class WorkflowEngineService
             costcenter = requesterCostCenter,
             isactive = true,
             isJobClosed = false,
+            // jobseq starts at 1 (matches epms's real initial value) — every
+            // later level transition, forward or backward, increments it by
+            // 1 from here (see TryAdvanceLevelAsync/TryBounceBackAsync).
+            jobseq = 1,
         };
         context.job_masters.Add(job);
         await context.SaveChangesAsync(ct); // need job.jobmasterid before snapshotting levels
@@ -208,6 +218,44 @@ public class WorkflowEngineService
                 backwardlevel = level.backwardlevel,
                 verticalMaxLevel = level.verticalMaxLevel,
                 isPool = level.isPool,
+                wfcode = workflow.workflowcode,
+                // Full-level snapshot (CEO, 2026-09-07 follow-up) — the rest
+                // of wf_sub_workflow_master's columns, frozen alongside the
+                // ones above rather than hand-picked. remark intentionally
+                // NOT copied here — job_subworkflow_master.remark is written
+                // by the engine itself at runtime (unrelated to the level
+                // definition's own remark text).
+                isAdhocUser = level.isAdhocUser,
+                iscustomApprover = level.iscustomApprover,
+                approvedstatus = level.approvedstatus,
+                declinestatus = level.declinestatus,
+                isReturnSender = level.isReturnSender,
+                loacode = level.loacode,
+                isAutoApproveAllow = level.isAutoApproveAllow,
+                isNeedBudgetApproval = level.isNeedBudgetApproval,
+                sitinstatus = level.sitinstatus,
+                aa_id = level.aa_id,
+                aa_level = level.aa_level,
+                controller = level.controller,
+                action = level.action,
+                displayName = level.displayName,
+                userid1 = level.userid1,
+                userid2 = level.userid2,
+                userid3 = level.userid3,
+                subject = level.subject,
+                subjectBiz = level.subjectBiz,
+                describeBiz = level.describeBiz,
+                describe = level.describe,
+                actionEdit = level.actionEdit,
+                subject_en = level.subject_en,
+                subjectBiz_en = level.subjectBiz_en,
+                describeBiz_en = level.describeBiz_en,
+                describe_en = level.describe_en,
+                isApproverSameOrg = level.isApproverSameOrg,
+                isApproverSameCostCenter = level.isApproverSameCostCenter,
+                isManualButton = level.isManualButton,
+                ApproveController = level.ApproveController,
+                ApproveAction = level.ApproveAction,
                 moddate = DateTime.Now,
             });
         }
@@ -557,6 +605,44 @@ public class WorkflowEngineService
             new { userid = oldUserId }, new { userid = newUserId, reason }, isSensitive: false, ct);
         Serilog.Log.Information("Job {JobMasterId} level {Level}: approver reassigned from user {OldUserId} to {NewUserId} ({Reason})",
             row.jobmasterid, row.wlevel, oldUserId, newUserId, reason);
+    }
+
+    // Passive expire (CEO, 2026-09-07 follow-up: "เอาแบบ Passive" — no
+    // background job; computed lazily whenever an inbox/list page loads,
+    // same apply-on-read pattern as SyncStatusFromJobAsync/every other
+    // status sync in this codebase). DaysWaiting counts from the CURRENT
+    // level's job_subworkflow_master.starttime (falls back to
+    // job.createdate for a job whose level predates this feature, i.e.
+    // starttime still null); IsOverdue compares that against the owning
+    // workflow's wf_workflow.wexpireday — null/0 = no limit configured,
+    // never flagged. Batched (one query for however many jobs the caller
+    // passes) so a list page doesn't run N+1 queries per row.
+    public record JobAgeInfo(int DaysWaiting, int? ExpireDays, bool IsOverdue);
+
+    public async Task<Dictionary<long, JobAgeInfo>> GetJobAgesAsync(IEnumerable<job_master> jobs, CancellationToken ct = default)
+    {
+        var openJobs = jobs.Where(j => j.isJobClosed != true).ToList();
+        var result = new Dictionary<long, JobAgeInfo>();
+        if (openJobs.Count == 0) return result;
+
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var jobIds = openJobs.Select(j => j.jobmasterid).ToList();
+        var starts = await context.job_subworkflow_masters
+            .Where(s => jobIds.Contains(s.jobmasterid))
+            .Select(s => new { s.jobmasterid, s.wlevel, s.starttime })
+            .ToListAsync(ct);
+        var startByJobLevel = starts.ToDictionary(s => (s.jobmasterid, s.wlevel), s => s.starttime);
+
+        foreach (var job in openJobs)
+        {
+            var levelStart = startByJobLevel.GetValueOrDefault((job.jobmasterid, job.lastLevel ?? 0)) ?? job.createdate;
+            if (levelStart is null) continue;
+
+            var days = (int)(DateTime.Now - levelStart.Value).TotalDays;
+            var expireDays = job.workflow?.wexpireday;
+            result[job.jobmasterid] = new JobAgeInfo(days, expireDays, expireDays is int ed && ed > 0 && days > ed);
+        }
+        return result;
     }
 
     public async Task<List<job_user_list>> GetMyInboxAsync(long userId, CancellationToken ct = default)
@@ -933,6 +1019,9 @@ public class WorkflowEngineService
 
         if (outcome == LevelOutcome.Failed)
         {
+            // This level's involvement ends here either way (bounced away or
+            // the job dies here) — stamp endtime before either branch.
+            completedSnapshot.endtime = DateTime.Now;
             var rejectComment = realRoundRows.LastOrDefault(r => string.Equals(r.jobstatus, StatusRejected, StringComparison.OrdinalIgnoreCase))?.comment;
             if (await TryBounceBackAsync(context, job, completedSnapshot, ct))
                 return WorkflowOutcome.BouncedBack;
@@ -954,6 +1043,32 @@ public class WorkflowEngineService
             return await AssignVerticalChainHopAsync(context, job, liveLevelForChain, maxVerticalLevel, ct);
         }
 
+        // Fixed-count org-chart climb (empLevel) — mirrors the vertical-chain
+        // re-entry above, but unlike that mechanism this one does NOT force
+        // istop: it re-enters for one more hop only while the just-approved
+        // hop's own reason text (stamped at issue time by
+        // AssignEmpLevelClimbAsync) says it wasn't the terminal one. Once the
+        // terminal hop resolves, execution simply falls through to the
+        // ordinary istop/next-level logic below — exactly as if this had
+        // been any other level's own approver resolving.
+        if (completedSnapshot.empLevel is int climbHops && climbHops > 0 && completedSnapshot.verticalMaxLevel is null)
+        {
+            var lastClimbRow = realRoundRows
+                .Where(r => r.reason != null && r.reason.StartsWith(EmpLevelClimbMarker, StringComparison.Ordinal))
+                .OrderByDescending(r => r.jobapproverid)
+                .FirstOrDefault();
+            var wasTerminalHop = lastClimbRow?.reason?.Contains("ระดับสุดท้าย") ?? true; // no climb row at all -> treat as done, don't loop forever
+            if (!wasTerminalHop)
+            {
+                var liveLevelForClimb = await context.wf_sub_workflow_masters
+                    .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == completedLevel, ct)
+                    ?? throw new InvalidOperationException($"ไม่พบ config ต้นฉบับของระดับ {completedLevel} ใน wf_sub_workflow_master แล้ว (อาจถูกลบหลังงานเริ่ม)");
+                return await AssignEmpLevelClimbAsync(context, job, liveLevelForClimb, climbHops, ct);
+            }
+            // Terminal hop just resolved — fall through below exactly like
+            // an ordinary level whose own approver just acted.
+        }
+
         // outcome == Complete. Decided by istop (the level explicitly
         // marked as terminal), not by comparing to job.maxlevel — that
         // count-based check was a latent bug from Block 2/3 (see Block 4
@@ -961,6 +1076,7 @@ public class WorkflowEngineService
         // several levels, so a count-based check would be flatly wrong.
         if (completedSnapshot.istop)
         {
+            completedSnapshot.endtime = DateTime.Now;
             // Block 9: display status becomes the level's configured
             // "approved" text instead of a hardcoded engine constant.
             job.status = completedSnapshot.forwardstatus ?? StatusCompleted;
@@ -979,6 +1095,15 @@ public class WorkflowEngineService
             .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == nextLevelNo, ct)
             ?? throw new InvalidOperationException($"ไม่พบ config ระดับถัดไป (level {nextLevelNo}) ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
 
+        completedSnapshot.endtime = DateTime.Now; // this level is done, advancing onward
+        // jobseq (CEO, 2026-09-07 follow-up, confirmed against real epms
+        // production data): counts EVERY level transition, forward and
+        // backward combined, not just backward bounces — epms's
+        // CreateJobSubWorkflow increments it unconditionally on both. HRM
+        // previously only incremented this in TryBounceBackAsync, which was
+        // a real divergence from epms's actual behavior (see that method's
+        // own increment for the backward half of this same counter).
+        job.jobseq = (job.jobseq ?? 0) + 1;
         job.lastLevel = nextSnapshotLevel.wlevel;
 
         // Resolve against the LIVE wf_sub_workflow_master row (not the
@@ -1029,8 +1154,13 @@ public class WorkflowEngineService
         // Defensive cap: if two levels are misconfigured to bounce back and
         // forth at each other, a human still has to keep rejecting/approving
         // every round for it to continue (nothing here loops automatically),
-        // but cap it anyway so a bad config can't be ridden forever.
-        if ((job.jobseq ?? 0) >= 20)
+        // but cap it anyway so a bad config can't be ridden forever. jobseq
+        // now counts forward advances too (CEO, 2026-09-07 follow-up, epms
+        // parity), so a flat 20 would wrongly cap a long-but-legitimate
+        // workflow that simply has many real levels — scale the cap against
+        // maxlevel instead, floored at 20 so a short workflow still gets a
+        // real limit.
+        if ((job.jobseq ?? 0) >= Math.Max(20, (job.maxlevel ?? 0) * 4))
             return false;
 
         var targetSnapshot = await context.job_subworkflow_masters
@@ -1255,6 +1385,15 @@ public class WorkflowEngineService
         // text) since wf_sub_workflow_master only has one "pending" label.
         job.status = level.standstatus ?? StatusPending;
 
+        // Per-level duration tracking (CEO, 2026-09-07 follow-up): stamp
+        // starttime the FIRST time this level's round is issued only — a
+        // Mix Approval pre-check hop re-entering this same method for the
+        // same wlevel must not reset it, so ??= rather than an
+        // unconditional assignment.
+        var levelSnapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == level.wlevel, ct);
+        if (levelSnapshot is not null) levelSnapshot.starttime ??= DateTime.Now;
+
         // isLast marks the currently-active approver round (epms parity): the
         // moment a new round (a vertical hop, the level's real round, the next
         // level, or a bounce-back round) is issued below, every previously
@@ -1272,6 +1411,20 @@ public class WorkflowEngineService
         // approval, not a gate before a separate one).
         if (level.verticalMaxLevel is int maxVerticalLevel && maxVerticalLevel > 0)
             return await AssignVerticalChainHopAsync(context, job, level, maxVerticalLevel, ct);
+
+        // Fixed-count org-chart climb (CEO, 2026-09-07 follow-up, empLevel):
+        // "พนักงานเริ่ม job อยู่ระดับ 17, subworkflow บอกวิ่ง 3 ระดับ ->
+        // 17->16->15->14 แล้วจบ ไปวิ่ง subworkflow ถัดไป" — climbs EXACTLY
+        // empLevel hops (adaptively landing early only if the org chart
+        // itself runs out first, same landing logic as verticalMaxLevel's
+        // ResolveVerticalChainHopAsync), but — unlike verticalMaxLevel —
+        // never forces istop: once the climb finishes, this level completes
+        // NORMALLY and falls through to whatever level/config comes next
+        // (e.g. a role-based HR step), exactly like an ordinary level would
+        // after its own approver resolves. Mutually exclusive with
+        // verticalMaxLevel (checked above) on the same level.
+        if (level.empLevel is int climbHops && climbHops > 0 && level.verticalMaxLevel is null)
+            return await AssignEmpLevelClimbAsync(context, job, level, climbHops, ct);
 
         var neededHops = level.isNeedsupervisorapprove ?? 0;
         string? precheckReasonPrefix = null;
@@ -1464,6 +1617,69 @@ public class WorkflowEngineService
         // ordinary path, so /wf/vacant-approvals still covers a stalled chain.
         Serilog.Log.Warning("Job {JobMasterId} level {Level} vertical-chain hop {Hop}/{Max}: no candidate resolved, left vacant for admin assignment",
             job.jobmasterid, level.wlevel, hopNumber, maxLevel);
+        context.job_user_lists.Add(new job_user_list
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = level.wlevel,
+            userid = null,
+            subworkflowmasterid = level.subworkflowid,
+            jobstatus = StatusPending,
+            reason = $"{reasonText} | ตำแหน่งว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)",
+            jobseq = job.jobseq,
+            isLast = true,
+        });
+        return WorkflowOutcome.StillOpen;
+    }
+
+    // Fixed-count org-chart climb (CEO, 2026-09-07 follow-up, empLevel):
+    // "พนักงานเริ่ม job อยู่ระดับ 17, subworkflow บอกวิ่ง 3 ระดับ ->
+    // 17->16->15->14 แล้วจบ ไปวิ่ง subworkflow ถัดไป". Reuses the exact same
+    // hop-landing/terminal-detection primitive as AssignVerticalChainHopAsync
+    // (ResolveVerticalChainHopAsync — adaptive: lands early only if the org
+    // chart itself runs out before `climbHops` hops), but never touches
+    // istop — TryAdvanceLevelAsync's re-entry check for this mechanism reads
+    // the terminal-ness back from the just-approved hop's own reason text
+    // (stamped below) instead, then falls through to ordinary istop/next-
+    // level handling once the climb is done, exactly like any other level.
+    private async Task<WorkflowOutcome> AssignEmpLevelClimbAsync(HRMContext context, job_master job, wf_sub_workflow_master level, int climbHops, CancellationToken ct)
+    {
+        var hopsApproved = await context.job_user_lists.CountAsync(a =>
+            a.jobmasterid == job.jobmasterid && a.wlevel == level.wlevel && (a.jobseq ?? 0) == (job.jobseq ?? 0)
+            && a.reason != null && a.reason.StartsWith(EmpLevelClimbMarker) && a.jobstatus == StatusApproved, ct);
+        var hopNumber = hopsApproved + 1;
+
+        var (candidates, isTerminalHop) = await ResolveVerticalChainHopAsync(context, job.reqOrg, hopNumber, climbHops, job.createuserid, ct);
+
+        var reasonText = isTerminalHop
+            ? $"{EmpLevelClimbMarker} {hopNumber}/{climbHops} (ระดับสุดท้าย — ครบตามที่ตั้งไว้หรือสุดผังองค์กร — ต่อไปยังขั้นถัดไปตามปกติ)"
+            : $"{EmpLevelClimbMarker} {hopNumber}/{climbHops}";
+
+        if (candidates.Count > 0)
+        {
+            foreach (var (userId, empId) in candidates)
+            {
+                context.job_user_lists.Add(new job_user_list
+                {
+                    jobmasterid = job.jobmasterid,
+                    workflowid = job.workflowid,
+                    wlevel = level.wlevel,
+                    userid = userId,
+                    empid = empId,
+                    subworkflowmasterid = level.subworkflowid,
+                    jobstatus = StatusPending,
+                    sendDate = DateTime.Now,
+                    reason = reasonText,
+                    jobseq = job.jobseq,
+                    isLast = true,
+                });
+                await NotifyApproverAsync(context, job, userId, empId, ct);
+            }
+            return WorkflowOutcome.StillOpen;
+        }
+
+        Serilog.Log.Warning("Job {JobMasterId} level {Level} empLevel climb hop {Hop}/{Max}: no candidate resolved, left vacant for admin assignment",
+            job.jobmasterid, level.wlevel, hopNumber, climbHops);
         context.job_user_lists.Add(new job_user_list
         {
             jobmasterid = job.jobmasterid,

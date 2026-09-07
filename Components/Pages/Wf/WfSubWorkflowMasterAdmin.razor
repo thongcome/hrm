@@ -123,7 +123,10 @@
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isApproverSameCostCenter" ReadOnly="true" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isApproverSameOrg" ReadOnly="true" Label="ผู้อนุมัติที่หน่วยงาน (Org) เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isAdhocUser" ReadOnly="true" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (wf_adhoc_user)" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField Value="@(e.empLevel?.ToString() ?? "-")" Label="ระดับพนักงานผู้อนุมัติ (empLevel)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField Value="@(e.empLevel?.ToString() ?? "-")" Label="ไต่ผังองค์กรกี่ระดับ (empLevel)" ReadOnly="true"
+                    HelperText="เช่น ใส่ 3 = ไต่จากผู้ขอ 3 ระดับ (หัวหน้า, หัวหน้าของหัวหน้า, ...) แล้วไปขั้นถัดไปเลย ปรับตัวเองถ้าผังองค์กรสั้นกว่าที่ตั้งไว้ ไม่ต้อง set verticalMaxLevel คู่กัน" />
+            </MudItem>
             <MudItem xs="12"><MudText Typo="Typo.subtitle2" Class="mt-2">การเสียบ Component + ปุ่ม (epms)</MudText></MudItem>
             <MudItem xs="12" sm="6"><MudTextField Value="@e.controller" Label="Controller (component เอกสาร)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField Value="@e.action" Label="Action / View (component เอกสาร)" ReadOnly="true" /></MudItem>
@@ -210,7 +213,10 @@
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameCostCenter" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameOrg" Label="ผู้อนุมัติที่หน่วยงาน (Org) เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAdhocUser" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (ตั้งค่าที่ /wf/adhoc-users)" /></MudItem>
-            <MudItem xs="12" sm="4"><MudNumericField T="int?" @bind-Value="e.empLevel" Label="ระดับพนักงานผู้อนุมัติ (empLevel, เว้นว่าง = ไม่กำหนด)" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="e.empLevel" Label="ไต่ผังองค์กรกี่ระดับ (empLevel, เว้นว่าง = ไม่ใช้)" Min="0"
+                    HelperText="ไต่ตายตัว N ระดับจากผู้ขอ (ปรับสั้นลงเองถ้าผังองค์กรไม่ถึง N) แล้วไปขั้นถัดไปตามปกติ — ห้ามตั้งคู่กับ verticalMaxLevel" />
+            </MudItem>
 
             <MudItem xs="12">
                 <MudText Typo="Typo.subtitle2" Class="mt-2">การเสียบ Component + ปุ่ม (epms)</MudText>
@@ -282,6 +288,14 @@
             existing.remark = entity.remark;
             entity = existing;
         }
+
+        // Migration-safety snapshot (CEO, 2026-09-07 follow-up): wfcode is a
+        // stable business-code mirror of workflowid, set here rather than
+        // left to whoever calls this page next — same reasoning as job
+        // snapshots doing it at StartJobAsync time (see
+        // WorkflowEngineService.cs), just one level up (config, not job).
+        entity.wfcode = _workflows.FirstOrDefault(w => w.workflowid == entity.workflowid)?.workflowcode;
+
         await context.SaveChangesAsync();
         return entity;
     }

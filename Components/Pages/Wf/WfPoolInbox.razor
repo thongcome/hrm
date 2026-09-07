@@ -39,6 +39,7 @@
             <MudTh>ผู้ขอ</MudTh>
             <MudTh>ระดับ</MudTh>
             <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>ค้างมา</MudTh>
             <MudTh>สถานะการรับงาน</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -49,6 +50,14 @@
             <MudTd>@(string.IsNullOrWhiteSpace(context.Row.jobmaster.reqName) ? (context.Row.jobmaster.empid ?? "-") : context.Row.jobmaster.reqName)</MudTd>
             <MudTd>@context.Row.wlevel / @context.Row.jobmaster.maxlevel</MudTd>
             <MudTd>@context.Row.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                @if (_ages.TryGetValue(context.Row.jobmasterid, out var age))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@(age.IsOverdue ? Color.Error : Color.Default)">
+                        @age.DaysWaiting วัน@(age.IsOverdue ? $" (เกิน {age.ExpireDays} วัน)" : "")
+                    </MudChip>
+                }
+            </MudTd>
             <MudTd>
                 @if (context.IsClaimedByMe)
                 {
@@ -90,6 +99,7 @@
 
 @code {
     private List<WorkflowEngineService.PoolInboxRow> _pool = new();
+    private Dictionary<long, WorkflowEngineService.JobAgeInfo> _ages = new();
     private bool _loading;
     private long _userId;
 
@@ -106,6 +116,7 @@
         try
         {
             _pool = await Engine.GetMyPoolInboxAsync(_userId);
+            _ages = await Engine.GetJobAgesAsync(_pool.Select(p => p.Row.jobmaster));
         }
         finally
         {
