@@ -351,6 +351,10 @@ public static class ScMenuNavCatalog
         // ต้องรู้เห็น เรียกดูงานได้".
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/jobs", "ภาพรวมงานอนุมัติ", "Approval Jobs Overview", "Icons.Material.Filled.FactCheck", 105),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/vacant-approvals", "ตำแหน่งผู้อนุมัติว่าง", "Vacant Approver Positions", "Icons.Material.Filled.PersonSearch", 110),
+        // CEO item 5 (2026-09-07): reassign an already-pending approval —
+        // distinct from vacant-approvals above (vacant-only, refuses a row
+        // that already has someone).
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reassign-approver", "เปลี่ยนผู้อนุมัติ", "Reassign Approver", "Icons.Material.Filled.SwapHoriz", 115),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/ot-requests", "คำขอทำงานล่วงเวลา (OT)", "Overtime Requests", "Icons.Material.Filled.MoreTime", 120),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/on-behalf", "ลา (แทนพนักงาน)", "Leave (On Behalf)", "Icons.Material.Filled.PersonAddAlt", 130),
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/policy", "สิทธิการลา", "Leave Policy", "Icons.Material.Filled.Rule", 140),

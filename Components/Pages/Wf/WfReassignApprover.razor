@@ -1,0 +1,172 @@
+@page "/wf/reassign-approver"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject WorkflowEngineService Engine
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@* CEO item 5 (2026-09-07): a screen to change the approver on a job that's
+   ALREADY assigned and pending — distinct from /wf/vacant-approvals (which
+   only fills slots nobody was ever resolved to). Typical use: someone is on
+   leave/transferred and their queue needs moving to a backup. Flow: pick the
+   departing approver, see everything currently pending with them, pick who
+   it goes to instead, reason required, reassign one or many at once. *@
+
+<PageTitle>เปลี่ยนผู้อนุมัติ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">เปลี่ยนผู้อนุมัติ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ใช้เมื่อผู้อนุมัติคนเดิม (ลาป่วย/ลาออก/ย้ายงาน) ยังมีงานค้างรออนุมัติอยู่ — เลือกผู้อนุมัติเดิม เลือกรายการที่จะย้าย แล้วระบุผู้อนุมัติคนใหม่
+    </MudText>
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="sc_user" Label="จากผู้อนุมัติ (คนเดิม)" Value="_fromUser" ValueChanged="OnFromUserChangedAsync"
+                SearchFunc="SearchUsersAsync" ToStringFunc="@(u => u is null ? "" : $"{u.loginname} ({u.firstname} {u.lastname})")"
+                ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+        </MudItem>
+    </MudGrid>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    @if (_fromUser is not null)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">งานที่ยังรออนุมัติอยู่กับ @_fromUser.loginname (@_pending.Count รายการ)</MudText>
+        <MudTable Items="_pending" Dense="true" Hover="true" Loading="_loading" MultiSelection="true" @bind-SelectedItems="_selected">
+            <HeaderContent>
+                <MudTh>Job #</MudTh>
+                <MudTh>เรื่อง</MudTh>
+                <MudTh>Workflow</MudTh>
+                <MudTh>ระดับ</MudTh>
+                <MudTh>วันที่ยื่น</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.jobmasterid</MudTd>
+                <MudTd>@context.jobmaster.subject</MudTd>
+                <MudTd>@context.jobmaster.wname</MudTd>
+                <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
+                <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2">ไม่มีงานรออนุมัติกับคนนี้แล้ว</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (_pending.Count > 0)
+        {
+            <MudGrid Class="mt-3">
+                <MudItem xs="12" sm="5">
+                    <MudAutocomplete T="sc_user" Label="ไปยังผู้อนุมัติ (คนใหม่)" Value="_toUser" ValueChanged="@(u => _toUser = u)"
+                        SearchFunc="SearchUsersAsync" ToStringFunc="@(u => u is null ? "" : $"{u.loginname} ({u.firstname} {u.lastname})")"
+                        ResetValueOnEmptyText="true" CoerceText="true" MinCharacters="0" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="5">
+                    <MudTextField T="string" @bind-Value="_reason" Label="เหตุผล (จำเป็น)" />
+                </MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                        Disabled="@(_reassigning || _selected.Count == 0 || _toUser is null || string.IsNullOrWhiteSpace(_reason))"
+                        OnClick="ReassignSelectedAsync">
+                        เปลี่ยนผู้อนุมัติ (@_selected.Count รายการ)
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+</MudPaper>
+
+@code {
+    private sc_user? _fromUser;
+    private sc_user? _toUser;
+    private string _reason = "";
+    private List<job_user_list> _pending = new();
+    private HashSet<job_user_list> _selected = new();
+    private bool _loading;
+    private bool _reassigning;
+    private string? _error;
+
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string search, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.sc_users.Where(u => !u.isdisable && !u.iscancel);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(u => u.loginname.Contains(search)
+                || (u.firstname != null && u.firstname.Contains(search))
+                || (u.lastname != null && u.lastname.Contains(search)));
+        }
+        return await query.OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private async Task OnFromUserChangedAsync(sc_user? user)
+    {
+        _fromUser = user;
+        _error = null;
+        _selected = new();
+        _pending = new();
+        if (user is null) return;
+
+        _loading = true;
+        try
+        {
+            _pending = await Engine.GetMyInboxAsync(user.userid);
+            _selected = _pending.ToHashSet(); // default: everyone's pending items pre-selected, matching the "move it all" common case
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReassignSelectedAsync()
+    {
+        _error = null;
+        if (_toUser is null || _selected.Count == 0 || string.IsNullOrWhiteSpace(_reason)) return;
+        if (_fromUser is not null && _toUser.userid == _fromUser.userid)
+        {
+            _error = "ผู้อนุมัติคนใหม่ต้องไม่ใช่คนเดิม";
+            return;
+        }
+
+        _reassigning = true;
+        var succeeded = 0;
+        var failed = new List<string>();
+        try
+        {
+            foreach (var row in _selected.ToList())
+            {
+                try
+                {
+                    await Engine.ReassignApproverAsync(row.jobapproverid, _toUser.userid, _reason);
+                    succeeded++;
+                }
+                catch (Exception ex)
+                {
+                    failed.Add($"Job #{row.jobmasterid}: {ex.Message}");
+                }
+            }
+
+            if (succeeded > 0)
+                Snackbar.Add($"เปลี่ยนผู้อนุมัติสำเร็จ {succeeded} รายการ", Severity.Success);
+            if (failed.Count > 0)
+                _error = "บางรายการเปลี่ยนไม่สำเร็จ: " + string.Join("; ", failed);
+
+            if (_fromUser is not null)
+                await OnFromUserChangedAsync(_fromUser); // refresh the remaining queue
+            _reason = "";
+            _toUser = null;
+        }
+        finally
+        {
+            _reassigning = false;
+        }
+    }
+}

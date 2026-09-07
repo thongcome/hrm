@@ -512,6 +512,41 @@ public class WorkflowEngineService
             jobApproverId, row.jobmasterid, assigneeUserId);
     }
 
+    // Admin-only (CEO, item 5, 2026-09-07): the deliberate counterpart to
+    // AssignApproverAsync — that one refuses a row that already has an
+    // approver (a safety rail against accidentally stealing someone's
+    // pending item); this is the explicit "yes, move it anyway" action for
+    // when an approver is on leave, transferred, or otherwise unreachable.
+    // Requires a reason so there's always a paper trail for why a job moved
+    // to a different person than the engine originally resolved.
+    public async Task ReassignApproverAsync(long jobApproverId, long newUserId, string reason, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var row = await context.job_user_lists.FirstOrDefaultAsync(a => a.jobapproverid == jobApproverId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบรายการอนุมัติ id {jobApproverId}");
+        if (row.userid is null)
+            throw new InvalidOperationException("รายการนี้ยังไม่มีผู้อนุมัติ — ใช้หน้า \"ตำแหน่งว่าง\" แทน");
+        if (!string.Equals(row.jobstatus, StatusPending, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("รายการนี้ถูกดำเนินการไปแล้ว ไม่สามารถเปลี่ยนผู้อนุมัติได้");
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("กรุณาระบุเหตุผลในการเปลี่ยนผู้อนุมัติ");
+
+        var newAssignee = await context.sc_users.FirstOrDefaultAsync(u => u.userid == newUserId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบผู้ใช้ id {newUserId}");
+
+        var oldUserId = row.userid;
+        row.userid = newUserId;
+        row.empid = newAssignee.empid;
+        row.reason = string.IsNullOrWhiteSpace(row.reason) ? $"เปลี่ยนผู้อนุมัติโดย admin: {reason}" : $"{row.reason} | เปลี่ยนผู้อนุมัติโดย admin: {reason}";
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
+            new { userid = oldUserId }, new { userid = newUserId, reason }, isSensitive: false, ct);
+        Serilog.Log.Information("Job {JobMasterId} level {Level}: approver reassigned from user {OldUserId} to {NewUserId} ({Reason})",
+            row.jobmasterid, row.wlevel, oldUserId, newUserId, reason);
+    }
+
     public async Task<List<job_user_list>> GetMyInboxAsync(long userId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
