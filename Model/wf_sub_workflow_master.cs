@@ -95,6 +95,18 @@ public partial class wf_sub_workflow_master
     // com_organization.parent_code. See WorkflowEngineService.AssignLevelApproversAsync.
     public int? isNeedsupervisorapprove { get; set; }
 
+    // Self-contained, self-terminating vertical climb (CEO, 2026-09-07):
+    // "climb up from the requester's own org, at most N levels — whichever
+    // hop actually resolves (hop N, or an earlier hop if the org chart runs
+    // out first, e.g. a senior requester whose chain reaches the CEO in only
+    // 2 hops) closes the job (istop), not a fixed level N always". Distinct
+    // from isNeedsupervisorapprove (a pre-check gate before a SEPARATE final
+    // approval) — this field makes the hop chain itself the entire approval,
+    // with adaptive termination. Null/0 = not used, no behavior change.
+    // Requires isupperrole or isupperuser also set. See
+    // WorkflowEngineService.AssignLevelApproversAsync / ResolveVerticalChainHopAsync.
+    public int? verticalMaxLevel { get; set; }
+
     public bool isNeedBudgetApproval { get; set; } = false;
 
     public bool isPool { get; set; } = false;

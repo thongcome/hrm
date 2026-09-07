@@ -112,6 +112,7 @@
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.andpercent?.ToString("0.##") ?? "-")" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isorcondition" ReadOnly="true" Label="OR-condition (คนแรกที่อนุมัติพอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.isNeedsupervisorapprove?.ToString() ?? "0")" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval)" ReadOnly="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField Value="@(e.verticalMaxLevel?.ToString() ?? "-")" Label="วิ่งตามสายบังคับบัญชาสูงสุด (ระดับ, self-terminating)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.backwardlevel?.ToString() ?? "-")" Label="ตีกลับไประดับ (เมื่อถูกปฏิเสธ)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isupperrole" ReadOnly="true" Label="Vertical: Upper Role" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isupperuser" ReadOnly="true" Label="Vertical: Upper User" /></MudItem>
@@ -183,6 +184,10 @@
                 <MudNumericField T="int?" @bind-Value="e.isNeedsupervisorapprove" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval, 0 = ไม่ใช้)" Min="0" Max="10" />
             </MudItem>
             <MudItem xs="12" sm="4">
+                <MudNumericField T="int?" @bind-Value="e.verticalMaxLevel" Label="วิ่งตามสายบังคับบัญชาสูงสุดกี่ระดับ (เว้นว่าง = ไม่ใช้)" Min="1" Max="20"
+                    HelperText="ระดับนี้จะกลายเป็นระดับสุดท้าย (istop) เมื่อวิ่งครบจำนวนนี้ หรือวิ่งจนสุดผังองค์กรก่อนครบ (เช่น ผู้ขอมีตำแหน่งสูงอยู่แล้ว) — ต้องติ๊ก Vertical (Upper Role/User) ด้วย" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
                 <MudNumericField T="int?" @bind-Value="e.backwardlevel" Label="ตีกลับไประดับ (ต้องน้อยกว่าระดับตัวเอง, เว้นว่าง = ปฏิเสธจบทันทีเหมือนเดิม)" Min="1" Max="@(e.wlevel - 1)" />
             </MudItem>
             <MudItem xs="12">
@@ -250,6 +255,7 @@
             existing.andpercent = entity.andpercent;
             existing.isorcondition = entity.isorcondition;
             existing.isNeedsupervisorapprove = entity.isNeedsupervisorapprove;
+            existing.verticalMaxLevel = entity.verticalMaxLevel;
             existing.backwardlevel = entity.backwardlevel;
             existing.isupperrole = entity.isupperrole;
             existing.isupperuser = entity.isupperuser;

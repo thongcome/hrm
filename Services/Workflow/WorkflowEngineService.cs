@@ -55,6 +55,12 @@ public class WorkflowEngineService
     // it here would collide with that semantic if resubmission is ever
     // implemented later).
     private const string VerticalPrecheckMarker = "VERTICAL_PRECHECK";
+    // Self-terminating vertical chain (CEO, 2026-09-07) — see
+    // AssignVerticalChainHopAsync/ResolveVerticalChainHopAsync. Distinct
+    // marker from VerticalPrecheckMarker above: those hops gate a SEPARATE
+    // final approval; these hops ARE the final approval, whichever one turns
+    // out to be last.
+    private const string VerticalChainMarker = "VERTICAL_CHAIN";
 
     // public only so the pure AND/OR/unanimous level decision below can be
     // unit-tested directly (WorkflowEvaluateLevelTests) — same "expose the
@@ -200,6 +206,7 @@ public class WorkflowEngineService
                 isLOA = level.isLOA,
                 isNeedsupervisorapprove = level.isNeedsupervisorapprove,
                 backwardlevel = level.backwardlevel,
+                verticalMaxLevel = level.verticalMaxLevel,
                 moddate = DateTime.Now,
             });
         }
@@ -773,6 +780,20 @@ public class WorkflowEngineService
             return WorkflowOutcome.Rejected;
         }
 
+        // Self-terminating vertical chain (CEO, 2026-09-07): a completed hop
+        // that ISN'T this job's terminal one stays on the SAME wlevel for
+        // the next hop — never advances to wlevel+1 like an ordinary level,
+        // since the "next level" here is just another climb on this same
+        // config. AssignVerticalChainHopAsync re-derives the hop number from
+        // job_user_list rows itself, so calling it again is exactly correct.
+        if (completedSnapshot.verticalMaxLevel is int maxVerticalLevel && !completedSnapshot.istop)
+        {
+            var liveLevelForChain = await context.wf_sub_workflow_masters
+                .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == completedLevel, ct)
+                ?? throw new InvalidOperationException($"ไม่พบ config ต้นฉบับของระดับ {completedLevel} ใน wf_sub_workflow_master แล้ว (อาจถูกลบหลังงานเริ่ม)");
+            return await AssignVerticalChainHopAsync(context, job, liveLevelForChain, maxVerticalLevel, ct);
+        }
+
         // outcome == Complete. Decided by istop (the level explicitly
         // marked as terminal), not by comparing to job.maxlevel — that
         // count-based check was a latent bug from Block 2/3 (see Block 4
@@ -1011,8 +1032,19 @@ public class WorkflowEngineService
     // approver_empid (not boss_emp_id) is always the real workflow approver
     // at every org checked here, per the plan's explicit clarification — it
     // may be an acting substitute rather than the literal boss.
+    //
+    // excludeUserId (CEO, 2026-09-07, after the JSP-study mandate): a
+    // requester can genuinely resolve as their own org's approver — the
+    // legacy epms production data proves this actually happened in real use
+    // (job 228 and 7 other real historical jobs self-approved at wlevel
+    // 2/4). The JSP system's own equivalent walker (WorkflowOrgVertical.
+    // getBoss) explicitly guards this: if the resolved boss is the requester
+    // themselves, climb one more org level instead of self-approving. Same
+    // fix here — a self-match is treated exactly like a vacancy for the
+    // purposes of this loop (climb if allowSkipVacant, otherwise fail
+    // through to vacant like any other unresolved hop).
     private static async Task<List<(long UserId, string? EmpId)>> ResolveOrgChainApproverAsync(
-        HRMContext context, string? anchorOrgCode, bool allowSkipVacant, int maxHops, CancellationToken ct)
+        HRMContext context, string? anchorOrgCode, bool allowSkipVacant, int maxHops, long? excludeUserId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(anchorOrgCode))
             return new();
@@ -1022,13 +1054,13 @@ public class WorkflowEngineService
         {
             if (allowSkipVacant || hop == maxHops)
             {
-                if (org.approver_userid is not null)
-                    return new() { (org.approver_userid.Value, null) };
+                if (org.approver_userid is long approverUserId && approverUserId != excludeUserId)
+                    return new() { (approverUserId, null) };
 
                 if (!string.IsNullOrWhiteSpace(org.approver_empid))
                 {
                     var approverUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == org.approver_empid, ct);
-                    if (approverUser is not null)
+                    if (approverUser is not null && approverUser.userid != excludeUserId)
                         return new() { (approverUser.userid, approverUser.empid) };
                 }
             }
@@ -1074,6 +1106,13 @@ public class WorkflowEngineService
             .ToListAsync(ct);
         foreach (var r in priorLastRows) r.isLast = false;
 
+        // Self-terminating vertical chain (CEO, 2026-09-07) — checked before
+        // the ordinary Mix Approval hop gate below; the two are mutually
+        // exclusive configurations on the same level (this one IS the whole
+        // approval, not a gate before a separate one).
+        if (level.verticalMaxLevel is int maxVerticalLevel && maxVerticalLevel > 0)
+            return await AssignVerticalChainHopAsync(context, job, level, maxVerticalLevel, ct);
+
         var neededHops = level.isNeedsupervisorapprove ?? 0;
         string? precheckReasonPrefix = null;
         List<(long UserId, string? EmpId)> candidates;
@@ -1088,7 +1127,7 @@ public class WorkflowEngineService
             if (hopsSatisfied < neededHops)
             {
                 var hopNumber = hopsSatisfied + 1;
-                candidates = await ResolveOrgChainApproverAsync(context, job.reqOrg, allowSkipVacant: false, maxHops: hopNumber, ct);
+                candidates = await ResolveOrgChainApproverAsync(context, job.reqOrg, allowSkipVacant: false, maxHops: hopNumber, job.createuserid, ct);
                 precheckReasonPrefix = $"{VerticalPrecheckMarker} {hopNumber}/{neededHops}: รอหัวหน้าอนุมัติก่อนเข้าสู่ระดับนี้ (Mix Approval)";
             }
             else
@@ -1149,6 +1188,10 @@ public class WorkflowEngineService
                     jobseq = job.jobseq,
                     isLast = true,
                 });
+
+                // Vertical pre-check hops are also real people who need to
+                // act — notify them too, not just the level's own real round.
+                await NotifyApproverAsync(context, job, userId, empId, ct);
             }
             return WorkflowOutcome.StillOpen;
         }
@@ -1198,6 +1241,123 @@ public class WorkflowEngineService
             isLast = true,
         });
         return WorkflowOutcome.StillOpen;
+    }
+
+    // Self-terminating vertical climb (CEO, 2026-09-07): "climb up from the
+    // requester's own org, at most N levels — whichever hop actually
+    // resolves (hop N, or an earlier hop if the org chart runs out first,
+    // e.g. a senior requester whose chain reaches the CEO in only 2 hops)
+    // closes the job, not always a fixed level N." Each hop is its own
+    // approval round on the SAME wlevel (same shape as the Mix Approval
+    // precheck hops), but this level IS the whole approval — there's no
+    // separate final round after the last hop. Re-derives the current hop
+    // number from job_user_list every call, so TryAdvanceLevelAsync can call
+    // this again for "one more hop" simply by re-entering here.
+    private async Task<WorkflowOutcome> AssignVerticalChainHopAsync(HRMContext context, job_master job, wf_sub_workflow_master level, int maxLevel, CancellationToken ct)
+    {
+        var hopsApproved = await context.job_user_lists.CountAsync(a =>
+            a.jobmasterid == job.jobmasterid && a.wlevel == level.wlevel && (a.jobseq ?? 0) == (job.jobseq ?? 0)
+            && a.reason != null && a.reason.StartsWith(VerticalChainMarker) && a.jobstatus == StatusApproved, ct);
+        var hopNumber = hopsApproved + 1;
+
+        var (candidates, isTerminalHop) = await ResolveVerticalChainHopAsync(context, job.reqOrg, hopNumber, maxLevel, job.createuserid, ct);
+
+        // Freeze this hop's terminal-ness onto the job's own snapshot row —
+        // TryAdvanceLevelAsync reads istop fresh from the DB (possibly in a
+        // later, separate top-level Approve/Reject call), so this is the
+        // only way it can know, once this hop resolves, whether to close the
+        // job or ask for one more hop.
+        var snapshotRow = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == level.wlevel, ct)
+            ?? throw new InvalidOperationException($"ไม่พบ config ระดับ {level.wlevel} ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
+        snapshotRow.istop = isTerminalHop;
+
+        var reasonText = isTerminalHop
+            ? $"{VerticalChainMarker} {hopNumber}/{maxLevel} (ระดับสุดท้าย — วิ่งจนสุดผังองค์กรหรือครบจำนวนที่ตั้งไว้)"
+            : $"{VerticalChainMarker} {hopNumber}/{maxLevel}";
+
+        if (candidates.Count > 0)
+        {
+            foreach (var (userId, empId) in candidates)
+            {
+                context.job_user_lists.Add(new job_user_list
+                {
+                    jobmasterid = job.jobmasterid,
+                    workflowid = job.workflowid,
+                    wlevel = level.wlevel,
+                    userid = userId,
+                    empid = empId,
+                    subworkflowmasterid = level.subworkflowid,
+                    jobstatus = StatusPending,
+                    sendDate = DateTime.Now,
+                    reason = reasonText,
+                    jobseq = job.jobseq,
+                    isLast = true,
+                });
+                await NotifyApproverAsync(context, job, userId, empId, ct);
+            }
+            return WorkflowOutcome.StillOpen;
+        }
+
+        // Nobody resolved at this hop (vacant org, or the only candidate was
+        // the requester themselves) — same vacant-for-admin handling as the
+        // ordinary path, so /wf/vacant-approvals still covers a stalled chain.
+        Serilog.Log.Warning("Job {JobMasterId} level {Level} vertical-chain hop {Hop}/{Max}: no candidate resolved, left vacant for admin assignment",
+            job.jobmasterid, level.wlevel, hopNumber, maxLevel);
+        context.job_user_lists.Add(new job_user_list
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = level.wlevel,
+            userid = null,
+            subworkflowmasterid = level.subworkflowid,
+            jobstatus = StatusPending,
+            reason = $"{reasonText} | ตำแหน่งว่าง — รอ admin มอบหมายผู้อนุมัติ (ดู /wf/vacant-approvals)",
+            jobseq = job.jobseq,
+            isLast = true,
+        });
+        return WorkflowOutcome.StillOpen;
+    }
+
+    // Walks EXACTLY to hop `hopNumber` from anchorOrgCode (hop 1 = anchor's
+    // own org, hop 2 = its parent, ... — same numbering as
+    // ResolveOrgChainApproverAsync). Also reports whether this hop is the
+    // chain's terminal one: either hopNumber reached maxLevel, or the org
+    // chart ran out (no parent_code) at or before this hop. Each hop is a
+    // fixed landing spot, not a skip-and-climb search, so a self-match here
+    // (the resolved approver is the requester) just means "vacant at this
+    // hop" — it does not climb further; the chain still lands where the
+    // schedule says it should, and vacancy is handled the same way it is
+    // everywhere else in this engine (admin assignment via
+    // /wf/vacant-approvals).
+    private static async Task<(List<(long UserId, string? EmpId)> Candidates, bool IsTerminalHop)> ResolveVerticalChainHopAsync(
+        HRMContext context, string? anchorOrgCode, int hopNumber, int maxLevel, long? excludeUserId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(anchorOrgCode))
+            return (new(), true);
+
+        var org = await context.com_organizations.FirstOrDefaultAsync(o => o.code == anchorOrgCode || o.orgCode == anchorOrgCode, ct);
+        for (var hop = 1; org is not null; hop++)
+        {
+            var chartExhausted = string.IsNullOrWhiteSpace(org.parent_code);
+            if (hop == hopNumber || chartExhausted)
+            {
+                var candidates = new List<(long, string?)>();
+                if (org.approver_userid is long uid && uid != excludeUserId)
+                    candidates.Add((uid, null));
+                else if (!string.IsNullOrWhiteSpace(org.approver_empid))
+                {
+                    var approverUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == org.approver_empid, ct);
+                    if (approverUser is not null && approverUser.userid != excludeUserId)
+                        candidates.Add((approverUser.userid, approverUser.empid));
+                }
+                return (candidates, hopNumber >= maxLevel || chartExhausted);
+            }
+
+            org = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code, ct);
+        }
+
+        return (new(), true); // org lookup failed entirely — treat as chart-exhausted, not an infinite/unresolved wait
     }
 
     // Horizontal (custom user / custom role) + Vertical (org-chart) approver
@@ -1278,7 +1438,7 @@ public class WorkflowEngineService
             // (maxHops=1), identical to Vertical resolution's behavior before
             // this block existed.
             var maxHops = level.isAutoApproveAllow ? MaxVerticalHops : 1;
-            var vertical = await ResolveOrgChainApproverAsync(context, requesterOrgCode, level.isAutoApproveAllow, maxHops, ct);
+            var vertical = await ResolveOrgChainApproverAsync(context, requesterOrgCode, level.isAutoApproveAllow, maxHops, job.createuserid, ct);
             candidates.AddRange(vertical);
         }
 
@@ -1417,6 +1577,48 @@ public class WorkflowEngineService
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to send workflow closure notification for job {JobMasterId}", job.jobmasterid);
+        }
+    }
+
+    // "ผู้อนุมัติไม่ได้รับแจ้งเตือนเมื่อมีงานใหม่เข้าคิว" (CEO, 2026-09-07,
+    // JSP-study gap #2) — epms emails whoever is now responsible on every
+    // level transition; HRM only ever emailed the REQUESTER, only at
+    // closure. This is the approver-side counterpart, fired once per newly
+    // created PENDING row in AssignLevelApproversAsync's candidate loop —
+    // covers the very first level (StartJobAsync) and every subsequent
+    // level/hop transition identically, since that's the one place real
+    // approver rows are ever created. empId may be null (org-chain
+    // resolution via approver_userid alone doesn't always carry one) — fall
+    // back to the approver's own sc_user.empid in that case.
+    private async Task NotifyApproverAsync(HRMContext context, job_master job, long approverUserId, string? approverEmpId, CancellationToken ct)
+    {
+        try
+        {
+            var empId = approverEmpId;
+            if (string.IsNullOrWhiteSpace(empId))
+            {
+                empId = await context.sc_users.Where(u => u.userid == approverUserId)
+                    .Select(u => u.empid).FirstOrDefaultAsync(ct);
+            }
+            if (string.IsNullOrWhiteSpace(empId))
+                return;
+
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == empId, ct);
+            if (emp is null)
+                return;
+
+            var email = await EmployeeEmailResolver.ResolveAsync(context, emp.id, ct);
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            var subject = $"มีคำขอรออนุมัติใหม่: {job.subject ?? job.wname}";
+            var body = $"<p>คุณมีคำขออนุมัติใหม่รอดำเนินการ เรื่อง \"{job.subject}\" (Workflow: {job.wname})</p>"
+                + "<p>กรุณาเข้าสู่ระบบและตรวจสอบที่หน้า \"งานรออนุมัติของฉัน\"</p>";
+            await _emailSender.SendEmailAsync(email, subject, body);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to send new-pending-approval notification for job {JobMasterId} to user {UserId}", job.jobmasterid, approverUserId);
         }
     }
 

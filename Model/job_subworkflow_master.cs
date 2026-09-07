@@ -68,6 +68,14 @@ public partial class job_subworkflow_master
     // job outright exactly as before this feature existed.
     public int? backwardlevel { get; set; }
 
+    // Snapshotted from wf_sub_workflow_master.verticalMaxLevel — the
+    // self-terminating vertical-climb cap (CEO, 2026-09-07). `istop` above
+    // is deliberately NOT frozen to a fixed value for this level when this
+    // is set: WorkflowEngineService flips THIS SAME row's istop dynamically,
+    // per job, the moment each hop is issued, once it knows whether that hop
+    // is the last one (hop count reached, or the org chart ran out first).
+    public int? verticalMaxLevel { get; set; }
+
     [Column(TypeName = "text")]
     public string? remark { get; set; }
 
