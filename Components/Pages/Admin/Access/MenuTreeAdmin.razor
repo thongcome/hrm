@@ -108,6 +108,31 @@
         </MudPaper>
     }
 
+    @* CEO 2026-09-07: reverse of RoleAdmin's fix — "เมนูนี้ผูกกับ role ไหนบ้าง"
+       previously required opening every role one at a time and scanning its
+       tree for a checked box. sc_menu.sc_role_menus already models this. *@
+    @if (_grantsMenu is not null)
+    {
+        <MudPaper Class="pa-4 mb-4" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-1">กลุ่มผู้ใช้ที่เห็นเมนูนี้: @_grantsMenu.menuname</MudText>
+            <MudButton Size="Size.Small" Variant="Variant.Text" Class="mb-2" OnClick="@(() => _grantsMenu = null)">ปิด</MudButton>
+            <MudSimpleTable Dense="true" Style="max-height:300px; overflow-y:auto;">
+                <thead><tr><th>กลุ่มผู้ใช้</th><th>แก้ไขได้</th></tr></thead>
+                <tbody>
+                    @foreach (var g in _grants)
+                    {
+                        <tr><td>@g.Role.name</td><td>@(g.CanEdit ? "✓" : "")</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            @if (_grants.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">ยังไม่มีกลุ่มผู้ใช้ใดเห็นเมนูนี้</MudText>
+            }
+            <MudButton Size="Size.Small" Variant="Variant.Text" Href="/admin/system/permissions" Class="mt-1">ไปหน้าจัดการสิทธิ์การใช้ระบบ (แก้ไข)</MudButton>
+        </MudPaper>
+    }
+
     <MudTable Items="_children" Dense="true" Hover="true">
         <HeaderContent>
             <MudTh>Menu ID</MudTh>
@@ -150,6 +175,7 @@
             <MudTd>@row.Menu.menuorder</MudTd>
             <MudTd>@(row.Menu.isshow ? "ใช่" : "ไม่")</MudTd>
             <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ShowGrantsAsync(row.Menu))">สิทธิ์</MudButton>
                 @if (_rights?.CanEdit == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row.Menu))">แก้ไข</MudButton>
@@ -173,6 +199,9 @@
     private List<(sc_menu Menu, int ChildCount)> _children = new();
     private List<sc_menugroup> _menuGroups = new();
     private sc_menu? _editing;
+    private sc_menu? _grantsMenu;
+    private record RoleGrantRow(sc_role Role, bool CanEdit);
+    private List<RoleGrantRow> _grants = new();
     private string? _error;
     private string? _editError;
     private string _actor = "admin";
@@ -243,6 +272,17 @@
             var idx = i;
             _breadcrumbItems.Add(new BreadcrumbItem(_breadcrumbPath[i].menuname, href: null, disabled: idx == _breadcrumbPath.Count - 1));
         }
+    }
+
+    private async Task ShowGrantsAsync(sc_menu menu)
+    {
+        _grantsMenu = menu;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var rows = await context.sc_role_menus
+            .Where(rm => rm.menuid == menu.menuid && rm.isactive)
+            .Include(rm => rm.role)
+            .ToListAsync();
+        _grants = rows.Select(r => new RoleGrantRow(r.role, r.canedit)).OrderBy(r => r.Role.name).ToList();
     }
 
     private async Task DrillDown(sc_menu menu)

@@ -95,7 +95,13 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@TypeLabel(context.scopetype)</MudTd>
-                <MudTd>@context.scopevalue</MudTd>
+                <MudTd>
+                    @context.scopevalue
+                    @if (_scopeDisplayNames.TryGetValue(context.scopeid, out var dn) && !string.IsNullOrWhiteSpace(dn))
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@dn</MudText>
+                    }
+                </MudTd>
                 <MudTd>@(context.startdate?.ToString("dd/MM/yyyy") ?? "-") — @(context.enddate?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
                 <MudTd>
                     <MudChip T="string" Size="Size.Small" Color="@(context.isactive ? Color.Success : Color.Default)">
@@ -115,6 +121,7 @@
     private long? _selectedRoleId;
     private List<sc_role> _roles = new();
     private List<sc_role_scope> _scopes = new();
+    private Dictionary<long, string> _scopeDisplayNames = new();
     private List<string> _companyIds = new();
     private string? _error;
     private string _actor = "admin";
@@ -147,6 +154,48 @@
             .Where(s => s.roleid == _selectedRoleId)
             .OrderBy(s => s.scopetype).ThenBy(s => s.scopevalue)
             .ToListAsync();
+        await LoadScopeDisplayNamesAsync(context);
+    }
+
+    // CEO 2026-09-07: scopevalue is a bare code (org code, cost-center code,
+    // company id) with no real FK to any of those tables (see the model's
+    // own comment on why — scopetype decides which table it's matched
+    // against at evaluation time) — resolve each one to a human-readable
+    // name for display only, purely a read-time lookup, never written back.
+    private async Task LoadScopeDisplayNamesAsync(HRMContext context)
+    {
+        _scopeDisplayNames = new();
+
+        var orgCodes = _scopes.Where(s => s.scopetype is RoleScopeType.Org or RoleScopeType.Branch)
+            .Select(s => s.scopevalue).Distinct().ToList();
+        var orgNames = orgCodes.Count == 0 ? new() : await context.com_organizations
+            .Where(o => orgCodes.Contains(o.orgcodefull))
+            .ToDictionaryAsync(o => o.orgcodefull!, o => o.name ?? "");
+
+        var ccCodes = _scopes.Where(s => s.scopetype == RoleScopeType.CostCenter)
+            .Select(s => s.scopevalue).Distinct().ToList();
+        var ccNames = ccCodes.Count == 0 ? new() : await context.Com_ChartOfAccounts
+            .Where(a => ccCodes.Contains(a.Code))
+            .ToDictionaryAsync(a => a.Code, a => a.NameTh ?? "");
+
+        var companyIds = _scopes.Where(s => s.scopetype == RoleScopeType.Company)
+            .Select(s => s.scopevalue).Distinct().ToList();
+        var companyNames = companyIds.Count == 0 ? new() : await context.com_companies
+            .Where(c => companyIds.Contains(c.code))
+            .ToDictionaryAsync(c => c.code!, c => c.name ?? "");
+
+        foreach (var s in _scopes)
+        {
+            var name = s.scopetype switch
+            {
+                RoleScopeType.Org or RoleScopeType.Branch => orgNames.GetValueOrDefault(s.scopevalue ?? ""),
+                RoleScopeType.CostCenter => ccNames.GetValueOrDefault(s.scopevalue ?? ""),
+                RoleScopeType.Company => companyNames.GetValueOrDefault(s.scopevalue ?? ""),
+                _ => null,
+            };
+            if (!string.IsNullOrWhiteSpace(name))
+                _scopeDisplayNames[s.scopeid] = name;
+        }
     }
 
     private void ResetPickers()

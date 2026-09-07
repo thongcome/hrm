@@ -176,12 +176,23 @@
     private const string ProgramPath = "/admin/system/users";
     private ProgramRoleService.ProgramRights? _rights;
 
+    // Drill-through from UserSessionAdmin ("ไปหน้าจัดการผู้ใช้ของ...") — opens
+    // straight into that user's own edit form instead of landing on the bare
+    // list and making the admin search again.
+    [Parameter, SupplyParameterFromQuery] public long? UserId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         await LoadAsync();
+
+        if (UserId is long uid)
+        {
+            var target = _users.FirstOrDefault(u => u.userid == uid);
+            if (target is not null) StartEdit(target);
+        }
     }
 
     // Second enforcement layer (AD.CRUDManage, both layers always) — returns

@@ -49,6 +49,42 @@
     </MudSelect>
 </MudPaper>
 
+@* CEO 2026-09-07: reverse lookup — "role ไหนบ้างเห็น/แก้หน้านี้ได้" ไม่ต้องไล่เปิด
+   ทีละกลุ่มผู้ใช้แล้วมาสแกนหาเอง เพราะ sc_program_role ไม่มี navigation
+   property (คีย์แบน roleid+progpath) เลยเป็น query แยกจากตารางด้านล่างที่ยัง
+   ต้องเลือก role ก่อนเหมือนเดิม (ไว้แก้ไขทีละกลุ่ม). ค้นหานี้ข้าม role ทั้งหมด
+   ไว้ดูอย่างเดียว แก้ไขให้ไปที่ตารางด้านล่าง *@
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">ค้นหาข้ามกลุ่มผู้ใช้ — "หน้านี้ role ไหนบ้างเห็น/แก้ไขได้"</MudText>
+    <MudTextField T="string" Value="_crossSearchTerm" Label="ค้นหาเส้นทางหน้า (path)" Immediate="true"
+        DebounceInterval="300" ValueChanged="OnCrossSearchChangedAsync" Style="min-width:320px;max-width:420px;"
+        AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Clearable="true" />
+
+    @if (!string.IsNullOrWhiteSpace(_crossSearchTerm))
+    {
+        <MudSimpleTable Dense="true" Class="mt-2" Style="max-height:400px; overflow-y:auto;">
+            <thead><tr><th>เส้นทางหน้า</th><th>กลุ่มผู้ใช้</th><th>เพิ่ม</th><th>อ่าน</th><th>แก้ไข</th><th>ลบ</th></tr></thead>
+            <tbody>
+                @foreach (var r in _crossResults)
+                {
+                    <tr>
+                        <td style="font-family:monospace;">@r.progpath</td>
+                        <td>@r.roleName</td>
+                        <td>@(r.cancreate ? "✓" : "")</td>
+                        <td>@(r.canread ? "✓" : "")</td>
+                        <td>@(r.canedit ? "✓" : "")</td>
+                        <td>@(r.candelete ? "✓" : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        @if (_crossResults.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">ไม่พบเส้นทางหน้าที่ตรงกับคำค้น</MudText>
+        }
+    }
+</MudPaper>
+
 @if (_selectedRoleId is null)
 {
     <MudPaper Class="pa-8" Outlined="true">
@@ -167,6 +203,9 @@ else
     private List<sc_program_role> _rows = new();
     private long? _selectedRoleId;
     private string? _searchTerm;
+    private string? _crossSearchTerm;
+    private record CrossRoleRow(string progpath, string roleName, bool cancreate, bool canread, bool canedit, bool candelete);
+    private List<CrossRoleRow> _crossResults = new();
     private long? _adminRoleId;
     private string _actor = "admin";
     private ProgramRoleService.ProgramRights? _rights;
@@ -209,6 +248,25 @@ else
     }
 
     private void OnSearchChanged(string value) => _searchTerm = value;
+
+    private async Task OnCrossSearchChangedAsync(string value)
+    {
+        _crossSearchTerm = value;
+        if (string.IsNullOrWhiteSpace(value)) { _crossResults = new(); return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var term = value.Trim();
+        var matches = await context.sc_program_roles
+            .Where(p => p.isactive && p.progpath.Contains(term)
+                && (p.cancreate || p.canread || p.canedit || p.candelete))
+            .ToListAsync();
+        var roleNames = _roles.ToDictionary(r => r.roleid, r => r.name ?? $"#{r.roleid}");
+        _crossResults = matches
+            .Select(p => new CrossRoleRow(p.progpath, roleNames.TryGetValue(p.roleid, out var n) ? n : $"#{p.roleid}",
+                p.cancreate, p.canread, p.canedit, p.candelete))
+            .OrderBy(r => r.progpath).ThenBy(r => r.roleName)
+            .ToList();
+    }
 
     // ---- Safety rail ------------------------------------------------------
     // The Admin role's Edit right on THIS page's own path must never be
