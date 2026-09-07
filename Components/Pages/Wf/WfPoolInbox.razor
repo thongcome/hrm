@@ -7,6 +7,7 @@
 @inject WorkflowEngineService Engine
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 @attribute [Authorize]
 
 @* ESS-personalized page (self-scoped by userid, same as WfMyInbox) — bare
@@ -15,14 +16,19 @@
    a shared view of pending pool-level rows (wf_sub_workflow_master.isPool)
    so a team notices shared work instead of it only surfacing in each
    person's own /wf/my-inbox. Whoever acts first still wins (isorcondition)
-   — this page changes discovery only, not the completion rule. *@
+   — this page changes discovery only, not the completion rule.
+   Claim-lock follow-up (same day): "ยังไม่มีปุ่ม 'รับงาน' ที่ล็อกไม่ให้คนอื่น
+   ทำซ้ำจริงจัง" — รับงาน now actually claims it (job_master.PoolClaimedByUserId),
+   enforced server-side in ApproveAsync/RejectAsync/DeclineAsync/SendBackAsync,
+   not just hidden here. *@
 
 <PageTitle>งานที่ต้องช่วยกันดู (Pool)</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
     <MudText Typo="Typo.h5">งานที่ต้องช่วยกันดู (Pool)</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
-        งานเหล่านี้ถูกส่งให้หลายคนพร้อมกัน ใครทำก่อนงานจะจบเลย (คนอื่นในลิสต์นี้ก็จะเห็นงานหายไปเช่นกัน)
+        งานเหล่านี้ถูกส่งให้หลายคนพร้อมกัน กด "รับงาน" ก่อนเริ่มดูเพื่อล็อกไม่ให้คนอื่นเสียเวลาทำซ้ำ —
+        ใครทำสำเร็จก่อนงานจะจบเลย (คนอื่นในลิสต์นี้ก็จะเห็นงานหายไปเช่นกัน)
     </MudText>
 
     <MudTable Items="_pool" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
@@ -33,18 +39,47 @@
             <MudTh>ผู้ขอ</MudTh>
             <MudTh>ระดับ</MudTh>
             <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>สถานะการรับงาน</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.jobmasterid</MudTd>
-            <MudTd>@context.jobmaster.subject</MudTd>
-            <MudTd>@context.jobmaster.wname</MudTd>
-            <MudTd>@(string.IsNullOrWhiteSpace(context.jobmaster.reqName) ? (context.jobmaster.empid ?? "-") : context.jobmaster.reqName)</MudTd>
-            <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
-            <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>@context.Row.jobmasterid</MudTd>
+            <MudTd>@context.Row.jobmaster.subject</MudTd>
+            <MudTd>@context.Row.jobmaster.wname</MudTd>
+            <MudTd>@(string.IsNullOrWhiteSpace(context.Row.jobmaster.reqName) ? (context.Row.jobmaster.empid ?? "-") : context.Row.jobmaster.reqName)</MudTd>
+            <MudTd>@context.Row.wlevel / @context.Row.jobmaster.maxlevel</MudTd>
+            <MudTd>@context.Row.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                    OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รับงาน / ดูรายละเอียด</MudButton>
+                @if (context.IsClaimedByMe)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">รับไว้แล้ว @context.ClaimedDate?.ToString("HH:mm")</MudChip>
+                }
+                else if (context.ClaimedByName is not null)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.ClaimedByName รับไปแล้ว</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">ยังไม่มีใครรับ</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (context.IsClaimedByMe)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="mr-1"
+                        OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.Row.jobmasterid}"))">ดำเนินการ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                        OnClick="@(() => ReleaseAsync(context.Row.jobmasterid))">ปล่อยคืน</MudButton>
+                }
+                else if (context.ClaimedByName is not null)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="true">ถูกรับไปแล้ว</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                        OnClick="@(() => ClaimAsync(context.Row.jobmasterid))">รับงาน</MudButton>
+                }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -54,22 +89,57 @@
 </MudPaper>
 
 @code {
-    private List<job_user_list> _pool = new();
+    private List<WorkflowEngineService.PoolInboxRow> _pool = new();
     private bool _loading;
+    private long _userId;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
-        var userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        await LoadAsync();
+    }
 
+    private async Task LoadAsync()
+    {
         _loading = true;
         try
         {
-            _pool = await Engine.GetMyPoolInboxAsync(userId);
+            _pool = await Engine.GetMyPoolInboxAsync(_userId);
         }
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task ClaimAsync(long jobMasterId)
+    {
+        try
+        {
+            await Engine.ClaimPoolJobAsync(jobMasterId, _userId);
+            Snackbar.Add("รับงานแล้ว — คนอื่นในพูลจะเห็นว่าคุณรับไปแล้ว", Severity.Success);
+            await LoadAsync();
+            Nav.NavigateTo($"/wf/my-inbox/{jobMasterId}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Warning);
+            await LoadAsync();
+        }
+    }
+
+    private async Task ReleaseAsync(long jobMasterId)
+    {
+        try
+        {
+            await Engine.ReleasePoolClaimAsync(jobMasterId, _userId);
+            Snackbar.Add("ปล่อยงานคืนแล้ว", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Warning);
         }
     }
 }

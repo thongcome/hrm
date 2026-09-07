@@ -274,6 +274,7 @@ public class WorkflowEngineService
         // before this guard existed.
         if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+        await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
         approverRow.jobstatus = StatusApproved;
         approverRow.approvedate = DateTime.Now;
@@ -317,6 +318,7 @@ public class WorkflowEngineService
         // before this guard existed.
         if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+        await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
         approverRow.jobstatus = StatusRejected;
         approverRow.approvedate = DateTime.Now;
@@ -407,6 +409,7 @@ public class WorkflowEngineService
             throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถดำเนินการต่อได้");
         if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+        await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
         var snapshot = await context.job_subworkflow_masters
             .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
@@ -461,6 +464,7 @@ public class WorkflowEngineService
             throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถดำเนินการต่อได้");
         if (approverRow.wlevel != job.lastLevel || (approverRow.jobseq ?? 0) != (job.jobseq ?? 0))
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
+        await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
         var snapshot = await context.job_subworkflow_masters
             .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
@@ -574,26 +578,140 @@ public class WorkflowEngineService
     // grabs in one place instead of each person only noticing it in their
     // own personal inbox. Same PENDING filter as GetMyInboxAsync, narrowed
     // to isPool levels via the job's own frozen snapshot.
-    public async Task<List<job_user_list>> GetMyPoolInboxAsync(long userId, CancellationToken ct = default)
+    //
+    // Claim-lock follow-up (CEO, 2026-09-07): each row also reports whether
+    // ITS job is currently claimed, and by whom — job_master.PoolClaimedByUserId
+    // is per-JOB (not per-candidate-row), since exactly one claim can be live
+    // for a job's current level regardless of how many pool candidates exist.
+    public record PoolInboxRow(job_user_list Row, bool IsClaimedByMe, string? ClaimedByName, DateTime? ClaimedDate);
+
+    public async Task<List<PoolInboxRow>> GetMyPoolInboxAsync(long userId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var pending = await context.job_user_lists
             .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
             .Where(a => a.userid == userId && a.jobstatus == StatusPending)
             .ToListAsync(ct);
-        if (pending.Count == 0) return pending;
+        if (pending.Count == 0) return new();
 
-        var keys = pending.Select(a => new { a.jobmasterid, a.wlevel }).Distinct().ToList();
-        var jobMasterIds = keys.Select(k => k.jobmasterid).Distinct().ToList();
+        var jobMasterIds = pending.Select(a => a.jobmasterid).Distinct().ToList();
         var poolSnapshots = await context.job_subworkflow_masters
             .Where(s => jobMasterIds.Contains(s.jobmasterid) && s.isPool)
             .Select(s => new { s.jobmasterid, s.wlevel })
             .ToListAsync(ct);
         var poolKeys = poolSnapshots.Select(s => (s.jobmasterid, s.wlevel)).ToHashSet();
 
-        return pending.Where(a => poolKeys.Contains((a.jobmasterid, a.wlevel ?? 0)))
+        var poolRows = pending.Where(a => poolKeys.Contains((a.jobmasterid, a.wlevel ?? 0)))
             .OrderBy(a => a.jobmaster.createdate)
             .ToList();
+        if (poolRows.Count == 0) return new();
+
+        var claimantIds = poolRows
+            .Where(a => IsPoolClaimLive(a.jobmaster))
+            .Select(a => a.jobmaster.PoolClaimedByUserId!.Value)
+            .Distinct().ToList();
+        var claimantNames = await context.sc_users
+            .Where(u => claimantIds.Contains(u.userid))
+            .ToDictionaryAsync(u => u.userid, u => $"{u.firstname} {u.lastname}", ct);
+
+        return poolRows.Select(a =>
+        {
+            var live = IsPoolClaimLive(a.jobmaster);
+            var claimedBy = live ? a.jobmaster.PoolClaimedByUserId : null;
+            return new PoolInboxRow(
+                a,
+                IsClaimedByMe: claimedBy == userId,
+                ClaimedByName: claimedBy is long id ? claimantNames.GetValueOrDefault(id, $"#{id}") : null,
+                ClaimedDate: live ? a.jobmaster.PoolClaimedDate : null);
+        }).ToList();
+    }
+
+    // A claim only counts as "live" while it still points at the job's
+    // CURRENT level/round — job_master doesn't get a fresh row per level or
+    // bounce-back round, so without this check a claim from an earlier,
+    // already-completed round would incorrectly keep blocking a later one.
+    private static bool IsPoolClaimLive(job_master job) =>
+        job.PoolClaimedByUserId is not null
+        && job.PoolClaimedWLevel == job.lastLevel
+        && (job.PoolClaimedJobSeq ?? 0) == (job.jobseq ?? 0);
+
+    // Enforcement side of the claim-lock (ApproveAsync/RejectAsync/DeclineAsync/
+    // SendBackAsync all call this) — only blocks when the level being acted on
+    // is isPool==true AND someone OTHER than the actor holds a live claim.
+    // A non-pool level, an unclaimed pool level, or the actor's own claim are
+    // all no-ops here — zero behavior change for any workflow that never
+    // uses isPool.
+    private async Task EnsureNotClaimedByAnotherAsync(HRMContext context, job_master job, int? wlevel, long actorUserId, CancellationToken ct)
+    {
+        if (!IsPoolClaimLive(job) || job.PoolClaimedByUserId == actorUserId) return;
+
+        var levelSnapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == wlevel, ct);
+        if (levelSnapshot?.isPool != true) return;
+
+        throw new InvalidOperationException("งานนี้มีเพื่อนร่วมทีมรับไปดำเนินการแล้ว กรุณาเลือกงานอื่นในพูล หรือรอให้เขาปล่อยคืน");
+    }
+
+    // Claims a pool job for the caller so teammates see it's already being
+    // worked (WfPoolInbox.razor's "รับงาน" button) — idempotent if the caller
+    // already holds the live claim, throws if someone else does or if the
+    // caller isn't actually a pending candidate on this job's current level.
+    public async Task ClaimPoolJobAsync(long jobMasterId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct)
+            ?? throw new InvalidOperationException("ไม่พบงานนี้แล้ว");
+        if (job.isJobClosed == true)
+            throw new InvalidOperationException("งานนี้ปิดแล้ว ไม่สามารถรับงานได้");
+
+        if (IsPoolClaimLive(job))
+        {
+            if (job.PoolClaimedByUserId == actorUserId) return; // already claimed by me — no-op
+            throw new InvalidOperationException("มีเพื่อนร่วมทีมรับงานนี้ไปแล้ว");
+        }
+
+        var myPendingRow = await context.job_user_lists.FirstOrDefaultAsync(a =>
+            a.jobmasterid == jobMasterId && a.userid == actorUserId && a.jobstatus == StatusPending
+            && a.wlevel == job.lastLevel && (a.jobseq ?? 0) == (job.jobseq ?? 0), ct)
+            ?? throw new InvalidOperationException("คุณไม่ใช่ผู้ได้รับมอบหมายในระดับปัจจุบันของงานนี้");
+
+        var levelSnapshot = await context.job_subworkflow_masters
+            .FirstOrDefaultAsync(s => s.jobmasterid == jobMasterId && s.wlevel == myPendingRow.wlevel, ct);
+        if (levelSnapshot?.isPool != true)
+            throw new InvalidOperationException("ระดับนี้ไม่ใช่ pool workflow — ไม่ต้องรับงาน สามารถอนุมัติได้ทันที");
+
+        job.PoolClaimedByUserId = actorUserId;
+        job.PoolClaimedWLevel = job.lastLevel;
+        job.PoolClaimedJobSeq = job.jobseq;
+        job.PoolClaimedDate = DateTime.Now;
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", jobMasterId.ToString(),
+            new { PoolClaimedByUserId = (long?)null }, new { PoolClaimedByUserId = actorUserId }, isSensitive: false, ct);
+    }
+
+    // Lets the claimant give a pool job back (e.g. they realize they can't
+    // handle it) — only the current claimant may release; a no-op if nobody
+    // (or someone else, via a stale/foreign call) holds it.
+    public async Task ReleasePoolClaimAsync(long jobMasterId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct)
+            ?? throw new InvalidOperationException("ไม่พบงานนี้แล้ว");
+        if (!IsPoolClaimLive(job)) return;
+        if (job.PoolClaimedByUserId != actorUserId)
+            throw new InvalidOperationException("คุณไม่ใช่ผู้ที่รับงานนี้ไว้ ไม่สามารถปล่อยคืนได้");
+
+        job.PoolClaimedByUserId = null;
+        job.PoolClaimedWLevel = null;
+        job.PoolClaimedJobSeq = null;
+        job.PoolClaimedDate = null;
+        await context.SaveChangesAsync(ct);
+
+        await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", jobMasterId.ToString(),
+            new { PoolClaimedByUserId = actorUserId }, new { PoolClaimedByUserId = (long?)null }, isSensitive: false, ct);
     }
 
     // "คนที่เกี่ยวข้องในการอนุมัติต้องเห็นงานด้วยว่าเขาทำไปแล้วถึงไหนแล้ว"

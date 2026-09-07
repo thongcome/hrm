@@ -158,8 +158,24 @@ public partial class job_master
     public long? loaid { get; set; }
 
     [StringLength(250)]
-    
+
     public string? reqForNameEN { get; set; }
+
+    // Pool Workflow claim-lock (CEO, 2026-09-07 follow-up: "ล็อกไม่ให้คนอื่น
+    // ทำซ้ำจริงจัง"). A pool candidate can claim this job's current pending
+    // level so teammates see it's already being worked and skip it, instead
+    // of everyone reading the same case before whoever's fastest wins.
+    // Enforced (not just a UI hint) in ApproveAsync/RejectAsync, gated on the
+    // level snapshot's isPool==true — a non-pool job is never affected.
+    // Scoped to PoolClaimedWLevel/PoolClaimedJobSeq matching the job's
+    // CURRENT lastLevel/jobseq so a stale claim from an earlier level or
+    // bounce-back round can never block a later one — same jobseq-matching
+    // discipline as the existing staleness guards in ApproveAsync/RejectAsync.
+    public long? PoolClaimedByUserId { get; set; }
+    public int? PoolClaimedWLevel { get; set; }
+    public int? PoolClaimedJobSeq { get; set; }
+    [Column(TypeName = "datetime")]
+    public DateTime? PoolClaimedDate { get; set; }
 
     [InverseProperty("jobmaster")]
     public virtual ICollection<job_user_list> job_user_lists { get; set; } = new List<job_user_list>();
