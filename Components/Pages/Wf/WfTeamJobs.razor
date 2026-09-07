@@ -1,0 +1,179 @@
+@page "/wf/team-jobs"
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Shared
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* ESS/MSS-personalized page (self-scoped by the logged-in employee's own
+   team) — bare [Authorize] on purpose, no Menu:XXX policy, same rationale as
+   MssTeamAttendance.razor. CEO 2026-09-07: "หน้านี้ภาพรวมงานอนุมัติ จริงๆ
+   ใช้ได้ทุกงาน แค่ query userid/emp_no ที่เกี่ยวกับเขาทั้งหมด ถ้าเป็นงานที่
+   ส่งให้หัวหน้าอนุมัติ หัวหน้าต้องดูงานแผนกที่ตัวเองดูแลได้ทั้งหมด" — a plain
+   employee sees only their own jobs; a supervisor (anyone currently set as
+   com_organization.approver_empid for at least one org unit) sees every job
+   from their own org subtree too. This is deliberately NOT the admin
+   cross-system search (/wf/jobs, Menu:WF_WORKFLOW_ADMIN, sees literally
+   everything) — an admin who is ALSO a supervisor uses this same page for
+   their own team, and /wf/jobs separately for the unrestricted view. *@
+
+<PageTitle>งานอนุมัติในทีมของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานอนุมัติในทีมของฉัน</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        @if (_supervisedOrgs.Count > 0)
+        {
+            <span>เห็นงานของตัวเองและทุกคนในหน่วยงานที่คุณดูแล (@string.Join(", ", _supervisedOrgs.Select(o => o.name)))</span>
+        }
+        else
+        {
+            <span>เห็นเฉพาะงานของตัวเอง (ยังไม่ได้เป็นหัวหน้าหน่วยงานใด)</span>
+        }
+    </MudText>
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="4">
+            <MudTextField T="string" @bind-Value="_employeeSearch" Label="ชื่อพนักงาน" Immediate="true" DebounceInterval="300"
+                Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="long?" @bind-Value="_workflowId" Label="ประเภทงาน (Workflow)" Clearable="true">
+                @foreach (var wf in _workflows)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)wf.workflowid)">@wf.workflowcode - @wf.wname</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        @if (_supervisedOrgs.Count > 1)
+        {
+            <MudItem xs="12" sm="4">
+                <MudSelect T="long?" @bind-Value="_orgId" Label="หน่วยงาน" Clearable="true">
+                    @foreach (var o in _supervisedOrgs)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)o.id)">@o.name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudText Typo="Typo.caption" Class="mt-2 d-block">พบ @Filtered.Count() จาก @_jobs.Count รายการ</MudText>
+
+    <MudTable Items="Filtered" Dense="true" Hover="true" Class="mt-2" Loading="_loading" RowsPerPage="25">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>ผู้ขอ</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.subject</MudTd>
+            <MudTd>@(string.IsNullOrWhiteSpace(context.reqName) ? (context.createusername ?? context.empid ?? "-") : context.reqName)</MudTd>
+            <MudTd>@context.wname</MudTd>
+            <MudTd>@(context.lastLevel ?? 0) / @context.maxlevel</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.isJobClosed == true ? Color.Default : Color.Info)">@context.status</MudChip></MudTd>
+            <MudTd>@context.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รายละเอียด</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีงานที่ตรงกับเงื่อนไข</MudText>
+        </NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<job_master> _jobs = new();
+    private List<wf_workflow> _workflows = new();
+    private List<com_organization> _supervisedOrgs = new();
+    private Dictionary<long, string> _empNoToOrgCodeFull = new();
+    private string? _employeeSearch;
+    private long? _workflowId;
+    private long? _orgId;
+    private bool _loading;
+
+    private IEnumerable<job_master> Filtered
+    {
+        get
+        {
+            var q = _jobs.AsEnumerable();
+            if (_workflowId is long wid) q = q.Where(j => j.workflowid == wid);
+            if (!string.IsNullOrWhiteSpace(_employeeSearch))
+            {
+                var term = _employeeSearch.Trim();
+                q = q.Where(j => (j.reqName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (j.createusername?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (_orgId is long oid)
+            {
+                var org = _supervisedOrgs.FirstOrDefault(o => o.id == oid);
+                if (org?.orgcodefull is string prefix)
+                    q = q.Where(j => j.reqOrg != null && j.reqOrg.StartsWith(prefix));
+            }
+            return q;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
+
+            var me = await EssEmployeeResolver.ResolveAsync(context, state.User);
+            var requesterUserIds = new HashSet<long>();
+
+            var myUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+            if (myUserId > 0) requesterUserIds.Add(myUserId);
+
+            if (me is not null)
+            {
+                _supervisedOrgs = await context.com_organizations
+                    .Where(o => o.isActive && o.approver_empid == me.EmpNo)
+                    .OrderBy(o => o.name)
+                    .ToListAsync();
+
+                var teamEmpNos = new HashSet<string>();
+                foreach (var org in _supervisedOrgs)
+                {
+                    var subtree = await OrgEmployeeResolverHelper.ResolveOrganizationSubtreeAsync(context, me.companyid!, org.id);
+                    foreach (var e in subtree) teamEmpNos.Add(e.EmpNo);
+                }
+
+                if (teamEmpNos.Count > 0)
+                {
+                    var teamUserIds = await context.sc_users
+                        .Where(u => u.empid != null && teamEmpNos.Contains(u.empid))
+                        .Select(u => u.userid)
+                        .ToListAsync();
+                    foreach (var id in teamUserIds) requesterUserIds.Add(id);
+                }
+            }
+
+            _jobs = await Engine.SearchJobsAsync(requesterUserIds: requesterUserIds);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

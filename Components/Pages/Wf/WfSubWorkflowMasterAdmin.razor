@@ -111,6 +111,7 @@
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isandcondition" ReadOnly="true" Label="AND-condition (อนุมัติแบบ %)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.andpercent?.ToString("0.##") ?? "-")" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox Value="e.isorcondition" ReadOnly="true" Label="OR-condition (คนแรกที่อนุมัติพอ)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox Value="e.isPool" ReadOnly="true" Label="Pool (โชว์ในหน้า /wf/pool)" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.isNeedsupervisorapprove?.ToString() ?? "0")" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.verticalMaxLevel?.ToString() ?? "-")" Label="วิ่งตามสายบังคับบัญชาสูงสุด (ระดับ, self-terminating)" ReadOnly="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField Value="@(e.backwardlevel?.ToString() ?? "-")" Label="ตีกลับไประดับ (เมื่อถูกปฏิเสธ)" ReadOnly="true" /></MudItem>
@@ -181,6 +182,10 @@
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudCheckBox T="bool" Value="e.isorcondition" ValueChanged="@((bool v) => { e.isorcondition = v; if (v) e.isandcondition = false; })" Label="OR-condition (คนแรกที่อนุมัติพอ ไม่ต้องรอทุกคน)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" @bind-Value="e.isPool" Label="Pool (โชว์ในหน้า /wf/pool ให้ทั้งทีมเห็นงานร่วมกัน)"
+                    HelperText="@(e.isorcondition ? "" : "ควรติ๊ก OR-condition ด้วย ไม่งั้นงานจะรอครบทุกคนแทนที่จะจบเมื่อมีคนแรกทำ")" />
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudNumericField T="int?" @bind-Value="e.isNeedsupervisorapprove" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval, 0 = ไม่ใช้)" Min="0" Max="10" />
@@ -259,6 +264,7 @@
             existing.isorcondition = entity.isorcondition;
             existing.isNeedsupervisorapprove = entity.isNeedsupervisorapprove;
             existing.verticalMaxLevel = entity.verticalMaxLevel;
+            existing.isPool = entity.isPool;
             existing.backwardlevel = entity.backwardlevel;
             existing.isupperrole = entity.isupperrole;
             existing.isupperuser = entity.isupperuser;

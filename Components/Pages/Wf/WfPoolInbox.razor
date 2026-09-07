@@ -1,0 +1,75 @@
+@page "/wf/pool"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* ESS-personalized page (self-scoped by userid, same as WfMyInbox) — bare
+   [Authorize] on purpose, no Menu:XXX policy. CEO 2026-09-07: "หน้า pool
+   workflow ด้วย สำหรับบางงานที่เป็นของแผนกที่ต้องช่วยกันเอาไปอนุมัติ" —
+   a shared view of pending pool-level rows (wf_sub_workflow_master.isPool)
+   so a team notices shared work instead of it only surfacing in each
+   person's own /wf/my-inbox. Whoever acts first still wins (isorcondition)
+   — this page changes discovery only, not the completion rule. *@
+
+<PageTitle>งานที่ต้องช่วยกันดู (Pool)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานที่ต้องช่วยกันดู (Pool)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        งานเหล่านี้ถูกส่งให้หลายคนพร้อมกัน ใครทำก่อนงานจะจบเลย (คนอื่นในลิสต์นี้ก็จะเห็นงานหายไปเช่นกัน)
+    </MudText>
+
+    <MudTable Items="_pool" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ผู้ขอ</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.jobmaster.subject</MudTd>
+            <MudTd>@context.jobmaster.wname</MudTd>
+            <MudTd>@(string.IsNullOrWhiteSpace(context.jobmaster.reqName) ? (context.jobmaster.empid ?? "-") : context.jobmaster.reqName)</MudTd>
+            <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
+            <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                    OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รับงาน / ดูรายละเอียด</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีงานในกลุ่มที่ต้องช่วยกันดูตอนนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<job_user_list> _pool = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+
+        _loading = true;
+        try
+        {
+            _pool = await Engine.GetMyPoolInboxAsync(userId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

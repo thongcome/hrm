@@ -207,6 +207,7 @@ public class WorkflowEngineService
                 isNeedsupervisorapprove = level.isNeedsupervisorapprove,
                 backwardlevel = level.backwardlevel,
                 verticalMaxLevel = level.verticalMaxLevel,
+                isPool = level.isPool,
                 moddate = DateTime.Now,
             });
         }
@@ -564,6 +565,37 @@ public class WorkflowEngineService
             .ToListAsync(ct);
     }
 
+    // Pool Workflow (CEO, 2026-09-07): "งานที่เป็นของแผนกที่ต้องช่วยกันเอาไป
+    // อนุมัติ" — a level marked isPool=true on the job's own snapshot still
+    // resolves candidates and completes exactly like any other level
+    // (normally isorcondition, so whoever acts first wins — isPool changes
+    // no completion logic at all); this only adds a SECOND, shared view of
+    // the same pending rows so a team can see everything currently up for
+    // grabs in one place instead of each person only noticing it in their
+    // own personal inbox. Same PENDING filter as GetMyInboxAsync, narrowed
+    // to isPool levels via the job's own frozen snapshot.
+    public async Task<List<job_user_list>> GetMyPoolInboxAsync(long userId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var pending = await context.job_user_lists
+            .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
+            .Where(a => a.userid == userId && a.jobstatus == StatusPending)
+            .ToListAsync(ct);
+        if (pending.Count == 0) return pending;
+
+        var keys = pending.Select(a => new { a.jobmasterid, a.wlevel }).Distinct().ToList();
+        var jobMasterIds = keys.Select(k => k.jobmasterid).Distinct().ToList();
+        var poolSnapshots = await context.job_subworkflow_masters
+            .Where(s => jobMasterIds.Contains(s.jobmasterid) && s.isPool)
+            .Select(s => new { s.jobmasterid, s.wlevel })
+            .ToListAsync(ct);
+        var poolKeys = poolSnapshots.Select(s => (s.jobmasterid, s.wlevel)).ToHashSet();
+
+        return pending.Where(a => poolKeys.Contains((a.jobmasterid, a.wlevel ?? 0)))
+            .OrderBy(a => a.jobmaster.createdate)
+            .ToList();
+    }
+
     // "คนที่เกี่ยวข้องในการอนุมัติต้องเห็นงานด้วยว่าเขาทำไปแล้วถึงไหนแล้ว"
     // (CEO, 2026-09-07) — every job_user_list row this user has ever been on,
     // any status, newest first: what's still pending (their turn or not) plus
@@ -613,7 +645,7 @@ public class WorkflowEngineService
     // AND together; a blank filter set returns everything, newest first.
     public async Task<List<job_master>> SearchJobsAsync(string? workflowCode = null, bool? isClosed = null,
         long? requesterUserId = null, DateTime? fromDate = null, DateTime? toDate = null, string? searchText = null,
-        CancellationToken ct = default)
+        IEnumerable<long>? requesterUserIds = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var query = context.job_masters.Include(j => j.workflow).AsQueryable();
@@ -621,6 +653,16 @@ public class WorkflowEngineService
         if (!string.IsNullOrWhiteSpace(workflowCode)) query = query.Where(j => j.workflowcode == workflowCode);
         if (isClosed is bool closed) query = query.Where(j => j.isJobClosed == closed);
         if (requesterUserId is long uid) query = query.Where(j => j.createuserid == uid);
+        // Supervisor-scoped overview (CEO, 2026-09-07): "หัวหน้าต้องดูงาน
+        // แผนกที่ตัวเองดูแลได้ทั้งหมด" — every job created by anyone in the
+        // caller's own team/subtree (self included), computed by the caller
+        // (see /wf/team-jobs) since org-subtree resolution lives in
+        // Services/Shared, not this engine.
+        if (requesterUserIds is not null)
+        {
+            var idSet = requesterUserIds as ICollection<long> ?? requesterUserIds.ToList();
+            query = query.Where(j => j.createuserid != null && idSet.Contains(j.createuserid.Value));
+        }
         if (fromDate is DateTime from) query = query.Where(j => j.createdate >= from);
         if (toDate is DateTime to) query = query.Where(j => j.createdate < to.AddDays(1));
         if (!string.IsNullOrWhiteSpace(searchText))

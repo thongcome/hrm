@@ -126,6 +126,12 @@ public static class ScMenuNavCatalog
         // no cross-module "where is my request" screen — every job the caller
         // started (createuserid), any module. Same ungated/self-scoped shape.
         new("GRP_ESS", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 76), // ungated: ESS-personalized, self-scoped by createuserid
+        // CEO order 7 ก.ย. 2569 (Pool Workflow): shared view of pending
+        // isPool-level rows — discovery only, completion rule unchanged.
+        new("GRP_ESS", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 77), // ungated: ESS-personalized, self-scoped by userid
+        // CEO order 7 ก.ย. 2569: supervisor sees their whole team's jobs, not
+        // just their own — self-scoped (expands automatically if a boss).
+        new("GRP_MSS", null, "/wf/team-jobs", "งานอนุมัติในทีมของฉัน", "My Team's Approvals", "Icons.Material.Filled.Groups", 25),
 
         // ---- GRP_MSS (all self-scoped manager pages; url ซ้ำกับกลุ่มอื่นได้ per (group,url) เช็คซ้ำ) ----
         new("GRP_MSS", null, "/mss", "หน้าแรกหัวหน้างาน", "MSS Home", "Icons.Material.Filled.Dashboard", 10),
@@ -346,6 +352,7 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reasons", "เหตุผลการพิจารณา", "Approval Reasons", "Icons.Material.Filled.ListAlt", 95),
         new("GRP_WF_ENGINE", null, "/wf/my-inbox", "งานรออนุมัติของฉัน", "My Pending Approvals", "Icons.Material.Filled.Inbox", 100), // TODO ungated today (ESS-personalized approval inbox, self-scoped by userid)
         new("GRP_WF_ENGINE", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 101), // ungated: ESS-personalized, self-scoped by createuserid
+        new("GRP_WF_ENGINE", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 102), // ungated: ESS-personalized, self-scoped by userid
         // CEO order 7 ก.ย. 2569 (approval-inbox gap #2): cross-module search
         // over every job_master, not just vacant slots — "ผู้ที่เกี่ยวข้อง...
         // ต้องรู้เห็น เรียกดูงานได้".

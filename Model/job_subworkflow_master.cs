@@ -76,6 +76,15 @@ public partial class job_subworkflow_master
     // is the last one (hop count reached, or the org chart ran out first).
     public int? verticalMaxLevel { get; set; }
 
+    // Snapshotted from wf_sub_workflow_master.isPool (CEO, 2026-09-07): a
+    // pool level's PENDING rows also surface on the shared /wf/pool page (in
+    // addition to each candidate's own /wf/my-inbox) so a team can see and
+    // claim shared work, not just wait for it to show up individually.
+    // Deliberately does NOT change how the level completes — that's still
+    // isorcondition (whoever acts first) exactly as configured; isPool is
+    // additive display/discovery only, never a second completion rule.
+    public bool isPool { get; set; }
+
     [Column(TypeName = "text")]
     public string? remark { get; set; }
 
