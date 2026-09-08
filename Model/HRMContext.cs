@@ -119,6 +119,8 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<doc_center> doc_centers { get; set; }
 
+    public virtual DbSet<Emp_UniformRequest> Emp_UniformRequests { get; set; }
+
     public virtual DbSet<emp_checkin> emp_checkins { get; set; }
 
     public virtual DbSet<emp_checkout> emp_checkouts { get; set; }

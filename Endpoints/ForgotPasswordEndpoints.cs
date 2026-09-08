@@ -87,7 +87,8 @@ public static class ForgotPasswordEndpoints
             HttpContext httpContext,
             IDbContextFactory<HRMContext> dbFactory,
             IPasswordHasher<sc_user> passwordHasher,
-            UserManager<ApplicationUser> userManager) =>
+            UserManager<ApplicationUser> userManager,
+            HRM.Services.Security.PasswordPolicyService policy) =>
         {
             var form = await httpContext.Request.ReadFormAsync();
             var username = form["username"].ToString();
@@ -128,10 +129,11 @@ public static class ForgotPasswordEndpoints
             // ConfirmResetPasswordAsync) — it is never read for sign-in.
             scUser.password = passwordHasher.HashPassword(scUser, newPassword);
             // Unlike an admin-issued reset, the user just chose this password
-            // themselves, so there's nothing to force them to change again.
-            scUser.isforcechanged = false;
-            scUser.moddate = DateTime.Now;
-            scUser.modby = "self-service-reset";
+            // themselves, so there's nothing to force them to change again —
+            // and the expiry clock restarts from now (PasswordPolicyService is
+            // the single place that decides what "password was just set"
+            // means, so this path can't drift from the force-change one).
+            policy.StampPasswordChanged(scUser, "self-service-reset");
             await context.SaveChangesAsync();
 
             // Proven ownership of the account via a valid emailed token, so

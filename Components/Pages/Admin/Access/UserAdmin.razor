@@ -14,6 +14,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject HRM.Services.Login.UserProvisioningService UserProvisioning
 @inject ProgramRoleService ProgramRoles
+@inject PasswordPolicyService PasswordPolicy
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -73,11 +74,29 @@
                 {
                     <MudChip T="string" Color="Color.Default" Size="Size.Small">ปิดใช้งาน</MudChip>
                 }
+                @* Lockout is a separate axis from disabled: the account is
+                   fine, it just failed too many sign-ins and Identity is
+                   holding it shut for a few minutes. Shown here because
+                   otherwise an admin taking the support call has no way to
+                   see it and just resets the password (which used to be the
+                   only thing that cleared it). *@
+                @if (_lockedUserIds.Contains(context.userid))
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small">ถูกล็อก</MudChip>
+                }
+                @if (context.isforcechanged)
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">ต้องเปลี่ยนรหัสผ่าน</MudChip>
+                }
             </MudTd>
             <MudTd>
                 @if (_rights?.CanEdit == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton>
+                }
+                @if (_rights?.CanEdit == true && _lockedUserIds.Contains(context.userid))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => UnlockAsync(context))">ปลดล็อก</MudButton>
                 }
                 @if (_rights?.CanDelete == true)
                 {
@@ -170,6 +189,10 @@
 
     private List<sc_user> _users = new();
     private List<sc_role> _roles = new();
+    // sc_user.userid of accounts Identity currently has locked out. Held
+    // separately because lockout state lives in AspNetUsers (LockoutEnd), not
+    // on sc_user — sc_user.invalidpwcount is only a mirror of the counter.
+    private HashSet<long> _lockedUserIds = new();
     private Dictionary<string, Hremployee> _employeesByEmpNo = new();
     private HashSet<long> _selectedRoleIds = new();
     private Hremployee? _selectedEmployee;
@@ -223,6 +246,12 @@
             .Include(u => u.sc_user_roles).ThenInclude(ur => ur.role)
             .OrderBy(u => u.loginname)
             .ToListAsync();
+
+        var now = DateTimeOffset.Now;
+        _lockedUserIds = (await UserManager.Users
+            .Where(u => u.LockoutEnd != null && u.LockoutEnd > now)
+            .Select(u => u.userid)
+            .ToListAsync()).ToHashSet();
 
         var empNos = _users.Where(u => !string.IsNullOrWhiteSpace(u.empid)).Select(u => u.empid!).Distinct().ToList();
         _employeesByEmpNo = await context.Hremployee
@@ -439,9 +468,12 @@
         if (existing is null) return;
 
         existing.password = PasswordHasher.HashPassword(existing, DefaultPassword);
-        existing.isforcechanged = true;
-        existing.moddate = DateTime.Now;
-        existing.modby = _actor;
+        // isforcechanged + a fresh pwdexpdate, via the one service that
+        // decides what an admin reset means — this is what actually makes the
+        // "must change on first login" promise in the message below true
+        // (before the password policy went in, the flag was written here and
+        // read by nobody). See Services/Security/PasswordPolicyService.
+        PasswordPolicy.StampAdminReset(existing, _actor);
         await context.SaveChangesAsync();
 
         // sc_user.password above is legacy/reference only — actual sign-in goes
@@ -453,6 +485,11 @@
         {
             await UserManager.RemovePasswordAsync(appUser);
             await UserManager.AddPasswordAsync(appUser, DefaultPassword);
+            // An account is usually reset *because* the person locked
+            // themselves out — handing them a new password while the lockout
+            // is still running would just fail again for another 15 minutes.
+            await UserManager.SetLockoutEndDateAsync(appUser, null);
+            await UserManager.ResetAccessFailedCountAsync(appUser);
             _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
         }
         else
@@ -460,6 +497,41 @@
             _editInfo = $"รีเซ็ตรหัสผ่าน sc_user (ข้อมูลอ้างอิงเดิม) แล้ว แต่ผู้ใช้นี้ยังไม่ได้ผูกบัญชี Identity — จะ login ไม่ได้จนกว่าจะไปผูกที่หน้า \"ผูกบัญชี Identity\" ก่อน";
         }
         Snackbar.Add("รีเซ็ตรหัสผ่านเรียบร้อย", Severity.Success);
+    }
+
+    // Clears a failed-attempt lockout without touching the password — the
+    // thing the legacy system could not do at all (solar.SecurityBean only
+    // ever set isDisable=1, and enableUser() was never wired to a screen).
+    private async Task UnlockAsync(sc_user user)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            Snackbar.Add(denied, Severity.Error);
+            return;
+        }
+
+        var appUser = await UserManager.Users.FirstOrDefaultAsync(u => u.userid == user.userid);
+        if (appUser is null)
+        {
+            Snackbar.Add("ผู้ใช้นี้ยังไม่ได้ผูกบัญชี Identity จึงไม่มีสถานะล็อกให้ปลด", Severity.Warning);
+            return;
+        }
+
+        await UserManager.SetLockoutEndDateAsync(appUser, null);
+        await UserManager.ResetAccessFailedCountAsync(appUser);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == user.userid);
+        if (existing is not null)
+        {
+            existing.invalidpwcount = 0;
+            existing.moddate = DateTime.Now;
+            existing.modby = _actor;
+            await context.SaveChangesAsync();
+        }
+
+        Snackbar.Add($"ปลดล็อกบัญชี {user.loginname} เรียบร้อย", Severity.Success);
+        await LoadAsync();
     }
 
     private async Task ToggleActiveAsync(sc_user user)

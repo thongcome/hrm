@@ -2002,6 +2002,96 @@ public class WorkflowEngineService
     // currently waiting on — resolved from the lowest level that still has
     // PENDING rows. Lets a requester see exactly who their request just went to.
     // Returns "" when nothing is pending (e.g. the job already closed/auto-approved).
+    // The workflow's full approval PLAN, straight from config — every level
+    // of wf_sub_workflow_master with who is set to approve it (CEO,
+    // 2026-09-08: "ทายไม่ได้ครับต้องแม่น ... เอา subworkflow มากางก่อน แล้วไป
+    // ดึงจาก job_sub มาแนบ"). Nothing here is resolved at runtime or guessed:
+    // named users come from wf_custom_user, roles from wf_custom_role, and
+    // every other strategy is described by the flag that's actually ticked.
+    // Callers lay this out as the skeleton, then overlay the job's real
+    // job_subworkflow_master / job_user_list rows on top.
+    public record LevelApproverPlan(int Level, string? Label, string ApproverText);
+
+    public async Task<List<LevelApproverPlan>> GetApproverPlanAsync(long workflowId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+
+        var levels = await context.wf_sub_workflow_masters
+            .Where(s => s.workflowid == workflowId)
+            .OrderBy(s => s.wlevel)
+            .ToListAsync(ct);
+        if (levels.Count == 0) return new();
+
+        // Named users configured per level.
+        var customUsers = await context.wf_custom_users
+            .Where(u => u.workflowid == workflowId && u.isactive)
+            .Select(u => new { u.wlevel, u.userid })
+            .ToListAsync(ct);
+        var userIds = customUsers.Select(u => u.userid).Distinct().ToList();
+        var users = await context.sc_users
+            .Where(u => userIds.Contains(u.userid))
+            .Select(u => new { u.userid, u.empid, u.loginname })
+            .ToListAsync(ct);
+        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var emps = await context.Hremployee
+            .Where(e => empIds.Contains(e.EmpNo))
+            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .ToListAsync(ct);
+        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        var nameByUserId = users.ToDictionary(
+            u => u.userid,
+            u => u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n
+                : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
+
+        // Roles configured per level.
+        var customRoles = await context.wf_custom_roles
+            .Where(r => r.workflowid == workflowId && r.isactive == true)
+            .Select(r => new { r.wlevel, r.roleid })
+            .ToListAsync(ct);
+        var roleIds = customRoles.Select(r => r.roleid).Distinct().ToList();
+        var roleNames = await context.sc_roles
+            .Where(r => roleIds.Contains(r.roleid))
+            .ToDictionaryAsync(r => r.roleid, r => r.name, ct);
+
+        var plan = new List<LevelApproverPlan>();
+        foreach (var level in levels)
+        {
+            var parts = new List<string>();
+
+            if (level.iscustomUser)
+            {
+                var names = customUsers.Where(u => u.wlevel == level.wlevel)
+                    .Select(u => nameByUserId.GetValueOrDefault(u.userid, $"#{u.userid}"))
+                    .Distinct().ToList();
+                if (names.Count > 0) parts.Add(string.Join(" / ", names));
+            }
+            if (level.iscustomRole)
+            {
+                var names = customRoles.Where(r => r.wlevel == level.wlevel)
+                    .Select(r => roleNames.GetValueOrDefault(r.roleid) ?? $"role #{r.roleid}")
+                    .Distinct().ToList();
+                if (names.Count > 0) parts.Add($"บทบาท: {string.Join(" / ", names)}");
+            }
+            if (level.isupperrole || level.isupperuser)
+            {
+                var hops = level.verticalMaxLevel ?? level.empLevel;
+                parts.Add(hops is int h && h > 0 ? $"หัวหน้าตามผังองค์กร (ไต่ {h} ระดับ)" : "หัวหน้าตามผังองค์กร");
+            }
+            if (level.isNeedsupervisorapprove is int precheck && precheck > 0)
+                parts.Add($"ผ่านหัวหน้า {precheck} ระดับก่อน");
+            if (level.isLOA) parts.Add("ผู้อนุมัติตามวงเงิน (LOA)");
+            if (level.isReturnSender) parts.Add("ส่งกลับผู้ยื่นคำขอ");
+            if (level.isApproverSameOrg) parts.Add("ผู้อนุมัติในหน่วยงานเดียวกับผู้ขอ");
+            if (level.isApproverSameCostCenter) parts.Add("ผู้อนุมัติใน Cost Center เดียวกัน");
+            if (level.isAdhocUser) parts.Add("ผู้อนุมัติเฉพาะกิจของงานนั้น");
+
+            plan.Add(new LevelApproverPlan(level.wlevel, level.subject, string.Join(" · ", parts)));
+        }
+
+        return plan;
+    }
+
     public async Task<string> GetPendingApproverNamesAsync(long jobMasterId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);

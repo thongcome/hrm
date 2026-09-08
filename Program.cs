@@ -173,21 +173,36 @@ builder.Services.AddDbContextFactory<HRMContext>(options =>
 builder.Services.AddQuickGridEntityFrameworkAdapter();
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
+// Password policy (force-change / expiry / lockout) — the three rules the
+// original JSP system enforced in solar.SecurityBean and HRM had lost. Bound
+// here so IdentityOptions.Lockout below and PasswordPolicyService read the
+// same numbers instead of each hardcoding their own.
+builder.Services.Configure<HRM.Services.Security.PasswordPolicyOptions>(
+    builder.Configuration.GetSection(HRM.Services.Security.PasswordPolicyOptions.SectionName));
+builder.Services.AddSingleton<HRM.Services.Security.PasswordPolicyService>();
+var passwordPolicy = builder.Configuration
+    .GetSection(HRM.Services.Security.PasswordPolicyOptions.SectionName)
+    .Get<HRM.Services.Security.PasswordPolicyOptions>() ?? new();
+
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
         options.SignIn.RequireConfirmedAccount = true;
         // OWASP A07 (security review 1 ก.ย. 2569): Identity's default minimum
         // is 6 — raise to the org standard the StrongPasswordAttribute already
         // implies (8 + upper/lower/digit/special) so the token-reset path
-        // enforces it too, not only the opt-in form attribute. Lockout stays
-        // on Identity defaults (5 attempts / 5 min), already exercised by
-        // CheckPasswordSignInAsync(lockoutOnFailure: true).
+        // enforces it too, not only the opt-in form attribute.
         options.Password.RequiredLength = 8;
         options.Password.RequireUppercase = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireDigit = true;
         options.Password.RequireNonAlphanumeric = true;
-        options.Lockout.MaxFailedAccessAttempts = 5;
+        // Lockout now comes from PasswordPolicy config rather than Identity's
+        // defaults (5 attempts / 5 min), so a deployment can tighten it
+        // without a rebuild — and so LoginEndpoints' "locked" message and the
+        // admin unlock button describe the same numbers.
+        options.Lockout.MaxFailedAccessAttempts = passwordPolicy.MaxFailedAttempts;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(passwordPolicy.LockoutMinutes);
+        options.Lockout.AllowedForNewUsers = true;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
@@ -460,6 +475,7 @@ builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveRequestService>();
+builder.Services.AddScoped<HRM.Services.Ess.UniformRequestService>();
 builder.Services.AddScoped<HRM.Services.Leave.BlockLeaveComplianceService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveAnalyticsService>();
 builder.Services.AddScoped<HRM.Services.Welfare.WelfareEntitlementResolver>();
@@ -657,6 +673,19 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Pluggable document components for WorkflowDocumentSlot.razor (see its own
+// header comment for the registration contract) — a module plugs in here,
+// once, rather than the slot's rendering logic needing to know about every
+// module. LEAVE_APPROVAL is the first real registration (CEO, 2026-09-08);
+// the slot mechanism itself already existed but nothing had ever called
+// Register(...) for any module before this.
+// No document components are registered in code: WorkflowDocumentSlot
+// resolves the module's own view page straight from workflow config
+// (wf_sub_workflow_master.controller per level, else wf_workflow.url) against
+// the app's real route table. Wiring a module into the workflow is therefore
+// a config change only — no code — same as epms never needed more than a
+// controller/action name in config.
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -704,6 +733,13 @@ app.UseStaticFiles();
 // "A valid antiforgery token was not provided" on /Account/Login.
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Password-policy gate — after UseAuthentication (it needs httpContext.User)
+// and before endpoint execution, so a user who owes the system a password
+// change can't reach any page, endpoint or file download. See
+// Middleware/ForcePasswordChangeMiddleware for why it redirects, not 403s.
+app.UseMiddleware<HRM.Middleware.ForcePasswordChangeMiddleware>();
+
 app.UseRateLimiter();
 app.UseAntiforgery();
 
@@ -728,6 +764,7 @@ app.MapReportEndpoints();
 // SignalR-connection response has already begun by the time that handler
 // runs.
 app.MapLoginEndpoints();
+app.MapPasswordPolicyEndpoints();
 app.MapExternalSsoEndpoints();
 app.MapForgotPasswordEndpoints();
 app.MapEssFileEndpoints();

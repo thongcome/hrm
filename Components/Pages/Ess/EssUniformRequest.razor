@@ -1,0 +1,149 @@
+@page "/ess/uniform-request"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject UniformRequestService UniformSvc
+@inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* ESS-personalized page (self-scoped by the logged-in employee) — bare
+   [Authorize] on purpose, no Menu:XXX policy, same rationale as every other
+   Ess*.razor page. End-to-end proof-of-concept for the generic Workflow
+   Approval Engine (CEO, 2026-09-08): 1.พนักงานขอ (this page) -> 2.หัวหน้า
+   อนุมัติ -> 3.HR รับเรื่อง (UNIFORM_REQUEST workflow, created live via
+   /wf/workflows + /wf/sub-workflow-master, not seeded). *@
+
+<PageTitle>ขอเบิกชุดยูนิฟอร์ม</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="700px">
+    <MudText Typo="Typo.h5">ขอเบิกชุดยูนิฟอร์ม</MudText>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_info))
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+    }
+
+    @if (_self is null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">ไม่พบข้อมูลพนักงานของคุณในระบบ</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_uniformType" Label="ประเภทชุด" Placeholder="เช่น เสื้อโปโล, ชุดฟอร์มพนักงาน" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_size" Label="ไซส์">
+                    @foreach (var s in new[] { "S", "M", "L", "XL", "XXL" })
+                    {
+                        <MudSelectItem T="string" Value="@s">@s</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="int" @bind-Value="_quantity" Label="จำนวน" Min="1" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_reason" Label="เหตุผล (ถ้ามี)" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAndSubmitAsync">
+                    ส่งคำขออนุมัติ
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    }
+
+    <MudDivider Class="my-4" />
+    <MudText Typo="Typo.h6">คำขอของฉัน</MudText>
+    <MudTable Items="_myRequests" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>วันที่ขอ</MudTh>
+            <MudTh>ประเภทชุด</MudTh>
+            <MudTh>ไซส์</MudTh>
+            <MudTh>จำนวน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>@context.UniformType</MudTd>
+            <MudTd>@context.Size</MudTd>
+            <MudTd>@context.Quantity</MudTd>
+            <MudTd>@(context.JobMasterId is null ? "ร่าง" : "ส่งอนุมัติแล้ว")</MudTd>
+            <MudTd>
+                @if (context.JobMasterId is long jid)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{jid}"))">ดูสถานะ</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่เคยขอเบิกชุดยูนิฟอร์ม</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private Hremployee? _self;
+    private List<Emp_UniformRequest> _myRequests = new();
+    private string _uniformType = "";
+    private string _size = "M";
+    private int _quantity = 1;
+    private string? _reason;
+    private long _actorUserId;
+    private string? _actorEmpNo;
+    private string? _error;
+    private string? _info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _actorEmpNo = state.User.FindFirst("empno")?.Value;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _self = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_self is not null)
+            _myRequests = await UniformSvc.GetMyRequestsAsync(_self.id);
+    }
+
+    private async Task CreateAndSubmitAsync()
+    {
+        _error = null;
+        _info = null;
+        if (_self is null) return;
+        try
+        {
+            var requestId = await UniformSvc.CreateDraftAsync(_self.id, _uniformType, _size, _quantity, _reason);
+            var jobId = await UniformSvc.SubmitAsync(requestId, _actorUserId, _actorEmpNo);
+            var approvers = await Engine.GetPendingApproverNamesAsync(jobId);
+            _info = string.IsNullOrEmpty(approvers)
+                ? $"ส่งขออนุมัติสำเร็จ (Job #{jobId})"
+                : $"ส่งขออนุมัติสำเร็จ — ส่งไปยัง: {approvers} เพื่ออนุมัติ (Job #{jobId})";
+
+            _uniformType = "";
+            _size = "M";
+            _quantity = 1;
+            _reason = null;
+            _myRequests = await UniformSvc.GetMyRequestsAsync(_self.id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

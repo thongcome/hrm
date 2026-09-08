@@ -48,27 +48,32 @@
 
         @if (_job is not null)
         {
-            <MudText Typo="Typo.h6" Class="mb-2">สถานะการอนุมัติ</MudText>
-            <MudText Typo="Typo.body1" Class="mb-2">
-                สถานะ: <b>@_job.status</b> | ระดับปัจจุบัน: @_job.lastLevel / @_job.maxlevel
-                @(_job.isJobClosed == true ? " (ปิดงานแล้ว)" : "")
-            </MudText>
-            <MudTable Items="_job.job_user_lists" Dense="true">
-                <HeaderContent>
-                    <MudTh>ระดับ</MudTh>
-                    <MudTh>ผู้อนุมัติ</MudTh>
-                    <MudTh>สถานะ</MudTh>
-                    <MudTh>วันที่</MudTh>
-                    <MudTh>ความเห็น</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.wlevel</MudTd>
-                    <MudTd>@context.userid</MudTd>
-                    <MudTd>@context.jobstatus</MudTd>
-                    <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
-                    <MudTd>@context.comment</MudTd>
-                </RowTemplate>
-            </MudTable>
+            @* Skipped when embedded: the workflow shell already renders the
+               stepper, status line and approval history above this slot. *@
+            @if (!Embedded)
+            {
+                <MudText Typo="Typo.h6" Class="mb-2">สถานะการอนุมัติ</MudText>
+                <MudText Typo="Typo.body1" Class="mb-2">
+                    สถานะ: <b>@_job.status</b> | ระดับปัจจุบัน: @_job.lastLevel / @_job.maxlevel
+                    @(_job.isJobClosed == true ? " (ปิดงานแล้ว)" : "")
+                </MudText>
+                <MudTable Items="_job.job_user_lists" Dense="true">
+                    <HeaderContent>
+                        <MudTh>ระดับ</MudTh>
+                        <MudTh>ผู้อนุมัติ</MudTh>
+                        <MudTh>สถานะ</MudTh>
+                        <MudTh>วันที่</MudTh>
+                        <MudTh>ความเห็น</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.wlevel</MudTd>
+                        <MudTd>@context.userid</MudTd>
+                        <MudTd>@context.jobstatus</MudTd>
+                        <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                        <MudTd>@context.comment</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
 
             @if (_isAdmin && !_isPaidLeaveType && _request.AdhocPayItemId is null && _job.isJobClosed == true && _job.status == WorkflowEngineService.StatusCompleted)
             {
@@ -98,13 +103,28 @@
             <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
         }
 
-        <MudButton Class="mt-4" Variant="Variant.Text" Href="@BackHref">กลับไปหน้ารายการคำขอลางาน</MudButton>
+        @if (!Embedded)
+        {
+            <MudButton Class="mt-4" Variant="Variant.Text" Href="@BackHref">กลับไปหน้ารายการคำขอลางาน</MudButton>
+        }
     }
 </MudPaper>
 
 @code {
     [Parameter] public long Id { get; set; }
     [SupplyParameterFromQuery] public string? From { get; set; }
+
+    // WorkflowDocumentSlot's contract (CEO, 2026-09-08: "controller/action คือ
+    // หน้า view ของเรา" — the workflow config points at THIS existing page,
+    // it doesn't get a purpose-built copy). When the slot renders this
+    // component it passes the job's refid + jobmasterid instead of a route
+    // Id, and the workflow shell is already showing the stepper/status/
+    // history — so the embedded copy skips its own status block rather than
+    // double-rendering it.
+    [Parameter] public string? RefId { get; set; }
+    [Parameter] public long JobMasterId { get; set; }
+
+    private bool Embedded => JobMasterId > 0;
 
     // Reached either from the ESS self-service list or the HR on-behalf
     // list (LeaveRequestForm.razor tags its links with ?from=proxy) —
@@ -126,6 +146,9 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
         _isAdmin = state.User.HasClaim("menu", "WF_WORKFLOW_ADMIN");
+
+        // Embedded in the workflow shell: the id arrives as job_master.refid.
+        if (Id == 0 && long.TryParse(RefId, out var refId)) Id = refId;
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _request = await context.Lve_LeaveRequests.Include(r => r.Lve_LeaveType).FirstOrDefaultAsync(r => r.Id == Id);

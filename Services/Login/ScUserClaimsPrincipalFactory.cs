@@ -22,16 +22,19 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
 {
     private readonly IDbContextFactory<HRMContext> _hrmDbFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly HRM.Services.Security.PasswordPolicyService _passwordPolicy;
 
     public ScUserClaimsPrincipalFactory(
         UserManager<ApplicationUser> userManager,
         IOptions<IdentityOptions> optionsAccessor,
         IDbContextFactory<HRMContext> hrmDbFactory,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        HRM.Services.Security.PasswordPolicyService passwordPolicy)
         : base(userManager, optionsAccessor)
     {
         _hrmDbFactory = hrmDbFactory;
         _httpContextAccessor = httpContextAccessor;
+        _passwordPolicy = passwordPolicy;
     }
 
     public override async Task<ClaimsPrincipal> CreateAsync(ApplicationUser user)
@@ -54,6 +57,27 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
 
         identity.AddClaim(new Claim("sc_userid", scUser.userid.ToString()));
         identity.AddClaim(new Claim("permversion", scUser.permversion.ToString()));
+
+        // Password-policy gate (studied off solar.SecurityBean, 8 ก.ย. 2569):
+        // sc_user.isforcechanged / pwdexpdate were being written by half a
+        // dozen screens and read by nobody. The claim is what makes them mean
+        // something — Middleware/ForcePasswordChangeMiddleware pins any
+        // request carrying it to the change-password form. It's stamped here
+        // rather than in LoginEndpoints so it also covers SSO/AD sign-ins and
+        // any later RefreshSignInAsync, and so it *disappears* on the refresh
+        // issued right after a successful change.
+        if (_passwordPolicy.MustChangePassword(scUser))
+        {
+            identity.AddClaim(new Claim(
+                HRM.Middleware.ForcePasswordChangeMiddleware.ClaimType,
+                scUser.isforcechanged ? "forced" : "expired"));
+        }
+        else if (_passwordPolicy.DaysUntilExpiryWarning(scUser) is int daysLeft)
+        {
+            // Informational only — read by MainLayout to warn before the hard
+            // gate above kicks in, so nobody is surprised mid-workday.
+            identity.AddClaim(new Claim("pwd_expires_in_days", daysLeft.ToString()));
+        }
 
         // Advance Security slice 2 (sc_user_session) — a fresh session row
         // + opaque sessiontoken claim every time this runs, so an admin can

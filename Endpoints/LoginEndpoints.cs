@@ -27,7 +27,8 @@ public static class LoginEndpoints
             IDbContextFactory<HRMContext> dbFactory,
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
-            LdapAuthService ldapAuth) =>
+            LdapAuthService ldapAuth,
+            HRM.Services.Security.PasswordPolicyService policy) =>
         {
             var form = await httpContext.Request.ReadFormAsync();
             var username = form["username"].ToString();
@@ -58,18 +59,82 @@ public static class LoginEndpoints
                 // so this endpoint never reveals which accounts exist.
                 if (appUser is not null)
                 {
+                    // Lockout, checked before the password is even looked at —
+                    // otherwise a locked account keeps burning attempts and
+                    // reports "wrong password" forever. The legacy system
+                    // (solar.SecurityBean.addInvalidCount/disableUser) had the
+                    // same counter but no way back except an admin; Identity's
+                    // LockoutEnd expires on its own.
+                    if (await userManager.IsLockedOutAsync(appUser))
+                        return LockedOut(returnUrl);
+
                     // AD/SSO scaffold (CEO, 2026-09-07): AuthProvider=="AD"
                     // means this account's password is verified against the
                     // configured AD/LDAP server (LDAP BIND) instead of the
                     // local Identity hash — everything downstream (SignInAsync,
                     // claims, audit) is identical either way.
-                    var passwordOk = scUser.AuthProvider == "AD"
-                        ? (await ldapAuth.TryBindAsync(username, password)).Succeeded
-                        : (await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true)).Succeeded;
+                    bool passwordOk;
+                    if (scUser.AuthProvider == "AD")
+                    {
+                        passwordOk = (await ldapAuth.TryBindAsync(username, password)).Succeeded;
+                        // CheckPasswordSignInAsync does this for local
+                        // accounts; the AD branch has to drive the counter
+                        // itself or AD-backed accounts would be the one door
+                        // in the building with no lockout on it.
+                        if (!passwordOk)
+                            await userManager.AccessFailedAsync(appUser);
+                    }
+                    else
+                    {
+                        passwordOk = (await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true)).Succeeded;
+                    }
+
+                    if (!passwordOk)
+                    {
+                        // Mirror Identity's counter onto the legacy sc_user
+                        // fields. Identity (AspNetUsers.AccessFailedCount /
+                        // LockoutEnd) stays the authority — these two columns
+                        // exist so the admin screen and any legacy report see
+                        // the truth instead of a permanently-zero column.
+                        // Identity zeroes AccessFailedCount at the moment it
+                        // sets LockoutEnd, so reading it straight through
+                        // would leave the legacy column showing 0 on exactly
+                        // the attempt that mattered. Report the threshold
+                        // instead once the account is actually locked.
+                        var isNowLockedOut = await userManager.IsLockedOutAsync(appUser);
+                        scUser.invalidpwcount = isNowLockedOut
+                            ? policy.Options.MaxFailedAttempts
+                            : await userManager.GetAccessFailedCountAsync(appUser);
+                        scUser.lastinvalidpwd = DateTime.Now;
+                        context.AuditLogs.Add(new AuditLog
+                        {
+                            ActorUserId = scUser.userid,
+                            ActorName = scUser.loginname,
+                            Action = AuditActionType.View,
+                            EntityType = "sc_user",
+                            RecordId = scUser.userid.ToString(),
+                            IsSensitiveDataAccess = false,
+                            IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                            Note = "login-failed",
+                        });
+                        await context.SaveChangesAsync();
+
+                        // That last attempt may be the one that tripped the
+                        // lockout — say so rather than letting them find out
+                        // by trying the correct password and still failing.
+                        if (isNowLockedOut)
+                            return LockedOut(returnUrl);
+                    }
 
                     if (passwordOk)
                     {
                         await signInManager.SignInAsync(appUser, isPersistent: false);
+
+                        // Successful sign-in clears the counter on both sides
+                        // (the JSP system's clearInvalidCount(), which ran at
+                        // exactly this point).
+                        await userManager.ResetAccessFailedCountAsync(appUser);
+                        scUser.invalidpwcount = 0;
 
                         // Written directly against the already-open context
                         // rather than via IAuditLogger — SignInAsync only
@@ -101,6 +166,19 @@ public static class LoginEndpoints
                 errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
             return Results.LocalRedirect(errorRedirect);
         }).RequireRateLimiting("login");
+
+        // Distinct from error=1 on purpose: "you are locked out for a while"
+        // is actionable (wait, or call an admin), "wrong password" is not the
+        // same problem. This does leak that the account exists — accepted,
+        // because a lockout the user can't see is a support call every time,
+        // and the rate limiter already caps enumeration attempts.
+        static IResult LockedOut(string returnUrl)
+        {
+            var url = "/login?error=locked";
+            if (!string.IsNullOrEmpty(returnUrl))
+                url += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
+            return Results.LocalRedirect(url);
+        }
 
         app.MapGet("/logout", async (SignInManager<ApplicationUser> signInManager) =>
         {

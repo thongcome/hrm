@@ -1,3 +1,4 @@
+@using System.Reflection
 @using HRM.Models
 @using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Components
@@ -61,8 +62,17 @@
     }
     else if (_docType is not null)
     {
-        @* 1. Registered document component for this workflow/level. *@
+        @* 1. The level's own view(s). controller = the document being
+             approved; ApproveController = an optional second view giving the
+             approver supporting context (both are routes to real pages). *@
         <DynamicComponent Type="_docType" Parameters="_params" />
+
+        @if (_docType2 is not null)
+        {
+            <div class="mt-3">
+                <DynamicComponent Type="_docType2" Parameters="_params2" />
+            </div>
+        }
     }
     else if (_docLink is not null)
     {
@@ -104,8 +114,10 @@
 
     private job_master? _job;
     private Type? _docType;
+    private Type? _docType2;
     private string? _docLink;
     private Dictionary<string, object> _params = new();
+    private Dictionary<string, object> _params2 = new();
     private bool _loading = true;
 
     protected override async Task OnParametersSetAsync()
@@ -113,8 +125,10 @@
         _loading = true;
         _job = null;
         _docType = null;
+        _docType2 = null;
         _docLink = null;
         _params = new();
+        _params2 = new();
 
         try
         {
@@ -124,23 +138,76 @@
             _job = job;
             if (job is null) return;
 
-            // Current level's controller/action wiring for the component key.
+            // Whatever renders here is always a read-only VIEW: the document
+            // must stay frozen while it travels the approval chain, or the
+            // approvals already given no longer match what's on screen
+            // (CEO: "ที่ใช้ View เพราะจะไม่ให้คนแก้ระหว่างทาง"). Editing is a
+            // separate action — wf_sub_workflow_master.actionEdit.
             string? controller = null;
             string? action = null;
+            string? approveController = null;
             await using (var context = await DbFactory.CreateDbContextAsync())
             {
                 var cur = await context.wf_sub_workflow_masters
                     .Where(s => s.workflowid == job.workflowid && s.wlevel == (job.lastLevel ?? 0))
-                    .Select(s => new { s.controller, s.action })
+                    .Select(s => new { s.controller, s.action, s.ApproveController })
                     .FirstOrDefaultAsync();
                 if (cur is not null)
                 {
                     controller = cur.controller;
                     action = cur.action;
+                    approveController = cur.ApproveController;
                 }
             }
 
-            _docType = ResolveComponentType(controller, action, job.workflow?.workflowcode);
+            // ONE field decides which screen is embedded:
+            // wf_sub_workflow_master.controller — the route of the module's own
+            // view page for THIS level, e.g. "/leave-requests/detail/{refid}".
+            // Chosen over a workflow-level field because per-level covers both
+            // cases (a single-screen workflow just repeats the same route on
+            // every level) while the reverse cannot express per-step screens —
+            // and epms itself fills controller/action on every level row rather
+            // than relying on any workflow-wide fallback.
+            // Resolved against the app's real route table, so wiring a module
+            // into a workflow is a config change only, no code.
+            if (!string.IsNullOrWhiteSpace(controller))
+            {
+                var resolvedUrl = controller!.Replace("{refid}", job.refid ?? "", StringComparison.OrdinalIgnoreCase);
+                var (routeType, routeParams) = MatchRoute(resolvedUrl);
+                if (routeType is not null)
+                {
+                    AddOptionalParameter(routeType, routeParams, "RefId", job.refid ?? "");
+                    AddOptionalParameter(routeType, routeParams, "JobMasterId", JobMasterId);
+                    _docType = routeType;
+                    _params = routeParams;
+
+                    // Optional SECOND view for the same level (CEO,
+                    // 2026-09-08: "จะออกแบบให้แนบได้ 2 view ก็ได้") — supporting
+                    // context for the approver, e.g. the requester's remaining
+                    // leave balance next to the leave request itself. Same
+                    // resolution rules, same {refid} substitution.
+                    if (!string.IsNullOrWhiteSpace(approveController))
+                    {
+                        var secondUrl = approveController!.Replace("{refid}", job.refid ?? "", StringComparison.OrdinalIgnoreCase);
+                        var (type2, params2) = MatchRoute(secondUrl);
+                        if (type2 is not null)
+                        {
+                            AddOptionalParameter(type2, params2, "RefId", job.refid ?? "");
+                            AddOptionalParameter(type2, params2, "JobMasterId", JobMasterId);
+                            _docType2 = type2;
+                            _params2 = params2;
+                        }
+                    }
+                    return;
+                }
+                // Route didn't match a page — fall through to the link tier
+                // using the configured url itself, so a mistyped route still
+                // gives the approver something to click rather than nothing.
+                _docLink = resolvedUrl;
+                return;
+            }
+
+            _docType = ResolveComponentType(controller, action, job.workflow?.c_detail, job.workflow?.workflowcode);
             if (_docType is not null)
             {
                 _params = new Dictionary<string, object>
@@ -160,15 +227,94 @@
         }
     }
 
-    // Look up a registered document component: first by "{controller}/{action}",
-    // then by the workflow's workflowcode. Returns null if neither is registered.
-    private static Type? ResolveComponentType(string? controller, string? action, string? workflowcode)
+    // The app's own route table, built once: every routable component with
+    // its @page template split into segments. This is what lets workflow
+    // config name a plain route ("/leave-requests/detail/{refid}") instead of
+    // registering component types by hand.
+    private static readonly Lazy<List<(string[] Segments, Type Type)>> _routeTable = new(() =>
+        typeof(WorkflowDocumentSlot).Assembly.GetTypes()
+            .Where(t => typeof(IComponent).IsAssignableFrom(t) && !t.IsAbstract)
+            .SelectMany(t => t.GetCustomAttributes<RouteAttribute>().Select(a => (Template: a.Template, Type: t)))
+            .Select(x => (Segments: x.Template.Trim('/').Split('/'), x.Type))
+            .ToList());
+
+    // Matches a concrete url against the route table, binding route
+    // parameters (with :long / :int constraints converted) as it goes.
+    private static (Type? Type, Dictionary<string, object> Parameters) MatchRoute(string url)
+    {
+        var path = url.Split('?')[0].Trim('/');
+        var parts = path.Split('/');
+
+        foreach (var (segments, type) in _routeTable.Value)
+        {
+            if (segments.Length != parts.Length) continue;
+
+            var parameters = new Dictionary<string, object>();
+            var matched = true;
+
+            for (var i = 0; i < segments.Length; i++)
+            {
+                var segment = segments[i];
+                if (segment.StartsWith('{') && segment.EndsWith('}'))
+                {
+                    var name = segment.Trim('{', '}');
+                    var constraint = "";
+                    var colon = name.IndexOf(':');
+                    if (colon >= 0)
+                    {
+                        constraint = name[(colon + 1)..];
+                        name = name[..colon];
+                    }
+
+                    object? value = constraint switch
+                    {
+                        "long" => long.TryParse(parts[i], out var l) ? l : null,
+                        "int" => int.TryParse(parts[i], out var n) ? n : null,
+                        "guid" => Guid.TryParse(parts[i], out var g) ? g : null,
+                        _ => parts[i],
+                    };
+                    if (value is null) { matched = false; break; }
+                    parameters[name] = value;
+                }
+                else if (!string.Equals(segment, parts[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (matched) return (type, parameters);
+        }
+
+        return (null, new());
+    }
+
+    // DynamicComponent throws on a parameter the target doesn't declare, so
+    // the slot's own RefId/JobMasterId are only supplied to pages that
+    // actually accept them (a page that does can tell it's embedded and skip
+    // re-rendering the status/history the shell already shows).
+    private static void AddOptionalParameter(Type componentType, Dictionary<string, object> parameters, string name, object value)
+    {
+        if (parameters.ContainsKey(name)) return;
+        var prop = componentType.GetProperty(name);
+        if (prop is not null && prop.GetCustomAttribute<ParameterAttribute>() is not null)
+            parameters[name] = value;
+    }
+
+    // Resolution order, most specific first:
+    //   1. this level's "{controller}/{action}"  (per-step screen)
+    //   2. wf_workflow.c_detail                   (workflow-wide default screen)
+    //   3. wf_workflow.workflowcode               (coarse catch-all)
+    // Returns null if none is registered, and the caller falls back to a link.
+    private static Type? ResolveComponentType(string? controller, string? action, string? cDetail, string? workflowcode)
     {
         if (!string.IsNullOrWhiteSpace(controller) || !string.IsNullOrWhiteSpace(action))
         {
             var key = $"{controller}/{action}";
             if (_registry.TryGetValue(key, out var t)) return t;
         }
+        if (!string.IsNullOrWhiteSpace(cDetail) && _registry.TryGetValue(cDetail!, out var ct))
+            return ct;
         if (!string.IsNullOrWhiteSpace(workflowcode) && _registry.TryGetValue(workflowcode!, out var wt))
             return wt;
         return null;

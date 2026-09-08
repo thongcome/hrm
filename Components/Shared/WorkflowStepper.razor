@@ -5,44 +5,104 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
 
-@* Reusable, self-contained "front-steps" approval-progress stepper (extracted
-   from WfMyInboxDetail's inline stepper and upgraded to the vertical epms look).
-   Drop <WorkflowStepper JobMasterId="..." /> anywhere a workflow job's approval
-   path should be shown. It resolves everything it needs (job, stage defs,
-   approver names) from just the job-master id — no other wiring required. *@
+@* Reusable, self-contained approval-progress timeline. Drop
+   <WorkflowStepper JobMasterId="..." /> anywhere a job's approval path should
+   be shown — it resolves everything from the job-master id alone.
+
+   Rebuilt 2026-09-08 (CEO: "progress คุณทำให้สวยและฉลาดกว่านี้ได้ เช่นแสดง
+   ชื่อคนอนุมัติ") from the flat same-colour blocks ported off epms:
+     - done / in-progress / upcoming / rejected are now visually distinct
+       (the old version painted "approved" and "pending" the same blue, so a
+       reader couldn't tell what was finished from what was still waiting)
+     - every stage shows WHO — actual approvers on stages already reached,
+       and the predicted approver on the next one (PreviewNextApproversAsync)
+     - each stage shows how long it took, or how long it has been waiting,
+       from the per-level starttime/endtime stamps
+*@
 
 @if (_job is null)
 {
-    @* Loading or job-not-found: render a minimal placeholder rather than nothing
-       so the caller's layout doesn't collapse unexpectedly. *@
     <MudText Typo="Typo.caption">ไม่พบข้อมูล</MudText>
 }
 else
 {
     var steps = BuildSteps();
 
-    <MudText Typo="Typo.subtitle2" Class="mb-1">เส้นทางอนุมัติ</MudText>
+    <MudText Typo="Typo.subtitle2" Class="mb-2">เส้นทางอนุมัติ</MudText>
 
-    @* Vertical stack of full-width "front-steps" blocks — one per stage. The
-       whole stack is clipped by an 8px rounded container so the first/last
-       blocks inherit the rounded corners; the 2px gap shows the container
-       background between blocks. *@
-    <div style="border-radius:8px;overflow:hidden;display:flex;flex-direction:column;gap:2px;">
-        @foreach (var s in steps)
+    @* Horizontal stepper (CEO's pick: "หน้าตาแบบ B แต่รายละเอียดแบบ C/A") —
+       node + connector rail across the top, full per-step detail underneath.
+       Responsive with no JS and one set of markup: wide screens lay the steps
+       out left-to-right (scrolling sideways rather than squeezing text when a
+       workflow has many levels — epms's RFQ has 8); at ≤700px the same
+       elements fold into a vertical timeline, which is what actually reads on
+       a phone. *@
+    <style>
+        .wf-stepper { display: flex; overflow-x: auto; padding-bottom: 4px; }
+        .wf-step { flex: 1 0 170px; min-width: 170px; text-align: center; padding: 0 4px; }
+        .wf-rail { display: flex; align-items: center; }
+        .wf-rail-line { flex: 1; height: 2px; }
+        .wf-detail { margin-top: 6px; }
+
+        @@media (max-width: 700px) {
+            .wf-stepper { flex-direction: column; overflow-x: visible; }
+            .wf-step { flex: none; min-width: 0; text-align: left; display: flex; gap: 12px; padding: 0; }
+            .wf-rail { flex-direction: column; width: 32px; flex: none; }
+            .wf-rail-line { width: 2px; height: auto; flex: 1; min-height: 12px; }
+            .wf-detail { margin-top: 0; padding-bottom: 16px; flex: 1; min-width: 0; }
+        }
+    </style>
+
+    <div class="wf-stepper">
+        @for (var i = 0; i < steps.Count; i++)
         {
-            <div style="@BlockStyle(s.State)">
-                @* Left: stage title + approver name(s) + status line. flex:1 so
-                   it takes the remaining width and wraps instead of overflowing. *@
-                <div style="flex:1;min-width:0;">
-                    <div style="font-weight:700;font-size:1.05rem;line-height:1.25;">@s.Title</div>
-                    @if (!string.IsNullOrWhiteSpace(s.Subtitle))
-                    {
-                        <div style="font-size:0.8rem;opacity:0.9;line-height:1.3;">@s.Subtitle</div>
-                    }
-                    <div style="font-size:0.8rem;opacity:0.9;line-height:1.3;">@StatusLine(s.State, s.Date)</div>
+            var s = steps[i];
+            var isFirst = i == 0;
+            var isLast = i == steps.Count - 1;
+
+            <div class="wf-step">
+                @* Rail: connector · node · connector (row on desktop, column on mobile) *@
+                <div class="wf-rail">
+                    <div class="wf-rail-line" style="background:@(isFirst ? "transparent" : RailColor(steps[i - 1].State));"></div>
+                    <div style="@DotStyle(s.State)">
+                        @if (s.State == "approved")
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size:17px;color:#fff;" />
+                        }
+                        else if (s.State == "rejected")
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size:17px;color:#fff;" />
+                        }
+                        else if (s.State == "pending")
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Style="font-size:16px;color:#fff;" />
+                        }
+                        else
+                        {
+                            <span style="font-size:13px;font-weight:600;">@s.Level</span>
+                        }
+                    </div>
+                    <div class="wf-rail-line" style="background:@(isLast ? "transparent" : RailColor(s.State));"></div>
                 </div>
-                @* Right: big faded level number. *@
-                <div style="font-size:3rem;font-weight:800;opacity:0.25;line-height:1;margin-left:12px;">@s.Level</div>
+
+                @* Detail under the node *@
+                <div style="margin-top:6px;">
+                    <div style="font-weight:600;font-size:0.9rem;line-height:1.3;">@s.Title</div>
+
+                    @if (!string.IsNullOrWhiteSpace(s.Approvers))
+                    {
+                        <div style="font-size:0.82rem;line-height:1.35;margin-top:2px;">@s.Approvers</div>
+                    }
+
+                    <div style="margin-top:3px;">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@ChipColor(s.State)" Class="ma-0">@StatusLabel(s.State)</MudChip>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(s.TimeLine))
+                    {
+                        <div style="font-size:0.75rem;opacity:0.7;line-height:1.3;margin-top:1px;">@s.TimeLine</div>
+                    }
+                </div>
             </div>
         }
     </div>
@@ -54,12 +114,10 @@ else
     private long _loadedJobId = -1;
     private job_master? _job;
     private Dictionary<long, string> _approverNames = new();
-    // Ordered full stage path from the workflow definition: (level, subject label).
     private List<(int Level, string Label)> _stageDefs = new();
+    private Dictionary<int, (DateTime? Start, DateTime? End)> _stageTimes = new();
+    private List<WorkflowEngineService.LevelApproverPlan> _plan = new();
 
-    // Re-load whenever the JobMasterId parameter actually changes (a component can
-    // be re-parametered without re-initializing), so the stepper always reflects
-    // the job it was last handed.
     protected override async Task OnParametersSetAsync()
     {
         if (JobMasterId == _loadedJobId) return;
@@ -72,6 +130,8 @@ else
         _job = null;
         _approverNames = new();
         _stageDefs = new();
+        _stageTimes = new();
+        _plan = new();
 
         var job = await Engine.GetJobDetailAsync(JobMasterId);
         if (job is null) return;
@@ -79,15 +139,15 @@ else
 
         await LoadApproverNamesAsync();
         await LoadStageDefsAsync();
+        // The config plan is the skeleton — every level and who is SET to
+        // approve it. Runtime rows are overlaid on top in BuildSteps.
+        _plan = await Engine.GetApproverPlanAsync(job.workflowid);
     }
 
-    // Resolve every approver userid (plus the requester) to a Thai display name
-    // once: sc_user by userid -> empid -> Hremployee EmpName+EmpSurname. Falls
-    // back to loginname, then "#id", so a name is never blank. (Ported from
-    // WfMyInboxDetail.LoadApproverNamesAsync.)
+    // sc_user by userid -> empid -> Hremployee EmpName+EmpSurname, falling back
+    // to loginname then "#id" so a name is never blank.
     private async Task LoadApproverNamesAsync()
     {
-        _approverNames = new();
         if (_job is null) return;
 
         var userIds = _job.job_user_lists.Where(a => a.userid.HasValue).Select(a => a.userid!.Value).ToList();
@@ -110,23 +170,19 @@ else
 
         foreach (var u in users)
         {
-            var name = u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+            _approverNames[u.userid] = u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
                 : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}");
-            _approverNames[u.userid] = name;
         }
     }
 
     private string ApproverName(long? userid)
-        => userid is long id && _approverNames.TryGetValue(id, out var n) ? n : $"#{userid?.ToString() ?? "?"}";
+        => userid is long id && _approverNames.TryGetValue(id, out var n) ? n : "(ยังไม่มีผู้อนุมัติ)";
 
-    // Load the FULL ordered stage definition (every level, including ones not yet
-    // reached) so the stepper shows the whole path up front. (Ported from
-    // WfMyInboxDetail.LoadStageDefsAsync — minus the current-level button config,
-    // which this display-only component doesn't need.)
+    // Full ordered stage list from the workflow definition (so upcoming stages
+    // show too), plus the per-level start/end stamps recorded on this job.
     private async Task LoadStageDefsAsync()
     {
-        _stageDefs = new();
         if (_job is null) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -136,37 +192,29 @@ else
             .Select(s => new { s.wlevel, s.subject })
             .ToListAsync();
         _stageDefs = defs.Select(d => (d.wlevel, d.subject ?? "")).ToList();
+
+        var times = await context.job_subworkflow_masters
+            .Where(s => s.jobmasterid == JobMasterId)
+            .Select(s => new { s.wlevel, s.starttime, s.endtime })
+            .ToListAsync();
+        _stageTimes = times.ToDictionary(t => t.wlevel, t => (t.starttime, t.endtime));
     }
 
-    // Title = stage subject/label; Subtitle = approver name(s) for reached levels
-    // (empty for upcoming ones); State drives the color; Date is the approval time.
-    private record StepInfo(int Level, string Title, string Subtitle, string State, DateTime? Date);
+    private record StepInfo(int Level, string Title, string Approvers, string State, string TimeLine, bool Predicted);
 
-    // Definition-driven stepper (epms pattern). The path comes from the workflow
-    // definition (_stageDefs) so every stage shows up front; each stage's status
-    // overlays the real per-approver rows when they exist (approved vs rejected vs
-    // pending), and falls back to positional coloring (vs job_master.lastLevel)
-    // for stages not yet reached. (Ported from WfMyInboxDetail.BuildSteps, adapted
-    // to the Title/Subtitle split.)
     private List<StepInfo> BuildSteps()
     {
         var steps = new List<StepInfo>();
         if (_job is null) return steps;
 
         var current = _job.lastLevel ?? 0;
-
-        // Scope job_user_list rows to the CURRENT round (jobseq). After a
-        // "ส่งกลับแก้ไข" bounce a later level can carry a stale row from a
-        // superseded round; the stepper must reflect where the job sits NOW.
-        // Non-bounced jobs keep jobseq null (0) throughout, so this is a no-op.
         var currentSeq = _job.jobseq ?? 0;
+
         var byLevel = _job.job_user_lists
             .Where(a => (a.jobseq ?? 0) == currentSeq)
             .GroupBy(a => a.wlevel ?? 0)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Full path from the definition; fall back to whatever runtime levels
-        // exist if the definition couldn't be loaded, so the bar still renders.
         var levels = _stageDefs.Count > 0
             ? _stageDefs.Select(d => d.Level).ToList()
             : byLevel.Keys.OrderBy(k => k).ToList();
@@ -175,52 +223,100 @@ else
         {
             var label = _stageDefs.FirstOrDefault(d => d.Level == lvl).Label;
             var title = string.IsNullOrWhiteSpace(label) ? $"ระดับ {lvl}" : label;
+            _stageTimes.TryGetValue(lvl, out var times);
 
             if (byLevel.TryGetValue(lvl, out var rows) && rows.Count > 0)
             {
-                // Reached stage: concrete approver(s) + their real decision. A
-                // RETURNED row counts as neither approved nor pending (treated as
-                // a non-terminal), so it never falsely marks the level done.
-                var names = string.Join(" / ", rows.Select(r => ApproverName(r.userid)).Distinct());
+                var names = string.Join(" / ", rows.Select(r =>
+                    !string.IsNullOrWhiteSpace(r.username) ? r.username! : ApproverName(r.userid)).Distinct());
+
                 string state;
-                DateTime? date = null;
-                if (rows.Any(r => r.jobstatus == "REJECTED")) state = "rejected";
-                else if (rows.All(r => r.jobstatus == "APPROVED")) { state = "approved"; date = rows.Max(r => r.approvedate); }
+                if (rows.Any(r => r.jobstatus == WorkflowEngineService.StatusRejected)) state = "rejected";
+                else if (rows.All(r => r.jobstatus == WorkflowEngineService.StatusApproved)) state = "approved";
                 else state = "pending";
-                steps.Add(new StepInfo(lvl, title, names, state, date));
+
+                steps.Add(new StepInfo(lvl, title, names, state, BuildTimeLine(state, times.Start, times.End), false));
             }
             else
             {
-                // Not-yet-reached stage: no approver row yet, so leave the
-                // subtitle blank and color positionally against lastLevel.
                 var state = lvl < current ? "approved" : (lvl == current ? "pending" : "waiting");
-                steps.Add(new StepInfo(lvl, title, "", state, null));
+
+                // Not reached yet — no job_user_list row exists, so show who
+                // the CONFIG says approves this level (exact, straight from
+                // wf_custom_user/wf_custom_role/the level's strategy flags),
+                // never a runtime guess.
+                var configured = _plan.FirstOrDefault(p => p.Level == lvl)?.ApproverText ?? "";
+                steps.Add(new StepInfo(lvl, title, configured, state, BuildTimeLine(state, times.Start, times.End), !string.IsNullOrWhiteSpace(configured)));
             }
         }
+
         return steps;
     }
 
-    // Full-width block styling per state. approved and pending(current) share the
-    // bright epms blue; waiting is grey; rejected is red. White text throughout.
-    private static string BlockStyle(string state)
+    // "อนุมัติแล้ว · 08/09 14:30 · ใช้เวลา 2 วัน 3 ชม." for finished stages,
+    // "กำลังพิจารณา · รอมาแล้ว 5 ชม." for the open one, blank for upcoming.
+    private static string BuildTimeLine(string state, DateTime? start, DateTime? end)
     {
-        var bg = state switch
+        if (state == "waiting") return "";
+
+        if (end is not null)
         {
-            "approved" => "#00A9E0",
-            "pending" => "#00A9E0",
-            "rejected" => "#C62828",
-            _ => "#7F7F7F", // waiting
-        };
-        return $"background:{bg};color:#fff;display:flex;align-items:center;"
-             + "padding:14px 20px;min-height:64px;";
+            var took = start is not null ? $" · ใช้เวลา {Humanize(end.Value - start.Value)}" : "";
+            return $"{end.Value:dd/MM/yyyy HH:mm}{took}";
+        }
+
+        if (start is not null && state == "pending")
+            return $"เริ่ม {start.Value:dd/MM/yyyy HH:mm} · รอมาแล้ว {Humanize(DateTime.Now - start.Value)}";
+
+        return start is not null ? $"เริ่ม {start.Value:dd/MM/yyyy HH:mm}" : "";
     }
 
-    // Small status line under the approver name.
-    private static string StatusLine(string state, DateTime? date) => state switch
+    private static string Humanize(TimeSpan span)
     {
-        "approved" => "อนุมัติแล้ว" + (date is not null ? $" · {date:dd/MM/yyyy HH:mm}" : ""),
+        if (span.TotalMinutes < 1) return "ไม่ถึงนาที";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes} นาที";
+        if (span.TotalDays < 1) return $"{(int)span.TotalHours} ชม.";
+        var days = (int)span.TotalDays;
+        var hours = span.Hours;
+        return hours > 0 ? $"{days} วัน {hours} ชม." : $"{days} วัน";
+    }
+
+    private static string StateColor(string state) => state switch
+    {
+        "approved" => "var(--mud-palette-success)",
+        "pending" => "var(--mud-palette-primary)",
+        "rejected" => "var(--mud-palette-error)",
+        _ => "var(--mud-palette-text-disabled)",
+    };
+
+    private static Color ChipColor(string state) => state switch
+    {
+        "approved" => Color.Success,
+        "pending" => Color.Primary,
+        "rejected" => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string StatusLabel(string state) => state switch
+    {
+        "approved" => "อนุมัติแล้ว",
         "pending" => "กำลังพิจารณา",
-        "rejected" => "ปฏิเสธ",
+        "rejected" => "ไม่อนุมัติ",
         _ => "รอถึงคิว",
     };
+
+    private static string DotStyle(string state)
+    {
+        var color = StateColor(state);
+        var filled = state != "waiting";
+        return $"width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;"
+             + (filled
+                ? $"background:{color};color:#fff;"
+                : $"background:transparent;border:2px solid {color};color:{color};");
+    }
+
+    // Connector between two nodes: coloured once the step behind it is done,
+    // muted while the flow hasn't reached it.
+    private static string RailColor(string state)
+        => state is "waiting" or "pending" ? "var(--mud-palette-lines-default)" : StateColor(state);
 }

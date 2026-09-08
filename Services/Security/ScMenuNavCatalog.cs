@@ -119,6 +119,10 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "ESS_ACCESS", "/welfare/my-claims", "เบิกสวัสดิการของฉัน", "My Welfare Claims", "Icons.Material.Filled.VolunteerActivism", 55),
         new("GRP_ESS", "ESS_ACCESS", "/ess/attendance-checkin", "เช็คอิน/เช็คเอาท์ (GPS)", "Check-in/Check-out (GPS)", "Icons.Material.Filled.MyLocation", 60),
         new("GRP_ESS", "ESS_ACCESS", "/att/my-timesheet", "Timesheet ของฉัน", "My Timesheet", "Icons.Material.Filled.Schedule", 70),
+        // CEO order 8 ก.ย. 2569: engine end-to-end proof-of-concept module
+        // (พนักงานขอ -> หัวหน้าอนุมัติ -> HR รับเรื่อง). Ungated like the
+        // other self-scoped ESS request pages — no dedicated menu code yet.
+        new("GRP_ESS", null, "/ess/uniform-request", "ขอเบิกชุดยูนิฟอร์ม", "Uniform Request", "Icons.Material.Filled.Checkroom", 72),
         // CEO order 31 ส.ค. 2569: the approval inbox also lives in ESS ("เอาไปอยู่ใน ESS ด้วย").
         // Same Url also listed under GRP_WF_ENGINE and GRP_MSS — the seeder keys เช็คซ้ำ by (group, url).
         new("GRP_ESS", null, "/wf/my-inbox", "งานอนุมัติของฉัน", "My Approvals", "Icons.Material.Filled.Inbox", 75), // ungated: ESS-personalized, self-scoped by userid

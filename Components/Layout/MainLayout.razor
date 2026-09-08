@@ -68,6 +68,13 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.False" Class="content px-4 py-4">
+            @if (_passwordExpiresInDays is int expiresIn)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                    @string.Format(L.Translate("PasswordExpiryWarning"), expiresIn)
+                    <MudLink Href="/force-change-password" Class="ms-2">@L.Translate("ForceChangePasswordSubmitButton")</MudLink>
+                </MudAlert>
+            }
             @Body
         </MudContainer>
     </MudMainContent>
@@ -83,6 +90,7 @@
     private bool _hasEssAccess;
     private string _userName = "";
     private HashSet<string> _allowedMenuCodes = new();
+    private int? _passwordExpiresInDays;
 
     // Menucodes come from the "menu" claims ScUserClaimsPrincipalFactory
     // attaches at sign-in (sc_user_role -> sc_role_menu -> sc_menu, refreshed
@@ -126,5 +134,12 @@
             _userName = user.Identity?.Name ?? "";
         _hasEssAccess = user.HasClaim("menu", "ESS_ACCESS");
         _allowedMenuCodes = user.FindAll("menu").Select(c => c.Value).ToHashSet();
+
+        // Password-expiry warning (Services/Security/PasswordPolicyService).
+        // The claim only exists inside the warning window, so the banner
+        // appears on its own a few days out and disappears once the password
+        // is changed — nobody gets pinned to the force-change page by
+        // surprise mid-workday.
+        _passwordExpiresInDays = int.TryParse(user.FindFirstValue("pwd_expires_in_days"), out var days) ? days : null;
     }
 }

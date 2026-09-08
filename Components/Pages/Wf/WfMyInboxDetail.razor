@@ -76,6 +76,23 @@
             <MudAlert Severity="Severity.Normal" Class="mt-3">@L.Translate("WfNoPendingActionNote")</MudAlert>
         }
 
+        @* Box 4 — "Next Approver" (epms Detail.cshtml's collapse4): who is
+           queued up next, before they've been assigned anything. Hidden on
+           the last level (istop) and once the job closes. *@
+        @if (_nextApprovers.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-4">@L.Translate("WfNextApproverHeading")</MudText>
+            <MudPaper Class="pa-3 mt-1" Outlined="true">
+                @foreach (var next in _nextApprovers)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        @($"{L.Translate("WfLevelHeader")} {next.Level}")@(string.IsNullOrWhiteSpace(next.Label) ? "" : $" — {next.Label}")
+                    </MudText>
+                    <MudText Typo="Typo.body1">@next.ApproverText</MudText>
+                }
+            </MudPaper>
+        }
+
         <MudTable Items="_job.job_user_lists" Dense="true" Class="mt-3">
             <HeaderContent>
                 <MudTh>@L.Translate("WfLevelHeader")</MudTh>
@@ -123,6 +140,7 @@
     private bool _currentIsAndCondition; // current level is an AND-condition level (for wf_button selection)
     private string _approveLabel = "อนุมัติ"; // forward-button caption, configurable per level (displayName)
     private Dictionary<long, List<doc_center>> _attachments = new();
+    private List<WorkflowEngineService.LevelApproverPlan> _nextApprovers = new();
     private bool _loading = true;
     private bool _notMine;
     private string? _error;
@@ -165,6 +183,13 @@
             await LoadApproverNamesAsync();
             await LoadStageDefsAsync();
             await LoadAttachmentsAsync();
+            // Next approver comes from the workflow's own config (exact), not
+            // from resolving candidates at view time — see GetApproverPlanAsync.
+            var plan = await Engine.GetApproverPlanAsync(job.workflowid);
+            var nextLevel = (job.lastLevel ?? 0) + 1;
+            _nextApprovers = job.isJobClosed == true
+                ? new()
+                : plan.Where(p => p.Level == nextLevel && !string.IsNullOrWhiteSpace(p.ApproverText)).ToList();
         }
         finally
         {

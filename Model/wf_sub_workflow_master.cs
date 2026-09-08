@@ -130,7 +130,7 @@ public partial class wf_sub_workflow_master
     public string? action { get; set; }
 
     [StringLength(250)]
-    
+
     public string? displayName { get; set; }
 
     public long? userid1 { get; set; }
