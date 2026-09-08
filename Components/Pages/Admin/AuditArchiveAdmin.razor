@@ -1,0 +1,187 @@
+@page "/admin/audit-archive"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuditArchiveService Archive
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:SYS_AUDIT_LOG")]
+
+@* CEO, 8 ก.ย. 2569: "audit log ... คุณทำเป็น file ได้ไหม เอาไปใส่ใน path ใน
+   file server". This page is the trigger — there is no background scheduler
+   anywhere in this app by design, so archiving is an explicit action taken by
+   an administrator (or by a Windows scheduled task calling the same service). *@
+
+<PageTitle>จัดเก็บ Audit Log เป็นไฟล์</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดเก็บ Audit Log เป็นไฟล์</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ย้ายบันทึกการใช้งานที่เก่ากว่า @Archive.EffectiveKeepDays วัน ออกจากฐานข้อมูลไปเก็บเป็นไฟล์บีบอัดบนไฟล์เซิร์ฟเวอร์
+        เพื่อไม่ให้ฐานข้อมูลโตจนกระทบประสิทธิภาพ โดยยังคงเก็บข้อมูลไว้ครบตามที่ พ.ร.บ. คอมพิวเตอร์ มาตรา 26 กำหนด
+    </MudText>
+
+    @if (!Archive.IsConfigured)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ยังไม่ได้ตั้งค่าที่เก็บไฟล์ — กำหนด <b>AuditArchive:Path</b> ใน appsettings.json ให้ชี้ไปยังโฟลเดอร์บนไฟล์เซิร์ฟเวอร์ก่อน
+            (เช่น <code>\\fileserver\hrm\audit</code>) ระบบจะไม่ลบข้อมูลใด ๆ จนกว่าจะตั้งค่านี้
+        </MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            ที่เก็บไฟล์: <b>@Archive.Options.Path</b> &nbsp;|&nbsp; เก็บในฐานข้อมูลย้อนหลัง <b>@Archive.EffectiveKeepDays วัน</b>
+            (ตั้งแต่ @Archive.CutoffDate().ToString("dd/MM/yyyy") เป็นต้นมา จะไม่ถูกย้าย)
+        </MudAlert>
+    }
+
+    @if (_rights is not null && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์จัดเก็บข้อมูลให้บทบาทของคุณ</MudAlert>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">เดือนที่จัดเก็บได้</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+        แสดงเฉพาะเดือนที่ผ่านพ้นระยะเก็บรักษาแล้วทั้งเดือน — เดือนที่ยังไม่จบจะไม่ถูกย้าย เพื่อไม่ให้ข้อมูลเดือนเดียวกันกระจายอยู่หลายไฟล์
+    </MudText>
+
+    <MudTable Items="_candidates" Dense="true" Hover="true" Loading="_busy">
+        <HeaderContent>
+            <MudTh>เดือน</MudTh>
+            <MudTh Style="text-align:right">จำนวนรายการ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Month.ToString("D2")/@context.Year</MudTd>
+            <MudTd Style="text-align:right">@context.Rows.ToString("N0")</MudTd>
+            <MudTd>
+                @if (Archive.IsConfigured && _rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
+                               OnClick="@(() => ArchiveAsync(context))">จัดเก็บเป็นไฟล์</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีเดือนใดที่เก่าพอจะจัดเก็บ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">ไฟล์ที่จัดเก็บแล้ว</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-2">
+        แต่ละไฟล์มีไฟล์ manifest กำกับ ระบุจำนวนรายการและค่าตรวจสอบความถูกต้อง SHA-256 — ใช้ยืนยันได้ว่าไฟล์ไม่ถูกแก้ไขก่อนนำไปใช้เป็นหลักฐาน
+    </MudText>
+    <MudTable Items="_archived" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>เดือน</MudTh>
+            <MudTh Style="text-align:right">ขนาดไฟล์</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Month.ToString("D2")/@context.Year</MudTd>
+            <MudTd Style="text-align:right">@FormatBytes(context.Bytes)</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => PreviewAsync(context.Year, context.Month))">ดูตัวอย่างข้อมูล</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีไฟล์ที่จัดเก็บ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (_preview.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4">ตัวอย่างข้อมูลจากไฟล์ @_previewLabel (แสดง @_preview.Count รายการแรก)</MudText>
+        <MudTable Items="_preview" Dense="true" Class="mt-2">
+            <HeaderContent>
+                <MudTh>เวลา</MudTh>
+                <MudTh>ผู้ทำรายการ</MudTh>
+                <MudTh>Action</MudTh>
+                <MudTh>EntityType</MudTh>
+                <MudTh>RecordId</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EventDate.ToString("dd/MM/yyyy HH:mm:ss")</MudTd>
+                <MudTd>@(context.ActorName ?? "-")</MudTd>
+                <MudTd>@context.Action</MudTd>
+                <MudTd>@context.EntityType</MudTd>
+                <MudTd>@context.RecordId</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private List<AuditArchiveService.MonthCandidate> _candidates = new();
+    private List<(int Year, int Month, long Bytes)> _archived = new();
+    private List<AuditLog> _preview = new();
+    private string _previewLabel = "";
+    private bool _busy;
+    private string _actor = "admin";
+    private ProgramRoleService.ProgramRights? _rights;
+    private const string ProgramPath = "/admin/audit-archive";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _candidates = await Archive.GetCandidatesAsync();
+        _archived = Archive.ListArchivedFiles();
+    }
+
+    private async Task ArchiveAsync(AuditArchiveService.MonthCandidate c)
+    {
+        // Second enforcement layer (AD.CRUDManage) — this deletes rows, so it
+        // is gated on Delete, not Edit.
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Delete);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var r = await Archive.ArchiveMonthAsync(c.Year, c.Month, _actor);
+            Snackbar.Add($"จัดเก็บ {r.Rows:N0} รายการลงไฟล์ {r.FileName} ({FormatBytes(r.Bytes)}) เรียบร้อย", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task PreviewAsync(int year, int month)
+    {
+        _preview = await Archive.ReadArchiveAsync(year, month, 50);
+        _previewLabel = $"{month:D2}/{year}";
+    }
+
+    private static string FormatBytes(long b) =>
+        b >= 1024 * 1024 ? $"{b / 1024.0 / 1024.0:N1} MB" : $"{b / 1024.0:N0} KB";
+}

@@ -67,6 +67,26 @@ public partial class HRMContext
         return result;
     }
 
+    // Entities this hook must never write an AuditLog row for.
+    //
+    // Audit tables are excluded because auditing an audit trail is pure
+    // duplication — the row already IS the record of what happened, and a
+    // second row describing it adds no evidence. Measured 8 ก.ย. 2569 on the
+    // live database: Pay_PayrollAuditLog alone had produced 27,923 AuditLog
+    // rows (12% of the whole table) that say nothing AuditLog didn't already
+    // know. Before this, only `AuditLog` itself was excluded, so the payroll
+    // audit trail slipped through.
+    //
+    // Note this does NOT reduce legal coverage: พ.ร.บ. คอมพิวเตอร์ มาตรา 26
+    // wants who-did-what-when-from-where on real actions, and the underlying
+    // action is still logged once by whichever table recorded it.
+    private static bool IsExcludedFromAudit(object entity) => entity switch
+    {
+        AuditLog => true,
+        Pay_PayrollAuditLog => true,
+        _ => false,
+    };
+
     // Captured BEFORE the real save — OriginalValues for an about-to-be
     // Deleted/Modified row are only meaningful pre-save. RecordId is
     // resolved afterward instead (see AppendAuditRows), since an Added
@@ -77,7 +97,7 @@ public partial class HRMContext
 
         foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.Entity is AuditLog) continue; // never audit the audit table itself
+            if (IsExcludedFromAudit(entry.Entity)) continue;
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
 
             var action = entry.State switch

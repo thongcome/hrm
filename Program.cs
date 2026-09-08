@@ -466,6 +466,12 @@ builder.Services.AddScoped<HRM.Services.Pay.ProvidentFundRateChangeRequestServic
 builder.Services.AddScoped<HRM.Services.Pay.ProvidentFundExitCaseService>();
 builder.Services.AddScoped<HRM.Services.Pay.EmployeeRehireService>();
 builder.Services.AddScoped<HRM.Services.Audit.IAuditLogger, HRM.Services.Audit.AuditLogger>();
+
+// Audit-log archiving to a file server (CEO, 8 ก.ย. 2569) — the AuditLog
+// table was half the database. Off until AuditArchive:Path is configured.
+builder.Services.Configure<HRM.Services.Audit.AuditArchiveOptions>(
+    builder.Configuration.GetSection(HRM.Services.Audit.AuditArchiveOptions.SectionName));
+builder.Services.AddScoped<HRM.Services.Audit.AuditArchiveService>();
 // ----- end Pay_* module -----
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();

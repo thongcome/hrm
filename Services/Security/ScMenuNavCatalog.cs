@@ -417,5 +417,6 @@ public static class ScMenuNavCatalog
         new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "ผู้ใช้ (ระบบเดิม)", "Users (Legacy)", "Icons.Material.Filled.ManageAccounts", 40),
         new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "ทะเบียนจ่ายเงินเดือน (ระบบเดิม)", "Payroll Register (Legacy)", "Icons.Material.Filled.Folder", 60),
         new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-log", "Audit Log ระบบ", "System Audit Log", "Icons.Material.Filled.History", 70),
+        new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-archive", "จัดเก็บ Audit Log เป็นไฟล์", "Audit Log Archive", "Icons.Material.Filled.Archive", 75),
     };
 }
