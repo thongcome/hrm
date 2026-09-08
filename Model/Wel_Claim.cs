@@ -29,7 +29,7 @@ public class Wel_Claim
     public string CompanyId { get; set; } = null!;
 
     public long HremployeeId { get; set; }
-    [Required, StringLength(6)]
+    [Required, StringLength(50)]
     public string EmpNo { get; set; } = null!;
 
     public long BenefitTypeId { get; set; }

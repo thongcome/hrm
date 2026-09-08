@@ -23,7 +23,7 @@ public partial class Hremployee
 
     
     [Column("EMP_NO")]
-    [StringLength(6)]
+    [StringLength(50)]
     
     public string EmpNo { get; set; } = null!;
 

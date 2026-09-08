@@ -1,0 +1,61 @@
+@page "/emp_uniformrequests/create"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h5" Class="mb-3">Create Emp_UniformRequest</MudText>
+
+    <EditForm Model="item" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+    <MudTextField T="string" @bind-Value="item.RequestNo" Label="ฟิลด์ใหม่ (RequestNo)" MaxLength="50" Required="true" Class="mb-3" />
+    <MudTextField T="string" @bind-Value="item.EmpNo" Label="ฟิลด์ใหม่ (EmpNo)" MaxLength="50" Required="true" Class="mb-3" />
+    <MudSelect T="long" Value="item.HremployeeId" ValueChanged="@(v => item.HremployeeId = v)" Label="ฟิลด์ใหม่ (HremployeeId)" Required="true" For="@(() => item.HremployeeId)" Class="mb-3">
+        @foreach (var opt in _HremployeeIdOptions)
+        {
+            <MudSelectItem T="long" Value="opt.Id">@opt.Label</MudSelectItem>
+        }
+    </MudSelect>
+    <MudTextField T="string" @bind-Value="item.CompanyId" Label="ฟิลด์ใหม่ (CompanyId)" MaxLength="50" Required="true" Class="mb-3" />
+    <MudTextField T="string" @bind-Value="item.UniformType" Label="ฟิลด์ใหม่ (UniformType)" MaxLength="200" Required="true" Class="mb-3" />
+    <MudTextField T="string" @bind-Value="item.Size" Label="ฟิลด์ใหม่ (Size)" MaxLength="50" Required="true" Class="mb-3" />
+    <MudNumericField T="int" @bind-Value="item.Quantity" Label="ฟิลด์ใหม่ (Quantity)" Class="mb-3" />
+    <MudDatePicker Label="ฟิลด์ใหม่ (RequestedDate)" Editable="true" DateFormat="dd/MM/yyyy"
+        Date="@item.RequestedDate" DateChanged="@(d => item.RequestedDate = d ?? item.RequestedDate)" Class="mb-3" />
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" ButtonType="ButtonType.Submit">บันทึก</MudButton>
+        <MudButton Variant="Variant.Text" Href="/emp_uniformrequests" Class="ml-2">ยกเลิก</MudButton>
+    </EditForm>
+</MudPaper>
+
+@code {
+    private Emp_UniformRequest item = new();
+    private List<(long Id, string Label)> _HremployeeIdOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOptionsAsync();
+    }
+
+
+    private async Task LoadOptionsAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var HremployeeIdRaw = await context.Hremployee.Select(x => new { x.id, x.EmpNo }).ToListAsync();
+        _HremployeeIdOptions = HremployeeIdRaw.Select(x => (Convert.ToInt64(x.id), x.EmpNo ?? "")).OrderBy(x => x.Item2).ToList();
+    }
+    private async Task SaveAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Emp_UniformRequests.Add(item);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/emp_uniformrequests");
+    }
+
+}

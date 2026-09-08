@@ -92,7 +92,7 @@ public partial class emp_overtime_request
     // constraints, checked in application code.
     public long? hremployeeid { get; set; }
 
-    [StringLength(6)]
+    [StringLength(50)]
     public string? companyid { get; set; }
 
     // job_master.jobmasterid of the approval job started for this request

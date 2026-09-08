@@ -25,11 +25,11 @@ public class Pos_PositionSlot_his
     public DateTime ChangeDate { get; set; } = DateTime.Now;
 
     public long? PreviousHremployeeId { get; set; }
-    [StringLength(6)]
+    [StringLength(50)]
     public string? PreviousEmpNo { get; set; }
 
     public long? NewHremployeeId { get; set; }
-    [StringLength(6)]
+    [StringLength(50)]
     public string? NewEmpNo { get; set; }
 
     public PositionSlotChangeType ChangeType { get; set; }

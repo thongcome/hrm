@@ -1,0 +1,45 @@
+@page "/emp_uniformrequests/delete/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+@if (item is null)
+{
+    <MudText>ไม่พบข้อมูล</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-3">Delete Emp_UniformRequest</MudText>
+        <MudAlert Severity="Severity.Warning" Class="mb-3">ยืนยันการลบรายการ #@item.Id ใช่หรือไม่?</MudAlert>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="DeleteConfirmedAsync">ลบ</MudButton>
+        <MudButton Variant="Variant.Text" Href="/emp_uniformrequests" Class="ml-2">ยกเลิก</MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private Emp_UniformRequest? item;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        item = await context.Emp_UniformRequests.FindAsync(id);
+        if (item is null) NavigationManager.NavigateTo("/emp_uniformrequests");
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (item is null) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        context.Emp_UniformRequests.Remove(item);
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/emp_uniformrequests");
+    }
+}

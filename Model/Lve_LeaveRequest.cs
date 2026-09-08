@@ -22,9 +22,9 @@ public class Lve_LeaveRequest
     public string? RequestNo { get; set; }
 
     public long HremployeeId { get; set; }
-    [Required, StringLength(6)]
+    [Required, StringLength(50)]
     public string EmpNo { get; set; } = null!;
-    [StringLength(6)]
+    [StringLength(50)]
     public string? CompanyId { get; set; }
 
     public int LeaveTypeId { get; set; }

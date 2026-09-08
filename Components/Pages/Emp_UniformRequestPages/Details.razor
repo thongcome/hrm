@@ -1,0 +1,50 @@
+@page "/emp_uniformrequests/details/{id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+
+@if (item is null)
+{
+    <MudText>ไม่พบข้อมูล</MudText>
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-3">Emp_UniformRequest #@item.Id</MudText>
+        <MudList T="string" Dense="true">
+        <MudListItem>ฟิลด์ใหม่ (RequestNo): <b>@item.RequestNo</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (EmpNo): <b>@item.EmpNo</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (HremployeeId): <b>@(_HremployeeIdLabel ?? "-")</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (CompanyId): <b>@item.CompanyId</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (UniformType): <b>@item.UniformType</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (Size): <b>@item.Size</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (Quantity): <b>@item.Quantity</b></MudListItem>
+        <MudListItem>ฟิลด์ใหม่ (RequestedDate): <b>@item.RequestedDate.ToString("dd/MM/yyyy HH:mm")</b></MudListItem>
+            <MudListItem>สร้างเมื่อ: <b>@item.CreatedDate</b></MudListItem>
+        </MudList>
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Variant="Variant.Text" Href="/emp_uniformrequests">กลับ</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Href="@($"/emp_uniformrequests/edit/{item.Id}")">แก้ไข</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    [Parameter]
+    public long id { get; set; }
+
+    private Emp_UniformRequest? item;
+    private string? _HremployeeIdLabel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        item = await context.Emp_UniformRequests.FindAsync(id);
+        if (item is null) return;
+
+        _HremployeeIdLabel = await context.Hremployee.Where(x => x.id == item.HremployeeId).Select(x => x.EmpNo).FirstOrDefaultAsync();
+    }
+}

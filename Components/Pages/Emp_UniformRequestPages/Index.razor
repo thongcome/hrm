@@ -1,0 +1,83 @@
+@page "/emp_uniformrequests"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager NavigationManager
+
+<PageTitle>Emp_UniformRequest</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h5">Emp_UniformRequest</MudText>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">เพิ่มรายการ</MudButton>
+    </MudStack>
+
+        <MudTextField T="string" Value="_searchTerm" Label="ค้นหา" Immediate="true"
+            DebounceInterval="300" ValueChanged="OnSearchChanged"
+            AdornmentIcon="@Icons.Material.Filled.Search" Adornment="Adornment.Start" Class="mb-3" />
+    <MudTable Items="_items" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Id</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>ฟิลด์ใหม่</MudTh>
+            <MudTh>จัดการ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Id</MudTd>
+            <MudTd>@context.RequestNo</MudTd>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@(_HremployeeIdLabels.TryGetValue(context.HremployeeId, out var HremployeeIdLabel) ? HremployeeIdLabel : $"#{context.HremployeeId}")</MudTd>
+            <MudTd>@context.CompanyId</MudTd>
+            <MudTd>@context.UniformType</MudTd>
+            <MudTd>@context.Size</MudTd>
+            <MudTd>@context.Quantity</MudTd>
+            <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => Details(context.Id))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => Edit(context.Id))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => Delete(context.Id))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Emp_UniformRequest> _items = new();
+    private bool _loading = true;
+    private string _searchTerm = "";
+    private Dictionary<long, string> _HremployeeIdLabels = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.Emp_UniformRequests.AsQueryable();
+        query = HRM.Services.Shared.EntitySearchHelper.ApplyTextSearch(query, _searchTerm, nameof(Emp_UniformRequest.RequestNo), nameof(Emp_UniformRequest.EmpNo), nameof(Emp_UniformRequest.CompanyId), nameof(Emp_UniformRequest.UniformType), nameof(Emp_UniformRequest.Size));
+        _items = await query.OrderByDescending(x => x.Id).ToListAsync();
+        _HremployeeIdLabels = (await context.Hremployee.Select(x => new { Key = x.id, Value = x.EmpNo }).ToListAsync())
+            .ToDictionary(x => Convert.ToInt64(x.Key), x => x.Value ?? "");
+        _loading = false;
+    }
+
+    private async Task OnSearchChanged(string term)
+    {
+        _searchTerm = term;
+        await LoadAsync();
+    }
+
+    private void Create() => NavigationManager.NavigateTo("/emp_uniformrequests/create");
+    private void Details(long id) => NavigationManager.NavigateTo($"/emp_uniformrequests/details/{id}");
+    private void Edit(long id) => NavigationManager.NavigateTo($"/emp_uniformrequests/edit/{id}");
+    private void Delete(long id) => NavigationManager.NavigateTo($"/emp_uniformrequests/delete/{id}");
+}

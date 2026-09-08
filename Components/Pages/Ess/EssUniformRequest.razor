@@ -83,11 +83,13 @@
             <MudTd>@context.UniformType</MudTd>
             <MudTd>@context.Size</MudTd>
             <MudTd>@context.Quantity</MudTd>
-            <MudTd>@(context.JobMasterId is null ? "ร่าง" : "ส่งอนุมัติแล้ว")</MudTd>
+            @* Status comes from job_master (reftable + refid), not from a
+               workflow column on the request row — see UniformRequestService. *@
+            <MudTd>@(JobOf(context) is job_master j ? (j.status ?? "ส่งอนุมัติแล้ว") : "ร่าง")</MudTd>
             <MudTd>
-                @if (context.JobMasterId is long jid)
+                @if (JobOf(context) is job_master job)
                 {
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{jid}"))">ดูสถานะ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{job.jobmasterid}"))">ดูสถานะ</MudButton>
                 }
             </MudTd>
         </RowTemplate>
@@ -100,6 +102,11 @@
 @code {
     private Hremployee? _self;
     private List<Emp_UniformRequest> _myRequests = new();
+    // requestId -> its approval job. Loaded alongside the list in one query
+    // because the request row itself no longer carries a JobMasterId.
+    private Dictionary<long, job_master> _jobs = new();
+
+    private job_master? JobOf(Emp_UniformRequest r) => _jobs.GetValueOrDefault(r.Id);
     private string _uniformType = "";
     private string _size = "M";
     private int _quantity = 1;
@@ -118,7 +125,10 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _self = await EssEmployeeResolver.ResolveAsync(context, state.User);
         if (_self is not null)
+        {
             _myRequests = await UniformSvc.GetMyRequestsAsync(_self.id);
+            _jobs = await UniformSvc.GetJobsAsync(_myRequests.Select(r => r.Id));
+        }
     }
 
     private async Task CreateAndSubmitAsync()
@@ -140,6 +150,7 @@
             _quantity = 1;
             _reason = null;
             _myRequests = await UniformSvc.GetMyRequestsAsync(_self.id);
+            _jobs = await UniformSvc.GetJobsAsync(_myRequests.Select(r => r.Id));
         }
         catch (InvalidOperationException ex)
         {

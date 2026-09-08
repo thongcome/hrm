@@ -22,9 +22,9 @@ public class Exp_ClaimHeader
     public string? ClaimNo { get; set; }
 
     public long HremployeeId { get; set; }
-    [Required, StringLength(6)]
+    [Required, StringLength(50)]
     public string EmpNo { get; set; } = null!;
-    [StringLength(6)]
+    [StringLength(50)]
     public string? CompanyId { get; set; }
 
     [StringLength(500)]

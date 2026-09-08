@@ -1,0 +1,117 @@
+@page "/admin/workflow-design/tables"
+@using HRM.Models
+@using HRM.Services.Admin
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+
+@* CEO, 8 ก.ย. 2569: "สร้าง CRUD ด้วย workflow design แล้ว ไม่รู้จะ access
+   อย่างไร (ทำหน้า landing สำหรับ มาหา หน้า index ที่สร้างด้วย workflow-design)".
+   A table built through the designer gets real CRUD pages, but their routes
+   (RouteSlug = tablename.ToLower() + "s") appear in no menu — so until now
+   the only way in was to know the URL. This page is that way in: one row per
+   table the designer has ever created, straight from WorkflowDesignTable. *@
+
+<PageTitle>ตารางที่สร้างด้วยเครื่องมือออกแบบหน้าจอ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">ตารางที่สร้างด้วยเครื่องมือออกแบบหน้าจอ</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการตารางทั้งหมดที่สร้างผ่าน
+        <MudLink Href="/admin/workflow-design">เครื่องมือออกแบบหน้าจอ (Drag &amp; Drop)</MudLink>
+        พร้อมทางเข้าหน้า CRUD ของแต่ละตาราง
+    </MudText>
+
+    <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.DesignServices"
+               Href="/admin/workflow-design">ออกแบบตารางใหม่</MudButton>
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudTable Items="_tables" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>ชื่อตาราง</MudTh>
+            <MudTh>จำนวนฟิลด์</MudTh>
+            <MudTh>สร้างเมื่อ</MudTh>
+            <MudTh>หน้า CRUD</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.TableName</MudTd>
+            <MudTd>@FieldCount(context)</MudTd>
+            <MudTd>@context.CreatedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                @* The designer writes the pages as SOURCE files; they only
+                   exist as routes after the next build. Checking the folder
+                   is what tells an admin "generated" from "designed only". *@
+                @if (_generated.Contains(context.TableName))
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small">/@RouteOf(context)</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">ยังไม่ได้สร้างหน้า CRUD</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (_generated.Contains(context.TableName))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                               Href="@($"/{RouteOf(context)}")">เปิดหน้า</MudButton>
+                }
+                else
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                               Href="/admin/workflow-design">ไปสร้าง CRUD</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีตารางที่สร้างด้วยเครื่องมือนี้</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<WorkflowDesignTable> _tables = new();
+    // Table names whose generated CRUD folder exists on disk.
+    private HashSet<string> _generated = new(StringComparer.OrdinalIgnoreCase);
+
+    [Inject] private IWebHostEnvironment Env { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _tables = await context.WorkflowDesignTables
+            .OrderByDescending(t => t.CreatedDate)
+            .ToListAsync();
+
+        foreach (var t in _tables)
+        {
+            var dir = Path.Combine(Env.ContentRootPath, "Components", "Pages", $"{t.TableName}Pages");
+            if (Directory.Exists(dir)) _generated.Add(t.TableName);
+        }
+    }
+
+    // Same slug the generator stamps into the page's @page directive, so this
+    // link can never drift from the real route.
+    private static string RouteOf(WorkflowDesignTable t) => WorkflowDesignCodeGenerator.RouteSlug(t.TableName);
+
+    private static int FieldCount(WorkflowDesignTable t)
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<DesignField>>(t.FieldsJson)?.Count ?? 0;
+        }
+        catch
+        {
+            // A design row written by an older/incompatible shape shouldn't
+            // take the whole listing down.
+            return 0;
+        }
+    }
+}

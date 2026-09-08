@@ -15,7 +15,7 @@ public class Hr_DisciplinaryCase
     public string? CaseNo { get; set; }
 
     public long HremployeeId { get; set; }
-    [StringLength(6)]
+    [StringLength(50)]
     public string? EmpNo { get; set; }
     [StringLength(6)]
     public string CompanyId { get; set; } = null!;

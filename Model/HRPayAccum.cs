@@ -23,7 +23,7 @@ namespace HRM.Models
         public string? YEAR { get; set; }
 
         [Column("EMP_NO")]
-        [StringLength(6)]
+        [StringLength(50)]
         public string? EmpNo { get; set; }
 
         [Column("SALARYBASE", TypeName = "decimal(15,2)")]

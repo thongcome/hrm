@@ -27,9 +27,9 @@ public class Pay_PositionSalaryHistory
 
     public long HremployeeId { get; set; }
 
-    [StringLength(6)]
+    [StringLength(50)]
     public string? EmpNo { get; set; }
-    [StringLength(6)]
+    [StringLength(50)]
     public string? CompanyId { get; set; }
 
     [StringLength(15)]

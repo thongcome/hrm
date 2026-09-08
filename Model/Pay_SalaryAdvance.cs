@@ -28,7 +28,7 @@ public class Pay_SalaryAdvance
     // Plain id on purpose (Hremployee carries a global query filter); resolved by join where displayed.
     public long HremployeeId { get; set; }
 
-    [StringLength(6)]
+    [StringLength(50)]
     public string? EmpNo { get; set; }
 
     [Required, StringLength(6)]

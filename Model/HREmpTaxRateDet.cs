@@ -18,7 +18,7 @@ namespace HRM.Models
         public string CoopId { get; set; } = null!;
 
         [Column("EMP_NO")]
-        [StringLength(6)]
+        [StringLength(50)]
         public string EmpNo { get; set; } = null!;
 
         [Column("Peroid")]

@@ -18,9 +18,9 @@ public class Pay_PayrollEmployee
     public long HremployeeId { get; set; }
 
     // denormalized for convenience/reporting; source of truth is Hremployee
-    [StringLength(6)]
+    [StringLength(50)]
     public string? EmpNo { get; set; }
-    [StringLength(6)]
+    [StringLength(50)]
     public string? CompanyId { get; set; }
 
     [Column(TypeName = "decimal(6,4)")]

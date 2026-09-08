@@ -31,7 +31,7 @@ public class Perf_EvaluationInstance
     // path into the same rows SQL Server rejects at migration time.
     public long HremployeeId { get; set; }
 
-    [StringLength(6)]
+    [StringLength(50)]
     public string? SnapshotEmpNo { get; set; }
     [StringLength(200)]
     public string? SnapshotEmpName { get; set; }

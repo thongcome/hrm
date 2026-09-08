@@ -404,6 +404,10 @@ public static class ScMenuNavCatalog
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/languages", "ตั้งค่าภาษา (Language Settings)", "Language Settings", "Icons.Material.Filled.Language", 80),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/sso-roles", "สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)", "External App Roles (SSO)", "Icons.Material.Filled.Key", 90),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "เครื่องมือออกแบบหน้าจอ", "Screen Designer", "Icons.Material.Filled.DesignServices", 100),
+        // The way IN to whatever the designer has built: its generated CRUD
+        // routes (tablename + "s") belong to no menu, so without this row an
+        // admin has to already know the URL (CEO, 8 ก.ย. 2569).
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design/tables", "ตารางที่สร้างด้วยเครื่องมือออกแบบ", "Designer Tables", "Icons.Material.Filled.TableChart", 110),
 
         // ---- GRP_LEGACY (gap-closure 1 ก.ย. 2569: live pages gated by code;
         // /income, /ot, /onlinereport were DEAD links (no @page owns those
