@@ -475,6 +475,7 @@ builder.Services.AddScoped<HRM.Services.Audit.AuditArchiveService>();
 // ----- end Pay_* module -----
 
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
+builder.Services.AddScoped<HRM.Services.Workflow.WorkflowService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowStateChangeService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowButtonService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();

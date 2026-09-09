@@ -158,7 +158,7 @@ public class WorkflowEngineService
             // Block 9: display status is the level's configured "pending at
             // this level" text, not a hardcoded engine constant — kept as a
             // fallback only for levels that somehow have no standstatus set.
-            status = levels[0].standstatus ?? StatusPending,
+            status = levels[0].sitinstatus ?? levels[0].standstatus ?? StatusPending,
             reftable = reftable,
             refid = refid,
             createuserid = requesterUserId,
@@ -192,73 +192,9 @@ public class WorkflowEngineService
         Serilog.Log.Information("Workflow job {JobMasterId} started: workflow {WorkflowCode}, requester {RequesterEmpId}, first level {Level}",
             job.jobmasterid, workflow.workflowcode, requesterEmpId, levels[0].wlevel);
 
-        foreach (var level in levels)
-        {
-            context.job_subworkflow_masters.Add(new job_subworkflow_master
-            {
-                jobmasterid = job.jobmasterid,
-                workflowid = level.workflowid,
-                wlevel = level.wlevel,
-                isupperrole = level.isupperrole,
-                isupperuser = level.isupperuser,
-                iscondition = level.iscondition,
-                isorcondition = level.isorcondition,
-                isandcondition = level.isandcondition,
-                andpercent = level.andpercent,
-                status = level.standstatus,
-                forwardstatus = level.forwardstatus,
-                backwardstatus = level.backwardstatus,
-                istop = level.istop,
-                iscustomUser = level.iscustomUser,
-                iscustomRole = level.iscustomRole,
-                empLevel = level.empLevel,
-                isshow = level.isshow,
-                isLOA = level.isLOA,
-                isNeedsupervisorapprove = level.isNeedsupervisorapprove,
-                backwardlevel = level.backwardlevel,
-                verticalMaxLevel = level.verticalMaxLevel,
-                isPool = level.isPool,
-                wfcode = workflow.workflowcode,
-                // Full-level snapshot (CEO, 2026-09-07 follow-up) — the rest
-                // of wf_sub_workflow_master's columns, frozen alongside the
-                // ones above rather than hand-picked. remark intentionally
-                // NOT copied here — job_subworkflow_master.remark is written
-                // by the engine itself at runtime (unrelated to the level
-                // definition's own remark text).
-                isAdhocUser = level.isAdhocUser,
-                iscustomApprover = level.iscustomApprover,
-                approvedstatus = level.approvedstatus,
-                declinestatus = level.declinestatus,
-                isReturnSender = level.isReturnSender,
-                loacode = level.loacode,
-                isAutoApproveAllow = level.isAutoApproveAllow,
-                isNeedBudgetApproval = level.isNeedBudgetApproval,
-                sitinstatus = level.sitinstatus,
-                aa_id = level.aa_id,
-                aa_level = level.aa_level,
-                controller = level.controller,
-                action = level.action,
-                displayName = level.displayName,
-                userid1 = level.userid1,
-                userid2 = level.userid2,
-                userid3 = level.userid3,
-                subject = level.subject,
-                subjectBiz = level.subjectBiz,
-                describeBiz = level.describeBiz,
-                describe = level.describe,
-                actionEdit = level.actionEdit,
-                subject_en = level.subject_en,
-                subjectBiz_en = level.subjectBiz_en,
-                describeBiz_en = level.describeBiz_en,
-                describe_en = level.describe_en,
-                isApproverSameOrg = level.isApproverSameOrg,
-                isApproverSameCostCenter = level.isApproverSameCostCenter,
-                isManualButton = level.isManualButton,
-                ApproveController = level.ApproveController,
-                ApproveAction = level.ApproveAction,
-                moddate = DateTime.Now,
-            });
-        }
+        // ประทับรอยเท้าขั้นแรกเท่านั้น — ขั้นถัดไปจะถูกประทับตอนงานเดินไปถึงจริง
+        // (CEO, 9 ก.ย. 2569: "อ่านไปทีละขั้นๆ ไป stamp ใน job_master กับ job_subworkflow")
+        context.job_subworkflow_masters.Add(BuildLevelSnapshot(job, levels[0], workflow.workflowcode, job.jobseq));
         await context.SaveChangesAsync(ct);
 
         // Auto-approve (opt-in per workflow): close the job as COMPLETED right
@@ -292,6 +228,92 @@ public class WorkflowEngineService
 
         return job.jobmasterid;
     }
+
+    // job_subworkflow_master คือ "รอยเท้าการเดิน" ของงาน ไม่ใช่สำเนา config
+    // (CEO, 9 ก.ย. 2569). ระบบต้นฉบับประทับหนึ่งแถวทุกครั้งที่งานเข้าสู่ระดับหนึ่ง
+    // พร้อม jobseq ของก้าวนั้น — TTMEPMS job 229 จึงมี 7 แถวจาก 4 ระดับ เพราะ
+    // มันวน 0->1->0->1->0->1->2->3 เดิม HRM สร้างครบทุกระดับตั้งแต่เริ่มงานแล้ว
+    // เขียนทับเมื่อวนกลับ ทำให้ประวัติการตีกลับหายทั้งหมด
+    private static job_subworkflow_master BuildLevelSnapshot(
+        job_master job, wf_sub_workflow_master level, string? workflowCode, int? jobseq = null)
+    {
+        return new job_subworkflow_master
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = level.workflowid,
+            wlevel = level.wlevel,
+            isupperrole = level.isupperrole,
+            isupperuser = level.isupperuser,
+            iscondition = level.iscondition,
+            isorcondition = level.isorcondition,
+            isandcondition = level.isandcondition,
+            andpercent = level.andpercent,
+            // epms: jobSubW.status = sub.sitinstatus — สถานะที่ตราไว้บนรอยเท้าคือ
+            // "งานนั่งอยู่ที่ขั้นนี้" ไม่มีค่อยตกมาที่ standstatus
+            status = level.sitinstatus ?? level.standstatus,
+            forwardstatus = level.forwardstatus,
+            backwardstatus = level.backwardstatus,
+            istop = level.istop,
+            iscustomUser = level.iscustomUser,
+            iscustomRole = level.iscustomRole,
+            empLevel = level.empLevel,
+            isshow = level.isshow,
+            isLOA = level.isLOA,
+            isNeedsupervisorapprove = level.isNeedsupervisorapprove,
+            backwardlevel = level.backwardlevel,
+            verticalMaxLevel = level.verticalMaxLevel,
+            isPool = level.isPool,
+            wfcode = workflowCode,
+            jobseq = jobseq,
+            // Full-level snapshot (CEO, 2026-09-07 follow-up) — the rest
+            // of wf_sub_workflow_master's columns, frozen alongside the
+            // ones above rather than hand-picked. remark intentionally
+            // NOT copied here — job_subworkflow_master.remark is written
+            // by the engine itself at runtime (unrelated to the level
+            // definition's own remark text).
+            isAdhocUser = level.isAdhocUser,
+            iscustomApprover = level.iscustomApprover,
+            approvedstatus = level.approvedstatus,
+            declinestatus = level.declinestatus,
+            isReturnSender = level.isReturnSender,
+            loacode = level.loacode,
+            isAutoApproveAllow = level.isAutoApproveAllow,
+            isNeedBudgetApproval = level.isNeedBudgetApproval,
+            sitinstatus = level.sitinstatus,
+            aa_id = level.aa_id,
+            aa_level = level.aa_level,
+            controller = level.controller,
+            action = level.action,
+            displayName = level.displayName,
+            userid1 = level.userid1,
+            userid2 = level.userid2,
+            userid3 = level.userid3,
+            subject = level.subject,
+            subjectBiz = level.subjectBiz,
+            describeBiz = level.describeBiz,
+            describe = level.describe,
+            actionEdit = level.actionEdit,
+            subject_en = level.subject_en,
+            subjectBiz_en = level.subjectBiz_en,
+            describeBiz_en = level.describeBiz_en,
+            describe_en = level.describe_en,
+            isApproverSameOrg = level.isApproverSameOrg,
+            isApproverSameCostCenter = level.isApproverSameCostCenter,
+            isManualButton = level.isManualButton,
+            ApproveController = level.ApproveController,
+            ApproveAction = level.ApproveAction,
+            moddate = DateTime.Now,
+        };
+    }
+
+    // รอยเท้าล่าสุดของระดับนั้น (jobseq สูงสุด) — ใช้แทนการอ่าน "แถวของระดับ X"
+    // เพราะตอนนี้หนึ่งระดับมีได้หลายแถว
+    private static Task<job_subworkflow_master?> CurrentFootprintAsync(
+        HRMContext context, long jobMasterId, int? wlevel, CancellationToken ct)
+        => context.job_subworkflow_masters
+            .Where(s => s.jobmasterid == jobMasterId && s.wlevel == wlevel)
+            .OrderByDescending(s => s.jobseq).ThenByDescending(s => s.jobsubworkflowid)
+            .FirstOrDefaultAsync(ct);
 
     public async Task ApproveAsync(long jobApproverId, long actorUserId, string? comment, long? reasonId = null, CancellationToken ct = default)
     {
@@ -459,8 +481,7 @@ public class WorkflowEngineService
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
         await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
-        var snapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
+        var snapshot = await CurrentFootprintAsync(context, job.jobmasterid, approverRow.wlevel, ct)
             ?? throw new InvalidOperationException("ไม่พบ config ระดับนี้ของงานนี้");
         if (!snapshot.istop)
             throw new InvalidOperationException("\"ไม่อนุมัติ (Decline)\" ทำได้เฉพาะระดับสุดท้ายเท่านั้น — ระดับกลางที่ไม่เห็นด้วยให้ใช้ \"ส่งกลับแก้ไข\" แทน");
@@ -514,11 +535,11 @@ public class WorkflowEngineService
             throw new InvalidOperationException("งานนี้เลื่อนผ่านระดับนี้ไปแล้ว ไม่สามารถดำเนินการกับรายการเก่านี้ได้");
         await EnsureNotClaimedByAnotherAsync(context, job, approverRow.wlevel, actorUserId, ct);
 
-        var snapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == approverRow.wlevel, ct)
+        var snapshot = await CurrentFootprintAsync(context, job.jobmasterid, approverRow.wlevel, ct)
             ?? throw new InvalidOperationException("ไม่พบ config ระดับนี้ของงานนี้");
-        if (snapshot.backwardlevel is null)
-            throw new InvalidOperationException("workflow นี้ไม่ได้เปิดให้ \"ส่งกลับแก้ไข\" ที่ระดับนี้ (ไม่ได้ตั้ง backwardlevel) — โปรดตั้งค่าที่ระดับการอนุมัติก่อน");
+        // ปุ่ม "ส่งกลับ" = ถอยหลังหนึ่งขั้น (epms RejectOneStep: nextLevel = lastLevel - 1)
+        // ถ้า config ตั้ง backwardlevel ไว้ว่าให้ย้อนไกลกว่านั้น ก็เดินตาม config
+        var sendBackTo = snapshot.backwardlevel ?? snapshot.wlevel - 1;
 
         approverRow.jobstatus = StatusReturned;
         approverRow.approvedate = DateTime.Now;
@@ -529,15 +550,15 @@ public class WorkflowEngineService
         // target level, issues a fresh approver round, flips isLast). Returns
         // false only for an invalid backwardlevel config — nothing persisted yet
         // in that case, so throwing leaves the context clean.
-        var bounced = await TryBounceBackAsync(context, job, snapshot, ct);
+        var bounced = await TryBounceBackAsync(context, job, snapshot, ct, sendBackTo);
         if (!bounced)
-            throw new InvalidOperationException("ส่งกลับไม่สำเร็จ — ตรวจสอบการตั้งค่า backwardlevel ของ workflow (ต้องเป็นระดับก่อนหน้าที่มีอยู่จริง)");
+            throw new InvalidOperationException("ส่งกลับไม่สำเร็จ — งานนี้ยังไม่มีประวัติผู้ส่งในขั้นก่อนหน้า (ขั้นนี้เป็นขั้นแรกของงาน)");
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
-            new { jobstatus = StatusPending }, new { jobstatus = StatusReturned, action = "SendBack", toLevel = snapshot.backwardlevel, comment }, isSensitive: false, ct);
+            new { jobstatus = StatusPending }, new { jobstatus = StatusReturned, action = "SendBack", toLevel = sendBackTo, comment }, isSensitive: false, ct);
         Serilog.Log.Information("Job {JobMasterId} SENT BACK from level {Level} to level {ToLevel} by user {ActorUserId}",
-            job.jobmasterid, approverRow.wlevel, snapshot.backwardlevel, actorUserId);
+            job.jobmasterid, approverRow.wlevel, sendBackTo, actorUserId);
 
         await NotifyRequesterAsync(context, job, WorkflowOutcome.BouncedBack, ct);
     }
@@ -631,7 +652,11 @@ public class WorkflowEngineService
             .Where(s => jobIds.Contains(s.jobmasterid))
             .Select(s => new { s.jobmasterid, s.wlevel, s.starttime })
             .ToListAsync(ct);
-        var startByJobLevel = starts.ToDictionary(s => (s.jobmasterid, s.wlevel), s => s.starttime);
+        // หนึ่งระดับมีได้หลายรอยเท้า (งานที่ตีกลับแล้ววนกลับมาระดับเดิม) —
+        // นับอายุจากการมาถึง "ครั้งล่าสุด" ของระดับนั้น ไม่ใช่ครั้งแรก
+        var startByJobLevel = starts
+            .GroupBy(s => (s.jobmasterid, s.wlevel))
+            .ToDictionary(g => g.Key, g => g.Max(s => s.starttime));
 
         foreach (var job in openJobs)
         {
@@ -731,8 +756,7 @@ public class WorkflowEngineService
     {
         if (!IsPoolClaimLive(job) || job.PoolClaimedByUserId == actorUserId) return;
 
-        var levelSnapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == wlevel, ct);
+        var levelSnapshot = await CurrentFootprintAsync(context, job.jobmasterid, wlevel, ct);
         if (levelSnapshot?.isPool != true) return;
 
         throw new InvalidOperationException("งานนี้มีเพื่อนร่วมทีมรับไปดำเนินการแล้ว กรุณาเลือกงานอื่นในพูล หรือรอให้เขาปล่อยคืน");
@@ -762,8 +786,7 @@ public class WorkflowEngineService
             && a.wlevel == job.lastLevel && (a.jobseq ?? 0) == (job.jobseq ?? 0), ct)
             ?? throw new InvalidOperationException("คุณไม่ใช่ผู้ได้รับมอบหมายในระดับปัจจุบันของงานนี้");
 
-        var levelSnapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == jobMasterId && s.wlevel == myPendingRow.wlevel, ct);
+        var levelSnapshot = await CurrentFootprintAsync(context, jobMasterId, myPendingRow.wlevel, ct);
         if (levelSnapshot?.isPool != true)
             throw new InvalidOperationException("ระดับนี้ไม่ใช่ pool workflow — ไม่ต้องรับงาน สามารถอนุมัติได้ทันที");
 
@@ -955,10 +978,168 @@ public class WorkflowEngineService
     // own real round) is now fully resolved, and if so either advances the
     // hop/level machinery accordingly. actorUserId is null for
     // system-driven auto-skip advances (no human actually clicked anything).
+    // ทิศทางการเดินของงาน — ตรงกับพารามิเตอร์ waction ของ
+    // WorkFlowChain.updateWorkFlowChain() ในระบบต้นฉบับ
+    // การขยับของงาน มีสามแบบเท่านั้น (CEO, 9 ก.ย. 2569):
+    //   Forward  = เดินหน้า  -> wlevel + 1
+    //   Backward = ถอยหลัง   -> wlevel - 1
+    //   Stand    = อยู่ที่เดิม -> wlevel เท่าเดิม ไม่ขยับ (เช่นไต่ผังองค์กรอีกขั้น
+    //              ที่ระดับเดียวกัน หรือขั้นที่ต้องวนขอความเห็นเพิ่ม)
+    // ตรงกับพารามิเตอร์ waction ของ WorkFlowChain.updateWorkFlowChain() ต้นฉบับ
+    private enum StepDirection { Forward, Backward, Stand }
+
+    // ==================== หนึ่งก้าวของงาน ====================
+    //
+    // CEO, 9 ก.ย. 2569: "workflow คือชื่อ workflow, subworkflow คือเส้นทางเดิน
+    // แต่ละ level config ว่าอะไรก็ไปหามาเตรียมไว้ ... แค่อ่านแล้ว stamp
+    // คุณไม่ต้องคิด คุณแค่ทำ method ไว้แล้วส่งค่าผ่านไปกลับแต่ละ level"
+    //
+    // นี่คือเมธอดนั้น — จุดเดียวที่งานเคลื่อนที่ ทั้งเดินหน้าและถอยหลัง
+    // เทียบบรรทัดต่อบรรทัดกับ WorkFlowChain.updateWorkFlowChain() ของต้นฉบับ:
+    //
+    //   1. อ่านสคริปต์ของ level ปลายทางจาก wf_sub_workflow_master (อ่านสด
+    //      ไม่ใช่จากรอยเท้าเก่า — คนใน role/ตำแหน่งเปลี่ยนได้ระหว่างงานยังเดินอยู่)
+    //   2. ถอยหลัง -> ผู้รับคือคนที่เป็นคนส่งใน level นั้น (ไม่ต้องตีความอะไร)
+    //   3. นับก้าว (jobseq) แล้วย้ายงานมาที่ level นี้ — stamp ลง job_master
+    //   4. ประทับรอยเท้าลง job_subworkflow_master หนึ่งแถวต่อก้าว
+    //   5. ถอยหลัง -> ออกใบงานให้คนนั้น + stamp backwardstatus ของ level
+    //   6. เดินหน้า -> resolve ผู้เกี่ยวข้องตามที่ config ไว้ใน level นั้น
+    //                 (AssignLevelApproversAsync stamp standstatus ให้เอง)
+    //
+    // เมธอดนี้ไม่ตัดสินใจอะไรเอง และไม่ตีความความหมายของ config ด้วย — config
+    // มีค่าอะไรก็ทำงานของมันไป เครื่องแค่สร้างกระบวนการให้มันเดิน
+    // คืนค่า null = ก้าวนี้เดินไม่ได้ (ไม่มี level ปลายทาง หรือส่งกลับไปยัง level
+    // ที่งานไม่เคยผ่าน) ให้ผู้เรียกตัดสินใจต่อเอง
+    private async Task<WorkflowOutcome?> StepAsync(
+        HRMContext context, job_master job, int wlevel,
+        StepDirection direction, CancellationToken ct)
+    {
+        // 1. อ่านสคริปต์ของ level นี้
+        var level = await context.wf_sub_workflow_masters
+            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == wlevel, ct);
+        if (level is null)
+            return null;
+
+        // 2. ถอยหลัง — ผู้รับคือ "คนที่เป็นคนส่งใน level นั้น" ตรง ๆ
+        //    (CEO, 9 ก.ย. 2569) ไม่ตีความ flag ใด ๆ ไม่ resolve ผู้อนุมัติใหม่
+        //    ตรงกับต้นฉบับทั้งสองรุ่น: JSP WorkFlowChain ที่ waction="backward"
+        //    ใช้ lastuser ตรง ๆ และ epms RejectOneStep ที่วนถอยลงทีละขั้นจนกว่า
+        //    จะเจอคนที่เคยส่ง — สุดทางคือ level 0 = ผู้ขอ จึงส่งกลับถึงผู้ขอได้เอง
+        //    โดยไม่ต้องมี flag พิเศษอะไรเลย
+        //
+        //    หาให้ได้ก่อนจะแตะ job/รอยเท้า เพื่อให้ผู้เรียกล้มกลับไปทาง FailJob ได้สะอาด
+        long? recipientUserId = null;
+        string? recipientEmpId = null;
+        if (direction == StepDirection.Backward)
+        {
+            var searchLevel = wlevel;
+            job_user_list? sender = null;
+            while (searchLevel >= 0)
+            {
+                sender = await context.job_user_lists
+                    .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == searchLevel && a.userid != null)
+                    .OrderByDescending(a => a.jobseq).ThenByDescending(a => a.jobapproverid)
+                    .FirstOrDefaultAsync(ct);
+                if (sender is not null) break;
+                searchLevel--;   // ไม่มีใครเคยอยู่ขั้นนี้ -> ถอยลงอีกขั้นไปหาคนที่ส่ง
+            }
+            if (sender is null)
+                return null; // งานไม่เคยผ่านขั้นไหนเลย -> ส่งกลับไม่ได้
+
+            recipientUserId = sender.userid;
+            recipientEmpId = sender.empid;
+
+            // ถ้าวนถอยไปเจอที่ขั้นอื่น ปลายทางจริงคือขั้นนั้น ต้องอ่าน config ใหม่
+            if (searchLevel != wlevel)
+            {
+                wlevel = searchLevel;
+                level = await context.wf_sub_workflow_masters
+                    .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == wlevel, ct);
+                if (level is null) return null;
+            }
+        }
+
+        // 3. นับก้าว แล้วย้ายงานมาที่ level นี้
+        //    jobseq (CEO, 2026-09-07, ยืนยันกับข้อมูลจริงของ epms): นับ "ทุก" การ
+        //    ขยับ ทั้งเดินหน้า ถอยหลัง และอยู่ที่เดิม ไม่ใช่เฉพาะตอนตีกลับ
+        job.jobseq = (job.jobseq ?? 0) + 1;
+        job.lastLevel = wlevel;
+
+        // 4. ประทับรอยเท้าของก้าวนี้ — หนึ่งแถวต่อการมาถึงหนึ่งครั้ง งานที่วน
+        //    1 -> 0 -> 1 จึงเก็บครบทุกครั้ง ไม่ใช่เขียนทับแถวเดียวของ level นั้น
+        //    (TTMEPMS job 229 มี 7 แถวจาก 4 ระดับด้วยเหตุนี้)
+        context.job_subworkflow_masters.Add(BuildLevelSnapshot(job, level, job.workflowcode, job.jobseq));
+
+        // 5. stamp สถานะว่า "งานมานั่งอยู่ที่ขั้นนี้แล้ว" — sitinstatus ก่อน
+        //    ถ้าไม่ได้ตั้งไว้ก็ standstatus (CEO: "ถ้า sit in ก็งานมาอยู่ที่ level นี้
+        //    หรือ stand ก็ได้") ขากลับใช้ backwardstatus เพราะเป็นผลของการถอย
+        job.status = direction == StepDirection.Backward
+            ? level.backwardstatus ?? level.sitinstatus ?? level.standstatus ?? StatusRejected
+            : level.sitinstatus ?? level.standstatus ?? StatusPending;
+
+        // 6. ถอยหลัง — ออกใบงานให้คนที่ส่งมา ไม่ resolve ผู้อนุมัติใหม่
+        if (direction == StepDirection.Backward)
+        {
+            await IssueApproverRowAsync(context, job, level, recipientUserId!.Value, recipientEmpId, ct);
+            return WorkflowOutcome.StillOpen;
+        }
+
+        // 7. เดินหน้า/อยู่ที่เดิม — resolve ผู้เกี่ยวข้องตาม config ของขั้นนี้
+        return await AssignLevelApproversAsync(context, job, level, ct);
+    }
+
+    // สามประตูของกระบวนการ ตามที่ CEO อธิบายไว้ (9 ก.ย. 2569):
+    //   กด "ส่งต่อ"    -> Forward()   ไป wlevel + 1  ใครเกี่ยวข้อง ดูที่ config ของขั้นนั้น
+    //   กด "ส่งกลับ"   -> SendBack()  ไป wlevel - 1  ส่งให้คนที่เป็นคนส่งในขั้นนั้น
+    //   ยังไม่ขยับ      -> Stand()     อยู่ wlevel เดิม  วนขอความเห็นเพิ่มที่ขั้นเดียวกัน
+    //
+    // ไม่ส่ง toLevel มาก็คำนวณจาก job.lastLevel ให้เอง (+1 / -1 / เท่าเดิม) — ส่งมา
+    // เมื่อเส้นทางไม่ใช่ทีละขั้น เช่น isLOA กระโดดตามวงเงิน หรือ backwardlevel
+    // ที่ config ให้ย้อนหลายขั้น เมธอดพวกนี้ไม่ตัดสินใจเองว่าไปขั้นไหน
+    private Task<WorkflowOutcome?> ForwardAsync(HRMContext context, job_master job, CancellationToken ct, int? toLevel = null)
+        => StepAsync(context, job, toLevel ?? (job.lastLevel ?? 0) + 1, StepDirection.Forward, ct);
+
+    private Task<WorkflowOutcome?> SendBackAsync(HRMContext context, job_master job, CancellationToken ct, int? toLevel = null)
+        => StepAsync(context, job, toLevel ?? (job.lastLevel ?? 0) - 1, StepDirection.Backward, ct);
+
+    private Task<WorkflowOutcome?> StandAsync(HRMContext context, job_master job, CancellationToken ct)
+        => StepAsync(context, job, job.lastLevel ?? 0, StepDirection.Stand, ct);
+
+    // ออกใบงานให้ผู้รับหนึ่งคน (ใช้ตอนถอยหลัง ซึ่งผู้รับถูกกำหนดมาแล้ว
+    // ไม่ต้อง resolve) — รูปแบบแถวเดียวกับที่ AssignLevelApproversAsync ออกให้
+    private async Task IssueApproverRowAsync(
+        HRMContext context, job_master job, wf_sub_workflow_master level,
+        long userId, string? empId, CancellationToken ct)
+    {
+        var prior = await context.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.isLast == true)
+            .ToListAsync(ct);
+        foreach (var r in prior) r.isLast = false;
+
+        var name = await context.sc_users.Where(u => u.userid == userId)
+            .Select(u => (u.firstname + " " + u.lastname).Trim())
+            .FirstOrDefaultAsync(ct);
+
+        context.job_user_lists.Add(new job_user_list
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = level.wlevel,
+            userid = userId,
+            empid = empId,
+            username = string.IsNullOrWhiteSpace(name) ? null : name,
+            subworkflowmasterid = level.subworkflowid,
+            jobstatus = StatusPending,
+            sendDate = DateTime.Now,
+            jobseq = job.jobseq,
+            isLast = true,
+        });
+        await NotifyApproverAsync(context, job, userId, empId, ct);
+    }
+
     private async Task<WorkflowOutcome> TryAdvanceLevelAsync(HRMContext context, job_master job, int completedLevel, long? actorUserId, CancellationToken ct)
     {
-        var completedSnapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == completedLevel, ct)
+        var completedSnapshot = await CurrentFootprintAsync(context, job.jobmasterid, completedLevel, ct)
             ?? throw new InvalidOperationException($"ไม่พบ config ระดับ {completedLevel} ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
 
         // Round-scoped: after a bounce-back (Block: reject bounce-back),
@@ -1091,32 +1272,13 @@ public class WorkflowEngineService
             ? await ResolveNextLevelViaLoaAsync(context, job, completedLevel, ct)
             : completedLevel + 1;
 
-        var nextSnapshotLevel = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == nextLevelNo, ct)
-            ?? throw new InvalidOperationException($"ไม่พบ config ระดับถัดไป (level {nextLevelNo}) ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
-
         completedSnapshot.endtime = DateTime.Now; // this level is done, advancing onward
-        // jobseq (CEO, 2026-09-07 follow-up, confirmed against real epms
-        // production data): counts EVERY level transition, forward and
-        // backward combined, not just backward bounces — epms's
-        // CreateJobSubWorkflow increments it unconditionally on both. HRM
-        // previously only incremented this in TryBounceBackAsync, which was
-        // a real divergence from epms's actual behavior (see that method's
-        // own increment for the backward half of this same counter).
-        job.jobseq = (job.jobseq ?? 0) + 1;
-        job.lastLevel = nextSnapshotLevel.wlevel;
 
-        // Resolve against the LIVE wf_sub_workflow_master row (not the
-        // snapshot) — the snapshot freezes this level's rules, but the pool
-        // of eligible people (role membership, custom-user list, org-chart
-        // approver) is read live, since who's in a role/position can (and
-        // should) change over the life of a long-running approval.
-        var nextLiveLevel = await context.wf_sub_workflow_masters
-            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == nextSnapshotLevel.wlevel, ct)
+        // ส่งต่อไป level ถัดไป — ทุกอย่างของก้าวนั้น (นับ jobseq, ย้าย level,
+        // ประทับรอยเท้า, อ่าน config หาผู้เกี่ยวข้อง) อยู่ใน StepAsync ที่เดียว
+        return await ForwardAsync(context, job, ct, nextLevelNo)
             ?? throw new InvalidOperationException(
-                $"ไม่พบ config ต้นฉบับของระดับ {nextSnapshotLevel.wlevel} ใน wf_sub_workflow_master แล้ว (อาจถูกลบหลังงานเริ่ม) — ไม่สามารถหาผู้อนุมัติระดับถัดไปได้");
-
-        return await AssignLevelApproversAsync(context, job, nextLiveLevel, ct);
+                $"ไม่พบ config ของระดับ {nextLevelNo} ใน wf_sub_workflow_master — ไม่สามารถเดินงานต่อได้");
     }
 
     // Terminates the job as failed/returned — used both for ordinary
@@ -1140,15 +1302,22 @@ public class WorkflowEngineService
     // single most important regression-safety property here: every workflow
     // that doesn't set backwardlevel (>99% of what exists today) must behave
     // byte-for-byte as before this feature existed.
-    private async Task<bool> TryBounceBackAsync(HRMContext context, job_master job, job_subworkflow_master completedSnapshot, CancellationToken ct)
+    // explicitBackwardLevel: ปุ่ม "ส่งกลับ" ที่คนกดเอง ส่งขั้นปลายทางมาตรง ๆ
+    // (ปกติ wlevel - 1 ตาม epms RejectOneStep) ส่วนการตีกลับอัตโนมัติตอนถูก
+    // ปฏิเสธยังต้องอาศัย backwardlevel ที่ config ไว้เท่านั้น ไม่งั้นทุกการปฏิเสธ
+    // จะกลายเป็นตีกลับหมด
+    private async Task<bool> TryBounceBackAsync(HRMContext context, job_master job, job_subworkflow_master completedSnapshot, CancellationToken ct, int? explicitBackwardLevel = null)
     {
-        var backwardLevel = completedSnapshot.backwardlevel;
+        var backwardLevel = explicitBackwardLevel ?? completedSnapshot.backwardlevel;
         if (backwardLevel is null)
             return false; // not configured -> zero extra queries, fall through to FailJob
 
         // Don't trust config blindly: must be a real earlier level, never
         // forward/self (which would be a no-op-forever or same-level loop).
-        if (backwardLevel < 1 || backwardLevel >= completedSnapshot.wlevel)
+        // ระดับ 0 คือขั้นของผู้ขอในระบบต้นฉบับ (TTMEPMS wf3 = Requistioner,
+        // wf8 = Supplier Registration) การตีกลับถึงผู้ขอเป็นเส้นทางปกติ —
+        // job 229 ทำแบบนั้น 2 รอบ เดิม HRM บล็อกไว้ที่ < 1 จึงตีกลับถึงผู้ขอไม่ได้เลย
+        if (backwardLevel < 0 || backwardLevel >= completedSnapshot.wlevel)
             return false;
 
         // Defensive cap: if two levels are misconfigured to bounce back and
@@ -1163,27 +1332,17 @@ public class WorkflowEngineService
         if ((job.jobseq ?? 0) >= Math.Max(20, (job.maxlevel ?? 0) * 4))
             return false;
 
-        var targetSnapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == backwardLevel.Value, ct);
-        if (targetSnapshot is null)
-            return false; // defensive: every level is snapshotted at StartJobAsync, should always exist
+        // ส่งกลับ — เมธอดเดียวกับขาส่งต่อ ต่างกันแค่ทิศทางที่ส่งเข้าไป
+        var stepped = await SendBackAsync(context, job, ct, backwardLevel.Value);
+        if (stepped is null)
+            return false; // ไม่มี level ปลายทาง หรืองานไม่เคยผ่าน level นั้น
 
-        var targetLiveLevel = await context.wf_sub_workflow_masters
-            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == backwardLevel.Value, ct);
-        if (targetLiveLevel is null)
-            return false; // defensive: live level config deleted since job started
-
-        job.jobseq = (job.jobseq ?? 0) + 1; // new round starts
-        job.lastLevel = backwardLevel.Value;
-        // Block 9 Moving Status field, reused for its intended purpose here.
-        job.status = targetSnapshot.backwardstatus ?? StatusRejected;
         job.remark = (string.IsNullOrEmpty(job.remark) ? "" : job.remark + "\n")
             + $"{DateTime.Now:yyyy-MM-dd HH:mm}: ตีกลับจากระดับ {completedSnapshot.wlevel} ไปยังระดับ {backwardLevel.Value} (รอบที่ {job.jobseq})";
 
         Serilog.Log.Information("Job {JobMasterId} bounced back from level {FromLevel} to level {ToLevel} (round {Jobseq})",
             job.jobmasterid, completedSnapshot.wlevel, backwardLevel.Value, job.jobseq);
 
-        await AssignLevelApproversAsync(context, job, targetLiveLevel, ct); // fresh round of job_user_list rows
         return true;
     }
 
@@ -1380,18 +1539,17 @@ public class WorkflowEngineService
     //      with userid=null ("ค้างไว้จน admin หาคนอนุมัติได้" per the plan).
     private async Task<WorkflowOutcome> AssignLevelApproversAsync(HRMContext context, job_master job, wf_sub_workflow_master level, CancellationToken ct)
     {
-        // Block 9: display status reflects whichever level (or hop) is now
-        // the open round — kept simple (no separate hop-specific status
-        // text) since wf_sub_workflow_master only has one "pending" label.
-        job.status = level.standstatus ?? StatusPending;
+        // สถานะ "งานนั่งอยู่ที่ขั้นนี้" — sitinstatus ก่อน ไม่มีค่อยใช้ standstatus
+        // (CEO, 9 ก.ย. 2569) เดิม HRM อ่านแค่ standstatus คอลัมน์ sitinstatus
+        // มีอยู่แต่ไม่เคยถูกอ่านเลย — epms ใช้ตัวนี้ทั้ง job.status และรอยเท้า
+        job.status = level.sitinstatus ?? level.standstatus ?? StatusPending;
 
         // Per-level duration tracking (CEO, 2026-09-07 follow-up): stamp
         // starttime the FIRST time this level's round is issued only — a
         // Mix Approval pre-check hop re-entering this same method for the
         // same wlevel must not reset it, so ??= rather than an
         // unconditional assignment.
-        var levelSnapshot = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == level.wlevel, ct);
+        var levelSnapshot = await CurrentFootprintAsync(context, job.jobmasterid, level.wlevel, ct);
         if (levelSnapshot is not null) levelSnapshot.starttime ??= DateTime.Now;
 
         // isLast marks the currently-active approver round (epms parity): the
@@ -1580,8 +1738,7 @@ public class WorkflowEngineService
         // later, separate top-level Approve/Reject call), so this is the
         // only way it can know, once this hop resolves, whether to close the
         // job or ask for one more hop.
-        var snapshotRow = await context.job_subworkflow_masters
-            .FirstOrDefaultAsync(s => s.jobmasterid == job.jobmasterid && s.wlevel == level.wlevel, ct)
+        var snapshotRow = await CurrentFootprintAsync(context, job.jobmasterid, level.wlevel, ct)
             ?? throw new InvalidOperationException($"ไม่พบ config ระดับ {level.wlevel} ของงานนี้ — ข้อมูล snapshot ไม่ครบ");
         snapshotRow.istop = isTerminalHop;
 

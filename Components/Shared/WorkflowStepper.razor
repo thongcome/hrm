@@ -197,7 +197,10 @@ else
             .Where(s => s.jobmasterid == JobMasterId)
             .Select(s => new { s.wlevel, s.starttime, s.endtime })
             .ToListAsync();
-        _stageTimes = times.ToDictionary(t => t.wlevel, t => (t.starttime, t.endtime));
+        // หนึ่งระดับมีได้หลายรอยเท้าเมื่องานตีกลับแล้ววนกลับมา — แสดงการมาถึงครั้งล่าสุด
+        _stageTimes = times
+            .GroupBy(t => t.wlevel)
+            .ToDictionary(g => g.Key, g => (g.Max(t => t.starttime), g.Max(t => t.endtime)));
     }
 
     private record StepInfo(int Level, string Title, string Approvers, string State, string TimeLine, bool Predicted);

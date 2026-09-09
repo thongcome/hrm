@@ -1,0 +1,288 @@
+@page "/workflow/detail/{Id:long}"
+@page "/workflow/create/{WorkflowId:long}"
+@using System.Reflection
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject WorkflowService Wf
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@*
+    หน้า workflow ตัวเดียวใช้ได้ทุก workflow — พอร์ตตรงจาก epms Views/Workflow/Detail.cshtml
+
+    หน้านี้ไม่รู้จักโมดูลไหนเลย มันอ่านแค่ว่า "งานอยู่ขั้นไหน" แล้วทำสามอย่าง:
+      1. เสียบเอกสารของโมดูลเข้ามา ตาม controller ที่ config ไว้ที่ขั้นนั้น
+         (epms: @@Html.Action(sub.action, sub.controller, new { Id })
+          Blazor: <DynamicComponent Type Parameters /> — ตัวเทียบกันตรง ๆ)
+      2. โชว์ปุ่มตาม config: ไม่ใช่ขั้นสุดท้าย (istop=false) ไม่มีปุ่มอนุมัติ
+      3. ส่งค่าไป-กลับผ่าน WorkFlowViewModel ตัวเดียว
+*@
+
+<PageTitle>งาน #@Id</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    @if (_m?.jobMaster is null)
+    {
+        <MudAlert Severity="Severity.Info">@(_m?.message.FirstOrDefault() ?? "กำลังโหลด...")</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.h5">@_m.jobMaster.wname — @_m.jobMaster.subject</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            งาน #@_m.jobMaster.jobmasterid · ผู้ขอ @_m.jobMaster.reqName
+            @(_m.jobMaster.createdate is not null ? $"({_m.jobMaster.createdate:dd/MM/yyyy HH:mm})" : "")
+        </MudText>
+        <MudText Typo="Typo.body2">
+            สถานะ <b>@_m.jobMaster.status</b> · ขั้นที่ @_m.jobMaster.lastLevel
+            @(_m.subWorkflow?.subject is string s && s.Length > 0 ? $"— {s}" : "")
+            · ก้าวที่ @_m.jobMaster.jobseq
+            @if (_m.jobMaster.isJobClosed == true) { <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2">ปิดแล้ว</MudChip> }
+        </MudText>
+
+        @* ── 1. เอกสาร: เสียบหน้าของโมดูลตาม config ของขั้นนี้ ───────────────── *@
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.subtitle2">เอกสาร</MudText>
+        @if (_docType is not null)
+        {
+            <DynamicComponent Type="_docType" Parameters="_docParams" />
+        }
+        else if (_docLink is not null)
+        {
+            <MudButton Href="@_docLink" Target="_blank" Variant="Variant.Outlined" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.OpenInNew" Class="mt-1">
+                ดูเอกสารต้นทาง (@_m.jobMaster.reftable #@_m.jobMaster.refid)
+            </MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
+                ขั้นนี้ยังไม่ได้ตั้งค่า controller ว่าให้เสียบหน้าไหน
+            </MudText>
+        }
+
+        @* ── 2. ปุ่ม: ขึ้นตาม config ของขั้นที่งานอยู่ ────────────────────────── *@
+        <MudDivider Class="my-3" />
+        @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
+
+        @if (_m.isCurrentUser)
+        {
+            <MudTextField @bind-Value="_reason" Label="เหตุผล / หมายเหตุ" Lines="2" Class="mb-2" />
+            <MudStack Row="true" Spacing="2">
+                @* ขั้นสุดท้าย = ไม่มีที่ให้ไปต่อ -> ยืนอยู่กับที่แล้วงานจบ *@
+                @if (_m.subWorkflow?.istop == true)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
+                               OnClick="@(() => Act(Wf.ApproveAsync))">
+                        @(_m.subWorkflow?.displayName ?? "อนุมัติ")
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
+                               OnClick="@(() => Act(Wf.SubmitAsync))">
+                        @(_m.subWorkflow?.displayName ?? "ส่งต่อ")
+                    </MudButton>
+                }
+
+                @* ปุ่มส่งกลับ ขึ้นตาม isReturnSender ของขั้นที่ยืนอยู่ และแสดงชื่อ
+                   คนที่จะส่งกลับไปหา เพื่อให้ผู้อนุมัติรู้ก่อนกดว่างานจะไปถึงใคร *@
+                @if (_m.canReturnToSender)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Undo"
+                               OnClick="@(() => Act(Wf.ReturnToSenderAsync))">
+                        ส่งกลับหาผู้กรอกแบบฟอร์ม (@_m.sendBackToName)
+                    </MudButton>
+                }
+                else if (_m.sendBackToName is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.ArrowBack"
+                               OnClick="@(() => Act(Wf.RejectOneStepAsync))">
+                        ส่งกลับ (@_m.sendBackToName)
+                    </MudButton>
+                }
+            </MudStack>
+        }
+        else if (_m.jobMaster.isJobClosed != true)
+        {
+            <MudAlert Severity="Severity.Normal">งานนี้ไม่ได้อยู่ที่คุณ</MudAlert>
+        }
+
+        @* ── 3. ผู้อนุมัติขั้นถัดไป (ทายไว้ล่วงหน้า) ──────────────────────────── *@
+        @if (_m.jobUserListPredict.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-4">ขั้นถัดไป</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                ขั้นที่ @_m.jobUserListPredict[0].wlevel — @string.Join(", ", _m.jobUserListPredict.Select(p => p.username))
+            </MudText>
+        }
+
+        @* ── 4. ประวัติการเดิน ──────────────────────────────────────────────── *@
+        <MudText Typo="Typo.subtitle2" Class="mt-4">ประวัติการเดินของงาน</MudText>
+        <MudTable Items="_m.jobUserList" Dense="true" Class="mt-1">
+            <HeaderContent>
+                <MudTh>ก้าว</MudTh><MudTh>ขั้น</MudTh><MudTh>ผู้รับ</MudTh>
+                <MudTh>สถานะ</MudTh><MudTh>เมื่อ</MudTh><MudTh>เหตุผล</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.jobseq</MudTd>
+                <MudTd>@context.wlevel</MudTd>
+                <MudTd>@context.username</MudTd>
+                <MudTd>@context.jobstatus</MudTd>
+                <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd>@context.comment</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    // epms: WorkflowController.Create(workflowid) -> RedirectToAction("Detail")
+    // เลือก workflow แล้วงานเกิดทันที เด้งเข้าหน้าเดียวกันนี้ที่ขั้นแรกของเส้นทาง
+    [Parameter] public long? WorkflowId { get; set; }
+
+    private WorkFlowViewModel? _m;
+    private long _actorUserId;
+    private string? _reason;
+    private string? _error;
+    private bool _busy;
+
+    private Type? _docType;
+    private Dictionary<string, object> _docParams = new();
+    private string? _docLink;
+
+    // OnParametersSetAsync ไม่ใช่ OnInitializedAsync — Create แล้ว redirect ไป
+    // route detail เป็น component ตัวเดิม Blazor จึงไม่เรียก OnInitialized ซ้ำ
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        var empno = state.User.FindFirst("empno")?.Value;
+
+        if (WorkflowId is long wfid)
+        {
+            try
+            {
+                var created = await Wf.CreateAsync(wfid, _actorUserId, empno,
+                    subject: null, reftable: null, refid: null, amount: null);
+                Nav.NavigateTo($"/workflow/detail/{created.jobmasterid}", replace: true);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _error = ex.Message;
+                _m = new WorkFlowViewModel { message = { ex.Message } };
+                return;
+            }
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _m = await Wf.DetailAsync(Id, _actorUserId);
+        ResolveDocument();
+    }
+
+    // ปุ่มทุกปุ่มเรียกทางนี้ทางเดียว — ต่างกันแค่ method ที่ส่งเข้ามา
+    private async Task Act(Func<WorkFlowViewModel, CancellationToken, Task<WorkFlowViewModel>> move)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await move(new WorkFlowViewModel
+            {
+                jobmasterid = Id,
+                actorUserId = _actorUserId,
+                reason = _reason,
+            }, CancellationToken.None);
+            _reason = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    // ── include หน้าเอกสาร ────────────────────────────────────────────────
+    // wf_sub_workflow_master.controller เก็บ route ของหน้าโมดูล เช่น
+    // "/leave-requests/detail/{refid}" -> แทนค่า refid แล้วเทียบกับ route table
+    // จริงของแอป ได้ Type แล้วเสียบด้วย <DynamicComponent> พร้อมส่ง id เข้าไป
+    private void ResolveDocument()
+    {
+        _docType = null; _docParams = new(); _docLink = null;
+        var route = _m?.subWorkflow?.controller;
+        var refid = _m?.jobMaster?.refid ?? "";
+        if (string.IsNullOrWhiteSpace(route)) return;
+
+        var url = route.Replace("{refid}", refid, StringComparison.OrdinalIgnoreCase);
+        var (type, prms) = MatchRoute(url);
+        if (type is null) { _docLink = url; return; }
+
+        AddIfDeclared(type, prms, "RefId", refid);
+        AddIfDeclared(type, prms, "JobMasterId", Id);
+        _docType = type;
+        _docParams = prms;
+    }
+
+    // route table ของแอปเอง สร้างครั้งเดียว — ทำให้ config ใส่ route ธรรมดาได้
+    // โดยไม่ต้องลงทะเบียน component ทีละตัวในโค้ด
+    private static readonly Lazy<List<(string[] Segments, Type Type)>> _routes = new(() =>
+        typeof(WorkflowService).Assembly.GetTypes()
+            .Where(t => typeof(IComponent).IsAssignableFrom(t) && !t.IsAbstract)
+            .SelectMany(t => t.GetCustomAttributes<RouteAttribute>().Select(a => (a.Template, Type: t)))
+            .Select(x => (Segments: x.Template.Trim('/').Split('/'), x.Type))
+            .ToList());
+
+    private static (Type? Type, Dictionary<string, object> Parameters) MatchRoute(string url)
+    {
+        var parts = url.Split('?')[0].Trim('/').Split('/');
+        foreach (var (segments, type) in _routes.Value)
+        {
+            if (segments.Length != parts.Length) continue;
+            var prms = new Dictionary<string, object>();
+            var ok = true;
+            for (var i = 0; i < segments.Length; i++)
+            {
+                var seg = segments[i];
+                if (seg.StartsWith('{') && seg.EndsWith('}'))
+                {
+                    var name = seg.Trim('{', '}');
+                    var constraint = "";
+                    var colon = name.IndexOf(':');
+                    if (colon >= 0) { constraint = name[(colon + 1)..]; name = name[..colon]; }
+                    object? val = constraint switch
+                    {
+                        "long" => long.TryParse(parts[i], out var l) ? l : null,
+                        "int" => int.TryParse(parts[i], out var n) ? n : null,
+                        "guid" => Guid.TryParse(parts[i], out var g) ? g : null,
+                        _ => parts[i],
+                    };
+                    if (val is null) { ok = false; break; }
+                    prms[name] = val;
+                }
+                else if (!string.Equals(seg, parts[i], StringComparison.OrdinalIgnoreCase)) { ok = false; break; }
+            }
+            if (ok) return (type, prms);
+        }
+        return (null, new());
+    }
+
+    // DynamicComponent จะพังถ้าส่งพารามิเตอร์ที่หน้านั้นไม่ได้ประกาศไว้
+    private static void AddIfDeclared(Type type, Dictionary<string, object> prms, string name, object value)
+    {
+        if (prms.ContainsKey(name)) return;
+        var p = type.GetProperty(name);
+        if (p?.GetCustomAttribute<ParameterAttribute>() is not null) prms[name] = value;
+    }
+}
