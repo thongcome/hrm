@@ -193,6 +193,7 @@ public class WorkflowService
     public const string Pending = WorkflowEngineService.StatusPending;
     public const string Approved = WorkflowEngineService.StatusApproved;
     public const string Rejected = WorkflowEngineService.StatusRejected;
+    public const string StatusReturned = WorkflowEngineService.StatusReturned;
     public const string Completed = WorkflowEngineService.StatusCompleted;
 
     private readonly IDbContextFactory<HRMContext> _dbFactory;
@@ -238,12 +239,19 @@ public class WorkflowService
 
     public Task<WorkFlowViewModel> ApproveAsync(WorkFlowViewModel m, CancellationToken ct = default)
         => MoveAsync(m, WorkflowMove.Stand, ct);
+    // ========================================================================
+    //  Create — บันทึกข้อมูลลงตาราง ref แล้วงานเกิดเป็น "draft" ที่ระดับ 0
+    //
+    //  CEO, 10 ก.ย. 2569: "0 ไม่ต้องสร้างสิ มันอัตโนมัติ เป็น draft
+    //  (บันทึกข้อมูลใน table ref)"
+    //  -> ระดับ 0 ไม่ใช่ config ไม่มีแถวใน wf_sub_workflow_master
+    //     เป็นสถานะของงานตอนอยู่ในมือผู้กรอก ก่อนส่งเข้าเส้นทางจริง
+    //     เส้นทางที่ config ไว้จึงเริ่มที่ wlevel 1 เสมอ
+    //     (epms: WorkflowController.Create -> RedirectToAction("Detail"))
+    // ========================================================================
+    public const int DraftLevel = 0;
+    public const string StatusDraft = "DRAFT";
 
-    // ========================================================================
-    //  Create — เลือก workflow แล้วงานเกิดทันที ไปนั่งที่ขั้นแรกของเส้นทาง
-    //  (epms: WorkflowController.Create -> RedirectToAction("Detail"))
-    //  ขั้นแรกคือ wlevel ที่น้อยที่สุดที่ config ไว้ — เป็น 0 (ขั้นของผู้ขอ) ได้
-    // ========================================================================
     public async Task<WorkFlowViewModel> CreateAsync(
         long workflowid, long actorUserId, string? empid, string? subject,
         string? reftable, string? refid, decimal? amount, CancellationToken ct = default)
@@ -253,12 +261,10 @@ public class WorkflowService
         var wf = await db.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == workflowid, ct)
             ?? throw new InvalidOperationException($"ไม่พบ workflow id {workflowid}");
 
-        var levels = await db.wf_sub_workflow_masters
-            .Where(s => s.workflowid == workflowid).OrderBy(s => s.wlevel).ToListAsync(ct);
-        if (levels.Count == 0)
+        var levelCount = await db.wf_sub_workflow_masters.CountAsync(s => s.workflowid == workflowid, ct);
+        if (levelCount == 0)
             throw new InvalidOperationException($"workflow {wf.workflowcode} ยังไม่มีเส้นทางเดิน (wf_sub_workflow_master ว่าง)");
 
-        var first = levels[0];
         var user = await db.sc_users.FirstOrDefaultAsync(u => u.userid == actorUserId, ct);
         var fullName = $"{user?.firstname} {user?.lastname}".Trim();
 
@@ -268,9 +274,9 @@ public class WorkflowService
             workflowcode = wf.workflowcode,
             wname = wf.wname,
             subject = subject,
-            maxlevel = levels.Count,
-            lastLevel = first.wlevel,
-            status = first.sitinstatus ?? first.standstatus ?? Pending,
+            maxlevel = levelCount,
+            lastLevel = DraftLevel,
+            status = StatusDraft,
             reftable = reftable,
             refid = refid,
             createuserid = actorUserId,
@@ -289,11 +295,9 @@ public class WorkflowService
         db.job_masters.Add(job);
         await db.SaveChangesAsync(ct);   // ต้องได้ jobmasterid ก่อนจึงประทับรอยเท้าได้
 
-        // ประทับรอยเท้าขั้นแรกทันทีที่งานเกิด — ขั้น draft ของผู้ขอก็เป็นก้าวหนึ่ง
-        // ในประวัติ (CEO: "draft ก็ต้องประทับด้วย")
-        var jobSub = CreateJobSubWorkflow(job, first);
-        jobSub.modby = fullName;
-        jobSub.remark = $"Create -> {first.wlevel}";
+        // ประทับรอยเท้าของ draft — ไม่มี config ให้ snapshot จึงลงเท่าที่มีจริง
+        // (CEO: "draft ก็ต้องประทับด้วย" — ทุก action ต้องมีรอยเท้า)
+        var jobSub = DraftFootprint(job, fullName, "Create -> 0");
         job.jobseq = jobSub.jobseq;
         db.job_subworkflow_masters.Add(jobSub);
 
@@ -304,24 +308,128 @@ public class WorkflowService
             direction = WorkflowMove.Forward.Name,
             jobMaster = job,
             wfWorkflow = wf,
-            subWorkflow = first,
+            subWorkflow = null,      // draft ไม่มี config ของตัวเอง
             jobsub = jobSub,
         };
 
-        // ขั้นแรกมักเป็นขั้นของผู้ขอเอง (draft) — ถ้า config ไม่ได้ระบุใครไว้
-        // ผู้สร้างงานคือคนถือ เพราะเขาเป็นคนสร้าง ไม่ใช่เพราะติ๊ก flag อะไร
-        var approvers = await GetUserRelateAsync(db, job, first, ct);
-        if (approvers.Count == 0 && job.createuserid is long creator)
+        // ผู้ถือ draft คือผู้สร้างงาน เพราะเขาเป็นคนกรอก ไม่ใช่เพราะ config
+        model.jobUserList = new List<job_user_list>
         {
-            var me = await db.sc_users.FirstOrDefaultAsync(u => u.userid == creator, ct);
-            if (me is not null) approvers = new List<sc_user> { me };
-        }
-        model.jobUserList = CreateJobUserList(model, approvers, job, first);
+            new()
+            {
+                jobmasterid = job.jobmasterid,
+                workflowid = job.workflowid,
+                wlevel = DraftLevel,
+                userid = actorUserId,
+                empid = job.empid,
+                username = fullName,
+                orgcode = user?.orgcode,
+                jobstatus = Pending,
+                jobseq = job.jobseq,
+                isLast = true,
+                sendDate = DateTime.Now,
+                recievedate = DateTime.Now,
+                isAutoApprove = false,
+                moddate = DateTime.Now,
+            }
+        };
         db.job_user_lists.AddRange(model.jobUserList);
 
         await db.SaveChangesAsync(ct);
         return model;
     }
+
+    // งานถูกส่งกลับถึงระดับ draft — กลับไปอยู่ในมือผู้กรอกเหมือนตอนยังไม่ส่ง
+    // ไม่มี config ให้อ่านเพราะ draft ไม่ใช่ขั้นที่ตั้งค่า ผู้รับคือผู้สร้างงานเสมอ
+    private async Task<WorkFlowViewModel> ReturnToDraftAsync(
+        HRMContext db, WorkFlowViewModel model, job_master job, WorkflowMove move, int fromLevel, CancellationToken ct)
+    {
+        if (job.createuserid is not long creator)
+            throw new InvalidOperationException("งานนี้ไม่มีผู้สร้าง จึงส่งกลับไม่ได้");
+
+        var owner = await db.sc_users.FirstOrDefaultAsync(u => u.userid == creator, ct)
+            ?? throw new InvalidOperationException("ไม่พบผู้สร้างงาน");
+        var actor = await db.sc_users.Where(u => u.userid == model.actorUserId)
+            .Select(u => (u.firstname + " " + u.lastname).Trim()).FirstOrDefaultAsync(ct);
+
+        // ปิดรอยเท้าและใบงานของขั้นที่ส่งกลับมา
+        var leaving = await CurrentFootprintAsync(db, job.jobmasterid, fromLevel, ct);
+        if (leaving is not null) leaving.endtime = DateTime.Now;
+
+        foreach (var row in await db.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == fromLevel && a.isLast == true).ToListAsync(ct))
+        {
+            if (row.userid == model.actorUserId)
+            {
+                row.jobstatus = move.ActorRowStatus;
+                row.approvedate = DateTime.Now;
+                row.reason = model.reason;
+                row.comment = model.reason;
+                row.mas_reason_id = model.mas_reason_id;
+            }
+            row.isLast = false;
+        }
+
+        job.lastLevel = DraftLevel;
+        job.status = StatusReturned;
+        job.remark = model.reason;
+
+        var jobSub = DraftFootprint(job, actor, $"{move.Name} {fromLevel} -> 0");
+        jobSub.reason = model.reason;
+        job.jobseq = jobSub.jobseq;
+        db.job_subworkflow_masters.Add(jobSub);
+
+        var back = new job_user_list
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = DraftLevel,
+            userid = owner.userid,
+            empid = owner.empid,
+            username = $"{owner.firstname} {owner.lastname}".Trim(),
+            orgcode = owner.orgcode,
+            jobstatus = Pending,
+            jobseq = job.jobseq,
+            isLast = true,
+            sendDate = DateTime.Now,
+            recievedate = DateTime.Now,
+            reason = model.reason,
+            isAutoApprove = false,
+            moddate = DateTime.Now,
+        };
+        db.job_user_lists.Add(back);
+
+        model.direction = move.Name;
+        model.jobMaster = job;
+        model.subWorkflow = null;
+        model.jobsub = jobSub;
+        model.jobUserList = new List<job_user_list> { back };
+
+        await db.SaveChangesAsync(ct);
+
+        if (move is ReturnToSenderMove)
+            await NoticeEveryoneInvolvedAsync(db, job, model.actorUserId, model.reason, ct);
+
+        return model;
+    }
+
+    // รอยเท้าของระดับ draft — ไม่มีแถว config ให้ snapshot
+    private static job_subworkflow_master DraftFootprint(job_master job, string? actor, string remark)
+        => new()
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = DraftLevel,
+            wfcode = job.workflowcode,
+            jobseq = (job.jobseq ?? 0) + 1,
+            subject = "ผู้กรอกแบบฟอร์ม (draft)",
+            status = StatusDraft,
+            istop = false,
+            starttime = DateTime.Now,
+            moddate = DateTime.Now,
+            modby = actor,
+            remark = remark,
+        };
 
     // ========================================================================
     //  Detail — หน้าจออ่านค่าผ่านตัวนี้ (epms: WorkflowController.Detail GET)
@@ -418,6 +526,11 @@ public class WorkflowService
         var fromLevel = job.lastLevel ?? 0;
         var toLevel = fromLevel + move.Delta;
 
+        // ส่งกลับถึงระดับ draft — ไม่มี config ให้อ่าน เพราะ draft ไม่ใช่ขั้นที่ตั้งค่า
+        // งานกลับไปอยู่ในมือผู้กรอกเหมือนตอนยังไม่ส่ง
+        if (toLevel <= DraftLevel)
+            return await ReturnToDraftAsync(db, model, job, move, fromLevel, ct);
+
         // 1. อ่านสคริปต์ของขั้นปลายทาง
         var target = await db.wf_sub_workflow_masters
             .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == toLevel, ct)
@@ -425,6 +538,34 @@ public class WorkflowService
 
         // 2. ใครรับงานต่อ — คลาสของการขยับเป็นคนตอบ
         var recipients = await move.RecipientsAsync(db, job, target, ct);
+
+        // ── ไต่หัวหน้าในระดับเดียวกัน ──────────────────────────────────────
+        // CEO, 10 ก.ย. 2569: "ถ้ามี isNeedsupervisorapprove ผลที่เกิดคือ jobsequence
+        // ต้อง +1 ด้วย แต่ level ยังไม่เดิน แล้วต้อง stamp ทุกครั้งที่มี workflow action"
+        //
+        // ระดับที่ตั้งให้ผ่านหัวหน้า N ชั้น: หัวหน้าชั้นที่ 1 เซ็นแล้วงาน "ไม่เดิน"
+        // ยังอยู่ระดับเดิม แต่ส่งต่อให้ชั้นที่ 2 ... จนครบ N ชั้นถึงจะไประดับถัดไป
+        // ใช้ Stand ที่มีอยู่ ไม่ใช่การขยับแบบใหม่ — ต่างกันแค่ผู้รับเปลี่ยนเป็นชั้นถัดไป
+        var hopNow = 0;
+        if (move.Delta == 0 && target.SupervisorLevels > 1)
+        {
+            var mine = await db.job_user_lists
+                .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == toLevel && a.userid == model.actorUserId)
+                .OrderByDescending(a => a.jobseq).FirstOrDefaultAsync(ct);
+            var doneHop = int.TryParse(mine?.emplevel, out var h) ? h : 1;
+
+            if (doneHop < target.SupervisorLevels)
+            {
+                hopNow = doneHop + 1;
+                var next = await target.SupervisorAtHopAsync(db, job, hopNow, ct);
+                var ids = next?.UserIds ?? new List<long>();
+                if (ids.Count == 0)
+                    throw new InvalidOperationException(
+                        $"ไต่หาหัวหน้าชั้นที่ {hopNow} ไม่พบ — {next?.Note ?? "ตรวจสอบผังองค์กร"}");
+                recipients = await db.sc_users.Where(u => ids.Contains(u.userid)).ToListAsync(ct);
+            }
+        }
+
         if (move.LeavesLevel && recipients.Count == 0)
             throw new InvalidOperationException($"ขั้นที่ {toLevel} ยังไม่มีผู้เกี่ยวข้อง — ตรวจสอบการตั้งค่า");
 
@@ -473,7 +614,8 @@ public class WorkflowService
         job.status = move.StampOn(target) ?? job.status;
         job.remark = model.reason;
 
-        if (move.ClosesJob(target))
+        // ยังไต่หัวหน้าไม่ครบ = ระดับนี้ยังไม่จบ ห้ามปิดงานแม้จะเป็น istop
+        if (hopNow == 0 && move.ClosesJob(target))
         {
             var actor = await db.sc_users.FirstOrDefaultAsync(u => u.userid == model.actorUserId, ct);
             job.isJobClosed = true;
@@ -490,9 +632,12 @@ public class WorkflowService
         model.jobMaster = job;
         model.subWorkflow = target;
         model.jobsub = jobSub;
-        if (move.LeavesLevel)
+        // ออกใบงานเมื่องานเดินไประดับใหม่ หรือเมื่อไต่หัวหน้าชั้นถัดไปในระดับเดิม
+        if (move.LeavesLevel || hopNow > 0)
         {
-            model.jobUserList = CreateJobUserList(model, recipients, job, target);
+            // ชั้นที่เท่าไหร่ของการไต่ ติดไว้บนใบงาน จะได้รู้ว่าไต่ถึงไหนแล้ว
+            var hop = hopNow > 0 ? hopNow : (target.SupervisorLevels > 0 ? 1 : (int?)null);
+            model.jobUserList = CreateJobUserList(model, recipients, job, target, hop);
             db.job_user_lists.AddRange(model.jobUserList);
         }
 
@@ -621,7 +766,8 @@ public class WorkflowService
     //  CreateJobUserList — ออกใบงานให้ทุกคนที่เกี่ยวข้องกับขั้นนี้
     // ========================================================================
     private static List<job_user_list> CreateJobUserList(
-        WorkFlowViewModel model, List<sc_user> approverList, job_master job, wf_sub_workflow_master sub)
+        WorkFlowViewModel model, List<sc_user> approverList, job_master job, wf_sub_workflow_master sub,
+        int? supervisorHop = null)
         => approverList.Select(u => new job_user_list
         {
             jobmasterid = job.jobmasterid,
@@ -639,6 +785,7 @@ public class WorkflowService
             recievedate = DateTime.Now,
             reason = model.reason,
             reftable = sub.controller,
+            emplevel = supervisorHop?.ToString(),   // ไต่หัวหน้าถึงชั้นที่เท่าไหร่แล้ว
             isAutoApprove = false,
             moddate = DateTime.Now,
         }).ToList();

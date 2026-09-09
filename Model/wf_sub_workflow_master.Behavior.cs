@@ -122,17 +122,30 @@ public partial class wf_sub_workflow_master
     // sc_role.upperrole ซึ่งเลิกใช้แล้ว ทั้งคู่จึงหมายถึง "ไต่ผัง 1 ชั้น" เท่ากัน
     // ของใหม่ใช้ isNeedsupervisorapprove (int) ตัวเดียว = ไต่กี่ชั้น อ่านง่ายกว่า
     // และครอบของเดิมได้หมด — 6 ขั้นที่ยังตั้ง flag เก่าไว้จึงทำงานต่อได้ตามปกติ
-    private async Task<ApproverSource?> SupervisorChainAsync(HRMContext db, job_master job, CancellationToken ct)
+    private Task<ApproverSource?> SupervisorChainAsync(HRMContext db, job_master job, CancellationToken ct)
+        => SupervisorAtHopAsync(db, job, 1, ct);   // มาถึงระดับนี้ครั้งแรก = หัวหน้าชั้นที่ 1
+
+    // หัวหน้าชั้นที่ N ของผู้ขอ — ใช้ทั้งตอนมาถึงระดับ (ชั้น 1) และตอนไต่ต่อทีละชั้น
+    //
+    // CEO, 10 ก.ย. 2569: "ถ้ามี isNeedsupervisorapprove ผลที่เกิดคือ jobsequence
+    // ต้อง +1 ด้วย แต่ level ยังไม่เดิน แล้วต้อง stamp ทุกครั้งที่มี workflow action"
+    // -> หัวหน้าแต่ละชั้นเซ็นแล้วงานอยู่ระดับเดิม นับก้าวเพิ่ม ประทับรอยเท้าทุกชั้น
+    //    จนครบจำนวนชั้นที่ตั้งไว้ ถึงจะเดินไประดับถัดไป
+    public async Task<ApproverSource?> SupervisorAtHopAsync(HRMContext db, job_master job, int hop, CancellationToken ct)
     {
-        var climb = isNeedsupervisorapprove ?? 0;
-        if (climb <= 0 && !isupperrole && !isupperuser) return null;
-        if (climb <= 0) climb = 1;   // flag เก่าไม่ได้บอกจำนวนชั้น ถือว่า 1 ชั้น
+        if (SupervisorLevels <= 0) return null;
 
         var field = isNeedsupervisorapprove > 0 ? "isNeedsupervisorapprove"
                   : isupperrole ? "isupperrole" : "isupperuser";
-        var (boss, note) = await ResolveOrgChainAsync(db, job, climb, ct);
-        return new(field, "ORG", boss is long b ? new List<long> { b } : new List<long>(), note);
+        var (boss, note) = await ResolveOrgChainAsync(db, job, hop, ct);
+        return new(field, "ORG", boss is long b ? new List<long> { b } : new List<long>(),
+            SupervisorLevels > 1 ? $"หัวหน้าชั้นที่ {hop}/{SupervisorLevels}" + (note is null ? "" : $" · {note}") : note);
     }
+
+    // ระดับนี้ต้องผ่านหัวหน้ากี่ชั้น (0 = ไม่ผ่าน) — flag เก่าถือว่า 1 ชั้น
+    public int SupervisorLevels =>
+        (isNeedsupervisorapprove ?? 0) > 0 ? isNeedsupervisorapprove!.Value
+        : (isupperrole || isupperuser) ? 1 : 0;
 
     // isApproverSameCostCenter — หัวหน้าตัวจริงที่มีอำนาจทางการเงินของ cost center นั้น
     // (CEO: ตรวจว่าเป็นหัวหน้าจริง ๆ ที่มีผลเรื่องเงิน) หา com_organization ที่

@@ -38,11 +38,12 @@
         </MudText>
         @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
         <MudTable Items="_startable" Dense="true" Hover="true">
-            <HeaderContent><MudTh>รหัส</MudTh><MudTh>ชื่องาน</MudTh><MudTh>ขั้นตอน</MudTh><MudTh></MudTh></HeaderContent>
+            <HeaderContent><MudTh>รหัส</MudTh><MudTh>ชื่องาน</MudTh><MudTh>ขั้นตอน</MudTh><MudTh>เอกสารต้นทาง</MudTh><MudTh></MudTh></HeaderContent>
             <RowTemplate>
                 <MudTd>@context.Code</MudTd>
                 <MudTd>@context.Name</MudTd>
                 <MudTd>@context.Levels ขั้น</MudTd>
+                <MudTd>@(string.IsNullOrWhiteSpace(context.RefTable) ? "—" : context.RefTable)</MudTd>
                 <MudTd>
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                Href="@($"/workflow/create/{context.WorkflowId}")">เริ่มงาน</MudButton>
@@ -84,7 +85,12 @@
             @if (_m.jobMaster.isJobClosed == true) { <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2">ปิดแล้ว</MudChip> }
         </MudText>
 
-        @* ── 1. เอกสาร: เสียบหน้าของโมดูลตาม config ของขั้นนี้ ───────────────── *@
+        @* ── 1. ความคืบหน้าของงาน (epms Detail.cshtml collapse1) ───────────── *@
+        <div class="mt-3 mb-2">
+            <WorkflowStepper JobMasterId="@Id" />
+        </div>
+
+        @* ── 2. เอกสาร: เสียบหน้าของโมดูลตาม config ของขั้นนี้ (collapse2) ──── *@
         <MudDivider Class="my-3" />
         <MudText Typo="Typo.subtitle2">เอกสาร</MudText>
         @if (_docType is not null)
@@ -109,9 +115,21 @@
         <MudDivider Class="my-3" />
         @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
 
+        @* ── 3. งานที่ต้องทำ: เหตุผล + หมายเหตุ + ปุ่ม (collapse3) ───────────── *@
         @if (_m.isCurrentUser)
         {
-            <MudTextField @bind-Value="_reason" Label="เหตุผล / หมายเหตุ" Lines="2" Class="mb-2" />
+            @* dropdown เหตุผล อ่านจาก mas_reason ที่ผูกกับ workflow+level นี้
+               (epms: ViewBag.mas_reason_id = SelectList(db.mas_reason.Where(workflowid, wlevel))) *@
+            @if (_reasons.Count > 0)
+            {
+                <MudSelect T="long?" @bind-Value="_reasonId" Label="เหตุผล" Clearable="true" Class="mb-2">
+                    @foreach (var r in _reasons)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)r.id)">@r.name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            <MudTextField @bind-Value="_reason" Label="หมายเหตุ" Lines="2" Class="mb-2" />
             <MudStack Row="true" Spacing="2">
                 @* ขั้นสุดท้าย = ไม่มีที่ให้ไปต่อ -> ยืนอยู่กับที่แล้วงานจบ *@
                 @if (_m.subWorkflow?.istop == true)
@@ -189,6 +207,14 @@
     // เลือก workflow แล้วงานเกิดทันที เด้งเข้าหน้าเดียวกันนี้ที่ขั้นแรกของเส้นทาง
     [Parameter] public long? WorkflowId { get; set; }
 
+    // งานต้องผูกกับเอกสารเสมอ ไม่งั้นผู้อนุมัติไม่มีอะไรให้ดู
+    // (CEO, 10 ก.ย. 2569: "คุณทำ workflow แต่ไม่รู้ว่าอนุมัติอะไร")
+    // โมดูลเรียกมาแบบ /workflow/create/{wfid}?reftable=Exp_ClaimHeader&refid=12
+    [SupplyParameterFromQuery(Name = "reftable")] public string? RefTable { get; set; }
+    [SupplyParameterFromQuery(Name = "refid")] public string? RefIdParam { get; set; }
+    [SupplyParameterFromQuery(Name = "subject")] public string? SubjectParam { get; set; }
+    [SupplyParameterFromQuery(Name = "amount")] public decimal? AmountParam { get; set; }
+
     private WorkFlowViewModel? _m;
     private long _actorUserId;
     private string? _reason;
@@ -212,7 +238,7 @@
             try
             {
                 var created = await Wf.CreateAsync(wfid, _actorUserId, empno,
-                    subject: null, reftable: null, refid: null, amount: null);
+                    subject: SubjectParam, reftable: RefTable, refid: RefIdParam, amount: AmountParam);
                 Nav.NavigateTo($"/workflow/detail/{created.jobmasterid}", replace: true);
                 return;
             }
@@ -234,7 +260,7 @@
     }
 
     // หน้าเริ่มงาน: workflow ที่เปิดใช้และมีเส้นทางตั้งไว้แล้ว + งานของฉันที่ยังไม่ปิด
-    private record Startable(long WorkflowId, string? Code, string? Name, int Levels);
+    private record Startable(long WorkflowId, string? Code, string? Name, int Levels, string? RefTable);
     private List<Startable> _startable = new();
     private List<job_master> _myOpen = new();
 
@@ -244,7 +270,7 @@
         _startable = await db.wf_workflows
             .Where(w => w.isactive == true)
             .Select(w => new Startable(w.workflowid, w.workflowcode, w.wname,
-                db.wf_sub_workflow_masters.Count(s => s.workflowid == w.workflowid)))
+                db.wf_sub_workflow_masters.Count(s => s.workflowid == w.workflowid), w.tableref))
             .Where(x => x.Levels > 0)
             .OrderBy(x => x.Code).ToListAsync();
 
@@ -253,10 +279,35 @@
             .OrderByDescending(j => j.jobmasterid).Take(20).ToListAsync();
     }
 
+    private List<mas_reason> _reasons = new();
+    private long? _reasonId;
+
     private async Task LoadAsync()
     {
         _m = await Wf.DetailAsync(Id, _actorUserId);
         ResolveDocument();
+        await LoadReasonsAsync();
+    }
+
+    // เหตุผลที่เลือกได้ของขั้นนี้ — แถวที่ผูกกับ workflow+level นี้โดยเฉพาะ
+    // ถ้าไม่มีก็ใช้แถวกลางที่ไม่ได้ผูกกับ workflow ไหน (เหมือน epms ที่ fallback
+    // ไป db.mas_reason ทั้งตารางเมื่อหาแบบเจาะจงไม่เจอ)
+    private async Task LoadReasonsAsync()
+    {
+        _reasons = new();
+        _reasonId = null;
+        if (_m?.jobMaster is null) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var level = _m.jobMaster.lastLevel ?? 0;
+        _reasons = await db.mas_reasons
+            .Where(r => r.isActive != false && r.workflowid == _m.jobMaster.workflowid && r.wlevel == level)
+            .OrderBy(r => r.name).ToListAsync();
+
+        if (_reasons.Count == 0)
+            _reasons = await db.mas_reasons
+                .Where(r => r.isActive != false && r.workflowid == null)
+                .OrderBy(r => r.name).ToListAsync();
     }
 
     // ปุ่มทุกปุ่มเรียกทางนี้ทางเดียว — ต่างกันแค่ method ที่ส่งเข้ามา
@@ -271,8 +322,10 @@
                 jobmasterid = Id,
                 actorUserId = _actorUserId,
                 reason = _reason,
+                mas_reason_id = _reasonId,
             }, CancellationToken.None);
             _reason = null;
+            _reasonId = null;
             await LoadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
