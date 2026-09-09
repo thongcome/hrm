@@ -42,10 +42,12 @@ BEGIN
     DECLARE @id2  bigint = (SELECT ISNULL(MAX(menuid), 0) + 1 FROM sc_menu);
 
     SET IDENTITY_INSERT sc_menu ON;
+    -- menucode ต้องตรงกับ policy ของหน้า ([Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")])
+    -- ไม่ใส่ = claim ไม่ผูก แล้วหน้าจะขึ้น Access denied ทั้งที่ให้สิทธิ์ role แล้ว
     INSERT INTO sc_menu (menuid, menuname, menuname_en, menulevel, isfinal, menuorder,
-                         uppermenucode, isshow, url, isactive, menugroupid, moddate)
+                         menucode, uppermenucode, isshow, url, isactive, menugroupid, moddate)
     VALUES (@id2, N'ออกแบบ Workflow', 'Workflow Designer', 2, 1, 6,
-            'GRP_WF_ENGINE', 1, '/wf/design', 1, @grp2, GETDATE());
+            'WF_WORKFLOW_ADMIN', 'GRP_WF_ENGINE', 1, '/wf/design', 1, @grp2, GETDATE());
     SET IDENTITY_INSERT sc_menu OFF;
 
     INSERT INTO sc_role_menu (roleid, menuid, isactive, moddate)

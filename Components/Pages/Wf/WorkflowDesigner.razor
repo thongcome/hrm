@@ -270,7 +270,11 @@
                 .Where(c => c.workflowid == id && c.wlevel == lv.wlevel && c.isactive != false)
                 .Select(c => c.roleid).ToListAsync();
         }
-        Nav.NavigateTo($"/wf/design/{id}", replace: true);
+        // ย้าย URL เฉพาะตอนที่ยังไม่ตรง — ถ้าเข้าหน้ามาพร้อม id อยู่แล้วแล้วสั่งย้ายซ้ำ
+        // component จะ re-init วนไม่จบและหน้าจะว่าง
+        var target = $"/wf/design/{id}";
+        if (!Nav.Uri.EndsWith(target, StringComparison.OrdinalIgnoreCase))
+            Nav.NavigateTo(target, replace: true);
         StateHasChanged();
     }
 
