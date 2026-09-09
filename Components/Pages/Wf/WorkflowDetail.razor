@@ -12,6 +12,7 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject WorkflowButtonService Buttons
 @attribute [Authorize]
 
 @*
@@ -32,34 +33,68 @@
        ที่ขั้นแรกของเส้นทาง — epms: Create(workflowid) -> RedirectToAction("Detail") *@
     @if (Id == 0 && WorkflowId is null)
     {
-        <MudText Typo="Typo.h5">เริ่มงานใหม่</MudText>
-        <MudText Typo="Typo.body2" Class="mt-1 mb-3 mud-text-secondary">
-            เลือกประเภทงาน — งานจะเกิดทันทีที่ขั้นแรกของเส้นทางที่ตั้งค่าไว้
-        </MudText>
+        <div class="d-flex align-center justify-space-between flex-wrap mb-1">
+            <div>
+                <MudText Typo="Typo.h5">เริ่มงานใหม่</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    เลือกประเภทงาน — งานจะถูกสร้างเป็นร่างในมือคุณก่อน แล้วค่อยกดส่งเข้าสายอนุมัติ
+                </MudText>
+            </div>
+            <MudTextField T="string" Value="_find" ValueChanged="@(v => _find = v)" Immediate="true"
+                          Placeholder="ค้นหาประเภทงาน" Adornment="Adornment.Start" Clearable="true"
+                          AdornmentIcon="@Icons.Material.Filled.Search" Style="max-width:280px" />
+        </div>
         @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
-        <MudTable Items="_startable" Dense="true" Hover="true">
-            <HeaderContent><MudTh>รหัส</MudTh><MudTh>ชื่องาน</MudTh><MudTh>ขั้นตอน</MudTh><MudTh>เอกสารต้นทาง</MudTh><MudTh></MudTh></HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.Code</MudTd>
-                <MudTd>@context.Name</MudTd>
-                <MudTd>@context.Levels ขั้น</MudTd>
-                <MudTd>@(string.IsNullOrWhiteSpace(context.RefTable) ? "—" : context.RefTable)</MudTd>
-                <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                               Href="@($"/workflow/create/{context.WorkflowId}")">เริ่มงาน</MudButton>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+
+        @* หมวดหมู่ + ไอคอน อ่านจาก wf_workflow.wgroup / icon — เพิ่มงานใหม่แล้ว
+           ใส่ wgroup ก็ขึ้นหมวดเองโดยไม่ต้องแก้หน้านี้ *@
+        @foreach (var grp in Filtered().GroupBy(x => string.IsNullOrWhiteSpace(x.Group) ? "อื่น ๆ" : x.Group)
+                                        .OrderBy(g => GroupOrder(g.Key)))
+        {
+            <MudText Typo="Typo.subtitle1" Class="mt-5 mb-2"><b>@grp.Key</b>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary ml-2">@grp.Count() ประเภท</MudText>
+            </MudText>
+            <MudGrid Spacing="2">
+                @foreach (var w in grp.OrderBy(x => x.Name))
+                {
+                    <MudItem xs="12" sm="6" md="4" lg="3">
+                        <MudPaper Class="pa-3 wf-card" Outlined="true" Style="height:100%">
+                            <div class="d-flex align-start gap-3">
+                                <MudAvatar Color="@GroupColor(grp.Key)" Variant="Variant.Filled" Size="Size.Medium">
+                                    <MudIcon Icon="@IconOf(w.Icon)" />
+                                </MudAvatar>
+                                <div style="flex:1; min-width:0">
+                                    <MudText Typo="Typo.body1" Style="font-weight:600">@w.Name</MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">@w.Code</MudText>
+                                    <div class="mt-1">
+                                        <MudChip T="string" Size="Size.Small" Class="mr-1">@w.Levels ขั้น</MudChip>
+                                        @if (string.IsNullOrWhiteSpace(w.RefTable))
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">ยังไม่ผูกเอกสาร</MudChip>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <MudButton FullWidth="true" Class="mt-3" Size="Size.Small"
+                                       Variant="Variant.Filled" Color="@GroupColor(grp.Key)"
+                                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                                       Href="@($"/workflow/create/{w.WorkflowId}")">เริ่มงาน</MudButton>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
 
         @if (_myOpen.Count > 0)
         {
-            <MudText Typo="Typo.h6" Class="mt-6">งานของฉันที่ยังไม่ปิด</MudText>
-            <MudTable Items="_myOpen" Dense="true" Hover="true" Class="mt-1">
+            <MudDivider Class="my-5" />
+            <MudText Typo="Typo.h6" Class="mb-2">งานของฉันที่ยังไม่ปิด</MudText>
+            <MudTable Items="_myOpen" Dense="true" Hover="true">
                 <HeaderContent><MudTh>งาน</MudTh><MudTh>ประเภท</MudTh><MudTh>สถานะ</MudTh><MudTh>ขั้น</MudTh><MudTh></MudTh></HeaderContent>
                 <RowTemplate>
                     <MudTd>#@context.jobmasterid</MudTd>
                     <MudTd>@context.wname</MudTd>
-                    <MudTd>@context.status</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.status</MudChip></MudTd>
                     <MudTd>@context.lastLevel</MudTd>
                     <MudTd><MudButton Size="Size.Small" Variant="Variant.Outlined"
                                       Href="@($"/workflow/detail/{context.jobmasterid}")">เปิด</MudButton></MudTd>
@@ -184,6 +219,23 @@
                 </MudSelect>
             }
             <MudTextField @bind-Value="_reason" Label="หมายเหตุ" Lines="2" Class="mb-2" />
+
+            @* ── ปุ่ม ──
+               ขั้นที่ติ๊ก isManualButton = ไม่ใช้ปุ่มมาตรฐาน ให้ wf_button เป็นคนบอก
+               ว่ามีปุ่มอะไรบ้าง ชื่ออะไร สีอะไร ทำอะไร (epms GetButtonList)
+               ถ้าไม่ได้ติ๊ก หรือ config ไม่มีปุ่มเลย ก็ใช้ปุ่มมาตรฐานตาม istop เหมือนเดิม *@
+            @if (_configButtons.Count > 0)
+            {
+                <MudStack Row="true" Spacing="2">
+                    @foreach (var b in _configButtons)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="@ButtonColor(b.ColorOrClass)" Disabled="_busy"
+                                   OnClick="@(() => ActByKind(b.ActionKind))">@b.Label</MudButton>
+                    }
+                </MudStack>
+            }
+            else
+            {
             <MudStack Row="true" Spacing="2">
                 @* ขั้นสุดท้าย = ไม่มีที่ให้ไปต่อ -> ยืนอยู่กับที่แล้วงานจบ *@
                 @if (_m.subWorkflow?.istop == true)
@@ -220,6 +272,7 @@
                     </MudButton>
                 }
             </MudStack>
+            }
         }
         else if (_m.jobMaster.isJobClosed != true)
         {
@@ -315,19 +368,70 @@
     }
 
     // หน้าเริ่มงาน: workflow ที่เปิดใช้และมีเส้นทางตั้งไว้แล้ว + งานของฉันที่ยังไม่ปิด
-    private record Startable(long WorkflowId, string? Code, string? Name, int Levels, string? RefTable);
+    private record Startable(long WorkflowId, string? Code, string? Name, int Levels, string? RefTable,
+                             string? Group, string? Icon);
+    private string? _find;
+
+    private IEnumerable<Startable> Filtered() =>
+        string.IsNullOrWhiteSpace(_find)
+            ? _startable
+            : _startable.Where(x =>
+                (x.Name ?? "").Contains(_find, StringComparison.OrdinalIgnoreCase) ||
+                (x.Code ?? "").Contains(_find, StringComparison.OrdinalIgnoreCase) ||
+                (x.Group ?? "").Contains(_find, StringComparison.OrdinalIgnoreCase));
+
+    // เรียงหมวดให้ของที่ใช้บ่อยอยู่บน ของทดสอบอยู่ล่างสุด
+    private static int GroupOrder(string g) => g switch
+    {
+        "งานบุคคล" => 1,
+        "การเงิน" => 2,
+        "สรรหา" => 3,
+        "พัฒนาบุคลากร" => 4,
+        "วินัยและรางวัล" => 5,
+        "โครงสร้างองค์กร" => 6,
+        "ทดสอบระบบ" => 98,
+        _ => 50,
+    };
+
+    private static Color GroupColor(string g) => g switch
+    {
+        "งานบุคคล" => Color.Primary,
+        "การเงิน" => Color.Success,
+        "สรรหา" => Color.Info,
+        "พัฒนาบุคลากร" => Color.Secondary,
+        "วินัยและรางวัล" => Color.Warning,
+        "โครงสร้างองค์กร" => Color.Tertiary,
+        _ => Color.Default,
+    };
+
+    // ไอคอนเก็บเป็นชื่อใน wf_workflow.icon — แปลงเป็นไอคอนจริงตอนแสดง
+    // ชื่อที่ไม่รู้จักหรือยังไม่ได้ตั้ง ใช้ไอคอนกลาง ไม่พังหน้า
+    private static readonly Dictionary<string, string> _iconCache = new();
+    private static string IconOf(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return Icons.Material.Filled.Assignment;
+        if (_iconCache.TryGetValue(name, out var cached)) return cached;
+        var f = typeof(Icons.Material.Filled).GetField(name,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        var icon = f?.GetValue(null) as string ?? Icons.Material.Filled.Assignment;
+        _iconCache[name] = icon;
+        return icon;
+    }
     private List<Startable> _startable = new();
     private List<job_master> _myOpen = new();
 
     private async Task LoadStartPageAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        _startable = await db.wf_workflows
+        // กรอง "ต้องมีขั้นตอนแล้ว" ในหน่วยความจำ — EF แปลงเงื่อนไขบน record
+        // ที่ Select ออกมาแล้วไม่ได้ (ต้องเป็น Where บนคอลัมน์จริงเท่านั้น)
+        var rows = await db.wf_workflows
             .Where(w => w.isactive == true)
             .Select(w => new Startable(w.workflowid, w.workflowcode, w.wname,
-                db.wf_sub_workflow_masters.Count(s => s.workflowid == w.workflowid), w.tableref))
-            .Where(x => x.Levels > 0)
-            .OrderBy(x => x.Code).ToListAsync();
+                db.wf_sub_workflow_masters.Count(s => s.workflowid == w.workflowid),
+                w.tableref, w.wgroup, w.icon))
+            .ToListAsync();
+        _startable = rows.Where(x => x.Levels > 0).OrderBy(x => x.Code).ToList();
 
         _myOpen = await db.job_masters
             .Where(j => j.createuserid == _actorUserId && j.isJobClosed != true)
@@ -336,6 +440,29 @@
 
     private List<mas_reason> _reasons = new();
     private long? _reasonId;
+
+    // ปุ่มจาก config (wf_button) — ว่างเมื่อขั้นนี้ไม่ได้ตั้ง isManualButton
+    // หรือตั้งแล้วแต่ยังไม่มีปุ่มใน wf_button ก็จะกลับไปใช้ปุ่มมาตรฐาน
+    private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
+
+    private static Color ButtonColor(string c) => c?.ToLowerInvariant() switch
+    {
+        "success" => Color.Success,
+        "warning" => Color.Warning,
+        "error" or "danger" => Color.Error,
+        "info" => Color.Info,
+        "secondary" => Color.Secondary,
+        _ => Color.Primary,
+    };
+
+    // ปุ่มจาก config บอกแค่ "ทำอะไร" — แปลงเป็นการขยับของ engine
+    private Task ActByKind(string kind) => kind switch
+    {
+        "sendback" when _m?.canReturnToSender == true => Act(Wf.ReturnToSenderAsync),
+        "sendback" => Act(Wf.RejectOneStepAsync),
+        "decline"  => Act(Wf.RejectOneStepAsync),
+        _          => _m?.subWorkflow?.istop == true ? Act(Wf.ApproveAsync) : Act(Wf.SubmitAsync),
+    };
 
     private async Task ClaimAsync()
     {
@@ -358,6 +485,19 @@
         _m = await Wf.DetailAsync(Id, _actorUserId);
         ResolveDocument();
         await LoadReasonsAsync();
+        await LoadButtonsAsync();
+    }
+
+    // isManualButton — ขั้นนี้ไม่ใช้ปุ่มมาตรฐาน ให้ wf_button เป็นคนบอกว่ามีปุ่มอะไร
+    // (epms GetButtonList เลือกจาก isStart / istop / isAndCondition)
+    private async Task LoadButtonsAsync()
+    {
+        _configButtons = new();
+        var lv = _m?.subWorkflow;
+        if (lv?.isManualButton != true || _m?.isCurrentUser != true) return;
+
+        _configButtons = await Buttons.GetButtonsForLevelAsync(
+            lv.workflowid, lv.wlevel, lv.istop, lv.isandcondition);
     }
 
     // เหตุผลที่เลือกได้ของขั้นนี้ — แถวที่ผูกกับ workflow+level นี้โดยเฉพาะ

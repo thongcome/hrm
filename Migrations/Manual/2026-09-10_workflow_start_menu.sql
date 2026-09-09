@@ -35,4 +35,24 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM sc_role_menu x WHERE x.roleid = rm.roleid AND x.menuid = @id);
 END
 
-SELECT menuid, menuname, url FROM sc_menu WHERE CAST(url AS nvarchar(400)) = '/workflow';
+-- ── หน้าออกแบบ Workflow (Master/Detail) ────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sc_menu WHERE CAST(url AS nvarchar(400)) = '/wf/design')
+BEGIN
+    DECLARE @grp2 bigint = (SELECT TOP 1 menugroupid FROM sc_menu WHERE uppermenucode = 'GRP_WF_ENGINE');
+    DECLARE @id2  bigint = (SELECT ISNULL(MAX(menuid), 0) + 1 FROM sc_menu);
+
+    SET IDENTITY_INSERT sc_menu ON;
+    INSERT INTO sc_menu (menuid, menuname, menuname_en, menulevel, isfinal, menuorder,
+                         uppermenucode, isshow, url, isactive, menugroupid, moddate)
+    VALUES (@id2, N'ออกแบบ Workflow', 'Workflow Designer', 2, 1, 6,
+            'GRP_WF_ENGINE', 1, '/wf/design', 1, @grp2, GETDATE());
+    SET IDENTITY_INSERT sc_menu OFF;
+
+    INSERT INTO sc_role_menu (roleid, menuid, isactive, moddate)
+    SELECT DISTINCT rm.roleid, @id2, 1, GETDATE()
+    FROM sc_role_menu rm
+    WHERE rm.menuid IN (SELECT menuid FROM sc_menu WHERE uppermenucode = 'GRP_WF_ENGINE')
+      AND NOT EXISTS (SELECT 1 FROM sc_role_menu x WHERE x.roleid = rm.roleid AND x.menuid = @id2);
+END
+
+SELECT menuid, menuname, url FROM sc_menu WHERE CAST(url AS nvarchar(400)) IN ('/workflow', '/wf/design');
