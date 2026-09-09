@@ -62,6 +62,13 @@ public class WorkFlowViewModel
     public bool canReturnToSender { get; set; }
     public string? sendBackToName { get; set; }
     public int? sendBackToLevel { get; set; }
+
+    // ── ขั้นแบบงานกอง (isPool) ── ต้องกดรับงานก่อนถึงจะดำเนินการได้
+    public bool isPoolLevel { get; set; }
+    public bool poolClaimedByMe { get; set; }
+    public string? poolClaimedByName { get; set; }
+    // ทุกคนที่อยู่ในกองของขั้นนี้ (job_user_list ของ workflow+level+รอบนี้)
+    public List<job_user_list> poolMembers { get; set; } = new();
 }
 
 
@@ -463,6 +470,31 @@ public class WorkflowService
             && string.Equals(a.jobstatus, Pending, StringComparison.OrdinalIgnoreCase));
         model.isCurrentUser = model.jobUserListSession is not null && job.isJobClosed != true;
 
+        // isPool — ขั้นแบบงานกอง: ทุกคนในกลุ่มเห็น แต่ต้องกดรับงานก่อนถึงจะทำได้
+        // กันสองคนทำพร้อมกัน ใครกดรับก่อนได้ไป (ใช้ช่อง PoolClaimed* บน job_master
+        // ที่มีอยู่แล้ว ไม่เพิ่มคอลัมน์)
+        if (model.subWorkflow?.isPool == true)
+        {
+            model.isPoolLevel = true;
+            // ใครอยู่ในกองของขั้นนี้บ้าง — รอบปัจจุบันเท่านั้น
+            model.poolMembers = model.jobUserList
+                .Where(a => a.wlevel == currentlevel && (a.jobseq ?? 0) == (job.jobseq ?? 0))
+                .OrderBy(a => a.username).ToList();
+        }
+
+        if (model.subWorkflow?.isPool == true && model.isCurrentUser)
+        {
+            model.poolClaimedByMe = job.PoolClaimedByUserId == actorUserId
+                                 && job.PoolClaimedWLevel == currentlevel
+                                 && (job.PoolClaimedJobSeq ?? 0) == (job.jobseq ?? 0);
+            model.poolClaimedByName = job.PoolClaimedByUserId is long pc && !model.poolClaimedByMe
+                ? await db.sc_users.Where(u => u.userid == pc)
+                    .Select(u => (u.firstname + " " + u.lastname).Trim()).FirstOrDefaultAsync(ct)
+                : null;
+            // ยังไม่มีใครรับ หรือคนอื่นรับไปแล้ว -> ยังกดปุ่มดำเนินการไม่ได้
+            if (!model.poolClaimedByMe) model.isCurrentUser = false;
+        }
+
         // ── ส่งกลับได้แบบไหน ไปหาใคร ──────────────────────────────────────
         if (model.isCurrentUser && model.subWorkflow is not null)
         {
@@ -509,6 +541,49 @@ public class WorkflowService
         }
 
         return model;
+    }
+
+    // ========================================================================
+    //  ขั้นแบบงานกอง (isPool): กดรับงาน / คืนงาน
+    //  ใครกดรับก่อนได้ไป กันสองคนทำพร้อมกัน — จองด้วย (user, level, jobseq)
+    //  ถ้างานเดินไปขั้นถัดไปแล้ว การจองเก่าจะไม่ตรง jobseq จึงหมดอายุเอง
+    // ========================================================================
+    public async Task ClaimPoolAsync(long jobmasterid, long actorUserId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobmasterid, ct)
+            ?? throw new InvalidOperationException("ไม่พบงาน");
+
+        var level = job.lastLevel ?? 0;
+        var mine = await db.job_user_lists.AnyAsync(a =>
+            a.jobmasterid == jobmasterid && a.wlevel == level && a.userid == actorUserId
+            && a.isLast == true && a.jobstatus == Pending, ct);
+        if (!mine) throw new InvalidOperationException("งานนี้ไม่ได้อยู่ในกลุ่มของคุณ");
+
+        if (job.PoolClaimedByUserId is long other && other != actorUserId
+            && job.PoolClaimedWLevel == level && (job.PoolClaimedJobSeq ?? 0) == (job.jobseq ?? 0))
+            throw new InvalidOperationException("งานนี้ถูกรับไปแล้วโดยคนอื่น");
+
+        job.PoolClaimedByUserId = actorUserId;
+        job.PoolClaimedWLevel = level;
+        job.PoolClaimedJobSeq = job.jobseq;
+        job.PoolClaimedDate = DateTime.Now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task ReleasePoolAsync(long jobmasterid, long actorUserId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobmasterid, ct)
+            ?? throw new InvalidOperationException("ไม่พบงาน");
+        if (job.PoolClaimedByUserId != actorUserId)
+            throw new InvalidOperationException("คุณไม่ใช่คนที่รับงานนี้ไว้");
+
+        job.PoolClaimedByUserId = null;
+        job.PoolClaimedWLevel = null;
+        job.PoolClaimedJobSeq = null;
+        job.PoolClaimedDate = null;
+        await db.SaveChangesAsync(ct);
     }
 
     // ========================================================================
@@ -566,6 +641,27 @@ public class WorkflowService
             }
         }
 
+        // isAutoApproveAllow — ขั้นนี้ไม่มีใครเลย ให้ข้ามไปขั้นถัดไปเองแทนที่จะค้าง
+        // (เช่นหน่วยงานยังไม่ได้ตั้งผู้อนุมัติ หรือ role นั้นยังไม่มีสมาชิก)
+        // ประทับรอยเท้าไว้ด้วยว่าขั้นนี้ถูกข้าม จะได้อ่านประวัติออกว่าเกิดอะไรขึ้น
+        if (move.LeavesLevel && recipients.Count == 0 && target.isAutoApproveAllow && !target.istop)
+        {
+            var skipper = await db.sc_users.Where(u => u.userid == model.actorUserId)
+                .Select(u => (u.firstname + " " + u.lastname).Trim()).FirstOrDefaultAsync(ct);
+
+            var skipStamp = CreateJobSubWorkflow(job, target);
+            skipStamp.modby = skipper;
+            skipStamp.remark = $"AutoSkip {fromLevel} -> {toLevel} (ไม่มีผู้อนุมัติ)";
+            skipStamp.endtime = DateTime.Now;
+            db.job_subworkflow_masters.Add(skipStamp);
+
+            job.jobseq = skipStamp.jobseq;
+            job.lastLevel = toLevel;
+            await db.SaveChangesAsync(ct);
+
+            return await MoveAsync(model, WorkflowMove.Forward, ct);   // ไปขั้นถัดไปต่อ
+        }
+
         if (move.LeavesLevel && recipients.Count == 0)
             throw new InvalidOperationException($"ขั้นที่ {toLevel} ยังไม่มีผู้เกี่ยวข้อง — ตรวจสอบการตั้งค่า");
 
@@ -614,8 +710,35 @@ public class WorkflowService
         job.status = move.StampOn(target) ?? job.status;
         job.remark = model.reason;
 
-        // ยังไต่หัวหน้าไม่ครบ = ระดับนี้ยังไม่จบ ห้ามปิดงานแม้จะเป็น istop
-        if (hopNow == 0 && move.ClosesJob(target))
+        // ── ระดับนี้ครบเงื่อนไขหรือยัง ─────────────────────────────────────
+        // ขั้นที่มีผู้อนุมัติหลายคน ใครกดคนแรกไม่ได้แปลว่าจบ ต้องดูเงื่อนไขของขั้น:
+        //   isandcondition + andpercent -> รวมน้ำหนักให้ถึงเกณฑ์
+        //   isorcondition               -> ใครอนุมัติคนแรกก็พอ
+        //   ไม่ตั้งอะไร                  -> ต้องครบทุกคน
+        // ใช้ EvaluateLevel ของ engine เดิม ซึ่งเป็น pure method และมีเทสอยู่แล้ว
+        // ไม่เขียน logic ซ้ำ สองเครื่องจึงตัดสินเหมือนกันเสมอ
+        var levelDone = true;
+        var levelFailed = false;
+        if (move.Delta == 0 && hopNow == 0)
+        {
+            var visits = await db.job_subworkflow_masters
+                .Where(s => s.jobmasterid == job.jobmasterid && s.wlevel == toLevel)
+                .Select(s => new { s.jobseq, s.remark }).ToListAsync(ct);
+            var arrival = visits
+                .Where(v => v.remark == null || !v.remark.StartsWith("Approve", StringComparison.Ordinal))
+                .Select(v => v.jobseq ?? 0).DefaultIfEmpty(0).Max();
+
+            var roundRows = await db.job_user_lists
+                .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == toLevel && (a.jobseq ?? 0) >= arrival)
+                .ToListAsync(ct);
+
+            var outcome = WorkflowEngineService.EvaluateLevel(jobSub, roundRows);
+            levelDone = outcome == WorkflowEngineService.LevelOutcome.Complete;
+            levelFailed = outcome == WorkflowEngineService.LevelOutcome.Failed;
+        }
+
+        // ยังไต่หัวหน้าไม่ครบ หรือยังรอคนอื่นในขั้นเดียวกัน = ระดับนี้ยังไม่จบ
+        if (hopNow == 0 && levelDone && move.ClosesJob(target))
         {
             var actor = await db.sc_users.FirstOrDefaultAsync(u => u.userid == model.actorUserId, ct);
             job.isJobClosed = true;
@@ -647,6 +770,15 @@ public class WorkflowService
         // (CEO: "ต้อง notice คนที่เกี่ยวข้องที่ผ่านมาทั้งหมด ใน job_userlist")
         if (move is ReturnToSenderMove)
             await NoticeEveryoneInvolvedAsync(db, job, model.actorUserId, model.reason, ct);
+
+        // ระดับนี้ครบเงื่อนไขแล้วและไม่ใช่ขั้นสุดท้าย -> งานเดินต่อเอง
+        // ผู้อนุมัติแค่กด "อนุมัติ" ไม่ต้องมีใครมากดส่งต่ออีกที
+        if (move.Delta == 0 && hopNow == 0 && levelDone && !target.istop)
+            return await MoveAsync(model, WorkflowMove.Forward, ct);
+
+        // ระดับนี้ล่ม (ถูกปฏิเสธ / น้ำหนักไม่ถึงเกณฑ์แล้ว) -> ถอยกลับตาม config
+        if (move.Delta == 0 && hopNow == 0 && levelFailed)
+            return await MoveAsync(model, WorkflowMove.Backward, ct);
 
         return model;
     }
@@ -786,6 +918,10 @@ public class WorkflowService
             reason = model.reason,
             reftable = sub.controller,
             emplevel = supervisorHop?.ToString(),   // ไต่หัวหน้าถึงชั้นที่เท่าไหร่แล้ว
+            // ขั้นแบบ AND: แบ่งน้ำหนักเท่า ๆ กันในบรรดาผู้อนุมัติของขั้นนี้
+            // (schema ไม่มีช่องน้ำหนักรายคน แบ่งเท่ากันคือค่าเริ่มต้นเดียวที่อธิบายได้)
+            andPercent = sub.isandcondition && !sub.isorcondition && approverList.Count > 0
+                ? Math.Round(100m / approverList.Count, 2) : null,
             isAutoApprove = false,
             moddate = DateTime.Now,
         }).ToList();

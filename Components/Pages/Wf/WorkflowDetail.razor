@@ -115,6 +115,60 @@
         <MudDivider Class="my-3" />
         @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
 
+        @* ขั้นแบบงานกอง (isPool) — ป้ายบอกให้ชัด + ดูได้ว่ามีใครอยู่ในกองบ้าง *@
+        @if (_m.isPoolLevel)
+        {
+            <MudAlert Severity="@(_m.poolClaimedByMe ? Severity.Success : _m.poolClaimedByName is not null ? Severity.Warning : Severity.Info)"
+                      Class="mb-2" Dense="true">
+                <div class="d-flex align-center flex-wrap gap-2">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Icon="@Icons.Material.Filled.Groups">
+                        งานกอง (Pool)
+                    </MudChip>
+
+                    @if (_m.poolClaimedByMe)
+                    {
+                        <span>คุณรับงานนี้ไว้แล้ว</span>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="_busy"
+                                   OnClick="ReleaseAsync">คืนงานเข้ากอง</MudButton>
+                    }
+                    else if (_m.poolClaimedByName is not null)
+                    {
+                        <span>ถูกรับไปแล้วโดย <b>@_m.poolClaimedByName</b></span>
+                    }
+                    else
+                    {
+                        <span>ยังไม่มีใครรับ — กดรับงานก่อนจึงจะดำเนินการได้</span>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="_busy" OnClick="ClaimAsync">รับงาน</MudButton>
+                    }
+
+                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                               EndIcon="@(_showPool ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                               OnClick="@(() => _showPool = !_showPool)">
+                        อยู่ในกอง @_m.poolMembers.Count คน
+                    </MudButton>
+                </div>
+
+                <MudCollapse Expanded="_showPool">
+                    <MudTable Items="_m.poolMembers" Dense="true" Class="mt-2">
+                        <HeaderContent><MudTh>ผู้อยู่ในกอง</MudTh><MudTh>หน่วยงาน</MudTh><MudTh>สถานะ</MudTh><MudTh>ดำเนินการเมื่อ</MudTh></HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                @context.username
+                                @if (context.userid == _m.jobMaster!.PoolClaimedByUserId)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">รับงานแล้ว</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd>@context.orgcode</MudTd>
+                            <MudTd>@context.jobstatus</MudTd>
+                            <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudCollapse>
+            </MudAlert>
+        }
+
         @* ── 3. งานที่ต้องทำ: เหตุผล + หมายเหตุ + ปุ่ม (collapse3) ───────────── *@
         @if (_m.isCurrentUser)
         {
@@ -220,6 +274,7 @@
     private string? _reason;
     private string? _error;
     private bool _busy;
+    private bool _showPool;
 
     private Type? _docType;
     private Dictionary<string, object> _docParams = new();
@@ -281,6 +336,22 @@
 
     private List<mas_reason> _reasons = new();
     private long? _reasonId;
+
+    private async Task ClaimAsync()
+    {
+        _busy = true; _error = null;
+        try { await Wf.ClaimPoolAsync(Id, _actorUserId); await LoadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ReleaseAsync()
+    {
+        _busy = true; _error = null;
+        try { await Wf.ReleasePoolAsync(Id, _actorUserId); await LoadAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
 
     private async Task LoadAsync()
     {

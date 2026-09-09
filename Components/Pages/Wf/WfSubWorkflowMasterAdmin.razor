@@ -261,13 +261,19 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudCheckBox T="bool" Value="e.isandcondition" ValueChanged="@((bool v) => { e.isandcondition = v; if (v) e.isorcondition = false; })" Label="AND-condition (อนุมัติแบบ % แทนต้องครบทุกคน)" />
+                @* OR กับ AND เลือกได้อย่างเดียว (CEO, 10 ก.ย. 2569) — ติ๊กอันหนึ่ง
+                   อีกอันถูกปลดและปิดไม่ให้ติ๊ก ไม่ใช่แค่ปลดเงียบ ๆ แล้วยังกดได้ *@
+                <MudCheckBox T="bool" Value="e.isandcondition" Disabled="e.isorcondition"
+                             ValueChanged="@((bool v) => { e.isandcondition = v; if (v) e.isorcondition = false; })"
+                             Label="AND-condition (อนุมัติแบบ % แทนต้องครบทุกคน)" />
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudNumericField T="decimal?" @bind-Value="e.andpercent" Label="เกณฑ์ % ที่ต้องอนุมัติผ่าน (ค่าเริ่มต้น 100)" Min="1" Max="100" Disabled="!e.isandcondition" />
             </MudItem>
             <MudItem xs="12" sm="4">
-                <MudCheckBox T="bool" Value="e.isorcondition" ValueChanged="@((bool v) => { e.isorcondition = v; if (v) e.isandcondition = false; })" Label="OR-condition (คนแรกที่อนุมัติพอ ไม่ต้องรอทุกคน)" />
+                <MudCheckBox T="bool" Value="e.isorcondition" Disabled="e.isandcondition"
+                             ValueChanged="@((bool v) => { e.isorcondition = v; if (v) { e.isandcondition = false; e.andpercent = null; } })"
+                             Label="OR-condition (คนแรกที่อนุมัติพอ ไม่ต้องรอทุกคน)" />
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudCheckBox T="bool" @bind-Value="e.isPool" Label="Pool (โชว์ในหน้า /wf/pool ให้ทั้งทีมเห็นงานร่วมกัน)"

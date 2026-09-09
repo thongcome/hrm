@@ -49,6 +49,7 @@ public partial class wf_sub_workflow_master
             IsLOAAsync,
             SupervisorChainAsync,
             IsApproverSameCostCenterAsync,
+            IsApproverSameOrgAsync,
         })
         {
             var one = await field(db, job, ct);
@@ -165,6 +166,20 @@ public partial class wf_sub_workflow_master
             uid is long cc ? new List<long> { cc } : new List<long>(),
             org is null ? $"ไม่พบหน่วยงานที่ cost center {job.costcenter}" : $"หน่วยงาน {org.code}");
     }
+    // isApproverSameOrg — เพื่อนร่วมหน่วยงานของผู้ขอ (ไม่รวมตัวผู้ขอเอง)
+    // ใช้กับขั้นที่ให้คนในหน่วยงานเดียวกันช่วยกันดู ไม่ใช่สายบังคับบัญชา
+    private async Task<ApproverSource?> IsApproverSameOrgAsync(HRMContext db, job_master job, CancellationToken ct)
+    {
+        if (!isApproverSameOrg) return null;
+        if (string.IsNullOrWhiteSpace(job.reqOrg))
+            return new("isApproverSameOrg", "ORG", new(), "ผู้ขอไม่มีหน่วยงาน");
+
+        var ids = await db.sc_users
+            .Where(u => u.orgcode == job.reqOrg && u.isdisable != true && u.userid != job.createuserid)
+            .Select(u => u.userid).ToListAsync(ct);
+        return new("isApproverSameOrg", "ORG", ids, $"หน่วยงาน {job.reqOrg}");
+    }
+
     // LOA: จำนวนเงินของงานตกอยู่ในแถบไหน แถบนั้นใครมีอำนาจ
     private async Task<(List<long> Users, string? Note)> ResolveLoaAsync(HRMContext db, job_master job, CancellationToken ct)
     {
