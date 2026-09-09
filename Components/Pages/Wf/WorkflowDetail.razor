@@ -1,3 +1,4 @@
+@page "/workflow"
 @page "/workflow/detail/{Id:long}"
 @page "/workflow/create/{WorkflowId:long}"
 @using System.Reflection
@@ -27,7 +28,45 @@
 <PageTitle>งาน #@Id</PageTitle>
 
 <MudPaper Class="pa-4 mb-4">
-    @if (_m?.jobMaster is null)
+    @* หน้าเปล่า (ไม่ได้ส่ง id มา) = หน้าเริ่มงาน เลือก workflow แล้วงานเกิดทันที
+       ที่ขั้นแรกของเส้นทาง — epms: Create(workflowid) -> RedirectToAction("Detail") *@
+    @if (Id == 0 && WorkflowId is null)
+    {
+        <MudText Typo="Typo.h5">เริ่มงานใหม่</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3 mud-text-secondary">
+            เลือกประเภทงาน — งานจะเกิดทันทีที่ขั้นแรกของเส้นทางที่ตั้งค่าไว้
+        </MudText>
+        @if (!string.IsNullOrEmpty(_error)) { <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert> }
+        <MudTable Items="_startable" Dense="true" Hover="true">
+            <HeaderContent><MudTh>รหัส</MudTh><MudTh>ชื่องาน</MudTh><MudTh>ขั้นตอน</MudTh><MudTh></MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Code</MudTd>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Levels ขั้น</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                               Href="@($"/workflow/create/{context.WorkflowId}")">เริ่มงาน</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (_myOpen.Count > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mt-6">งานของฉันที่ยังไม่ปิด</MudText>
+            <MudTable Items="_myOpen" Dense="true" Hover="true" Class="mt-1">
+                <HeaderContent><MudTh>งาน</MudTh><MudTh>ประเภท</MudTh><MudTh>สถานะ</MudTh><MudTh>ขั้น</MudTh><MudTh></MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>#@context.jobmasterid</MudTd>
+                    <MudTd>@context.wname</MudTd>
+                    <MudTd>@context.status</MudTd>
+                    <MudTd>@context.lastLevel</MudTd>
+                    <MudTd><MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                      Href="@($"/workflow/detail/{context.jobmasterid}")">เปิด</MudButton></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    }
+    else if (_m?.jobMaster is null)
     {
         <MudAlert Severity="Severity.Info">@(_m?.message.FirstOrDefault() ?? "กำลังโหลด...")</MudAlert>
     }
@@ -185,7 +224,33 @@
             }
         }
 
+        if (Id == 0)
+        {
+            await LoadStartPageAsync();
+            return;
+        }
+
         await LoadAsync();
+    }
+
+    // หน้าเริ่มงาน: workflow ที่เปิดใช้และมีเส้นทางตั้งไว้แล้ว + งานของฉันที่ยังไม่ปิด
+    private record Startable(long WorkflowId, string? Code, string? Name, int Levels);
+    private List<Startable> _startable = new();
+    private List<job_master> _myOpen = new();
+
+    private async Task LoadStartPageAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _startable = await db.wf_workflows
+            .Where(w => w.isactive == true)
+            .Select(w => new Startable(w.workflowid, w.workflowcode, w.wname,
+                db.wf_sub_workflow_masters.Count(s => s.workflowid == w.workflowid)))
+            .Where(x => x.Levels > 0)
+            .OrderBy(x => x.Code).ToListAsync();
+
+        _myOpen = await db.job_masters
+            .Where(j => j.createuserid == _actorUserId && j.isJobClosed != true)
+            .OrderByDescending(j => j.jobmasterid).Take(20).ToListAsync();
     }
 
     private async Task LoadAsync()

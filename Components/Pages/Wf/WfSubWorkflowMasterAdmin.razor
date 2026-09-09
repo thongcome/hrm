@@ -48,6 +48,7 @@
         // can't typo a status code the engine will never match against
         // anything meaningful downstream.
         _statusCodes = await context.job_statuses.OrderBy(s => s.jobstatuscode).Select(s => s.jobstatuscode).ToListAsync();
+        _roles = await context.sc_roles.OrderBy(r => r.name).ToListAsync();
     }
 
     private string WorkflowName(long workflowId) => _workflows.FirstOrDefault(w => w.workflowid == workflowId)?.wname ?? $"#{workflowId}";
@@ -139,6 +140,7 @@
     </text>;
 
     private RenderFragment RenderEditFields(wf_sub_workflow_master e) => @<text>
+        @{ EnsurePicksLoaded(e); }
         <MudGrid Class="mt-1">
             <MudItem xs="12" sm="6">
                 <MudSelect T="long" Value="e.workflowid" ValueChanged="v => e.workflowid = v" Label="Workflow" Required="true">
@@ -150,8 +152,89 @@
             </MudItem>
             <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="e.wlevel" Label="ระดับ" Required="true" Min="1" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="e.subject" Label="หัวข้อ" /></MudItem>
-            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.iscustomUser" Label="Custom User (ระบุผู้อนุมัติเจาะจง)" /></MudItem>
-            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.iscustomRole" Label="Custom Role (ระบุ Role ผู้อนุมัติ)" /></MudItem>
+            @* ติ๊กแล้วต้องเลือกคนตรงนี้เลย (CEO, 10 ก.ย. 2569) — เดิมติ๊กที่หน้านี้
+               แต่ไปใส่รายชื่อที่ /wf/custom-users อีกหน้า ทำให้เกิด "ติ๊กแต่ไม่มีรายชื่อ"
+               หรือ "มีรายชื่อแต่ไม่ได้ติ๊ก" ซึ่งเงียบสนิท ไม่มีใครรู้ว่าไม่ทำงาน
+               (ต้นฉบับ JSP ไม่มี flag เลย ใช้ count(*) ของตารางลูกตัดสิน จึงไม่มีปัญหานี้) *@
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="e.iscustomUser"
+                             ValueChanged="@(async (bool v) => { e.iscustomUser = v; await OnPersonFlagChanged(e); })"
+                             Label="Custom User (ระบุผู้อนุมัติเจาะจง)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox T="bool" Value="e.iscustomRole"
+                             ValueChanged="@(async (bool v) => { e.iscustomRole = v; await OnPersonFlagChanged(e); })"
+                             Label="Custom Role (ระบุ Role ผู้อนุมัติ)" />
+            </MudItem>
+            <MudItem xs="12" sm="4"></MudItem>
+
+            @if (e.iscustomUser)
+            {
+                <MudItem xs="12">
+                    <MudAutocomplete T="sc_user" Label="เลือกผู้อนุมัติของขั้นนี้" Value="null"
+                                     SearchFunc="SearchUsersAsync" ToStringFunc="@(u => u is null ? "" : $"{u.loginname} — {u.firstname} {u.lastname}")"
+                                     ValueChanged="u => AddCustomUser(u)" Clearable="true"
+                                     HelperText="พิมพ์ชื่อหรือรหัสผู้ใช้ แล้วเลือกเพื่อเพิ่มเข้าขั้นนี้" />
+                    <div class="mt-2">
+                        @foreach (var u in _pickedUsers)
+                        {
+                            <MudChip T="string" Size="Size.Small" OnClose="@(() => _pickedUsers.Remove(u))" Class="mr-1">
+                                @u.loginname — @u.firstname @u.lastname
+                            </MudChip>
+                        }
+                        @if (_pickedUsers.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Warning">
+                                ติ๊ก Custom User ไว้แต่ยังไม่ได้เลือกใคร — ขั้นนี้จะหาผู้อนุมัติไม่เจอ งานจะค้าง
+                            </MudText>
+                        }
+                    </div>
+                </MudItem>
+            }
+
+            @if (e.iscustomRole)
+            {
+                <MudItem xs="12">
+                    <MudSelect T="long" Label="เลือก Role ผู้อนุมัติของขั้นนี้" Value="0"
+                               ValueChanged="r => AddCustomRole(r)">
+                        @foreach (var r in _roles)
+                        {
+                            <MudSelectItem T="long" Value="@r.roleid">@r.name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <div class="mt-2">
+                        @foreach (var r in _pickedRoles)
+                        {
+                            <MudChip T="string" Size="Size.Small" OnClose="@(() => _pickedRoles.Remove(r))" Class="mr-1">
+                                @(_roles.FirstOrDefault(x => x.roleid == r)?.name ?? $"role #{r}")
+                            </MudChip>
+                        }
+                        @if (_pickedRoles.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Warning">
+                                ติ๊ก Custom Role ไว้แต่ยังไม่ได้เลือก role — ขั้นนี้จะหาผู้อนุมัติไม่เจอ
+                            </MudText>
+                        }
+                    </div>
+                </MudItem>
+            }
+
+            @* แสดงชื่อคนที่ขั้นนี้จะได้จริง ตามที่ตั้งค่าไว้ตอนนี้ (JSP แสดงชื่อตอน config) *@
+            @if (_preview.Count > 0)
+            {
+                <MudItem xs="12">
+                    <MudPaper Class="pa-2" Outlined="true">
+                        <MudText Typo="Typo.subtitle2">ขั้นนี้จะได้ใครบ้าง</MudText>
+                        @foreach (var p in _preview)
+                        {
+                            <MudText Typo="Typo.body2">
+                                <b>@p.Source</b> (@p.Kind) → @(p.Names.Count == 0 ? "— ไม่พบใคร —" : string.Join(", ", p.Names))
+                                @if (!string.IsNullOrWhiteSpace(p.Note)) { <span class="mud-text-secondary"> · @p.Note</span> }
+                            </MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            }
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.istop" Label="ระดับสุดท้าย (istop)" /></MudItem>
             <MudItem xs="12" sm="4">
                 <MudSelect T="string" Value="e.forwardstatus" ValueChanged="v => e.forwardstatus = v" Label="สถานะเมื่ออนุมัติผ่าน" Required="true">
@@ -190,12 +273,14 @@
                 <MudCheckBox T="bool" @bind-Value="e.isPool" Label="Pool (โชว์ในหน้า /wf/pool ให้ทั้งทีมเห็นงานร่วมกัน)"
                     HelperText="@(e.isorcondition ? "" : "ควรติ๊ก OR-condition ด้วย ไม่งั้นงานจะรอครบทุกคนแทนที่จะจบเมื่อมีคนแรกทำ")" />
             </MudItem>
+            @* ผังองค์กร: คำถามเดียว แทน 5 field ที่ทำเรื่องเดียวกัน
+               (isupperrole / isupperuser / isNeedsupervisorapprove / verticalMaxLevel / empLevel)
+               CEO, 10 ก.ย. 2569: "สมัยก่อนให้วิ่งตาม sc_user ตอนหลังทำ org tree แล้วเลยไม่ใช้" *@
             <MudItem xs="12" sm="4">
-                <MudNumericField T="int?" @bind-Value="e.isNeedsupervisorapprove" Label="จำนวนชั้นสายบังคับบัญชาที่ต้องอนุมัติก่อน (Mix Approval, 0 = ไม่ใช้)" Min="0" Max="10" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudNumericField T="int?" @bind-Value="e.verticalMaxLevel" Label="วิ่งตามสายบังคับบัญชาสูงสุดกี่ระดับ (เว้นว่าง = ไม่ใช้)" Min="1" Max="20"
-                    HelperText="ระดับนี้จะกลายเป็นระดับสุดท้าย (istop) เมื่อวิ่งครบจำนวนนี้ หรือวิ่งจนสุดผังองค์กรก่อนครบ (เช่น ผู้ขอมีตำแหน่งสูงอยู่แล้ว) — ต้องติ๊ก Vertical (Upper Role/User) ด้วย" />
+                <MudNumericField T="int?" Value="e.isNeedsupervisorapprove"
+                                 ValueChanged="@(async (int? v) => { e.isNeedsupervisorapprove = v; await OnPersonFlagChanged(e); })"
+                                 Label="ผ่านหัวหน้าตามผังองค์กรกี่ชั้น (0 หรือเว้นว่าง = ไม่ผ่าน)" Min="0" Max="10"
+                                 HelperText="1 = หัวหน้าตรงของผู้ขอ · 2 = หัวหน้าของหัวหน้า — ข้ามผู้ขอเองเสมอ (ถ้าผู้ขอเป็นหัวหน้าหน่วยงานตัวเอง จะไต่ขึ้นไปหาหัวหน้าเขา) และข้ามหน่วยงานที่ยังไม่ตั้งผู้อนุมัติ" />
             </MudItem>
             <MudItem xs="12" sm="4">
                 <MudNumericField T="int?" @bind-Value="e.backwardlevel" Label="ตีกลับไประดับ (ต้องน้อยกว่าระดับตัวเอง, เว้นว่าง = ปฏิเสธจบทันทีเหมือนเดิม)" Min="1" Max="@(e.wlevel - 1)" />
@@ -205,18 +290,24 @@
                     ติ๊กได้พร้อมกันหลายอัน — engine จะรวมผู้อนุมัติจากทุก strategy ที่เปิดไว้เข้าด้วยกัน (union) ยกเว้น "LOA" ที่ยังคงทำงานแบบแยกเดี่ยวเสมอเพื่อความปลอดภัยด้านการควบคุมทางการเงิน (ถ้าติ๊ก LOA ไว้ด้วย strategy อื่นด้านล่างจะถูกข้ามทั้งหมด)
                 </MudAlert>
             </MudItem>
-            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isupperrole" Label="Vertical: Upper Role" /></MudItem>
-            <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isupperuser" Label="Vertical: Upper User" /></MudItem>
+            @* isupperrole / isupperuser ไม่ให้ตั้งใหม่แล้ว — เป็นชื่อจากยุคที่ไต่ตาม
+               sc_user.upperuserid ซึ่งเลิกใช้ตั้งแต่ทำ org tree ขั้นเดิม 6 ขั้นที่ยังตั้งไว้
+               ยังทำงานต่อได้ (ถือว่า = ผ่านหัวหน้า 1 ชั้น) แต่ของใหม่ให้ใช้ช่องด้านบนแทน *@
+            @if (e.isupperrole || e.isupperuser)
+            {
+                <MudItem xs="12" sm="8">
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        ขั้นนี้ยังตั้ง @(e.isupperrole ? "Upper Role" : "Upper User") แบบเก่าไว้ (= ผ่านหัวหน้า 1 ชั้น)
+                        แนะนำให้ย้ายมาใช้ช่อง "ผ่านหัวหน้าตามผังองค์กรกี่ชั้น" ด้านบนแทน
+                    </MudAlert>
+                </MudItem>
+            }
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAutoApproveAllow" Label="ข้ามอัตโนมัติถ้าไม่มีผู้อนุมัติ (isAutoApproveAllow)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isLOA" Label="LOA (ผู้อนุมัติตามวงเงิน — ตั้งค่าช่วงที่ /wf/loa)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isReturnSender" Label="Return to Sender (ส่งกลับไปหาผู้ขอ)" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameCostCenter" Label="ผู้อนุมัติที่ Cost Center เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isApproverSameOrg" Label="ผู้อนุมัติที่หน่วยงาน (Org) เดียวกับผู้ขอ" /></MudItem>
             <MudItem xs="12" sm="4"><MudCheckBox @bind-Value="e.isAdhocUser" Label="ผู้อนุมัติเฉพาะกิจต่อ Job (ตั้งค่าที่ /wf/adhoc-users)" /></MudItem>
-            <MudItem xs="12" sm="4">
-                <MudNumericField T="int?" @bind-Value="e.empLevel" Label="ไต่ผังองค์กรกี่ระดับ (empLevel, เว้นว่าง = ไม่ใช้)" Min="0"
-                    HelperText="ไต่ตายตัว N ระดับจากผู้ขอ (ปรับสั้นลงเองถ้าผังองค์กรไม่ถึง N) แล้วไปขั้นถัดไปตามปกติ — ห้ามตั้งคู่กับ verticalMaxLevel" />
-            </MudItem>
 
             <MudItem xs="12">
                 <MudText Typo="Typo.subtitle2" Class="mt-2">การเสียบ Component + ปุ่ม (epms)</MudText>
@@ -242,6 +333,106 @@
         var query = EntitySearchHelper.ApplyTextSearch(context.wf_sub_workflow_masters.AsQueryable(), term,
             nameof(wf_sub_workflow_master.subject), nameof(wf_sub_workflow_master.remark));
         return await query.OrderBy(e => e.workflowid).ThenBy(e => e.wlevel).ToListAsync();
+    }
+
+    // ── ผู้เกี่ยวข้องของขั้นนี้: ติ๊ก flag แล้วเลือกคน/role ตรงนี้เลย ─────────────
+    // เขียนลง wf_custom_user / wf_custom_role พร้อมคีย์ครบ (subworkflowid,
+    // workflowid, wlevel) ตามที่ engine ใช้อ่าน — flag กับรายชื่อจึงตรงกันเสมอ
+    private readonly List<sc_user> _pickedUsers = new();
+    private readonly List<long> _pickedRoles = new();
+    private List<sc_role> _roles = new();
+    private long _picksLoadedFor = long.MinValue;
+
+    private record PreviewLine(string Source, string Kind, List<string> Names, string? Note);
+    private List<PreviewLine> _preview = new();
+
+    // CrudScaffold ไม่มี hook ตอนเปิดฟอร์ม จึงโหลดตอน render ครั้งแรกของแถวนั้น
+    private void EnsurePicksLoaded(wf_sub_workflow_master e)
+    {
+        if (_picksLoadedFor == e.subworkflowid) return;
+        _picksLoadedFor = e.subworkflowid;
+        _ = InvokeAsync(async () => { await LoadPicksAsync(e); StateHasChanged(); });
+    }
+
+    private async Task LoadPicksAsync(wf_sub_workflow_master e)
+    {
+        _pickedUsers.Clear();
+        _pickedRoles.Clear();
+        _preview = new();
+        if (e.subworkflowid == 0) return;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var userIds = await context.wf_custom_users
+            .Where(c => c.workflowid == e.workflowid && c.wlevel == e.wlevel && c.isactive)
+            .Select(c => c.userid).ToListAsync();
+        _pickedUsers.AddRange(await context.sc_users.Where(u => userIds.Contains(u.userid)).ToListAsync());
+
+        _pickedRoles.AddRange(await context.wf_custom_roles
+            .Where(c => c.workflowid == e.workflowid && c.wlevel == e.wlevel && c.isactive != false)
+            .Select(c => c.roleid).ToListAsync());
+
+        await RefreshPreviewAsync(e);
+    }
+
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string term, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return Array.Empty<sc_user>();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        return await context.sc_users
+            .Where(u => u.isdisable != true &&
+                   (u.loginname.Contains(term) || u.firstname.Contains(term) || u.lastname.Contains(term)))
+            .OrderBy(u => u.loginname).Take(20).ToListAsync(ct);
+    }
+
+    private void AddCustomUser(sc_user? u)
+    {
+        if (u is null || _pickedUsers.Any(x => x.userid == u.userid)) return;
+        _pickedUsers.Add(u);
+    }
+
+    private void AddCustomRole(long roleid)
+    {
+        if (roleid == 0 || _pickedRoles.Contains(roleid)) return;
+        _pickedRoles.Add(roleid);
+    }
+
+    private Task OnPersonFlagChanged(wf_sub_workflow_master e) => RefreshPreviewAsync(e);
+
+    // แสดงชื่อคนที่ขั้นนี้จะได้จริง โดยเรียกเมธอดของตัว config เอง
+    // (wf_sub_workflow_master.GetUserBySourceAsync) — ตัวเดียวกับที่ engine ใช้ตอนงานวิ่งจริง
+    // จึงไม่มีทางที่หน้าจอกับของจริงจะไม่ตรงกัน
+    private async Task RefreshPreviewAsync(wf_sub_workflow_master e)
+    {
+        _preview = new();
+        if (e.subworkflowid == 0) return;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var meId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+            var me = await context.sc_users.FirstOrDefaultAsync(u => u.userid == meId);
+
+            // งานสมมติ ใช้ตัวเองเป็นผู้ขอ เพื่อให้เห็นผลของการเดินผังด้วย
+            var probe = new job_master
+            {
+                workflowid = e.workflowid,
+                createuserid = meId,
+                empid = me?.empid,
+                reqOrg = me?.orgcode,
+            };
+
+            foreach (var src in await e.GetUserBySourceAsync(context, probe, CancellationToken.None))
+            {
+                var names = await context.sc_users
+                    .Where(u => src.UserIds.Contains(u.userid))
+                    .Select(u => (u.firstname + " " + u.lastname).Trim()).ToListAsync();
+                _preview.Add(new PreviewLine(src.Field, src.ResolverKind, names, src.Note));
+            }
+        }
+        catch (Exception ex)
+        {
+            _preview.Add(new PreviewLine("ผิดพลาด", "-", new(), ex.Message));
+        }
     }
 
     private async Task<wf_sub_workflow_master> SaveAsync(wf_sub_workflow_master entity)
@@ -296,7 +487,42 @@
         // WorkflowEngineService.cs), just one level up (config, not job).
         entity.wfcode = _workflows.FirstOrDefault(w => w.workflowid == entity.workflowid)?.workflowcode;
 
+        await context.SaveChangesAsync();   // ต้องได้ subworkflowid ก่อนจึงผูกรายชื่อได้
+
+        // ── บันทึกผู้เกี่ยวข้องพร้อมกันในการกด Save ครั้งเดียว ────────────────
+        // flag กับรายชื่อจึงเขียนลงไปพร้อมกัน ไม่มีทางที่จะติ๊กแล้วลืมใส่รายชื่อ
+        // หรือใส่รายชื่อแล้วลืมติ๊ก (เคส DEMO_VERTICAL ที่เจอในข้อมูลจริง)
+        var oldUsers = await context.wf_custom_users
+            .Where(c => c.workflowid == entity.workflowid && c.wlevel == entity.wlevel).ToListAsync();
+        context.wf_custom_users.RemoveRange(oldUsers);
+        if (entity.iscustomUser)
+            context.wf_custom_users.AddRange(_pickedUsers.Select(u => new wf_custom_user
+            {
+                subworkflowid = entity.subworkflowid,
+                workflowid = entity.workflowid,
+                wlevel = entity.wlevel,
+                userid = u.userid,
+                empid = u.empid,
+                isactive = true,
+                modate = DateTime.Now,
+            }));
+
+        var oldRoles = await context.wf_custom_roles
+            .Where(c => c.workflowid == entity.workflowid && c.wlevel == entity.wlevel).ToListAsync();
+        context.wf_custom_roles.RemoveRange(oldRoles);
+        if (entity.iscustomRole)
+            context.wf_custom_roles.AddRange(_pickedRoles.Select(r => new wf_custom_role
+            {
+                subworkflowid = entity.subworkflowid,
+                workflowid = entity.workflowid,
+                wlevel = entity.wlevel,
+                roleid = r,
+                isactive = true,
+                modate = DateTime.Now,
+            }));
+
         await context.SaveChangesAsync();
+        _picksLoadedFor = long.MinValue;   // ให้โหลดใหม่รอบหน้า จะได้เห็นของที่เพิ่งบันทึก
         return entity;
     }
 }
