@@ -136,7 +136,7 @@ else
 
             var now = DateTime.Now;
             _rows = stamps
-                .GroupBy(s => new { s.workflowid, s.wlevel })
+                .GroupBy(s => new { WorkflowId = s.workflowid ?? 0, s.wlevel })
                 .Select(g =>
                 {
                     var done = g.Where(x => x.endtime != null)
@@ -144,7 +144,7 @@ else
                         .Where(h => h >= 0).ToList();
                     var open = g.Where(x => x.endtime == null).ToList();
                     return new Row(
-                        wfNames.GetValueOrDefault(g.Key.workflowid, $"#{g.Key.workflowid}"),
+                        wfNames.GetValueOrDefault(g.Key.WorkflowId, $"#{g.Key.WorkflowId}"),
                         g.Key.wlevel,
                         g.Select(x => x.subject).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "",
                         done.Count,

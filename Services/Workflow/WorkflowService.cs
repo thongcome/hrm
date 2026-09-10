@@ -1118,8 +1118,21 @@ public class WorkflowService
     //  ขั้นที่ผ่านไปแล้วใช้ชื่อจริงจากประวัติ (ใครทำจริงสำคัญกว่าใครควรทำ)
     //  ขั้นที่ยังไม่ถึงอ่านสดจาก config ผ่านทางเดียวกับตอนเดินจริง จึงได้ผลของ
     //  ผังองค์กรและการมอบฉันทะไปด้วยโดยอัตโนมัติ
-    public record RouteStep(int Level, string Name, bool IsTop, bool IsCurrent, bool IsDone,
-        List<string> Approvers, string Source);
+    //  ลำดับที่อ่าน ตามที่ CEO อธิบายไว้:
+    //    1. workflowid จาก job_master
+    //    2. workflowid -> wf_sub_workflow_master ได้ว่าเส้นทางมีกี่ขั้น
+    //    3. job_master.lastLevel บอกว่าตอนนี้อยู่ขั้นไหน
+    //    4. ขั้นที่ผ่านมาแล้ว -> job_subworkflow_master + job_user_list
+    //       บอกว่าใครทำอะไรเมื่อไหร่
+    //    5. ขั้นที่เหลือ -> อ่านจาก config ของขั้นนั้นทีละ node
+    //  CEO, 10 ก.ย. 2569: "คุณวาดผัง แล้วแต่ละผังก็ส่ง workflowid กับ subworkflow id
+    //  ไปดึงค่า User, ในแต่ละ subworkflow ก็เก็บชื่ออยู่แล้ว"
+    //  แต่ละ node จึงพก subworkflowid ติดไปด้วย ไม่ใช่แค่เลขขั้น — เป็นคีย์เดียวกับ
+    //  ที่หน้าผัง /wf/canvas ใช้ผูก wf_custom_user / wf_custom_role / wf_adhoc_user
+    //  อยู่แล้ว ทำให้ node บนผังกับแถวใน route เป็นตัวเดียวกันตรง ๆ
+    //  ส่วน "ชื่อ" ของขั้นก็อยู่บนแถว subworkflow เองแล้ว (subject / displayName)
+    public record RouteStep(long SubWorkflowId, int Level, string Name, bool IsTop,
+        bool IsCurrent, bool IsDone, List<string> Approvers, string Source, string? Happened);
 
     public async Task<List<RouteStep>> GetRouteAsync(long jobMasterId, CancellationToken ct = default)
     {
@@ -1131,9 +1144,15 @@ public class WorkflowService
             .Where(s => s.workflowid == job.workflowid && s.isshow)
             .OrderBy(s => s.wlevel).ToListAsync(ct);
 
-        var history = await db.job_user_lists
+        var rows = await db.job_user_lists
             .Where(a => a.jobmasterid == jobMasterId)
-            .Select(a => new { a.wlevel, a.username, a.userid, a.jobstatus })
+            .Select(a => new { a.wlevel, a.username, a.userid, a.jobstatus, a.approvedate })
+            .ToListAsync(ct);
+
+        // รอยเท้า — ตารางที่บอกว่า "เกิดอะไรขึ้นที่ขั้นนี้" ไม่ใช่แค่ใครถือ
+        var stamps = await db.job_subworkflow_masters
+            .Where(s => s.jobmasterid == jobMasterId)
+            .Select(s => new { s.wlevel, s.remark, s.modby, s.starttime, s.endtime, s.jobseq })
             .ToListAsync(ct);
 
         var current = job.lastLevel ?? 0;
@@ -1141,29 +1160,102 @@ public class WorkflowService
 
         foreach (var lv in levels)
         {
-            var past = history.Where(h => (h.wlevel ?? 0) == lv.wlevel).ToList();
-            if (past.Count > 0)
+            var mine = rows.Where(h => (h.wlevel ?? 0) == lv.wlevel).ToList();
+            var trail = stamps.Where(s => s.wlevel == lv.wlevel)
+                .OrderBy(s => s.jobseq ?? 0).ToList();
+
+            if (mine.Count > 0 || trail.Count > 0)
             {
-                steps.Add(new RouteStep(lv.wlevel, lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                // ใครทำอะไร — เอาจากรอยเท้าเป็นหลัก เพราะบันทึกการกระทำไว้ตรง ๆ
+                var happened = trail.Count == 0 ? null : string.Join(" · ", trail
+                    .Select(t => $"{ActionText(t.remark)}{(t.modby is null ? "" : $" โดย {t.modby}")}" +
+                                 $"{(t.starttime is null ? "" : $" ({t.starttime:d MMM HH:mm})")}"));
+
+                // CEO, 10 ก.ย. 2569: "wlevel ไว้ check state ของ workflow
+                // คุณจะได้ highlight ถูกว่า step อะไรทำแล้วอะไรยัง"
+                //
+                // สถานะตัดสินจากการเทียบ wlevel กับ job_master.lastLevel เท่านั้น
+                // ไม่ใช่จากการมีรอยเท้า — งานที่ถูกตีกลับจากขั้น 3 มาขั้น 1 นั้น
+                // ขั้น 2-3 มีรอยเท้าเก่าอยู่ก็จริง แต่ตอนนี้มันคือขั้นที่ "ยังไม่ถึง"
+                // อีกครั้ง ไม่ใช่ "ผ่านแล้ว" — เรื่องที่เคยผ่านไปแล้วบอกไว้ในคอลัมน์
+                // ประวัติแทน ซึ่งเป็นที่ของมันจริง ๆ
+                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
                     lv.wlevel == current, lv.wlevel < current,
-                    past.Select(p => p.username ?? $"#{p.userid}").Distinct().ToList(),
-                    "จากประวัติของงานนี้"));
+                    mine.Select(p => p.username ?? $"#{p.userid}").Distinct().ToList(),
+                    "จากประวัติของงานนี้", happened));
                 continue;
             }
 
-            // ขั้นที่ยังไม่ถึง — อ่านจาก config ของ workflow นี้สด ๆ
-            List<sc_user> who;
-            try { who = await GetUserRelateAsync(db, job, lv, ct); }
-            catch { who = new(); }   // config ไม่ครบไม่ควรทำให้ทั้งหน้าพัง
+            // ขั้นที่ยังไม่ถึง = การ "จำลอง" เส้นทางที่เหลือ
+            //
+            // ต้นฉบับ JSP ทำสองท่อนแบบเดียวกัน: อ่านของจริงจากตารางงานก่อน แล้วจึง
+            //   if ("n".equals(wfrb.getJobCloseFlag())) appendSemulateflowRount(...)
+            // คือจำลองต่อ "เฉพาะเมื่องานยังไม่ปิด" และตั้ง finalReason บอกว่าทำไม
+            // เส้นทางจบตรงนั้น ("job close" / "max wf level" / "max boss sec")
+            // งานที่ปิดแล้วไม่ต้องทายอนาคต เพราะไม่มีอนาคตให้ทาย
+            if (job.isJobClosed == true)
+            {
+                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                    false, false, new(), "งานปิดแล้ว ไม่ได้เดินมาถึงขั้นนี้", null));
+                continue;
+            }
 
-            steps.Add(new RouteStep(lv.wlevel, lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
-                lv.wlevel == current, false,
-                who.Select(u => $"{u.firstname} {u.lastname}".Trim()).Where(n => n.Length > 0).ToList(),
-                who.Count > 0 ? "อ่านจากการตั้งค่าของขั้นนี้" : "ยังหาผู้อนุมัติจากการตั้งค่าไม่ได้"));
+            // ให้ตัวขั้นเองบอกว่าใครอนุมัติ (GetUserBySourceAsync เดินดูทีละ field
+            // ของ config แล้วคืนมาด้วยว่าได้ชื่อมาจาก field ไหน)
+            var names = new List<string>();
+            var source = "ยังหาผู้อนุมัติจากการตั้งค่าไม่ได้";
+            try
+            {
+                var found = await lv.GetUserBySourceAsync(db, job, ct);
+                var ids = found.SelectMany(f => f.UserIds).Distinct().ToList();
+                if (ids.Count > 0)
+                {
+                    var users = await db.sc_users.Where(u => ids.Contains(u.userid)).ToListAsync(ct);
+                    users = await ApplyDelegationAsync(db, job, users, ct);
+                    names = users.Select(u => $"{u.firstname} {u.lastname}".Trim())
+                        .Where(n => n.Length > 0).Distinct().ToList();
+                }
+                var why = found.Where(f => f.UserIds.Count > 0).Select(f => SourceText(f.Field)).Distinct().ToList();
+                if (why.Count > 0) source = string.Join(" · ", why);
+            }
+            catch { /* config ไม่ครบไม่ควรทำให้ทั้งหน้าพัง — ปล่อยให้ขึ้นว่าหาไม่ได้ */ }
+
+            steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                lv.wlevel == current, false, names, source, null));
         }
 
         return steps;
     }
+
+    // remark ของรอยเท้าเก็บเป็น "Approve 2 -> 2" แปลให้คนอ่านรู้เรื่อง
+    private static string ActionText(string? remark) => remark switch
+    {
+        null or "" => "ดำเนินการ",
+        _ when remark.StartsWith("Approve", StringComparison.Ordinal) => "อนุมัติ",
+        _ when remark.StartsWith("Submit", StringComparison.Ordinal) => "ส่งต่อ",
+        _ when remark.StartsWith("Reject", StringComparison.Ordinal) => "ส่งกลับ",
+        _ when remark.StartsWith("ReturnToSender", StringComparison.Ordinal) => "ส่งกลับหาผู้ยื่น",
+        _ when remark.StartsWith("Decline", StringComparison.Ordinal) => "ไม่อนุมัติ",
+        _ when remark.StartsWith("Cancel", StringComparison.Ordinal) => "ยกเลิกคำขอ",
+        _ when remark.StartsWith("AutoSkip", StringComparison.Ordinal) => "ข้ามอัตโนมัติ (ไม่มีผู้อนุมัติ)",
+        _ when remark.StartsWith("AutoApprove", StringComparison.Ordinal) => "อนุมัติอัตโนมัติ",
+        _ when remark.StartsWith("Create", StringComparison.Ordinal) => "สร้างคำขอ",
+        _ => remark,
+    };
+
+    // ชื่อ field ใน config -> คำที่ผู้ใช้เข้าใจว่าทำไมคนนี้ถึงได้อนุมัติขั้นนี้
+    private static string SourceText(string field) => field switch
+    {
+        "iscustomUser" => "ระบุรายชื่อไว้",
+        "iscustomRole" => "ตามบทบาท (role)",
+        "isupperrole" or "isupperuser" or "SupervisorChain" => "หัวหน้าตามผังองค์กร",
+        "isLOA" => "ตามวงเงินอนุมัติ (LOA)",
+        "isAdhocUser" => "ผู้อนุมัติที่ถูกเรียกเข้ามาเฉพาะงานนี้",
+        "isApproverSameOrg" => "อยู่หน่วยงานเดียวกับผู้ขอ",
+        "isApproverSameCostCenter" => "อยู่ cost center เดียวกับผู้ขอ",
+        "userid1/2/3" => "ระบุ userid ไว้ที่ขั้นนี้",
+        _ => field,
+    };
 
     internal static async Task<List<sc_user>> GetUserRelateAsync(
         HRMContext db, job_master job, wf_sub_workflow_master sub, CancellationToken ct)
