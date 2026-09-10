@@ -1,9 +1,20 @@
-﻿@using HRM.Components.Account.Shared
+@using HRM.Components.Account.Shared
+@using HRM.Components.Shared
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
             <NotAuthorized>
-                <RedirectToLogin />
+                @* สองกรณีต่างกัน (CEO, 11 ก.ย. 2569: "ทำไมมี login ซ้อน"):
+                   - ยังไม่ได้เข้าสู่ระบบ  -> ไปหน้า /login ของจริง แล้วกลับมาหน้าเดิม
+                   - เข้าสู่ระบบแล้วแต่ไม่มีสิทธิ์ -> บอกตรง ๆ ว่าไม่มีสิทธิ์ ไม่ใช่ขอ login อีกรอบ *@
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <AccessDenied />
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
             </NotAuthorized>
         </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

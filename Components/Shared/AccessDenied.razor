@@ -1,0 +1,25 @@
+@using MudBlazor
+@inject NavigationManager Nav
+
+@*
+    แสดงเมื่อผู้ใช้ "เข้าสู่ระบบแล้ว" แต่บทบาทไม่มีสิทธิ์เปิดหน้านี้ (Menu:XXX policy ไม่ผ่าน)
+
+    CEO, 11 ก.ย. 2569: "ทำไมมี login ซ้อน" — เดิม Routes.razor ส่งทุกกรณีที่ไม่ผ่านสิทธิ์
+    ไปหน้า /Account/Login (scaffold เก่าของ Identity) ทั้งที่ผู้ใช้ login อยู่แล้ว
+    ผู้ใช้จึงเห็นหน้า login ซ้อนขึ้นมาแทนคำอธิบายว่าไม่มีสิทธิ์
+*@
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.Lock" Variant="Variant.Outlined">
+        <MudText Typo="Typo.subtitle1"><b>หน้านี้ยังไม่ได้เปิดสิทธิ์ให้บทบาทของคุณ</b></MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            คุณเข้าสู่ระบบอยู่แล้ว แต่เมนูนี้ไม่อยู่ในสิทธิ์ของบทบาทที่คุณได้รับ
+            หากต้องใช้งาน แจ้งผู้ดูแลระบบให้เพิ่มสิทธิ์เมนูให้บทบาทของคุณ
+        </MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">@Nav.Uri</MudText>
+    </MudAlert>
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   OnClick="@(() => Nav.NavigateTo("/"))">กลับหน้าแรก</MudButton>
+    </MudStack>
+</MudContainer>

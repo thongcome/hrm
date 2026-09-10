@@ -1,8 +1,16 @@
-﻿@inject NavigationManager NavigationManager
+@inject NavigationManager NavigationManager
+
+@*
+    ส่งผู้ที่ยังไม่ได้เข้าสู่ระบบไปหน้า /login ของระบบ (Endpoints/LoginEndpoints.cs)
+    ไม่ใช่ /Account/Login ที่ scaffold ของ Identity ทิ้งไว้ — หน้านั้นเป็นฟอร์ม Email/Register
+    คนละระบบบัญชีกับ sc_user (CEO, 11 ก.ย. 2569: "ทำไมมี login ซ้อน")
+    returnUrl ต้องเป็น path ภายใน เพราะ LoginEndpoints ใช้ LocalRedirect
+*@
 
 @code {
     protected override void OnInitialized()
     {
-        NavigationManager.NavigateTo($"Account/Login?returnUrl={Uri.EscapeDataString(NavigationManager.Uri)}", forceLoad: true);
+        var returnUrl = "/" + NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.NavigateTo($"/login?ReturnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
     }
 }
