@@ -46,6 +46,47 @@ public class WorkflowEngineService
     // which of the two negative actions happened (owner's two-action model).
     public const string StatusReturned = "RETURNED";
 
+    // job_master.reasonClosed = "อะไรเป็นตัวปิดงานนี้" ไม่ใช่ข้อความเหตุผล
+    // ตามต้นฉบับ epms (job.reasonClosed = JobStatusService.approve / "Decline")
+    // ข้อความที่ผู้อนุมัติพิมพ์ไปอยู่ที่ job.remark ต่างหาก แยกสองอย่างนี้ออกจากกัน
+    // job_master จึงตอบได้เองว่างานปิดเพราะอนุมัติ ไม่อนุมัติ หรือถูกยกเลิก
+    public const string ClosedByApprove = "Approve";
+    public const string ClosedByDecline = "Decline";
+    public const string ClosedByCancel = "Cancel";
+    public const string ClosedByAutoApprove = "AutoApprove";
+
+    // ── "ใบงานนี้ยังรอทำอยู่จริงไหม" — กฎเดียวสำหรับทุกที่ที่อ่าน ─────────────
+    //
+    // CEO, 10 ก.ย. 2569: "ต้อง stamp ใน jobmaster ว่าปัจจุบัน job อยู่ level ไหน
+    // (islast) แล้วก็ไปดูใน job_userlist นั้น (ตรงกันไหม)" และ "กรองแค่
+    // jobstatus = PENDING ยังไม่ถูก ถ้ามีผู้อนุมัติหลายคน คุณจะอ่านผิดตลอด
+    // แม้ว่า workflow เลื่อนไปแล้ว"
+    //
+    // ทำไมกรองแค่ PENDING ถึงผิด: ขั้นที่มีผู้อนุมัติหลายคน พอมีคนกดจนขั้นนั้นครบ
+    // เงื่อนไขแล้วงานเดินต่อ ใบของคนอื่นในขั้นเดิมถูกปลด isLast=false ก็จริง แต่
+    // jobstatus ยังเป็น PENDING ค้างไว้ตลอดไป (TryAdvanceLevelAsync / MoveAsync
+    // ปลดแค่ isLast) ใครกรองแค่ PENDING จึงเห็นใบพวกนี้เป็น "งานค้าง" ตลอด
+    // ทั้งที่งานเดินผ่านไปนานแล้ว
+    //
+    // ตัวชี้ขาดคือ job_master.lastLevel — บอกว่างานอยู่ขั้นไหน ณ ตอนนี้ ใบที่ยัง
+    // ต้องทำจึงต้องเป็นขั้นเดียวกันนั้น และเป็นใบของรอบล่าสุด (isLast) เท่านั้น
+    //
+    // ตั้งใจไม่เอา jobseq มาร่วมเป็นเงื่อนไข แม้ guard ตอนเขียนของ engine เดิมจะ
+    // เช็ค (approverRow.jobseq != job.jobseq) ด้วย เพราะสอง engine ให้ความหมาย
+    // jobseq ไม่เหมือนกัน:
+    //   - engine เดิม  jobseq เดินเมื่อเปิดรอบใหม่ (ถูกตีกลับแล้วเดินขึ้นมาใหม่)
+    //   - engine ใหม่  jobseq เดินทุก action ตามที่ CEO สั่งไว้ 10 ก.ย. 2569
+    //     ("ต้อง stamp ทุกครั้งที่มี workflow action" — jobseq เป็นของรอยเท้า)
+    // ถ้าเอา jobseq มากรอง ขั้นที่มีผู้อนุมัติหลายคนจะพัง: พอคนแรกกดอนุมัติ
+    // job.jobseq เดินไปแล้ว ใบของคนที่เหลือ (ออกตอน jobseq เก่า) จะหายจาก
+    // กล่องงานทันที ทั้งที่ยังต้องอนุมัติอยู่ — isLast ทำหน้าที่แยกรอบอยู่แล้ว
+    // (ทั้งสอง engine ปลด isLast ของรอบเก่าก่อนออกใบรอบใหม่เสมอ)
+    public static readonly System.Linq.Expressions.Expression<Func<job_user_list, bool>> IsLiveApprovalRow =
+        a => a.jobstatus == StatusPending
+          && a.isLast == true
+          && a.wlevel == a.jobmaster.lastLevel
+          && a.jobmaster.isJobClosed != true;
+
     // Block 6 (Mix Approval): job_user_list.reason rows for a vertical
     // pre-check hop always start with this marker, so hop-completion count
     // and "which round just resolved" detection can be done by string match
@@ -246,7 +287,10 @@ public class WorkflowEngineService
         {
             job.status = StatusCompleted;
             job.isJobClosed = true;
-            job.reasonClosed = "อนุมัติอัตโนมัติ (auto-approve)";
+            job.reasonClosed = ClosedByAutoApprove;
+            job.remark = "อนุมัติอัตโนมัติ (auto-approve)";
+            job.approvedDate = DateTime.Now;
+            job.enddate = DateTime.Now;
             await context.SaveChangesAsync(ct);
             await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", job.jobmasterid.ToString(),
                 new { status = levels[0].standstatus ?? StatusPending }, new { status = StatusCompleted, reason = "auto-approve" }, isSensitive: false, ct);
@@ -389,6 +433,11 @@ public class WorkflowEngineService
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
         approverRow.mas_reason_id = reasonId;
+        // ทุก action ต้องตามไป update job_master ด้วย (CEO, 10 ก.ย. 2569) —
+        // ต้นฉบับ epms Submit/RejectOneStep เขียน job.remark = model.reason ทุกครั้ง
+        // job_master จึงบอกได้เสมอว่า "ล่าสุดเกิดอะไรขึ้นและด้วยเหตุผลอะไร"
+        // โดยไม่ต้องไปไล่หาแถวล่าสุดใน job_user_list เอง
+        job.remark = comment;
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
@@ -486,7 +535,8 @@ public class WorkflowEngineService
 
         job.status = StatusCancelled;
         job.isJobClosed = true;
-        job.reasonClosed = reason;
+        job.reasonClosed = ClosedByCancel;
+        job.remark = reason;
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_master", jobMasterId.ToString(),
@@ -533,9 +583,16 @@ public class WorkflowEngineService
 
         job.status = StatusRejected; // terminal "ไม่อนุมัติ" — a clear declined state, not RETURNED (rework)
         job.isJobClosed = true;
-        job.reasonClosed = comment;
+        // reasonClosed = "การกระทำที่ปิดงาน" ไม่ใช่ข้อความเหตุผล — ตามต้นฉบับ epms
+        // (job.reasonClosed = "Decline" / JobStatusService.approve ส่วนข้อความไป
+        // job.remark) เดิมเราใส่ข้อความลงทั้งสองช่อง ทำให้อ่านจาก job_master ไม่ได้
+        // ว่างานปิดเพราะอนุมัติหรือเพราะไม่อนุมัติ
+        job.reasonClosed = ClosedByDecline;
+        job.remark = comment;
         job.approvedDate = DateTime.Now;
         job.approvedUserID = actorUserId;
+        job.approvedBy = (await context.sc_users
+            .Where(u => u.userid == actorUserId).Select(u => u.loginname).FirstOrDefaultAsync(ct));
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
@@ -584,6 +641,7 @@ public class WorkflowEngineService
         approverRow.approvedate = DateTime.Now;
         approverRow.comment = comment;
         approverRow.mas_reason_id = reasonId;
+        job.remark = comment;   // ตามไป stamp job_master ทุก action (epms: job.remark = model.reason)
 
         // Route back exactly like an engine bounce (increments round, resets the
         // target level, issues a fresh approver round, flips isLast). Returns
@@ -712,9 +770,11 @@ public class WorkflowEngineService
     public async Task<List<job_user_list>> GetMyInboxAsync(long userId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        // ใบที่ยังรอทำจริง = IsLiveApprovalRow (ดูคำอธิบายกฎที่ประกาศไว้ด้านบนไฟล์)
         return await context.job_user_lists
             .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
-            .Where(a => a.userid == userId && a.jobstatus == StatusPending)
+            .Where(IsLiveApprovalRow)
+            .Where(a => a.userid == userId)
             .OrderBy(a => a.jobmaster.createdate)
             .ToListAsync(ct);
     }
@@ -738,9 +798,13 @@ public class WorkflowEngineService
     public async Task<List<PoolInboxRow>> GetMyPoolInboxAsync(long userId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        // pool คือขั้นที่มีผู้อนุมัติหลายคนโดยนิยาม จุดนี้จึงเป็นจุดที่การกรองแค่
+        // PENDING เพี้ยนหนักที่สุด — พอเพื่อนร่วมทีมคนหนึ่งรับงานไปทำจนงานเดินต่อ
+        // ใบของคนที่เหลือยังค้าง PENDING งานที่ทำไปแล้วก็จะโชว์ใน pool ตลอดไป
         var pending = await context.job_user_lists
             .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
-            .Where(a => a.userid == userId && a.jobstatus == StatusPending)
+            .Where(IsLiveApprovalRow)
+            .Where(a => a.userid == userId)
             .ToListAsync(ct);
         if (pending.Count == 0) return new();
 
@@ -885,7 +949,8 @@ public class WorkflowEngineService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         return await context.job_user_lists
             .Include(a => a.jobmaster)
-            .Where(a => a.userid == null && a.jobstatus == StatusPending)
+            .Where(IsLiveApprovalRow)
+            .Where(a => a.userid == null)
             .OrderBy(a => a.jobmaster.createdate)
             .ToListAsync(ct);
     }
@@ -1301,8 +1366,15 @@ public class WorkflowEngineService
             // "approved" text instead of a hardcoded engine constant.
             job.status = completedSnapshot.forwardstatus ?? StatusCompleted;
             job.isJobClosed = true;
+            // ครบชุดตามต้นฉบับ epms Approve: status / isJobClosed / reasonClosed /
+            // approvedDate / approvedUserID / approvedBy — เดิมขาด reasonClosed,
+            // approvedBy และ enddate ทำให้ job ที่ปิดแล้วไม่มีวันจบและไม่รู้ว่าใครปิด
+            job.reasonClosed = ClosedByApprove;
             job.approvedDate = DateTime.Now;
             job.approvedUserID = actorUserId;
+            job.approvedBy = await context.sc_users
+                .Where(u => u.userid == actorUserId).Select(u => u.loginname).FirstOrDefaultAsync(ct);
+            job.enddate = DateTime.Now;
             Serilog.Log.Information("Job {JobMasterId} closed: Approved at level {Level}", job.jobmasterid, completedLevel);
             return WorkflowOutcome.Approved;
         }
@@ -1328,7 +1400,8 @@ public class WorkflowEngineService
     {
         job.status = completedSnapshot.backwardstatus ?? StatusRejected;
         job.isJobClosed = true;
-        job.reasonClosed = comment;
+        job.reasonClosed = ClosedByDecline;
+        job.remark = comment;
         Serilog.Log.Information("Job {JobMasterId} closed: Rejected/Returned at level {Level}", job.jobmasterid, completedSnapshot.wlevel);
     }
 
@@ -2291,14 +2364,18 @@ public class WorkflowEngineService
     public async Task<string> GetPendingApproverNamesAsync(long jobMasterId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        // "ตอนนี้ใครค้างอนุมัติอยู่" — ต้องอ่านจากขั้นที่ job_master บอกว่างานอยู่
+        // เดิมกรองแค่ PENDING แล้วเอา min(wlevel) ซึ่งผิดเสมอเมื่อขั้นก่อนหน้ามี
+        // ผู้อนุมัติหลายคน: ใบของคนที่เหลือในขั้นเก่ายังค้าง PENDING และ wlevel
+        // น้อยกว่าขั้นปัจจุบัน min() จึงไปหยิบขั้นที่งานผ่านไปแล้วมาตอบ
         var pending = await context.job_user_lists
-            .Where(a => a.jobmasterid == jobMasterId && a.jobstatus == StatusPending)
+            .Where(IsLiveApprovalRow)
+            .Where(a => a.jobmasterid == jobMasterId)
             .Select(a => new { a.wlevel, a.userid })
             .ToListAsync(ct);
         if (pending.Count == 0) return "";
 
-        var minLevel = pending.Min(p => p.wlevel ?? 0);
-        var userIds = pending.Where(p => (p.wlevel ?? 0) == minLevel && p.userid.HasValue)
+        var userIds = pending.Where(p => p.userid.HasValue)
             .Select(p => p.userid!.Value).Distinct().ToList();
 
         var users = await context.sc_users

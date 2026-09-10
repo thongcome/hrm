@@ -1,0 +1,116 @@
+@using HRM.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using HRM.Services.Workflow
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+@*
+    กระดิ่งแจ้งเตือนงานรออนุมัติ — CEO, 10 ก.ย. 2569: "notice บนหน้าจอก่อน"
+
+    ไม่ต้องมีตารางแจ้งเตือนใหม่ เพราะ job_user_list แถวที่ยัง PENDING และ
+    isLast=true ก็คือ "งานที่รอคุณอยู่" อยู่แล้ว — แจ้งเตือนคือการเอาสิ่งที่มี
+    อยู่แล้วมาแสดง ไม่ใช่การเก็บซ้ำอีกที่
+
+    ลิงก์แต่ละงานพาไปหน้าที่ถูกต้องตาม engine ที่ workflow นั้นใช้อยู่
+*@
+
+@if (_count > 0)
+{
+    <MudMenu Class="mr-1" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+        <ActivatorContent>
+            <MudBadge Content="@_count" Color="Color.Error" Overlap="true" Bordered="true">
+                <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit"
+                               Title="@($"มีงานรอคุณ {_count} รายการ")" />
+            </MudBadge>
+        </ActivatorContent>
+        <ChildContent>
+            <div class="px-4 py-2">
+                <MudText Typo="Typo.subtitle2">งานรอคุณดำเนินการ (@_count)</MudText>
+            </div>
+            <MudDivider />
+            @foreach (var n in _items)
+            {
+                <MudMenuItem OnClick="@(() => Open(n))">
+                    <div style="max-width:340px">
+                        <MudText Typo="Typo.body2" Style="font-weight:600">@n.Subject</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @n.WorkflowName · ขั้นที่ @n.Level
+                            @if (n.Days > 0) { <span> · ค้าง @n.Days วัน</span> }
+                        </MudText>
+                    </div>
+                </MudMenuItem>
+            }
+            @if (_count > _items.Count)
+            {
+                <MudDivider />
+                <MudMenuItem OnClick="@(() => Nav.NavigateTo("/wf/my-inbox"))">
+                    <MudText Typo="Typo.body2">ดูทั้งหมด @_count รายการ</MudText>
+                </MudMenuItem>
+            }
+        </ChildContent>
+    </MudMenu>
+}
+
+@code {
+    private record Notice(long JobMasterId, long WorkflowId, string? Subject, string? WorkflowName, int Level, int Days);
+
+    private int _count;
+    private List<Notice> _items = new();
+    private HashSet<long> _newEngine = new();
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    // เรียกจากภายนอกได้เมื่อเพิ่งทำงานเสร็จ จะได้ไม่ต้องรีเฟรชหน้า
+    public async Task ReloadAsync()
+    {
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            if (state.User?.Identity?.IsAuthenticated != true) return;
+            if (!long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var userId) || userId == 0) return;
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // ใช้กฎเดียวกับกล่องงาน (WorkflowEngineService.IsLiveApprovalRow) ตัวเดียว
+            // กระดิ่งกับกล่องงานจึงนับตรงกันเสมอ ไม่มีทางเพี้ยนคนละทาง
+            var rows = await db.job_user_lists
+                .Where(WorkflowEngineService.IsLiveApprovalRow)
+                .Where(a => a.userid == userId)
+                .Select(a => new
+                {
+                    a.jobmasterid,
+                    a.workflowid,
+                    a.jobmaster.subject,
+                    a.jobmaster.wname,
+                    a.wlevel,
+                    a.sendDate,
+                })
+                .OrderByDescending(a => a.jobmasterid)
+                .Take(50)
+                .ToListAsync();
+
+            _count = rows.Count;
+            _items = rows.Take(8).Select(r => new Notice(
+                r.jobmasterid, r.workflowid, r.subject, r.wname, r.wlevel ?? 0,
+                r.sendDate is null ? 0 : (int)(DateTime.Now - r.sendDate.Value).TotalDays)).ToList();
+
+            _newEngine = (await db.wf_workflows.Where(w => w.useNewEngine == true)
+                .Select(w => w.workflowid).ToListAsync()).ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            // กระดิ่งพังต้องไม่ทำให้ทั้งหน้าพัง
+            Serilog.Log.Error(ex, "โหลดรายการแจ้งเตือนงานรออนุมัติไม่สำเร็จ");
+            _count = 0;
+            _items = new();
+        }
+    }
+
+    private void Open(Notice n) => Nav.NavigateTo(
+        _newEngine.Contains(n.WorkflowId)
+            ? $"/workflow/detail/{n.JobMasterId}"
+            : $"/wf/my-inbox/{n.JobMasterId}");
+}

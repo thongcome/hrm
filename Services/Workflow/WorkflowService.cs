@@ -804,7 +804,9 @@ public class WorkflowService
         {
             var actor = await db.sc_users.FirstOrDefaultAsync(u => u.userid == model.actorUserId, ct);
             job.isJobClosed = true;
-            job.reasonClosed = model.reason;
+            // reasonClosed เก็บ "อะไรปิดงาน" ตามต้นฉบับ epms (Approve/Decline)
+            // ข้อความเหตุผลอยู่ที่ job.remark ที่ stamp ไปแล้วด้านบน
+            job.reasonClosed = WorkflowEngineService.ClosedByApprove;
             job.approvedDate = DateTime.Now;
             job.approvedUserID = model.actorUserId;
             job.approvedBy = actor?.loginname;
