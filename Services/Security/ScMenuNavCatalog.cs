@@ -133,6 +133,10 @@ public static class ScMenuNavCatalog
         // CEO order 7 ก.ย. 2569 (Pool Workflow): shared view of pending
         // isPool-level rows — discovery only, completion rule unchanged.
         new("GRP_ESS", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 77), // ungated: ESS-personalized, self-scoped by userid
+        // BA proposal 3 (CEO 10 ก.ย. 2569): temporary approval delegation. Self-service —
+        // the person who knows they will be away is the person themselves — so ungated
+        // and self-scoped like the three rows above. Same url also under GRP_WF_ENGINE.
+        new("GRP_ESS", null, "/wf/delegations", "มอบฉันทะการอนุมัติ", "Approval Delegation", "Icons.Material.Filled.SwapHorizontalCircle", 78),
         // CEO order 7 ก.ย. 2569: supervisor sees their whole team's jobs, not
         // just their own — self-scoped (expands automatically if a boss).
         new("GRP_MSS", null, "/wf/team-jobs", "งานอนุมัติในทีมของฉัน", "My Team's Approvals", "Icons.Material.Filled.Groups", 25),
@@ -357,6 +361,11 @@ public static class ScMenuNavCatalog
         new("GRP_WF_ENGINE", null, "/wf/my-inbox", "งานรออนุมัติของฉัน", "My Pending Approvals", "Icons.Material.Filled.Inbox", 100), // TODO ungated today (ESS-personalized approval inbox, self-scoped by userid)
         new("GRP_WF_ENGINE", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 101), // ungated: ESS-personalized, self-scoped by createuserid
         new("GRP_WF_ENGINE", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 102), // ungated: ESS-personalized, self-scoped by userid
+        // BA proposals (CEO 10 ก.ย. 2569). Delegation is ungated/self-scoped (also under
+        // GRP_ESS); health check and cycle-time are admin tools, gated like the rest.
+        new("GRP_WF_ENGINE", null, "/wf/delegations", "มอบฉันทะการอนุมัติ", "Approval Delegation", "Icons.Material.Filled.SwapHorizontalCircle", 103),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/health", "ตรวจสุขภาพ Workflow", "Workflow Health Check", "Icons.Material.Filled.HealthAndSafety", 7), // sits next to the designer — used together when fixing config
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/cycle-time", "เวลาที่ใช้ในแต่ละขั้น", "Cycle Time by Step", "Icons.Material.Filled.Timer", 106), // a report, so next to the jobs overview
         // CEO order 7 ก.ย. 2569 (approval-inbox gap #2): cross-module search
         // over every job_master, not just vacant slots — "ผู้ที่เกี่ยวข้อง...
         // ต้องรู้เห็น เรียกดูงานได้".
