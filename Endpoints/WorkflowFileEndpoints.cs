@@ -17,7 +17,12 @@ public static class WorkflowFileEndpoints
 {
     public static void MapWorkflowFileEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/wf/files").RequireAuthorization("Menu:WF_WORKFLOW_ADMIN");
+        // CEO, 10 ก.ย. 2569: "ไฟล์ไม่ต้อง lock สิทธิ์ เพราะทุกคนใน workflow ต้องดูไฟล์ได้
+        // ตลอดเวลา" — เดิม group นี้บังคับ Menu:WF_WORKFLOW_ADMIN ผู้อนุมัติและผู้ขอ
+        // ธรรมดากดลิงก์ไฟล์ในกล่องงานแล้วโดนปฏิเสธ ตอนนี้ตรวจจากสิ่งที่ถูกต้องแทน:
+        // "คุณเกี่ยวข้องกับงานที่ไฟล์นี้อยู่ไหม" (ผู้ขอ หรือมีชื่อใน job_user_list)
+        // การ "แนบ" ยังจำกัดที่ขั้นของตัวเองตามกฎอีกข้อ แต่การ "ดู" เปิดให้ทั้งวง
+        var group = app.MapGroup("/wf/files").RequireAuthorization();
 
         group.MapGet("/attachment/{docId:long}", async (
             long docId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage, IAuditLogger auditLogger) =>
@@ -26,6 +31,24 @@ public static class WorkflowFileEndpoints
             var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docId && d.doctypecode == "WF_ATTACHMENT");
             if (doc is null || string.IsNullOrWhiteSpace(doc.path) || string.IsNullOrWhiteSpace(doc.files))
                 return Results.NotFound();
+
+            // refid ของ WF_ATTACHMENT คือ jobapproverid -> หางานที่ไฟล์นี้สังกัด
+            if (!long.TryParse(httpContext.User.FindFirst("sc_userid")?.Value, out var userId) || userId == 0)
+                return Results.Forbid();
+            var jobId = doc.refid is long approverRowId
+                ? await context.job_user_lists.Where(a => a.jobapproverid == approverRowId)
+                    .Select(a => (long?)a.jobmasterid).FirstOrDefaultAsync()
+                : null;
+            if (jobId is null) return Results.NotFound();
+
+            // CEO: "สิทธิ์มันเห็นจาก job_user_list อยู่แล้ว" — ใครเปิดหน้างานได้ก็เห็นไฟล์ได้
+            // กฎเดียวกับหน้า: ผู้ขอ / มีชื่อในวง / ผู้ดูแล workflow (เปิดจากหน้าภาพรวมงาน)
+            var isWfAdmin = httpContext.User.FindAll("menu")
+                .Any(c => string.Equals(c.Value, "WF_WORKFLOW_ADMIN", StringComparison.OrdinalIgnoreCase));
+            var involved = isWfAdmin
+                        || await context.job_masters.AnyAsync(j => j.jobmasterid == jobId && j.createuserid == userId)
+                        || await context.job_user_lists.AnyAsync(a => a.jobmasterid == jobId && a.userid == userId);
+            if (!involved) return Results.Forbid();
 
             await auditLogger.LogAccessAsync("doc_center", docId.ToString(), isSensitive: false,
                 note: $"workflow attachment download ({doc.files})");

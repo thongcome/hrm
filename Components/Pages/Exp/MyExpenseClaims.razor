@@ -23,7 +23,12 @@ else
     <MudPaper Class="pa-4 mb-4">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h5">ใบเบิกค่าใช้จ่ายของฉัน</MudText>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateDraftAsync">สร้างใบเบิกใหม่</MudButton>
+            @* ซ่อนเมื่อถูกฝังในหน้างานอนุมัติ — เริ่มเรื่องใหม่ต้องไปที่หน้าแรกของ workflow *@
+            @if (!Embedded)
+            {
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="CreateDraftAsync">สร้างใบเบิกใหม่</MudButton>
+            }
         </MudStack>
 
         <MudTable Items="_claims" Dense="true" Hover="true" Class="mt-4">
@@ -55,6 +60,9 @@ else
 }
 
 @code {
+    /// <summary>true เมื่อหน้านี้ถูกฝังในหน้างานอนุมัติ (WorkflowDetail ส่งมาให้) — ซ่อนปุ่มเริ่มเรื่องใหม่</summary>
+    [Parameter] public bool Embedded { get; set; }
+
     private bool _notFound;
     private long _hremployeeId;
     private List<Exp_ClaimHeader> _claims = new();

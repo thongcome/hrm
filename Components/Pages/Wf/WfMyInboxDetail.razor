@@ -118,11 +118,20 @@
                             }
                         </MudStack>
                     }
-                    <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(context.jobapproverid, file))">
-                        <ActivatorContent>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">@L.Translate("WfAttachFileButton")</MudButton>
-                        </ActivatorContent>
-                    </MudFileUpload>
+                    @* CEO, 10 ก.ย. 2569: "ถ้าผ่านขั้นตัวเองไปแล้ว แนบไฟล์ไม่ได้ แก้ไขไฟล์ไม่ได้"
+                       แนบได้เฉพาะแถวของฉันที่ยังรออยู่ที่ขั้นปัจจุบัน (กฎเดียวกับ IsLiveApprovalRow)
+                       ส่วนการ "ดู" ไฟล์เปิดให้ทุกคนใน workflow ตลอด — ลิงก์ด้านบนไม่ถูกกั้น *@
+                    @if (context.userid == _actorUserId
+                         && context.isLast == true
+                         && context.wlevel == _job.lastLevel
+                         && string.Equals(context.jobstatus, WorkflowEngineService.StatusPending, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudFileUpload T="IBrowserFile" FilesChanged="@(file => UploadAttachmentAsync(context.jobapproverid, file))">
+                            <ActivatorContent>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.AttachFile">@L.Translate("WfAttachFileButton")</MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -301,6 +310,17 @@
 
     private async Task UploadAttachmentAsync(long jobApproverId, IBrowserFile file)
     {
+        // ปุ่มที่ซ่อนไว้กันคนเดา URL ไม่ได้ — ตรวจซ้ำที่นี่ด้วยกฎเดียวกับหน้าจอ
+        var row = _job?.job_user_lists.FirstOrDefault(a => a.jobapproverid == jobApproverId);
+        var mineAndLive = row is not null && row.userid == _actorUserId && row.isLast == true
+            && row.wlevel == _job!.lastLevel
+            && string.Equals(row.jobstatus, WorkflowEngineService.StatusPending, StringComparison.OrdinalIgnoreCase);
+        if (!mineAndLive)
+        {
+            _error = "แนบไฟล์ได้เฉพาะขั้นที่คุณกำลังพิจารณาอยู่ — ขั้นที่ผ่านไปแล้วแก้ไขไม่ได้";
+            return;
+        }
+
         _error = null;
         _info = null;
         try

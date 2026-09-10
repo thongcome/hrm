@@ -146,3 +146,22 @@ footer {
     .mud-appbar a[href="/login"] .mud-icon-root,
     .mud-appbar a[href="/logout"] .mud-icon-root { font-size: 1.5rem; }
 }
+
+/* === Reconnect overlay with the AD logo (see App.razor #components-reconnect-modal) ===
+   blazor.web.js toggles components-reconnect-show / -failed / -rejected on the modal element.
+   Hidden by default; only the message that matches the current state is visible. */
+.ad-reconnect { display: none; position: fixed; inset: 0; z-index: 2000; background: rgba(250, 247, 245, .92);
+                align-items: center; justify-content: center; font-family: inherit; }
+.ad-reconnect.components-reconnect-show,
+.ad-reconnect.components-reconnect-failed,
+.ad-reconnect.components-reconnect-rejected { display: flex; }
+.ad-reconnect-card { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 32px 40px;
+                     background: #fff; border-radius: 16px; box-shadow: 0 8px 32px rgba(29, 43, 79, .14); color: #231F20; }
+.ad-reconnect-logo { width: 72px; height: 72px; animation: ad-reconnect-pulse 1.6s ease-in-out infinite; }
+.ad-reconnect-show, .ad-reconnect-failed, .ad-reconnect-rejected { display: none; }
+.components-reconnect-show .ad-reconnect-show,
+.components-reconnect-failed .ad-reconnect-failed,
+.components-reconnect-rejected .ad-reconnect-rejected { display: block; }
+.ad-reconnect a { color: #E8491D; font-weight: 600; }
+@keyframes ad-reconnect-pulse { 0%, 100% { transform: scale(1); opacity: .85 } 50% { transform: scale(1.08); opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .ad-reconnect-logo { animation: none; } }

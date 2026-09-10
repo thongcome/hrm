@@ -100,7 +100,7 @@
                     <MudTd>@context.wname</MudTd>
                     <MudTd><MudChip T="string" Size="Size.Small">@context.status</MudChip></MudTd>
                     <MudTd>@context.lastLevel</MudTd>
-                    <MudTd><MudButton Size="Size.Small" Variant="Variant.Outlined"
+                    <MudTd><MudButton Size="Size.Small" Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.ArrowForward"
                                       Href="@($"/workflow/detail/{context.jobmasterid}")">เปิด</MudButton></MudTd>
                 </RowTemplate>
             </MudTable>
@@ -108,7 +108,22 @@
     }
     else if (_m?.jobMaster is null)
     {
-        <MudAlert Severity="Severity.Info">@(_m?.message.FirstOrDefault() ?? "กำลังโหลด...")</MudAlert>
+        @if (_m?.message.FirstOrDefault() is string msg)
+        {
+            <MudAlert Severity="Severity.Info">@msg</MudAlert>
+        }
+        else
+        {
+            <AdLoader Text="กำลังเปิดงาน…" />
+        }
+    }
+    else if (!_m.canView && !_isWfAdmin)
+    {
+        @* CEO: "สิทธิ์มันเห็นจาก job_user_list อยู่แล้ว" — ไม่อยู่ในวงก็ไม่เห็นงาน
+           กฎเดียวกับ endpoint ไฟล์ จึงไม่มีทางเห็นหน้าได้แต่โหลดไฟล์ไม่ได้ (หรือกลับกัน) *@
+        <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.Lock">
+            งานนี้ไม่ได้อยู่ในวงของคุณ — เห็นได้เฉพาะผู้ยื่นคำขอ ผู้อนุมัติที่มีชื่อในเส้นทาง และผู้ดูแล workflow
+        </MudAlert>
     }
     else
     {
@@ -136,7 +151,17 @@
         @if (_route.Count > 0)
         {
             <MudExpansionPanels Elevation="0" Class="mb-2">
-                <MudExpansionPanel Text="@($"เส้นทางอนุมัติทั้งหมด {_route.Count} ขั้น — ดูว่าเรื่องจะผ่านใครบ้าง")">
+                @* CEO: ตรงไหนคลิก/ขยายได้ต้องมีสัญลักษณ์บอก — ไอคอน + คำว่าคลิกเพื่อขยาย ไม่พึ่งลูกศรจาง ๆ อย่างเดียว *@
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountTree" Color="Color.Primary" Size="Size.Small" />
+                            <MudText Typo="Typo.subtitle2">เส้นทางอนุมัติทั้งหมด @_route.Count ขั้น — ดูว่าเรื่องจะผ่านใครบ้าง</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                     Icon="@Icons.Material.Filled.UnfoldMore">คลิกเพื่อขยาย</MudChip>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
                     <MudTable Items="_route" Dense="true" Hover="false" Elevation="0">
                         <HeaderContent>
                             <MudTh>ขั้น</MudTh><MudTh>ชื่อขั้น</MudTh><MudTh>ผู้อนุมัติ</MudTh><MudTh></MudTh>
@@ -160,7 +185,9 @@
                                         if (i > 0) { <span>, </span> }
                                         if (_canOpenEmployee && a.HremployeeId is long hid)
                                         {
-                                            <MudLink Href="@($"/employee/{hid}")" Target="_blank">@a.Name</MudLink>
+                                            <MudLink Href="@($"/employee/{hid}")" Target="_blank" Title="เปิดข้อมูลพนักงานในแท็บใหม่">
+                                                @a.Name <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Style="font-size:0.9em;vertical-align:-2px" />
+                                            </MudLink>
                                         }
                                         else
                                         {
@@ -191,6 +218,7 @@
                         ขั้นที่ผ่านไปแล้วแสดงชื่อคนที่ทำจริง ขั้นที่ยังไม่ถึงอ่านจากการตั้งค่าของ workflow ณ ตอนนี้
                         — ถ้าผังองค์กรหรือผู้รับมอบฉันทะเปลี่ยน รายชื่อจะเปลี่ยนตาม
                     </MudText>
+                    </ChildContent>
                 </MudExpansionPanel>
             </MudExpansionPanels>
         }
@@ -567,6 +595,8 @@
         // อ่านแบบเดียวกับ DbNavMenu (FindAll("menu"), ไม่สนตัวพิมพ์) จะได้ตรงกับเมนูเสมอ
         _canOpenEmployee = state.User.FindAll("menu")
             .Any(c => string.Equals(c.Value, "PAY_ADMIN", StringComparison.OrdinalIgnoreCase));
+        _isWfAdmin = state.User.FindAll("menu")
+            .Any(c => string.Equals(c.Value, "WF_WORKFLOW_ADMIN", StringComparison.OrdinalIgnoreCase));
 
         if (WorkflowId is long wfid)
         {
@@ -675,6 +705,8 @@
     // /employee/{id} ติด Menu:PAY_ADMIN — ลิงก์ชื่อผู้อนุมัติไปหน้านั้นเฉพาะคนที่เปิดได้
     // ไม่งั้นผู้อนุมัติทั่วไปกดแล้วเจอ Access denied ซึ่งแย่กว่าไม่มีลิงก์
     private bool _canOpenEmployee;
+    // ผู้ดูแล workflow เปิดงานได้ทุกงาน (มาจากหน้าภาพรวม/เปลี่ยนผู้อนุมัติ) นอกนั้นต้องอยู่ในวง
+    private bool _isWfAdmin;
 
     private static Color ButtonColor(string c) => c?.ToLowerInvariant() switch
     {
@@ -898,12 +930,22 @@
         var refid = _m?.jobMaster?.refid ?? "";
         if (string.IsNullOrWhiteSpace(route)) return;
 
+        // งานที่ยังไม่มีเอกสารผูก (refid ว่าง) ต้องไม่ฝังอะไรเลย — ไม่งั้น
+        // "/exp/my-claims/{refid}" ยุบเหลือ "/exp/my-claims" แล้วไปจับหน้า list ทั้งหน้า
+        // ซึ่งมีปุ่ม "สร้างใบเบิกใหม่" โผล่กลางงานอนุมัติ (CEO เจอเองที่งาน #10097)
+        // ปล่อยให้ตกไปที่แผงข้อเท็จจริงของคำขอด้านล่างแทน
+        if (string.IsNullOrWhiteSpace(refid)) return;
+
         var url = route.Replace("{refid}", refid, StringComparison.OrdinalIgnoreCase);
         var (type, prms) = MatchRoute(url);
         if (type is null) { _docLink = url; return; }
 
         AddIfDeclared(type, prms, "RefId", refid);
         AddIfDeclared(type, prms, "JobMasterId", Id);
+        // CEO, 10 ก.ย. 2569: การเริ่มเรื่องใหม่อยู่ที่หน้าแรก /workflow แยกหมวดเท่านั้น
+        // หน้าโมดูลที่ถูกฝังในงานต้องซ่อนปุ่ม "สร้าง…ใหม่" ของตัวเอง — ประกาศ
+        // [Parameter] bool Embedded รับค่านี้ หน้าที่ไม่ประกาศไม่กระทบ
+        AddIfDeclared(type, prms, "Embedded", true);
         _docType = type;
         _docParams = prms;
     }

@@ -1,0 +1,55 @@
+@*
+    ตัวโหลดแบบมีลูกเล่นจากโลโก้ AD — CEO, 10 ก.ย. 2569: "ตอนรอ ใช้ logo นี้ simulation แบบเท่ห์ๆ"
+
+    ใช้แทนข้อความ "กำลังโหลด..." / MudProgressCircular ทั่วระบบ (มี 113 จุดใน 94 ไฟล์
+    ค่อย ๆ ทยอยแทน) เขียนเป็น SVG inline เพื่อให้ animation ทำงานได้โดยไม่ต้องโหลดไฟล์
+    ก่อน: เส้น A และ D วาดตัวเองขึ้นมาแล้วเติมสี วนซ้ำ — คนที่ตั้งค่า reduce motion
+    จะเห็นโลโก้นิ่งพร้อมข้อความเฉย ๆ
+*@
+
+<div class="ad-loader" role="status" aria-live="polite" style="--ad-size:@(Size)px">
+    <svg viewBox="0 0 512 512" class="ad-loader-mark" aria-hidden="true">
+        <g fill="none" stroke="#E8491D" stroke-width="14" stroke-linejoin="round">
+            <path class="ad-stroke" d="M28 430 L168 82 H248 L328 248 H276 L208 138 L96 430 Z"/>
+            <path class="ad-stroke ad-stroke-2" d="M148 336 H238 L226 302 H160 Z"/>
+            <path class="ad-stroke ad-stroke-3" d="M300 82 H372 C472 82 510 168 510 256 C510 344 472 430 372 430 H232 L258 366 H372 C420 366 446 308 446 256 C446 204 420 146 372 146 H323 Z"/>
+        </g>
+        <g class="ad-fill" fill="#E8491D" fill-rule="evenodd">
+            <path d="M28 430 L168 82 H248 L328 248 H276 L208 138 L96 430 Z"/>
+            <path d="M148 336 H238 L226 302 H160 Z"/>
+            <path d="M300 82 H372 C472 82 510 168 510 256 C510 344 472 430 372 430 H232 L258 366 H372 C420 366 446 308 446 256 C446 204 420 146 372 146 H323 Z"/>
+        </g>
+    </svg>
+    @if (!string.IsNullOrWhiteSpace(Text))
+    {
+        <div class="ad-loader-text">@Text</div>
+    }
+</div>
+
+<style>
+    .ad-loader { display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 0; }
+    .ad-loader-mark { width:var(--ad-size); height:var(--ad-size); }
+    .ad-loader-text { font-size:0.9rem; color:#6b7280; letter-spacing:.02em; }
+
+    /* วาดเส้นขึ้นมาก่อน แล้วค่อยเติมสี จากนั้นหายไปเริ่มใหม่ — 2.4 วินาทีต่อรอบ */
+    .ad-stroke { stroke-dasharray:1400; stroke-dashoffset:1400; animation:ad-draw 2.4s ease-in-out infinite; }
+    .ad-stroke-2 { animation-delay:.25s; }
+    .ad-stroke-3 { animation-delay:.4s; }
+    .ad-fill { opacity:0; animation:ad-fill 2.4s ease-in-out infinite; transform-origin:50% 50%; }
+
+    @@keyframes ad-draw { 0% { stroke-dashoffset:1400; opacity:1 } 45% { stroke-dashoffset:0; opacity:1 } 70% { opacity:0 } 100% { stroke-dashoffset:0; opacity:0 } }
+    @@keyframes ad-fill { 0%,40% { opacity:0; transform:scale(.96) } 60% { opacity:1; transform:scale(1) } 85% { opacity:1 } 100% { opacity:0; transform:scale(1.02) } }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .ad-stroke { animation:none; stroke-dashoffset:0; opacity:0; }
+        .ad-fill { animation:none; opacity:1; }
+    }
+</style>
+
+@code {
+    /// <summary>ข้อความใต้โลโก้ — ค่าว่างจะไม่แสดง</summary>
+    [Parameter] public string? Text { get; set; } = "กำลังโหลด…";
+
+    /// <summary>ขนาดโลโก้เป็น px</summary>
+    [Parameter] public int Size { get; set; } = 72;
+}

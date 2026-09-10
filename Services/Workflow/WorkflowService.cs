@@ -64,6 +64,11 @@ public class WorkFlowViewModel
     public int? sendBackToLevel { get; set; }
 
     // ── ขั้นแบบงานกอง (isPool) ── ต้องกดรับงานก่อนถึงจะดำเนินการได้
+    // ใครเปิดหน้างานนี้ได้ — CEO, 10 ก.ย. 2569: "สิทธิ์มันเห็นจาก job_user_list อยู่แล้ว"
+    // ผู้ขอ หรือใครก็ตามที่มีชื่อในวงของงานนี้ (ทุกขั้น ทั้งที่ผ่านแล้วและยังไม่ถึง)
+    // ผู้ดูแล workflow หน้าจอเติมเองจาก claim — service ไม่รู้จัก claim
+    public bool canView { get; set; }
+
     // ปุ่มไหนควรขึ้น — ตัดสินที่ service ที่เดียว หน้าจอไม่ต้องรู้กฎเอง
     public bool canDecline { get; set; }      // ขั้นสุดท้ายเท่านั้นถึงปฏิเสธถาวรได้
     public bool canCancel { get; set; }       // ผู้ยื่นถอนเรื่องของตัวเอง
@@ -708,6 +713,10 @@ public class WorkflowService
             a.userid == actorUserId && a.isLast == true && a.wlevel == currentlevel
             && string.Equals(a.jobstatus, Pending, StringComparison.OrdinalIgnoreCase));
         model.isCurrentUser = model.jobUserListSession is not null && job.isJobClosed != true;
+
+        // อยู่ในวงของงานนี้ไหม — กฎเดียวกับที่ endpoint ไฟล์ใช้ จะได้ไม่มีวันเห็นหน้าแต่โหลดไฟล์ไม่ได้
+        model.canView = job.createuserid == actorUserId
+                     || model.jobUserList.Any(a => a.userid == actorUserId);
 
         // ปฏิเสธถาวรได้เฉพาะผู้ตัดสินสุดท้าย ขั้นกลางใช้ "ส่งกลับ" แทน
         model.canDecline = model.isCurrentUser && model.subWorkflow?.istop == true;

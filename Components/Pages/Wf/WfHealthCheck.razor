@@ -1,6 +1,7 @@
 @page "/wf/health"
 @using HRM.Models
 @using HRM.Services.Workflow
+@using System.Reflection
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -191,6 +192,18 @@ else
                             "ตั้งแถบวงเงินที่หน้า LOA หรือปลดติ๊กถ้าไม่ได้ใช้", "/wf/loa"));
                 }
 
+                // controller ที่ชี้ไป route ซึ่งไม่มีหน้าไหนประกาศ — หน้าอนุมัติจะฝังไม่ได้
+                // และตกไปแสดงเป็นลิงก์ที่กดแล้วเจอหน้า 404 (พบจริง: EXPENSE_CLAIM_APPROVAL
+                // ตั้ง /exp/admin/claims/{refid} ซึ่งไม่มีหน้านั้นอยู่)
+                foreach (var s in visible.Where(s => !string.IsNullOrWhiteSpace(s.controller)))
+                {
+                    if (!RouteExists(s.controller!))
+                        found.Add(new(Sev.Warning, $"{name} ขั้น {s.wlevel}",
+                            $"หน้ารายละเอียด \"{s.controller}\" ไม่มีอยู่ในระบบ",
+                            "ผู้อนุมัติจะไม่เห็นเอกสาร ได้แค่ลิงก์ที่เปิดแล้วไม่พบหน้า",
+                            "แก้ช่องหน้ารายละเอียด (controller) ให้ตรงกับ route ของหน้าที่มีจริง", design));
+                }
+
                 if (w.isactive == true && string.IsNullOrWhiteSpace(w.tableref)
                     && !mine.Any(s => !string.IsNullOrWhiteSpace(s.controller)))
                     found.Add(new(Sev.Info, name, "ยังไม่ได้ผูกหน้าเอกสาร",
@@ -225,6 +238,32 @@ else
                 .OrderBy(f => f.Severity).ThenBy(f => f.Where, StringComparer.Ordinal).ToList();
         }
         finally { _busy = false; }
+    }
+
+    // route table ของแอปเอง (แบบเดียวกับ MatchRoute ในหน้า workflow) — ไว้ตรวจว่า
+    // controller ที่ config ไว้ชี้ไปหน้าที่มีจริงไหม แทน "{refid}" ด้วยเลขเพื่อให้ผ่าน
+    // constraint {Id:long} ของหน้ารายละเอียด
+    private static readonly Lazy<List<string[]>> _routeTemplates = new(() =>
+        typeof(WorkflowService).Assembly.GetTypes()
+            .Where(t => typeof(IComponent).IsAssignableFrom(t) && !t.IsAbstract)
+            .SelectMany(t => t.GetCustomAttributes<RouteAttribute>().Select(a => a.Template))
+            .Select(tpl => tpl.Trim('/').Split('/'))
+            .ToList());
+
+    private static bool RouteExists(string controller)
+    {
+        var parts = controller.Replace("{refid}", "1", StringComparison.OrdinalIgnoreCase)
+            .Split('?')[0].Trim('/').Split('/');
+        foreach (var segs in _routeTemplates.Value)
+        {
+            if (segs.Length != parts.Length) continue;
+            var ok = true;
+            for (var i = 0; i < segs.Length && ok; i++)
+                if (!segs[i].StartsWith('{'))   // segment ที่เป็นพารามิเตอร์รับอะไรก็ได้
+                    ok = string.Equals(segs[i], parts[i], StringComparison.OrdinalIgnoreCase);
+            if (ok) return true;
+        }
+        return false;
     }
 
     private static string Head(Sev s) => s switch
