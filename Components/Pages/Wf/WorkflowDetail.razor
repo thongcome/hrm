@@ -14,7 +14,6 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
-@inject WorkflowButtonService Buttons
 @inject PrivateFileStorage FileStorage
 @inject IDialogService Dialog
 @attribute [Authorize]
@@ -386,76 +385,15 @@
             }
             <MudTextField @bind-Value="_reason" Label="หมายเหตุ" Lines="2" Class="mb-2" />
 
-            @* ── ปุ่ม ──
-               ขั้นที่ติ๊ก isManualButton = ไม่ใช้ปุ่มมาตรฐาน ให้ wf_button เป็นคนบอก
-               ว่ามีปุ่มอะไรบ้าง ชื่ออะไร สีอะไร ทำอะไร (epms GetButtonList)
-               ถ้าไม่ได้ติ๊ก หรือ config ไม่มีปุ่มเลย ก็ใช้ปุ่มมาตรฐานตาม istop เหมือนเดิม *@
-            @if (_configButtons.Count > 0)
-            {
-                <MudStack Row="true" Spacing="2">
-                    @foreach (var b in _configButtons)
-                    {
-                        <MudButton Variant="Variant.Filled" Color="@ButtonColor(b.ColorOrClass)" Disabled="_busy"
-                                   OnClick="@(() => ActByKind(b.ActionKind))">
-                            @b.Label
-                            @* ปุ่มส่งกลับบอกชื่อปลายทางด้วย ผู้อนุมัติจะได้รู้ก่อนกดว่าเรื่องจะไปถึงใคร *@
-                            @if (b.ActionKind == WorkflowButtonService.ActionSendBack && _m.sendBackToName is not null)
-                            {
-                                <span>&nbsp;(@_m.sendBackToName)</span>
-                            }
-                        </MudButton>
-                    }
-                </MudStack>
-            }
-            else
-            {
-            <MudStack Row="true" Spacing="2">
-                @* ขั้นสุดท้าย = ไม่มีที่ให้ไปต่อ -> ยืนอยู่กับที่แล้วงานจบ *@
-                @if (_m.subWorkflow?.istop == true)
-                {
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
-                               OnClick="@(() => Act(Wf.ApproveAsync))">
-                        @(_m.subWorkflow?.displayName ?? "อนุมัติ")
-                    </MudButton>
-                }
-                else
-                {
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy"
-                               OnClick="@(() => Act(Wf.SubmitAsync))">
-                        @(_m.subWorkflow?.displayName ?? "ส่งต่อ")
-                    </MudButton>
-                }
-
-                @* ปุ่มส่งกลับ ขึ้นตาม isReturnSender ของขั้นที่ยืนอยู่ และแสดงชื่อ
-                   คนที่จะส่งกลับไปหา เพื่อให้ผู้อนุมัติรู้ก่อนกดว่างานจะไปถึงใคร *@
-                @if (_m.canReturnToSender)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Undo"
-                               OnClick="@(() => Act(Wf.ReturnToSenderAsync))">
-                        ส่งกลับหาผู้กรอกแบบฟอร์ม (@_m.sendBackToName)
-                    </MudButton>
-                }
-                else if (_m.sendBackToName is not null)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.ArrowBack"
-                               OnClick="@(() => Act(Wf.RejectOneStepAsync))">
-                        ส่งกลับ (@_m.sendBackToName)
-                    </MudButton>
-                }
-
-                @* "ไม่อนุมัติ" คนละเรื่องกับ "ส่งกลับ" และผู้ใช้สับสนกันบ่อย
-                   จึงขึ้นเฉพาะขั้นสุดท้าย และมีคำอธิบายกำกับใต้ปุ่มเสมอ *@
-                @if (_m.canDecline)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Block"
-                               OnClick="@(() => Act(Wf.DeclineAsync))">
-                        ไม่อนุมัติ
-                    </MudButton>
-                }
-            </MudStack>
+            @* ── ปุ่ม ── มาจาก WfActionButtons ที่เดียว
+               CEO, 10 ก.ย. 2569: "2 หน้านี้ ปุ่มต้องเหมือนกัน" — ปุ่มไหนขึ้น ชื่ออะไร สีอะไร
+               อ่านจาก wf_button ด้วย (jobmasterid, level, workflowid, subworkflowid)
+               กล่องงาน /wf/my-inbox ใช้ตัวเดียวกันนี้ จึงเห็นปุ่มชุดเดียวกันเสมอ *@
+            <WfActionButtons JobMasterId="@Id" Level="@(_m.jobMaster.lastLevel ?? 0)"
+                             WorkflowId="@_m.jobMaster.workflowid" SubWorkflowId="@(_m.subWorkflow?.subworkflowid ?? 0)"
+                             JobApproverId="@(_m.jobUserListSession?.jobapproverid ?? 0)" ActorUserId="@_actorUserId"
+                             Comment="@_reason" ReasonId="@_reasonId" SendBackToName="@_m.sendBackToName"
+                             Disabled="@_busy" OnActed="OnActedAsync" OnError="SetError" />
 
             <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">
                 @if (_m.canDecline)
@@ -473,7 +411,6 @@
                           การปฏิเสธถาวรทำได้เฉพาะผู้อนุมัติขั้นสุดท้าย</span>
                 }
             </MudText>
-            }
         }
         else if (_m.jobMaster.isJobClosed != true)
         {
@@ -698,9 +635,6 @@
     private List<mas_reason> _reasons = new();
     private long? _reasonId;
 
-    // ปุ่มจาก config (wf_button) — ว่างเมื่อขั้นนี้ไม่ได้ตั้ง isManualButton
-    // หรือตั้งแล้วแต่ยังไม่มีปุ่มใน wf_button ก็จะกลับไปใช้ปุ่มมาตรฐาน
-    private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
     private List<WorkflowService.RouteStep> _route = new();
     // /employee/{id} ติด Menu:PAY_ADMIN — ลิงก์ชื่อผู้อนุมัติไปหน้านั้นเฉพาะคนที่เปิดได้
     // ไม่งั้นผู้อนุมัติทั่วไปกดแล้วเจอ Access denied ซึ่งแย่กว่าไม่มีลิงก์
@@ -708,26 +642,16 @@
     // ผู้ดูแล workflow เปิดงานได้ทุกงาน (มาจากหน้าภาพรวม/เปลี่ยนผู้อนุมัติ) นอกนั้นต้องอยู่ในวง
     private bool _isWfAdmin;
 
-    private static Color ButtonColor(string c) => c?.ToLowerInvariant() switch
+    // WfActionButtons กดแล้วเดิน engine เอง — หน้านี้แค่ล้างช่องเหตุผลแล้วโหลดใหม่
+    private async Task OnActedAsync()
     {
-        "success" => Color.Success,
-        "warning" => Color.Warning,
-        "error" or "danger" => Color.Error,
-        "info" => Color.Info,
-        "secondary" => Color.Secondary,
-        _ => Color.Primary,
-    };
+        _reason = null;
+        _reasonId = null;
+        _error = null;
+        await LoadAsync();
+    }
 
-    // ปุ่มจาก config บอกแค่ "ทำอะไร" — แปลงเป็นการขยับของ engine
-    private Task ActByKind(string kind) => kind switch
-    {
-        "sendback" when _m?.canReturnToSender == true => Act(Wf.ReturnToSenderAsync),
-        "sendback" => Act(Wf.RejectOneStepAsync),
-        // ปุ่มที่ config บอกว่าเป็น decline ต้องปฏิเสธจริง ไม่ใช่ส่งกลับ
-        "decline" when _m?.canDecline == true => Act(Wf.DeclineAsync),
-        "decline"  => Act(Wf.RejectOneStepAsync),
-        _          => _m?.subWorkflow?.istop == true ? Act(Wf.ApproveAsync) : Act(Wf.SubmitAsync),
-    };
+    private void SetError(string message) => _error = message;
 
     // ยกเลิกคำขอ — ต้องยืนยันก่อน เพราะปิดแล้วเปิดใหม่ไม่ได้
     private async Task CancelRequestAsync()
@@ -772,7 +696,6 @@
         _m = await Wf.DetailAsync(Id, _actorUserId);
         ResolveDocument();
         await LoadReasonsAsync();
-        await LoadButtonsAsync();
         _route = _m?.jobMaster is null ? new() : await Wf.GetRouteAsync(Id);
         await LoadAttachmentsAsync();
     }
@@ -834,23 +757,6 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
-    }
-
-    // isManualButton — ขั้นนี้ไม่ใช้ปุ่มมาตรฐาน ให้ wf_button เป็นคนบอกว่ามีปุ่มอะไร
-    // (epms GetButtonList เลือกจาก isStart / istop / isAndCondition)
-    private async Task LoadButtonsAsync()
-    {
-        // CEO, 10 ก.ย. 2569: "ปุ่มไม่อนุมัติ -> config ใน table ได้เลย ดูจาก epms"
-        // epms อ่าน wf_button เสมอ (GetButtonList(isStart, istop, isAndCondition))
-        // ไม่มีเงื่อนไขว่าต้องติ๊กอะไรก่อน — เดิมเรากั้นด้วย isManualButton ทำให้
-        // ตารางปุ่มไม่เคยถูกใช้เลย ตอนนี้อ่านทุกครั้ง ถ้าไม่มีแถวที่ตรงก็ตกไปใช้
-        // ปุ่มมาตรฐานเหมือนเดิม (service คืนลิสต์ว่างเมื่อยังไม่ได้ config)
-        _configButtons = new();
-        var lv = _m?.subWorkflow;
-        if (lv is null || _m?.isCurrentUser != true) return;
-
-        _configButtons = await Buttons.GetButtonsForLevelAsync(
-            lv.workflowid, lv.wlevel, lv.istop, lv.isandcondition);
     }
 
     // เหตุผลที่เลือกได้ของขั้นนี้ — แถวที่ผูกกับ workflow+level นี้โดยเฉพาะ

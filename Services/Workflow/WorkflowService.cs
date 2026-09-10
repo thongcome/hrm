@@ -288,6 +288,24 @@ public class WorkflowService
     public Task<WorkFlowViewModel> RejectOneStepAsync(WorkFlowViewModel m, CancellationToken ct = default)
         => MoveAsync(m, WorkflowMove.Backward, ct);
 
+    // ── ปุ่มจาก config บอกแค่ "ทำอะไร" — ที่นี่แปลงเป็นการขยับ ที่เดียว ──────────
+    //   approve  ขั้นสุดท้าย = ยืนแล้วจบ (Stand)  ขั้นกลาง/ร่าง = ส่งต่อ (Forward)
+    //   sendback ขั้นที่ตั้ง isReturnSender = คืนผู้กรอก  ไม่งั้นถอยหนึ่งขั้น
+    //   decline  ปฏิเสธถาวร (DeclineAsync กันเองว่าต้องเป็นขั้นสุดท้าย)
+    // WfActionButtons ทุกหน้าเรียกผ่าน WorkflowEngineService.ActAsync มาลงที่นี่
+    public async Task<WorkFlowViewModel> ActAsync(WorkFlowViewModel m, string actionKind, CancellationToken ct = default)
+    {
+        var cur = await DetailAsync(m.jobmasterid, m.actorUserId, ct);
+        return actionKind switch
+        {
+            WorkflowButtonService.ActionSendBack when cur.canReturnToSender => await ReturnToSenderAsync(m, ct),
+            WorkflowButtonService.ActionSendBack => await RejectOneStepAsync(m, ct),
+            WorkflowButtonService.ActionDecline => await DeclineAsync(m, ct),
+            _ when cur.subWorkflow?.istop == true => await ApproveAsync(m, ct),
+            _ => await SubmitAsync(m, ct),
+        };
+    }
+
     // ── ไม่อนุมัติ (Decline) — จบงานตรงนั้น ไม่ใช่ส่งกลับไปแก้ ────────────────
     //
     //  ต่างจาก "ส่งกลับ" คนละเรื่อง และผู้ใช้ต้องแยกออก:

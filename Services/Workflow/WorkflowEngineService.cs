@@ -159,6 +159,39 @@ public class WorkflowEngineService
     private static WorkFlowViewModel Carry(long jobMasterId, long actorUserId, string? comment, long? reasonId)
         => new() { jobmasterid = jobMasterId, actorUserId = actorUserId, reason = comment, mas_reason_id = reasonId };
 
+    // ── ทางเข้าเดียวของ "ปุ่ม" ──────────────────────────────────────────────
+    // CEO, 10 ก.ย. 2569: ปุ่มทุกหน้าต้องเหมือนกัน — WfActionButtons สร้างปุ่มจาก
+    // WorkflowButtonService แล้วส่งมาแค่ "ทำอะไร" (approve / sendback / decline)
+    // ที่นี่ค่อยดูว่างานนี้เดินด้วยเครื่องไหน แล้วเรียก method ที่ตรงกัน
+    // หน้าจึงไม่ต้องรู้เรื่อง engine เก่า-ใหม่ (เดิมกล่องงานเรียก ApproveAsync ของ
+    // เครื่องเดิมใส่งานของเครื่องใหม่ตรง ๆ)
+    public async Task ActAsync(long jobMasterId, long jobApproverId, long actorUserId, string actionKind,
+        string? comment, long? reasonId = null, CancellationToken ct = default)
+    {
+        bool newEngine;
+        await using (var context = await _dbFactory.CreateDbContextAsync(ct))
+            newEngine = await JobUsesNewEngineAsync(context, jobMasterId, ct);
+
+        if (newEngine)
+        {
+            await NewEngine.ActAsync(Carry(jobMasterId, actorUserId, comment, reasonId), actionKind, ct);
+            return;
+        }
+
+        switch (actionKind)
+        {
+            case WorkflowButtonService.ActionSendBack:
+                await SendBackAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                break;
+            case WorkflowButtonService.ActionDecline:
+                await DeclineAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                break;
+            default:
+                await ApproveAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                break;
+        }
+    }
+
     // Starts a new approval instance for any document type — reftable/refid
     // is the generic routing pair (Block 7 uses this to build the link back
     // to the originating record).

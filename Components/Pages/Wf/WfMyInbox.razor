@@ -69,11 +69,15 @@
                 <MudTextField T="string" @bind-Value="_comments[context.jobapproverid]" Placeholder="ความเห็น (ถ้ามี)" Immediate="true" />
             </MudTd>
             <MudTd>
-                <MudStack Row="true" Spacing="1">
-                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => ApproveAsync(context.jobapproverid))">อนุมัติ</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => RejectAsync(context.jobapproverid))">ปฏิเสธ</MudButton>
+                @* ปุ่มมาจาก WfActionButtons ที่เดียว — ชุดเดียวกับหน้ารายละเอียดงานเสมอ
+                   (CEO, 10 ก.ย. 2569: "2 หน้านี้ ปุ่มต้องเหมือนกัน") *@
+                <WfActionButtons JobMasterId="@context.jobmasterid" Level="@(context.wlevel ?? 0)"
+                                 WorkflowId="@context.workflowid" SubWorkflowId="@(context.subworkflowmasterid ?? 0)"
+                                 JobApproverId="@context.jobapproverid" ActorUserId="@_actorUserId"
+                                 Comment="@CommentOf(context.jobapproverid)" Size="Size.Small"
+                                 OnActed="RowActedAsync" OnError="SetError">
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo(DetailUrl(context)))">ดูรายละเอียด</MudButton>
-                </MudStack>
+                </WfActionButtons>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -227,40 +231,23 @@
         _ => Color.Default,
     };
 
-    private async Task ApproveAsync(long jobApproverId)
+    // ปุ่มในแถวทำงานผ่าน WfActionButtons -> WorkflowEngineService.ActAsync
+    // หน้านี้เหลือแค่ส่งความเห็นของแถวเข้าไป และรีเฟรชเมื่อสำเร็จ
+    private string? CommentOf(long jobApproverId)
+        => _comments.TryGetValue(jobApproverId, out var c) ? c : null;
+
+    private void SetError(string message)
     {
-        _error = null;
         _info = null;
-        try
-        {
-            _comments.TryGetValue(jobApproverId, out var comment);
-            await Engine.ApproveAsync(jobApproverId, _actorUserId, comment);
-            _info = "อนุมัติสำเร็จ";
-            await RefreshInboxAsync();
-            await RefreshHistoryAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = "อนุมัติไม่สำเร็จ: " + ex.Message;
-        }
+        _error = message;
     }
 
-    private async Task RejectAsync(long jobApproverId)
+    private async Task RowActedAsync()
     {
         _error = null;
-        _info = null;
-        try
-        {
-            _comments.TryGetValue(jobApproverId, out var comment);
-            await Engine.RejectAsync(jobApproverId, _actorUserId, comment);
-            _info = "ปฏิเสธรายการแล้ว";
-            await RefreshInboxAsync();
-            await RefreshHistoryAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = "ปฏิเสธไม่สำเร็จ: " + ex.Message;
-        }
+        _info = "ดำเนินการเรียบร้อย";
+        await RefreshInboxAsync();
+        await RefreshHistoryAsync();
     }
 
     // Block 7 (generic document-type routing): wf_workflow.url is an

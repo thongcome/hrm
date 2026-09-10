@@ -1,0 +1,121 @@
+@using HRM.Services.Workflow
+@using MudBlazor
+@inject WorkflowButtonService Buttons
+@inject WorkflowEngineService Engine
+
+@*
+    ปุ่มของ workflow ทุกหน้า สร้างจากที่นี่ที่เดียว
+
+    CEO, 10 ก.ย. 2569: "2 หน้านี้ ปุ่มต้องเหมือนกัน — ทำ method ส่ง parameter สร้างปุ่ม
+    ไว้ใช้ในทุกที่ที่ต้องสร้างปุ่ม ส่ง jobmasterid, level, workflowid, subworkflowid"
+
+    หน้าไหนต้องมีปุ่มของงาน ก็วางบรรทัดเดียว:
+
+        <WfActionButtons JobMasterId="..." Level="..." WorkflowId="..." SubWorkflowId="..."
+                         JobApproverId="..." ActorUserId="..." Comment="..." OnActed="Reload" />
+
+    - ปุ่มไหนขึ้น ชื่ออะไร สีอะไร  -> WorkflowButtonService.GetButtonsAsync (อ่าน wf_button)
+    - กดแล้วทำอะไร                -> WorkflowEngineService.ActAsync (เลือก engine ให้เอง)
+    หน้าจึงไม่ต้องรู้จัก istop / isandcondition / engine เก่า-ใหม่ อีกต่อไป
+    เปลี่ยน config ปุ่มที่เดียว ทุกหน้าเปลี่ยนตาม
+*@
+
+<MudStack Row="true" Spacing="@(Size == Size.Small ? 1 : 2)" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+    @foreach (var b in _buttons)
+    {
+        <MudButton Size="@Size" Variant="@VariantFor(b.ActionKind)" Color="@ColorFor(b.ColorOrClass)"
+                   StartIcon="@IconFor(b.ActionKind)" Disabled="@(_busy || Disabled)"
+                   OnClick="@(() => ClickAsync(b))">
+            @b.Label
+            @* ปุ่มส่งกลับบอกชื่อปลายทางด้วย ผู้อนุมัติจะได้รู้ก่อนกดว่าเรื่องจะไปถึงใคร *@
+            @if (b.ActionKind == WorkflowButtonService.ActionSendBack && !string.IsNullOrEmpty(SendBackToName))
+            {
+                <span>&nbsp;(@SendBackToName)</span>
+            }
+        </MudButton>
+    }
+    @ChildContent
+</MudStack>
+@if (_error is not null && !OnError.HasDelegate)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_error</MudAlert>
+}
+
+@code {
+    // สี่ค่าที่ชี้ "จุดนี้ของงาน" — ตรงตามที่ CEO กำหนด
+    [Parameter, EditorRequired] public long JobMasterId { get; set; }
+    [Parameter, EditorRequired] public int Level { get; set; }
+    [Parameter, EditorRequired] public long WorkflowId { get; set; }
+    [Parameter] public long SubWorkflowId { get; set; }
+
+    // แถวของผู้กดใน job_user_list (engine เดิมทำงานด้วย id นี้) และผู้กด
+    [Parameter] public long JobApproverId { get; set; }
+    [Parameter, EditorRequired] public long ActorUserId { get; set; }
+
+    // ความเห็น/เหตุผลที่หน้าเก็บไว้ ส่งไปกับทุกปุ่ม
+    [Parameter] public string? Comment { get; set; }
+    [Parameter] public long? ReasonId { get; set; }
+    [Parameter] public string? SendBackToName { get; set; }
+
+    [Parameter] public Size Size { get; set; } = Size.Medium;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnActed { get; set; }
+    // ถ้าหน้าอยากแสดง error เอง (เช่นในตาราง) ให้ผูกตัวนี้ ไม่งั้นแสดงใต้ปุ่ม
+    [Parameter] public EventCallback<string> OnError { get; set; }
+    // ปุ่มอื่นของหน้าที่อยากวางแถวเดียวกัน เช่น "ดูรายละเอียด"
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private List<WorkflowButtonService.WorkflowButtonDescriptor> _buttons = new();
+    private (long Job, int Level, long Wf, long Sub) _loadedKey;
+    private bool _busy;
+    private string? _error;
+
+    // อ่าน config ใหม่เฉพาะเมื่อ "จุดของงาน" เปลี่ยน — Comment เปลี่ยนทุกตัวอักษรที่พิมพ์
+    // ถ้าอ่านทุกครั้งกล่องงานจะยิง query ต่อแถวทุก keystroke
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = (JobMasterId, Level, WorkflowId, SubWorkflowId);
+        if (key == _loadedKey) return;
+        _loadedKey = key;
+        _buttons = await Buttons.GetButtonsAsync(JobMasterId, Level, WorkflowId, SubWorkflowId);
+    }
+
+    private async Task ClickAsync(WorkflowButtonService.WorkflowButtonDescriptor b)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Engine.ActAsync(JobMasterId, JobApproverId, ActorUserId, b.ActionKind, Comment, ReasonId);
+            _loadedKey = default; // งานขยับแล้ว รอบหน้าอ่านปุ่มใหม่
+            await OnActed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
+        }
+        finally { _busy = false; }
+    }
+
+    // ปุ่มเดินหน้าเป็นปุ่มทึบ ปุ่มถอย/ปฏิเสธเป็นปุ่มขอบ — ผู้ใช้แยกได้ด้วยตาโดยไม่ต้องอ่าน
+    private static Variant VariantFor(string kind)
+        => kind == WorkflowButtonService.ActionApprove ? Variant.Filled : Variant.Outlined;
+
+    private static string? IconFor(string kind) => kind switch
+    {
+        WorkflowButtonService.ActionSendBack => Icons.Material.Filled.Undo,
+        WorkflowButtonService.ActionDecline => Icons.Material.Filled.Block,
+        _ => null,
+    };
+
+    private static Color ColorFor(string hint) => hint?.ToLowerInvariant() switch
+    {
+        "success" => Color.Success,
+        "warning" => Color.Warning,
+        "error" or "danger" => Color.Error,
+        "info" => Color.Info,
+        "secondary" => Color.Secondary,
+        _ => Color.Primary,
+    };
+}

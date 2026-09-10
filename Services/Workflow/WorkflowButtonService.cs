@@ -57,43 +57,78 @@ public sealed class WorkflowButtonService
     public record WorkflowButtonDescriptor(string Code, string Label, string ColorOrClass, string ActionKind);
 
     /// <summary>
-    /// Config-driven button set for a workflow level, mirroring epms GetButtonList selection.
-    /// Returns an EMPTY list when nothing is configured (caller falls back to built-in buttons).
+    /// ปุ่มของ "จุดนี้" ของงาน — method เดียวที่ทุกหน้าใช้
+    ///
+    /// CEO, 10 ก.ย. 2569: "ทำ method ส่ง parameter สร้างปุ่ม ไว้ใช้ในทุกที่ที่ต้องสร้างปุ่ม
+    /// ส่ง jobmasterid, level, workflowid, subworkflowid"
+    ///
+    /// ตอบจาก config ล้วน ๆ ตาม epms GetButtonList(isStart, istop, isAndCondition):
+    ///   - level 0 (ร่าง) ไม่มีใน wf_sub_workflow_master -> ปุ่มของ "ผู้เริ่มเรื่อง" = แถว isStart
+    ///   - level อื่น อ่าน istop/isandcondition ของ node (subworkflowid) แล้วเลือกแถว wf_button
+    ///     ที่ตรง ลำดับความจำเพาะ: ผูกกับ node นี้ > ผูกกับ workflow+level > ชุดกลาง
+    ///   - งานปิดแล้ว = ไม่มีปุ่ม
+    /// ไม่เคยคืนลิสต์ว่างสำหรับงานที่ยังเปิด — ถ้ายังไม่ได้ config ก็คืนชุดมาตรฐาน
+    /// เพื่อให้ทุกหน้าเห็นปุ่มชุดเดียวกันเสมอ ไม่มีหน้าไหนต้องมีปุ่ม fallback ของตัวเอง
     /// </summary>
-    public async Task<List<WorkflowButtonDescriptor>> GetButtonsForLevelAsync(
-        long workflowId,
-        int wlevel,
-        bool isTop,
-        bool isAndCondition,
-        CancellationToken ct = default)
+    public async Task<List<WorkflowButtonDescriptor>> GetButtonsAsync(
+        long jobMasterId, int level, long workflowId, long subWorkflowId, CancellationToken ct = default)
     {
         await using var ctx = await _dbFactory.CreateDbContextAsync(ct);
 
-        // Base predicate: active buttons matching this level's istop / isAndCondition
-        // semantics (the epms flag-based selection), newest join to the master for label/style/order.
-        // NOTE: the epms overload actually used also filtered on isStart; that flag is not part
-        // of this method's signature, so we don't filter by it here — a level's start-ness is a
-        // caller concern. If isStart filtering is later required, add it as a parameter.
-        var baseQuery = ctx.wf_buttons
-            .Include(b => b.button_master)
-            .Where(b => b.isactive
-                        && (b.istop ?? false) == isTop
-                        && b.isAndCondition == isAndCondition);
+        var closed = await ctx.job_masters.Where(j => j.jobmasterid == jobMasterId)
+            .Select(j => j.isJobClosed).FirstOrDefaultAsync(ct);
+        if (closed == true) return new();
 
-        // Prefer rows scoped to this exact (workflowid, wlevel); if none, fall back to the
-        // global rows (workflowid == null) — the shared default button set.
-        var scoped = await baseQuery
-            .Where(b => b.workflowid == workflowId && b.wlevel == wlevel)
-            .OrderBy(b => b.button_master.orderth)
-            .ToListAsync(ct);
+        var active = ctx.wf_buttons.Include(b => b.button_master).Where(b => b.isactive);
 
-        var rows = scoped.Count > 0
-            ? scoped
-            : await baseQuery
-                .Where(b => b.workflowid == null)
-                .OrderBy(b => b.button_master.orderth)
-                .ToListAsync(ct);
+        if (level <= 0)
+        {
+            var startRows = await PickAsync(active.Where(b => b.isStart == true), workflowId, level, subWorkflowId, ct);
+            var start = Map(startRows);
+            if (start.Count > 0) return start;
+            return new() { new WorkflowButtonDescriptor("submit", "ส่งต่อ", ColorPrimary, ActionApprove) };
+        }
 
+        // subworkflowid = ตัวตนของ node (กฎสองไอดี) — ถ้าไม่มีก็หาจาก workflow+level
+        var step = await ctx.wf_sub_workflow_masters.FirstOrDefaultAsync(s => s.subworkflowid == subWorkflowId, ct)
+                ?? await ctx.wf_sub_workflow_masters.FirstOrDefaultAsync(s => s.workflowid == workflowId && s.wlevel == level, ct);
+        var isTop = step?.istop ?? false;
+        var isAnd = step?.isandcondition ?? false;
+
+        var rows = await PickAsync(
+            active.Where(b => b.isStart != true && (b.istop ?? false) == isTop && b.isAndCondition == isAnd),
+            workflowId, level, subWorkflowId, ct);
+        var result = Map(rows);
+        if (result.Count > 0) return result;
+
+        // ยังไม่ได้ config เลย — ชุดมาตรฐานเดิม (ส่งต่อ/อนุมัติ, ส่งกลับ, ไม่อนุมัติเฉพาะขั้นสุดท้าย)
+        result.Add(isTop
+            ? new WorkflowButtonDescriptor("approve", step?.displayName ?? "อนุมัติ", ColorSuccess, ActionApprove)
+            : new WorkflowButtonDescriptor("submit", step?.displayName ?? "ส่งต่อ", ColorPrimary, ActionApprove));
+        result.Add(new WorkflowButtonDescriptor("reject", "ส่งกลับ", ColorWarning, ActionSendBack));
+        if (isTop) result.Add(new WorkflowButtonDescriptor("decline", "ไม่อนุมัติ", ColorError, ActionDecline));
+        return result;
+    }
+
+    // ลำดับความจำเพาะของแถว wf_button: ผูกกับ node นี้ > ผูกกับ workflow+level > ชุดกลาง (workflowid null)
+    private static async Task<List<wf_button>> PickAsync(
+        IQueryable<wf_button> q, long workflowId, int level, long subWorkflowId, CancellationToken ct)
+    {
+        if (subWorkflowId > 0)
+        {
+            var byNode = await q.Where(b => b.subworkflowid == subWorkflowId)
+                .OrderBy(b => b.button_master.orderth).ToListAsync(ct);
+            if (byNode.Count > 0) return byNode;
+        }
+        var byLevel = await q.Where(b => b.workflowid == workflowId && b.wlevel == level)
+            .OrderBy(b => b.button_master.orderth).ToListAsync(ct);
+        if (byLevel.Count > 0) return byLevel;
+        return await q.Where(b => b.workflowid == null)
+            .OrderBy(b => b.button_master.orderth).ToListAsync(ct);
+    }
+
+    private static List<WorkflowButtonDescriptor> Map(List<wf_button> rows)
+    {
         var result = new List<WorkflowButtonDescriptor>(rows.Count);
         foreach (var b in rows)
         {

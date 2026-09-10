@@ -26,42 +26,15 @@
 <MudPaper Outlined="true" Class="pa-3 mt-3">
     <MudText Typo="Typo.h6">การพิจารณาของฉัน</MudText>
     <MudStack Row="true" Spacing="1" Class="mt-2" Wrap="Wrap.Wrap">
-        @if (_configButtons.Count > 0)
+        @* ปุ่มชุดเดียวกับทุกหน้า — WorkflowButtonService.GetButtonsAsync
+           (jobmasterid, level, workflowid, subworkflowid) อ่านจาก wf_button
+           หน้านี้ต่างแค่มีขั้นยืนยันก่อนกด *@
+        @foreach (var b in _configButtons)
         {
-            @* Config-driven: buttons come from wf_button/wf_button_master for this
-               level (epms model) — label, colour and which actions appear are all
-               data. The built-in set below is the fallback when nothing is mapped. *@
-            @foreach (var b in _configButtons)
-            {
-                <MudButton Variant="Variant.Filled" Color="@ToColor(b.ColorOrClass)" Disabled="_busy"
-                    OnClick="@(() => OpenConfirm(ToAction(b.ActionKind), b.Label))">@b.Label</MudButton>
-            }
-        }
-        else
-        {
-            <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="_busy"
-                StartIcon="@Icons.Material.Filled.Check"
-                OnClick="@(() => OpenConfirm(WfAction.Approve, ApproveLabel))">@ApproveLabel</MudButton>
-            @if (BackwardLevel is not null)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Warning" Disabled="_busy"
-                    StartIcon="@Icons.Material.Filled.Undo"
-                    OnClick="@(() => OpenConfirm(WfAction.SendBack))">ส่งกลับแก้ไข</MudButton>
-            }
-            @if (IsTop)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="_busy"
-                    StartIcon="@Icons.Material.Filled.Block"
-                    OnClick="@(() => OpenConfirm(WfAction.Decline))">ไม่อนุมัติ</MudButton>
-            }
+            <MudButton Variant="Variant.Filled" Color="@ToColor(b.ColorOrClass)" Disabled="_busy"
+                OnClick="@(() => OpenConfirm(b.ActionKind, b.Label))">@b.Label</MudButton>
         }
     </MudStack>
-    @if (_configButtons.Count == 0 && !IsTop && BackwardLevel is null)
-    {
-        <MudText Typo="Typo.caption" Class="mt-2" Style="display:block;opacity:.7;">
-            * ระดับนี้ไม่ได้เปิด "ส่งกลับแก้ไข" และไม่ใช่ระดับสุดท้าย — หากไม่เห็นด้วยต้องให้ผู้ดูแลตั้งค่า backwardlevel ก่อน
-        </MudText>
-    }
     @if (!string.IsNullOrEmpty(_error))
     {
         <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
@@ -117,6 +90,9 @@
     [Parameter] public long WorkflowId { get; set; }
     [Parameter] public int Wlevel { get; set; }
     [Parameter] public bool IsAndCondition { get; set; }
+    // สี่ค่าที่ชี้ "จุดนี้ของงาน" สำหรับ GetButtonsAsync (CEO, 10 ก.ย. 2569)
+    [Parameter] public long JobMasterId { get; set; }
+    [Parameter] public long SubWorkflowId { get; set; }
     // Raised after any action succeeds so the host can reload / navigate.
     [Parameter] public EventCallback OnActed { get; set; }
 
@@ -125,6 +101,7 @@
     private bool _busy;
     private string? _error;
     private WfAction _pendingAction;
+    private string _pendingKind = WorkflowButtonService.ActionApprove;
     private string _pendingLabel = "";
     private string _actionComment = "";
     private long? _selectedReasonId;
@@ -145,7 +122,7 @@
     {
         if (WorkflowId > 0)
         {
-            _configButtons = await ButtonService.GetButtonsForLevelAsync(WorkflowId, Wlevel, IsTop, IsAndCondition);
+            _configButtons = await ButtonService.GetButtonsAsync(JobMasterId, Wlevel, WorkflowId, SubWorkflowId);
 
             await using var context = await DbFactory.CreateDbContextAsync();
             _reasons = await context.mas_reasons
@@ -185,9 +162,10 @@
     private bool ConfirmDisabled =>
         _busy || (_pendingAction != WfAction.Approve && string.IsNullOrWhiteSpace(_actionComment));
 
-    private void OpenConfirm(WfAction action, string? label = null)
+    private void OpenConfirm(string actionKind, string? label = null)
     {
-        _pendingAction = action;
+        _pendingKind = actionKind;
+        _pendingAction = ToAction(actionKind);
         _pendingLabel = label ?? "";
         _actionComment = "";
         _selectedReasonId = null;
@@ -203,21 +181,14 @@
         _busy = true;
         try
         {
-            switch (_pendingAction)
+            // ทางเข้าเดียวกับทุกหน้า — engine เลือกเองว่างานนี้เดินด้วยเครื่องไหน
+            await Engine.ActAsync(JobMasterId, JobApproverId, ActorUserId, _pendingKind, _actionComment, _selectedReasonId);
+            Snackbar.Add(_pendingAction switch
             {
-                case WfAction.Approve:
-                    await Engine.ApproveAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
-                    Snackbar.Add("อนุมัติเรียบร้อย", Severity.Success);
-                    break;
-                case WfAction.SendBack:
-                    await Engine.SendBackAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
-                    Snackbar.Add("ส่งกลับแก้ไขเรียบร้อย", Severity.Success);
-                    break;
-                case WfAction.Decline:
-                    await Engine.DeclineAsync(JobApproverId, ActorUserId, _actionComment, _selectedReasonId);
-                    Snackbar.Add("บันทึกการไม่อนุมัติเรียบร้อย", Severity.Success);
-                    break;
-            }
+                WfAction.SendBack => "ส่งกลับแก้ไขเรียบร้อย",
+                WfAction.Decline => "บันทึกการไม่อนุมัติเรียบร้อย",
+                _ => "ดำเนินการเรียบร้อย",
+            }, Severity.Success);
             _showConfirm = false;
             await OnActed.InvokeAsync();
         }

@@ -16,11 +16,9 @@ using Microsoft.EntityFrameworkCore;
 //     Send Back    → Warning / btn btn-warning   → ActionKind "sendback"   (reject / return)
 //     Decline      → Error   / btn btn-danger    → ActionKind "decline"
 //
-// It deliberately seeds ONLY wf_button_master. It does NOT seed wf_button mapping rows —
-// which button applies at which workflow/level is an admin decision, and
-// WorkflowButtonService.GetButtonsForLevelAsync already returns an EMPTY list (safe
-// fallback to the built-in buttons) while nothing is mapped. So this seeder alone changes
-// no runtime behaviour; it just makes the definitions available to configure.
+// It seeds the four core definitions (add-missing by code), the global wf_button
+// mappings that make them appear at each kind of level, and the isStart row for the
+// draft step. Existing rows are never overwritten, so admin edits survive restarts.
 //
 // Idempotent: does nothing if wf_button_master already has rows. Never runs outside
 // Development (gated by IsDevelopment() at the Program.cs call site), same as
@@ -114,6 +112,30 @@ public static class WorkflowButtonSeeder
                 button_masterid = m.id,
                 workflowid = null,
                 wlevel = null,
+            });
+        }
+
+        // ขั้นร่าง (level 0) ไม่มีใน wf_sub_workflow_master — ปุ่มของผู้เริ่มเรื่องคือแถว
+        // isStart ตาม epms GetButtonList(isStart, ...) ให้ "ส่งต่อ" ของผู้ยื่นมาจาก config
+        // เหมือนขั้นอื่น กล่องงานกับหน้ารายละเอียดจะได้เห็นปุ่มเดียวกันตั้งแต่ขั้นร่าง
+        if (masters.TryGetValue("submit", out var startMaster)
+            && !await ctx.wf_buttons.AnyAsync(b => b.workflowid == null && b.isStart == true
+                                                && b.button_masterid == startMaster.id))
+        {
+            ctx.wf_buttons.Add(new wf_button
+            {
+                btname = startMaster.value,
+                bcode = startMaster.code,
+                class_style = startMaster.class_style,
+                isactive = true,
+                isshow = true,
+                istop = false,
+                isStart = true,
+                isAndCondition = false,
+                button_masterid = startMaster.id,
+                workflowid = null,
+                wlevel = null,
+                remark = "ขั้นร่าง (level 0) ของผู้ยื่น",
             });
         }
 
