@@ -180,6 +180,16 @@ public class WorkflowEngineService
         {
             var created = await NewEngine.CreateAsync(workflowId, requesterUserId, requesterEmpId,
                 subject, reftable, refid, amount, ct);
+
+            // isautoapprove เป็นค่าของ workflow ไม่ใช่ของ engine — ต้องมีผลทั้งสองทาง
+            // (เดิมสาขานี้อยู่เหนือการเช็ค isautoapprove ด้านล่าง workflow ที่ย้ายมา
+            //  engine ใหม่จึงเข้าสายอนุมัติปกติเงียบ ๆ ทั้งที่ตั้ง auto ไว้)
+            if (workflow.isautoapprove == true)
+            {
+                await NewEngine.AutoApproveAsync(Carry(created.jobmasterid, requesterUserId, null, null), ct);
+                return created.jobmasterid;
+            }
+
             await NewEngine.SubmitAsync(
                 Carry(created.jobmasterid, requesterUserId, null, null), ct);
             return created.jobmasterid;

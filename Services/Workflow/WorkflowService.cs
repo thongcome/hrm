@@ -277,6 +277,53 @@ public class WorkflowService
     public Task<WorkFlowViewModel> RejectOneStepAsync(WorkFlowViewModel m, CancellationToken ct = default)
         => MoveAsync(m, WorkflowMove.Backward, ct);
 
+    // ── อนุมัติอัตโนมัติทั้ง workflow (wf_workflow.isautoapprove) ─────────────
+    //
+    //  งานบางอย่างไม่ต้องมีคนอนุมัติเลย — CEO, 10 ก.ย. 2569 เรื่องแลกของรางวัล:
+    //  "น่าจะ auto redeem" คือยื่นแล้วจบทันที ไม่ต้องรบกวนใคร
+    //
+    //  flag นี้เป็นของ workflow ไม่ใช่ของ engine แต่เดิม StartJobAsync เช็ค
+    //  useNewEngine "ก่อน" isautoapprove งานที่ย้ายมา engine ใหม่จึงถูกส่งเข้า
+    //  สายอนุมัติปกติเงียบ ๆ ทั้งที่ตั้ง auto ไว้ — ปิดช่องนั้นด้วยเมธอดนี้
+    //
+    //  ปิดงานแล้วยังต้องประทับรอยเท้า ("ทุก action ต้องมีรอยเท้า") เพื่อให้เปิด
+    //  ประวัติแล้วเห็นว่างานจบเพราะระบบอนุมัติให้ ไม่ใช่จบโดยไม่มีที่มา
+    public async Task<WorkFlowViewModel> AutoApproveAsync(WorkFlowViewModel m, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == m.jobmasterid, ct)
+            ?? throw new InvalidOperationException($"ไม่พบงาน id {m.jobmasterid}");
+        if (job.isJobClosed == true) { m.jobMaster = job; return m; }
+
+        var stamp = DraftFootprint(job, "ระบบ", "AutoApprove -> ปิดงาน");
+        stamp.endtime = DateTime.Now;
+        job.jobseq = stamp.jobseq;
+        db.job_subworkflow_masters.Add(stamp);
+
+        job.status = Completed;
+        job.isJobClosed = true;
+        job.reasonClosed = WorkflowEngineService.ClosedByAutoApprove;
+        job.remark = "อนุมัติอัตโนมัติ (workflow ตั้งค่า isautoapprove)";
+        job.approvedDate = DateTime.Now;
+        job.enddate = DateTime.Now;
+
+        // ใบงานของผู้ยื่นที่ค้างอยู่ตอน draft ไม่มีอะไรให้ทำแล้ว
+        foreach (var row in await db.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.jobstatus == Pending).ToListAsync(ct))
+        {
+            row.jobstatus = Approved;
+            row.approvedate = DateTime.Now;
+            row.isLast = false;
+        }
+
+        await db.SaveChangesAsync(ct);
+        await AuditAsync(job, "AutoApprove", new { job.workflowcode }, ct);
+
+        m.jobMaster = job;
+        m.jobsub = stamp;
+        return m;
+    }
+
     // ส่งกลับหาผู้กรอกแบบฟอร์ม — ใช้ได้เฉพาะขั้นที่ติ๊ก isReturnSender ไว้
     // ปลายทางคือขั้นแรกสุดของเส้นทาง (ขั้นที่ผู้ขอถือแบบฟอร์มอยู่)
     public async Task<WorkFlowViewModel> ReturnToSenderAsync(WorkFlowViewModel m, CancellationToken ct = default)
