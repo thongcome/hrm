@@ -205,11 +205,69 @@ public class WorkflowService
 
     private readonly IDbContextFactory<HRMContext> _dbFactory;
     private readonly EmailSender _emailSender;
+    private readonly HRM.Services.Audit.IAuditLogger _audit;
 
-    public WorkflowService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender)
+    public WorkflowService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender,
+        HRM.Services.Audit.IAuditLogger audit)
     {
         _dbFactory = dbFactory;
         _emailSender = emailSender;
+        _audit = audit;
+    }
+
+    // ── แจ้งเตือนผู้รับงาน ──────────────────────────────────────────────
+    // งานถึงมือแล้วต้องรู้ ไม่ใช่ต้องเปิดระบบมาเช็คเอง
+    // ใช้ทางเดียวกับ engine เดิม: empid -> Hremployee -> EmployeeEmailResolver
+    private async Task NotifyRecipientsAsync(HRMContext db, job_master job,
+        List<job_user_list> rows, wf_sub_workflow_master? level, CancellationToken ct)
+    {
+        foreach (var row in rows)
+        {
+            try
+            {
+                var empNo = row.empid;
+                if (string.IsNullOrWhiteSpace(empNo) && row.userid is long uid)
+                    empNo = await db.sc_users.Where(u => u.userid == uid).Select(u => u.empid).FirstOrDefaultAsync(ct);
+                if (string.IsNullOrWhiteSpace(empNo)) continue;
+
+                var emp = await db.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == empNo, ct);
+                if (emp is null) continue;
+
+                var email = await EmployeeEmailResolver.ResolveAsync(db, emp.id, ct);
+                if (string.IsNullOrWhiteSpace(email)) continue;
+
+                var stepName = level?.subject ?? $"ขั้นที่ {row.wlevel}";
+                var subject = $"มีงานรอคุณดำเนินการ: {job.subject ?? job.wname}";
+                var body = $"<p>งาน \"{job.subject}\" ({job.wname}) มาถึงขั้น <b>{stepName}</b> และรอคุณดำเนินการ</p>"
+                         + (string.IsNullOrWhiteSpace(job.reqName) ? "" : $"<p>ผู้ขอ: {job.reqName}</p>")
+                         + (job.reqamont is null ? "" : $"<p>จำนวนเงิน: {job.reqamont:N2} บาท</p>")
+                         + $"<p>เปิดงานที่ /workflow/detail/{job.jobmasterid}</p>";
+                await _emailSender.SendEmailAsync(email, subject, body);
+            }
+            catch (Exception ex)
+            {
+                // แจ้งเตือนล้มเหลวต้องไม่ทำให้งานที่เดินไปแล้วล้มตาม
+                Serilog.Log.Error(ex, "แจ้งเตือนผู้รับงานของงาน {JobMasterId} ไม่สำเร็จ", job.jobmasterid);
+            }
+        }
+    }
+
+    // ── audit ──────────────────────────────────────────────────────────
+    // engine เดิมเขียน audit ทุกการกระทำ ตัวใหม่ต้องเขียนเหมือนกัน ไม่งั้นผิด
+    // ข้อกำหนดที่ตั้งไว้เอง (พ.ร.บ.คอมพิวเตอร์ — เก็บผู้ทำ+เวลา ไม่ต่ำกว่า 90 วัน)
+    // hook อัตโนมัติของ HRMContext ไม่รู้ว่าใครเป็นคนสั่ง จึงต้องเขียนเองที่นี่
+    private async Task AuditAsync(job_master job, string action, object? detail, CancellationToken ct)
+    {
+        try
+        {
+            await _audit.LogChangeAsync(AuditActionType.Update, "job_master", job.jobmasterid.ToString(),
+                null, new { action, job.workflowcode, job.status, job.lastLevel, job.jobseq, detail },
+                isSensitive: false, ct);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "บันทึก audit ของงาน {JobMasterId} ไม่สำเร็จ", job.jobmasterid);
+        }
     }
 
     // ── ปุ่มสามปุ่ม = สามการขยับ ────────────────────────────────────────────
@@ -343,6 +401,7 @@ public class WorkflowService
         db.job_user_lists.AddRange(model.jobUserList);
 
         await db.SaveChangesAsync(ct);
+        await AuditAsync(job, "Create", new { reftable, refid, amount }, ct);
         return model;
     }
 
@@ -413,6 +472,9 @@ public class WorkflowService
         model.jobUserList = new List<job_user_list> { back };
 
         await db.SaveChangesAsync(ct);
+
+        await AuditAsync(job, move.Name, new { from = fromLevel, to = DraftLevel, model.reason }, ct);
+        await NotifyRecipientsAsync(db, job, new List<job_user_list> { back }, null, ct);
 
         if (move is ReturnToSenderMove)
             await NoticeEveryoneInvolvedAsync(db, job, model.actorUserId, model.reason, ct);
@@ -765,6 +827,13 @@ public class WorkflowService
         }
 
         await db.SaveChangesAsync(ct);
+
+        await AuditAsync(job, move.Name,
+            new { from = fromLevel, to = toLevel, hop = hopNow, closed = job.isJobClosed, model.reason }, ct);
+
+        // คนที่เพิ่งได้รับงานต้องรู้ว่ามีงานมาถึงมือ
+        if (model.jobUserList.Count > 0)
+            await NotifyRecipientsAsync(db, job, model.jobUserList, target, ct);
 
         // ส่งกลับหาผู้กรอกแบบฟอร์ม = ทุกคนที่เคยผ่านงานนี้มาต้องรู้ว่าถูกส่งกลับไปแก้
         // (CEO: "ต้อง notice คนที่เกี่ยวข้องที่ผ่านมาทั้งหมด ใน job_userlist")

@@ -72,7 +72,7 @@
                 <MudStack Row="true" Spacing="1">
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => ApproveAsync(context.jobapproverid))">อนุมัติ</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => RejectAsync(context.jobapproverid))">ปฏิเสธ</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">ดูรายละเอียด</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo(DetailUrl(context)))">ดูรายละเอียด</MudButton>
                 </MudStack>
             </MudTd>
         </RowTemplate>
@@ -103,7 +103,7 @@
             <MudTd>@context.wlevel</MudTd>
             <MudTd><MudChip T="string" Size="Size.Small" Color="@HistoryColor(context.jobstatus)">@context.jobstatus</MudChip></MudTd>
             <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
-            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/wf/my-inbox/{context.jobmasterid}"))">รายละเอียด</MudButton></MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo(DetailUrl(context)))">รายละเอียด</MudButton></MudTd>
         </RowTemplate>
         <NoRecordsContent>
             <MudText Typo="Typo.body2">ยังไม่เคยพิจารณางานใด</MudText>
@@ -163,8 +163,29 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _workflows = await context.wf_workflows.Where(w => w.isactive == true).OrderBy(w => w.workflowcode).ToListAsync();
 
+        await LoadEngineMapAsync();
         await RefreshInboxAsync();
         await RefreshHistoryAsync();
+    }
+
+    // งานที่ workflow ย้ายมาใช้ engine ใหม่แล้ว ต้องเปิดด้วยหน้า template ตัวใหม่
+    // ไม่งั้นผู้อนุมัติจะเห็นหน้าเดิมที่กดปุ่มไปเข้า engine เดิม แล้วปนกัน
+    private string DetailUrl(job_user_list row)
+    {
+        var wfid = row.workflowid;
+        return _newEngineWorkflows.Contains(wfid)
+            ? $"/workflow/detail/{row.jobmasterid}"
+            : $"/wf/my-inbox/{row.jobmasterid}";
+    }
+
+    private HashSet<long> _newEngineWorkflows = new();
+
+    private async Task LoadEngineMapAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _newEngineWorkflows = (await context.wf_workflows
+            .Where(w => w.useNewEngine == true)
+            .Select(w => w.workflowid).ToListAsync()).ToHashSet();
     }
 
     private async Task RefreshInboxAsync()
