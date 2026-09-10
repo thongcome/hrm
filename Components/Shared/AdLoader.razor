@@ -1,25 +1,21 @@
 @*
     ตัวโหลดแบบมีลูกเล่นจากโลโก้ AD — CEO, 10 ก.ย. 2569: "ตอนรอ ใช้ logo นี้ simulation แบบเท่ห์ๆ"
+    และ "logo ต้องอันนี้" — ใช้ไฟล์โลโก้จริง (wwwroot/ad-logo.png ตัวเดียวกับ favicon
+    และเอกสารข้อเสนอ) ไม่ใช่รูปที่วาดเลียนแบบ
 
-    ใช้แทนข้อความ "กำลังโหลด..." / MudProgressCircular ทั่วระบบ (มี 113 จุดใน 94 ไฟล์
-    ค่อย ๆ ทยอยแทน) เขียนเป็น SVG inline เพื่อให้ animation ทำงานได้โดยไม่ต้องโหลดไฟล์
-    ก่อน: เส้น A และ D วาดตัวเองขึ้นมาแล้วเติมสี วนซ้ำ — คนที่ตั้งค่า reduce motion
-    จะเห็นโลโก้นิ่งพร้อมข้อความเฉย ๆ
+    วิธีทำ: โลโก้เป็น mask (ช่องอัลฟาของ png) ทับด้วยสองชั้น — ชั้นล่างสีจางเป็นเงา
+    ชั้นบนสีเต็ม "เทขึ้น" จากล่างขึ้นบน แล้วจางหาย วนซ้ำ — รูปทรงตรงกับโลโก้จริง 100%
+    เพราะไม่ได้วาดเส้นเอง คนที่ตั้งค่า reduce motion เห็นโลโก้นิ่งพร้อมข้อความเฉย ๆ
+
+    ใช้แทนข้อความ "กำลังโหลด..." / MudProgressCircular ทั่วระบบ (ค่อย ๆ ทยอยแทน)
 *@
 
 <div class="ad-loader" role="status" aria-live="polite" style="--ad-size:@(Size)px">
-    <svg viewBox="0 0 512 512" class="ad-loader-mark" aria-hidden="true">
-        <g fill="none" stroke="#E8491D" stroke-width="14" stroke-linejoin="round">
-            <path class="ad-stroke" d="M28 430 L168 82 H248 L328 248 H276 L208 138 L96 430 Z"/>
-            <path class="ad-stroke ad-stroke-2" d="M148 336 H238 L226 302 H160 Z"/>
-            <path class="ad-stroke ad-stroke-3" d="M300 82 H372 C472 82 510 168 510 256 C510 344 472 430 372 430 H232 L258 366 H372 C420 366 446 308 446 256 C446 204 420 146 372 146 H323 Z"/>
-        </g>
-        <g class="ad-fill" fill="#E8491D" fill-rule="evenodd">
-            <path d="M28 430 L168 82 H248 L328 248 H276 L208 138 L96 430 Z"/>
-            <path d="M148 336 H238 L226 302 H160 Z"/>
-            <path d="M300 82 H372 C472 82 510 168 510 256 C510 344 472 430 372 430 H232 L258 366 H372 C420 366 446 308 446 256 C446 204 420 146 372 146 H323 Z"/>
-        </g>
-    </svg>
+    <div class="ad-loader-mark" aria-hidden="true">
+        <div class="ad-mark ad-mark-ghost"></div>
+        <div class="ad-mark ad-mark-fill"></div>
+        <div class="ad-mark ad-mark-sheen"></div>
+    </div>
     @if (!string.IsNullOrWhiteSpace(Text))
     {
         <div class="ad-loader-text">@Text</div>
@@ -28,21 +24,41 @@
 
 <style>
     .ad-loader { display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 0; }
-    .ad-loader-mark { width:var(--ad-size); height:var(--ad-size); }
+    .ad-loader-mark { position:relative; width:var(--ad-size); height:var(--ad-size); }
     .ad-loader-text { font-size:0.9rem; color:#6b7280; letter-spacing:.02em; }
 
-    /* วาดเส้นขึ้นมาก่อน แล้วค่อยเติมสี จากนั้นหายไปเริ่มใหม่ — 2.4 วินาทีต่อรอบ */
-    .ad-stroke { stroke-dasharray:1400; stroke-dashoffset:1400; animation:ad-draw 2.4s ease-in-out infinite; }
-    .ad-stroke-2 { animation-delay:.25s; }
-    .ad-stroke-3 { animation-delay:.4s; }
-    .ad-fill { opacity:0; animation:ad-fill 2.4s ease-in-out infinite; transform-origin:50% 50%; }
+    .ad-mark {
+        position:absolute; inset:0;
+        -webkit-mask:url(/ad-logo.png) center / contain no-repeat;
+                mask:url(/ad-logo.png) center / contain no-repeat;
+        background:#E8491D;
+    }
+    .ad-mark-ghost { opacity:.16; }
+    /* สีเต็มเทขึ้นจากล่างขึ้นบน แล้วจางหายเริ่มใหม่ — 2.2 วินาทีต่อรอบ */
+    .ad-mark-fill { clip-path:inset(100% 0 0 0); animation:ad-rise 2.2s cubic-bezier(.4,0,.2,1) infinite; }
+    /* แสงวูบผ่านตัวอักษรตอนเต็มแล้ว */
+    .ad-mark-sheen {
+        background:linear-gradient(115deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
+        background-size:250% 100%; opacity:0;
+        animation:ad-sheen 2.2s ease-in-out infinite;
+    }
 
-    @@keyframes ad-draw { 0% { stroke-dashoffset:1400; opacity:1 } 45% { stroke-dashoffset:0; opacity:1 } 70% { opacity:0 } 100% { stroke-dashoffset:0; opacity:0 } }
-    @@keyframes ad-fill { 0%,40% { opacity:0; transform:scale(.96) } 60% { opacity:1; transform:scale(1) } 85% { opacity:1 } 100% { opacity:0; transform:scale(1.02) } }
+    @@keyframes ad-rise {
+        0%   { clip-path:inset(100% 0 0 0); opacity:1 }
+        55%  { clip-path:inset(0 0 0 0);    opacity:1 }
+        85%  { clip-path:inset(0 0 0 0);    opacity:1 }
+        100% { clip-path:inset(0 0 0 0);    opacity:0 }
+    }
+    @@keyframes ad-sheen {
+        0%,55% { background-position:120% 0; opacity:0 }
+        60%    { opacity:1 }
+        80%    { background-position:-20% 0; opacity:1 }
+        85%,100% { background-position:-20% 0; opacity:0 }
+    }
 
     @@media (prefers-reduced-motion: reduce) {
-        .ad-stroke { animation:none; stroke-dashoffset:0; opacity:0; }
-        .ad-fill { animation:none; opacity:1; }
+        .ad-mark-fill { animation:none; clip-path:none; opacity:1; }
+        .ad-mark-sheen { display:none; }
     }
 </style>
 
