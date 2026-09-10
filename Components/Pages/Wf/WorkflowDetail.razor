@@ -144,8 +144,25 @@
         }
         else
         {
-            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
-                ขั้นนี้ยังไม่ได้ตั้งค่า controller ว่าให้เสียบหน้าไหน
+            @* ยังไม่ได้ config หน้าโมดูล — อย่างน้อยต้องบอกให้ได้ว่ากำลังอนุมัติอะไร
+               (CEO: "คุณทำ workflow แต่ไม่รู้ว่าอนุมัติอะไร ได้อย่างไร")
+               job_master พกข้อมูลของคำขอมาด้วยอยู่แล้วตั้งแต่ตอนเปิดงาน
+               จึงแสดงจากตรงนั้นได้เลย ไม่ต้องรู้จักโมดูลปลายทาง — ใช้ได้กับ
+               ทุก workflow ที่ยังไม่มีหน้ารายละเอียดของตัวเอง *@
+            <MudSimpleTable Dense="true" Hover="false" Striped="false" Class="mt-1" Style="max-width:640px">
+                <tbody>
+                    @foreach (var (label, value) in JobFacts())
+                    {
+                        <tr>
+                            <td style="width:170px" class="mud-text-secondary">@label</td>
+                            <td>@value</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">
+                ขั้นนี้ยังไม่ได้ตั้งค่าว่าให้เสียบหน้ารายละเอียดของโมดูลไหน —
+                ตั้งได้ที่ช่อง "หน้ารายละเอียด (controller)" ในหน้าออกแบบ workflow
             </MudText>
         }
 
@@ -655,6 +672,29 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
+    }
+
+    // ข้อเท็จจริงของคำขอที่ job_master พกมาเอง ใช้ตอนขั้นนั้นยังไม่ได้ config
+    // หน้ารายละเอียดของโมดูล — ผู้อนุมัติต้องเห็นอย่างน้อยว่ากำลังอนุมัติอะไร
+    // ให้ใครและจำนวนเท่าไหร่ ข้ามช่องที่ว่าง จะได้ไม่มีแถวเปล่าให้รก
+    private IEnumerable<(string Label, string Value)> JobFacts()
+    {
+        var j = _m?.jobMaster;
+        if (j is null) yield break;
+
+        (string, string)[] all =
+        {
+            ("เรื่อง",              j.subject ?? ""),
+            ("ผู้ยื่นคำขอ",          j.reqName ?? j.createby ?? ""),
+            ("หน่วยงาน",            j.reqdept ?? ""),
+            ("วันที่ขอ",            j.reqdate?.ToString("d MMM yyyy") ?? j.createdate?.ToString("d MMM yyyy") ?? ""),
+            ("จำนวนเงิน",           j.reqamont is decimal a && a != 0 ? $"{a:N2} บาท" : ""),
+            ("รายละเอียด",          j.description ?? ""),
+            ("เหตุผลล่าสุด",         j.remark ?? ""),
+            ("เอกสารต้นทาง",        string.IsNullOrWhiteSpace(j.reftable) ? "" : $"{j.reftable} #{j.refid}"),
+        };
+        foreach (var row in all)
+            if (!string.IsNullOrWhiteSpace(row.Item2)) yield return row;
     }
 
     // ── include หน้าเอกสาร ────────────────────────────────────────────────
