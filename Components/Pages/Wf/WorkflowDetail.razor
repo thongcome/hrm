@@ -6,6 +6,8 @@
 @using HRM.Services.Workflow
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using HRM.Services.Pay
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
 @inject WorkflowService Wf
@@ -13,6 +15,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
 @inject WorkflowButtonService Buttons
+@inject PrivateFileStorage FileStorage
 @attribute [Authorize]
 
 @*
@@ -144,6 +147,57 @@
             <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">
                 ขั้นนี้ยังไม่ได้ตั้งค่า controller ว่าให้เสียบหน้าไหน
             </MudText>
+        }
+
+        @* ── เอกสารแนบ ──
+           doc_center เป็นที่เก็บไฟล์แนบกลางของทั้งระบบ workflow จึงดึงมาแสดงเอง
+           ไม่ต้องรอให้หน้าโมดูลมีปุ่มแนบของตัวเอง (CEO, 10 ก.ย. 2569)
+             แถวบน = ไฟล์ของเอกสารต้นทาง คีย์ด้วย (wf_workflow.doctypecode, job.refid)
+             แถวล่าง = ไฟล์ที่ผู้อนุมัติแนบระหว่างอนุมัติ คีย์ด้วย jobapproverid *@
+        <MudDivider Class="my-3" />
+        <div class="d-flex align-center gap-2">
+            <MudText Typo="Typo.subtitle2">เอกสารแนบ</MudText>
+            <MudChip T="string" Size="Size.Small">@(_docFiles.Count + _myFiles.Count) ไฟล์</MudChip>
+        </div>
+
+        @if (_docFiles.Count > 0)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">แนบมากับคำขอ</MudText>
+            <MudStack Spacing="0" Class="mb-2">
+                @foreach (var f in _docFiles)
+                {
+                    <MudLink Href="@($"/wf/files/job/{Id}/{f.id}")" Target="_blank">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" /> @f.files
+                    </MudLink>
+                }
+            </MudStack>
+        }
+
+        @if (_myFiles.Count > 0)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">แนบโดยผู้อนุมัติ</MudText>
+            <MudStack Spacing="0" Class="mb-2">
+                @foreach (var f in _myFiles)
+                {
+                    <MudLink Href="@($"/wf/files/job/{Id}/{f.id}")" Target="_blank">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" /> @f.files
+                    </MudLink>
+                }
+            </MudStack>
+        }
+
+        @if (_m.isCurrentUser && _m.jobUserListSession is not null)
+        {
+            <MudFileUpload T="IBrowserFile" FilesChanged="UploadAsync">
+                <ActivatorContent>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.AttachFile">แนบไฟล์</MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        }
+        else if (_docFiles.Count == 0 && _myFiles.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">ไม่มีเอกสารแนบ</MudText>
         }
 
         @* ── 2. ปุ่ม: ขึ้นตาม config ของขั้นที่งานอยู่ ────────────────────────── *@
@@ -486,6 +540,66 @@
         ResolveDocument();
         await LoadReasonsAsync();
         await LoadButtonsAsync();
+        await LoadAttachmentsAsync();
+    }
+
+    // ── doc_center เข้ามาเป็นส่วนหนึ่งของ workflow ────────────────────────
+    private List<doc_center> _docFiles = new();   // ไฟล์ของเอกสารต้นทาง
+    private List<doc_center> _myFiles = new();    // ไฟล์ที่ผู้อนุมัติแนบ
+
+    private async Task LoadAttachmentsAsync()
+    {
+        _docFiles = new(); _myFiles = new();
+        if (_m?.jobMaster is null) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // เอกสารต้นทาง — คีย์ (doctypecode ของ workflow, refid ของงาน)
+        var dt = _m.wfWorkflow?.doctypecode;
+        if (!string.IsNullOrWhiteSpace(dt) && long.TryParse(_m.jobMaster.refid, out var refid))
+            _docFiles = await db.doc_centers
+                .Where(d => d.doctypecode == dt && d.refid == refid && d.isActive != false)
+                .OrderBy(d => d.id).ToListAsync();
+
+        // ไฟล์ที่ผู้อนุมัติแนบ — คีย์ jobapproverid ของงานนี้
+        var approverIds = _m.jobUserList.Select(a => a.jobapproverid).ToList();
+        if (approverIds.Count > 0)
+            _myFiles = await db.doc_centers
+                .Where(d => d.doctypecode == "WF_ATTACHMENT" && d.refid != null
+                         && approverIds.Contains(d.refid.Value) && d.isActive != false)
+                .OrderBy(d => d.id).ToListAsync();
+    }
+
+    private async Task UploadAsync(IBrowserFile? file)
+    {
+        if (file is null || _m?.jobUserListSession is null) return;
+        _busy = true; _error = null;
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024;   // 10 MB
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+
+            var approverId = _m.jobUserListSession.jobapproverid;
+            var stored = $"{approverId}_{Guid.NewGuid():N}_{file.Name}";
+            var (relativePath, _) = await FileStorage.SaveAsync("wf-attachments", stored, ms.ToArray());
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            db.doc_centers.Add(new doc_center
+            {
+                refid = approverId,
+                doctypecode = "WF_ATTACHMENT",
+                files = file.Name,
+                path = relativePath,
+                isActive = true,
+                moddate = DateTime.Now,
+            });
+            await db.SaveChangesAsync();
+            await LoadAttachmentsAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
     }
 
     // isManualButton — ขั้นนี้ไม่ใช้ปุ่มมาตรฐาน ให้ wf_button เป็นคนบอกว่ามีปุ่มอะไร

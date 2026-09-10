@@ -119,6 +119,20 @@ public partial class wf_workflow
     
     public string? wgroup { get; set; }
 
+    // เอกสารแนบของงานนี้อยู่ใน doc_center ภายใต้ doctypecode ไหน
+    // (CEO, 10 ก.ย. 2569: "คุณต้องเอา doc_center module มาใน workflow ด้วย")
+    // doc_center เก็บด้วย (doctypecode, refid) — refid ของงานคือ job_master.refid
+    // ตั้งค่านี้แล้วหน้า workflow จะดึงไฟล์แนบของเอกสารต้นทางมาแสดงเอง
+    [StringLength(50)]
+    public string? doctypecode { get; set; }
+
+    // เครื่องยนต์ตัวไหนเดินงานของ workflow นี้ (CEO, 10 ก.ย. 2569)
+    //   null/false = WorkflowEngineService ตัวเดิม (ค่าเริ่มต้น ไม่กระทบของที่ใช้อยู่)
+    //   true       = WorkflowService ตัวใหม่
+    // ย้ายโมดูลมาใช้ตัวใหม่ = ติ๊กช่องนี้ ไม่ต้องแก้โค้ดโมดูล ไม่ต้อง deploy
+    // ถอยกลับ = ปลดติ๊ก งานที่วิ่งอยู่ใช้ตารางชุดเดียวกันทั้งคู่จึงไม่หาย
+    public bool? useNewEngine { get; set; }
+
     [StringLength(50)]
     
     public string? abbname { get; set; }

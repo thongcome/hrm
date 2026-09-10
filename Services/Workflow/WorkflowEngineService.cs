@@ -85,12 +85,38 @@ public class WorkflowEngineService
     private readonly EmailSender _emailSender;
     private readonly HRM.Services.Audit.IAuditLogger _auditLogger;
 
-    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender, HRM.Services.Audit.IAuditLogger auditLogger)
+    // ตัวใหม่ถูกฉีดเข้ามาแบบขี้เกียจ (Lazy) เพราะทั้งสองตัวอ้างถึงกัน —
+    // WorkflowService เรียก EvaluateLevel ของตัวนี้ ส่วนตัวนี้ส่งงานต่อให้ตัวนั้น
+    private readonly IServiceProvider _sp;
+    private WorkflowService NewEngine => _sp.GetRequiredService<WorkflowService>();
+
+    public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender,
+        HRM.Services.Audit.IAuditLogger auditLogger, IServiceProvider sp)
     {
         _dbFactory = dbFactory;
         _emailSender = emailSender;
         _auditLogger = auditLogger;
+        _sp = sp;
     }
+
+    // ── สลับเครื่องยนต์ด้วย config ───────────────────────────────────────
+    //
+    // CEO, 10 ก.ย. 2569: "เพราะเป็น configuration base น่าจะ config แล้วใช้ได้เลย"
+    //
+    // โมดูล 21 ตัวเรียกเมธอดของคลาสนี้ตรง ๆ ตั้งแต่ตอนเขียน การย้ายไปใช้ตัวใหม่
+    // จึงเคยแปลว่าต้องแก้ call site ทุกตัวแล้ว deploy ใหม่ แทนที่จะทำแบบนั้น
+    // คลาสนี้ถามที่ตัว workflow เองว่าจะให้ใครเดิน แล้วส่งต่อ — ย้ายโมดูลไหน
+    // ก็แค่ติ๊ก wf_workflow.useNewEngine ถอยกลับก็ปลดติ๊ก ไม่ต้อง build
+    private async Task<bool> UsesNewEngineAsync(HRMContext context, long workflowId, CancellationToken ct)
+        => await context.wf_workflows.Where(w => w.workflowid == workflowId)
+            .Select(w => w.useNewEngine).FirstOrDefaultAsync(ct) == true;
+
+    private async Task<bool> JobUsesNewEngineAsync(HRMContext context, long jobMasterId, CancellationToken ct)
+        => await context.job_masters.Where(j => j.jobmasterid == jobMasterId)
+            .Select(j => j.workflow.useNewEngine).FirstOrDefaultAsync(ct) == true;
+
+    private static WorkFlowViewModel Carry(long jobMasterId, long actorUserId, string? comment, long? reasonId)
+        => new() { jobmasterid = jobMasterId, actorUserId = actorUserId, reason = comment, mas_reason_id = reasonId };
 
     // Starts a new approval instance for any document type — reftable/refid
     // is the generic routing pair (Block 7 uses this to build the link back
@@ -104,6 +130,19 @@ public class WorkflowEngineService
             ?? throw new InvalidOperationException($"ไม่พบ workflow id {workflowId}");
         if (workflow.isactive != true)
             throw new InvalidOperationException($"workflow '{workflow.wname}' ปิดใช้งานอยู่ ไม่สามารถเริ่มงานใหม่ได้");
+
+        // workflow นี้ย้ายไปเครื่องใหม่แล้ว -> ส่งต่อ
+        // โมดูลเรียก StartJobAsync ตอนที่ "ผู้ขอกดส่ง" อยู่แล้ว งานจึงต้องเข้าสาย
+        // อนุมัติทันที ไม่ใช่ค้างเป็น draft — สร้างแล้วเดินเข้าขั้นแรกให้เลย
+        // พฤติกรรมที่โมดูลเห็นจึงเหมือนเดิมทุกประการ
+        if (workflow.useNewEngine == true)
+        {
+            var created = await NewEngine.CreateAsync(workflowId, requesterUserId, requesterEmpId,
+                subject, reftable, refid, amount, ct);
+            await NewEngine.SubmitAsync(
+                Carry(created.jobmasterid, requesterUserId, null, null), ct);
+            return created.jobmasterid;
+        }
 
         var levels = await context.wf_sub_workflow_masters
             .Where(s => s.workflowid == workflowId)
