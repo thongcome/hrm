@@ -1131,8 +1131,13 @@ public class WorkflowService
     //  ที่หน้าผัง /wf/canvas ใช้ผูก wf_custom_user / wf_custom_role / wf_adhoc_user
     //  อยู่แล้ว ทำให้ node บนผังกับแถวใน route เป็นตัวเดียวกันตรง ๆ
     //  ส่วน "ชื่อ" ของขั้นก็อยู่บนแถว subworkflow เองแล้ว (subject / displayName)
+    //  ผู้อนุมัติหนึ่งคน = ชื่อ + รหัสพนักงาน + id ของ Hremployee (ไว้ทำลิงก์ไปหน้าข้อมูล
+    //  พนักงาน /employee/{id}) — CEO, 10 ก.ย. 2569: "ทำ Link ไปที่ข้อมูลพนักงานก็ได้
+    //  หรือวงเล็บด้วย" ชื่อซ้ำกันได้ในองค์กร 7,000 คน จึงต้องมีรหัสกำกับเสมอ
+    public record RouteApprover(string Name, string? EmpNo, long? HremployeeId);
+
     public record RouteStep(long SubWorkflowId, int Level, string Name, bool IsTop,
-        bool IsCurrent, bool IsDone, List<string> Approvers, string Source, string? Happened);
+        bool IsCurrent, bool IsDone, List<RouteApprover> Approvers, string Source, string? Happened);
 
     public async Task<List<RouteStep>> GetRouteAsync(long jobMasterId, CancellationToken ct = default)
     {
@@ -1146,7 +1151,7 @@ public class WorkflowService
 
         var rows = await db.job_user_lists
             .Where(a => a.jobmasterid == jobMasterId)
-            .Select(a => new { a.wlevel, a.username, a.userid, a.jobstatus, a.approvedate })
+            .Select(a => new { a.wlevel, a.username, a.userid, a.empid, a.jobstatus, a.approvedate })
             .ToListAsync(ct);
 
         // รอยเท้า — ตารางที่บอกว่า "เกิดอะไรขึ้นที่ขั้นนี้" ไม่ใช่แค่ใครถือ
@@ -1179,9 +1184,10 @@ public class WorkflowService
                 // ขั้น 2-3 มีรอยเท้าเก่าอยู่ก็จริง แต่ตอนนี้มันคือขั้นที่ "ยังไม่ถึง"
                 // อีกครั้ง ไม่ใช่ "ผ่านแล้ว" — เรื่องที่เคยผ่านไปแล้วบอกไว้ในคอลัมน์
                 // ประวัติแทน ซึ่งเป็นที่ของมันจริง ๆ
-                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.subject ?? lv.displayName ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
                     lv.wlevel == current, lv.wlevel < current,
-                    mine.Select(p => p.username ?? $"#{p.userid}").Distinct().ToList(),
+                    mine.Select(p => new RouteApprover(p.username ?? $"#{p.userid}", p.empid, null))
+                        .DistinctBy(a => a.Name + "|" + a.EmpNo).ToList(),
                     "จากประวัติของงานนี้", happened));
                 continue;
             }
@@ -1195,14 +1201,14 @@ public class WorkflowService
             // งานที่ปิดแล้วไม่ต้องทายอนาคต เพราะไม่มีอนาคตให้ทาย
             if (job.isJobClosed == true)
             {
-                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.subject ?? lv.displayName ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
                     false, false, new(), "งานปิดแล้ว ไม่ได้เดินมาถึงขั้นนี้", null));
                 continue;
             }
 
             // ให้ตัวขั้นเองบอกว่าใครอนุมัติ (GetUserBySourceAsync เดินดูทีละ field
             // ของ config แล้วคืนมาด้วยว่าได้ชื่อมาจาก field ไหน)
-            var names = new List<string>();
+            var names = new List<RouteApprover>();
             var source = "ยังหาผู้อนุมัติจากการตั้งค่าไม่ได้";
             try
             {
@@ -1212,16 +1218,35 @@ public class WorkflowService
                 {
                     var users = await db.sc_users.Where(u => ids.Contains(u.userid)).ToListAsync(ct);
                     users = await ApplyDelegationAsync(db, job, users, ct);
-                    names = users.Select(u => $"{u.firstname} {u.lastname}".Trim())
-                        .Where(n => n.Length > 0).Distinct().ToList();
+                    names = users.Select(u => new RouteApprover($"{u.firstname} {u.lastname}".Trim(), u.empid, null))
+                        .Where(a => a.Name.Length > 0).DistinctBy(a => a.Name + "|" + a.EmpNo).ToList();
                 }
                 var why = found.Where(f => f.UserIds.Count > 0).Select(f => SourceText(f.Field)).Distinct().ToList();
                 if (why.Count > 0) source = string.Join(" · ", why);
             }
             catch { /* config ไม่ครบไม่ควรทำให้ทั้งหน้าพัง — ปล่อยให้ขึ้นว่าหาไม่ได้ */ }
 
-            steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.displayName ?? lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+            steps.Add(new RouteStep(lv.subworkflowid, lv.wlevel, lv.subject ?? lv.displayName ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
                 lv.wlevel == current, false, names, source, null));
+        }
+
+        // ผูก id ของ Hremployee ให้ทุกชื่อในคราวเดียว — หน้าข้อมูลพนักงานคีย์ด้วย
+        // /employee/{id} แต่แถวผู้อนุมัติพกมาแค่รหัสพนักงาน (EMP_NO) จึงต้องแปลงตรงนี้
+        var empNos = steps.SelectMany(s => s.Approvers).Select(a => a.EmpNo)
+            .Where(e => !string.IsNullOrWhiteSpace(e)).Distinct().ToList();
+        if (empNos.Count > 0)
+        {
+            var idByEmpNo = await db.Hremployee
+                .Where(e => empNos.Contains(e.EmpNo))
+                .Select(e => new { e.EmpNo, e.id })
+                .ToDictionaryAsync(e => e.EmpNo, e => e.id, ct);
+
+            steps = steps.Select(s => s with
+            {
+                Approvers = s.Approvers.Select(a =>
+                    a.EmpNo is not null && idByEmpNo.TryGetValue(a.EmpNo, out var hid)
+                        ? a with { HremployeeId = hid } : a).ToList()
+            }).ToList();
         }
 
         return steps;

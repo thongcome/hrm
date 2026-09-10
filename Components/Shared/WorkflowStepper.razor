@@ -230,8 +230,10 @@ else
 
             if (byLevel.TryGetValue(lvl, out var rows) && rows.Count > 0)
             {
+                // "ชื่อ (empno)" — CEO, 10 ก.ย. 2569: ชื่อซ้ำกันได้ในองค์กรใหญ่ ใส่รหัสพนักงานกำกับเสมอ
                 var names = string.Join(" / ", rows.Select(r =>
-                    !string.IsNullOrWhiteSpace(r.username) ? r.username! : ApproverName(r.userid)).Distinct());
+                    (!string.IsNullOrWhiteSpace(r.username) ? r.username! : ApproverName(r.userid))
+                    + (string.IsNullOrWhiteSpace(r.empid) ? "" : $" ({r.empid})")).Distinct());
 
                 string state;
                 if (rows.Any(r => r.jobstatus == WorkflowEngineService.StatusRejected)) state = "rejected";

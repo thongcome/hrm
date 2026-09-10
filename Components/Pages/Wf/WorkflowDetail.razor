@@ -153,7 +153,21 @@
                             <MudTd>
                                 @if (context.Approvers.Count > 0)
                                 {
-                                    @string.Join(", ", context.Approvers)
+                                    @* "ชื่อ (empno)" — และชื่อเป็นลิงก์ไปหน้าข้อมูลพนักงานเมื่อผู้ดูมีสิทธิ์เปิด *@
+                                    @for (var i = 0; i < context.Approvers.Count; i++)
+                                    {
+                                        var a = context.Approvers[i];
+                                        if (i > 0) { <span>, </span> }
+                                        if (_canOpenEmployee && a.HremployeeId is long hid)
+                                        {
+                                            <MudLink Href="@($"/employee/{hid}")" Target="_blank">@a.Name</MudLink>
+                                        }
+                                        else
+                                        {
+                                            <span>@a.Name</span>
+                                        }
+                                        if (!string.IsNullOrWhiteSpace(a.EmpNo)) { <span> (@a.EmpNo)</span> }
+                                    }
                                 }
                                 else
                                 {
@@ -485,7 +499,9 @@
             <MudText Typo="Typo.subtitle2">กดแล้วเรื่องจะไปที่ใคร</MudText>
             <MudText Typo="Typo.body2">
                 ขั้นที่ @_m.jobUserListPredict[0].wlevel —
-                <b>@string.Join(", ", _m.jobUserListPredict.Select(p => p.username))</b>
+                @* ชื่อซ้ำกันได้ในองค์กรใหญ่ ใส่รหัสพนักงานกำกับเสมอ (CEO, 10 ก.ย. 2569) *@
+                <b>@string.Join(", ", _m.jobUserListPredict.Select(p =>
+                    string.IsNullOrWhiteSpace(p.empid) ? p.username : $"{p.username} ({p.empid})"))</b>
                 @if (_m.jobUserListPredict.Count > 1)
                 {
                     <span class="mud-text-secondary"> (@_m.jobUserListPredict.Count คน)</span>
@@ -506,7 +522,7 @@
             <RowTemplate>
                 <MudTd>@context.jobseq</MudTd>
                 <MudTd>@context.wlevel</MudTd>
-                <MudTd>@context.username</MudTd>
+                <MudTd>@context.username@(string.IsNullOrWhiteSpace(context.empid) ? "" : $" ({context.empid})")</MudTd>
                 <MudTd>@context.jobstatus</MudTd>
                 <MudTd>@context.approvedate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
                 <MudTd>@context.comment</MudTd>
@@ -548,6 +564,9 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
         var empno = state.User.FindFirst("empno")?.Value;
+        // อ่านแบบเดียวกับ DbNavMenu (FindAll("menu"), ไม่สนตัวพิมพ์) จะได้ตรงกับเมนูเสมอ
+        _canOpenEmployee = state.User.FindAll("menu")
+            .Any(c => string.Equals(c.Value, "PAY_ADMIN", StringComparison.OrdinalIgnoreCase));
 
         if (WorkflowId is long wfid)
         {
@@ -653,6 +672,9 @@
     // หรือตั้งแล้วแต่ยังไม่มีปุ่มใน wf_button ก็จะกลับไปใช้ปุ่มมาตรฐาน
     private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
     private List<WorkflowService.RouteStep> _route = new();
+    // /employee/{id} ติด Menu:PAY_ADMIN — ลิงก์ชื่อผู้อนุมัติไปหน้านั้นเฉพาะคนที่เปิดได้
+    // ไม่งั้นผู้อนุมัติทั่วไปกดแล้วเจอ Access denied ซึ่งแย่กว่าไม่มีลิงก์
+    private bool _canOpenEmployee;
 
     private static Color ButtonColor(string c) => c?.ToLowerInvariant() switch
     {
