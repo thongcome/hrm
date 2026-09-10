@@ -1,0 +1,278 @@
+@page "/wf/delegations"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@attribute [Authorize]
+
+@*
+    มอบฉันทะการอนุมัติ — ข้อเสนอ BA ข้อ 3 (CEO, 10 ก.ย. 2569)
+
+    เป็นหน้าบริการตัวเอง ไม่ใช่หน้า admin: ใครก็ตั้งของตัวเองได้ เพราะคนที่รู้ว่า
+    ตัวเองจะไม่อยู่คือเจ้าตัว ไม่ใช่ HR (ตามธรรมเนียมของโปรเจกต์นี้ หน้าที่ scope
+    ด้วย userid ของผู้ใช้เองไม่ต้องมี Menu policy) ส่วนผู้ดูแล workflow เห็นของ
+    ทุกคนเพื่อตรวจสอบได้
+*@
+
+<PageTitle>มอบฉันทะการอนุมัติ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">มอบฉันทะการอนุมัติ</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1" Style="max-width:70ch">
+        ใช้เมื่อคุณจะไม่อยู่ เช่น ลาพักร้อนหรือไปต่างจังหวัด
+        ในช่วงวันที่ที่กำหนด งานที่ปกติจะมาถึงคุณจะถูกส่งไปหาผู้รับมอบแทนโดยอัตโนมัติ
+        ทุกประเภทงานพร้อมกัน ไม่ต้องไปตั้งค่าทีละ workflow
+    </MudText>
+
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3" Style="max-width:70ch">
+        <b>สิ่งที่ควรรู้ก่อนใช้</b>
+        <ul class="mt-1" style="padding-inline-start:1.2rem">
+            <li>มีผลกับงานที่ <b>ยังไม่ถูกส่งมา</b> เท่านั้น — งานที่อยู่ในกล่องของคุณตอนนี้แล้ว
+                จะไม่ย้ายไปเอง เพราะใบงานหนึ่งใบต้องมีเจ้าของคนเดียวตลอด ไม่งั้นประวัติจะอ่านไม่รู้เรื่อง
+                (งานที่ค้างอยู่ ให้ผู้ดูแลใช้หน้า “มอบหมายผู้อนุมัติใหม่”)</li>
+            <li>มอบต่อกันเป็นทอดไม่ได้ — ถ้าผู้รับมอบของคุณมอบต่อให้คนที่สาม งานของคุณยังไปที่ผู้รับมอบของคุณเท่านั้น</li>
+            <li>ผู้รับมอบจะเห็นงานในกล่องของเขาเหมือนงานปกติ และประวัติจะบันทึกชื่อผู้ที่กดจริง</li>
+        </ul>
+    </MudAlert>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">มอบฉันทะใหม่</MudText>
+    <MudGrid Spacing="2">
+        <MudItem xs="12" md="3">
+            <MudAutocomplete T="sc_user" Label="ผู้มอบ" Value="_from" ValueChanged="@(v => _from = v)"
+                             SearchFunc="SearchUsersAsync" ToStringFunc="@(u => Name(u))"
+                             Disabled="!_isAdmin" HelperText="@(_isAdmin ? "ผู้ดูแลตั้งแทนคนอื่นได้" : "ตั้งให้ตัวเองเท่านั้น")" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudAutocomplete T="sc_user" Label="ผู้รับมอบ" Value="_to" ValueChanged="@(v => _to = v)"
+                             SearchFunc="SearchUsersAsync" ToStringFunc="@(u => Name(u))"
+                             HelperText="คนที่จะได้งานแทนในช่วงนี้" />
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudDatePicker Label="ตั้งแต่วันที่" @bind-Date="_start" />
+        </MudItem>
+        <MudItem xs="6" md="2">
+            <MudDatePicker Label="ถึงวันที่" @bind-Date="_end" HelperText="รวมวันสุดท้าย" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudSelect T="long?" Label="เฉพาะประเภทงาน" @bind-Value="_workflowId" Clearable="true"
+                       HelperText="ว่างไว้ = ทุกประเภท">
+                @foreach (var w in _workflows)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)w.workflowid)">@w.wname</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="10">
+            <MudTextField @bind-Value="_reason" Label="เหตุผล" Placeholder="เช่น ลาพักร้อน 5–12 ต.ค." />
+        </MudItem>
+        <MudItem xs="12" md="2" Class="d-flex align-end">
+            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="_busy" OnClick="SaveAsync" StartIcon="@Icons.Material.Filled.Add">บันทึก</MudButton>
+        </MudItem>
+    </MudGrid>
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_error</MudAlert>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <div class="d-flex align-center justify-space-between flex-wrap mb-2">
+        <MudText Typo="Typo.subtitle1">@(_isAdmin ? "การมอบฉันทะทั้งหมด" : "การมอบฉันทะของฉัน")</MudText>
+        <MudTextField T="string" Value="_search" ValueChanged="OnSearchChanged" Immediate="true"
+                      DebounceInterval="300" Placeholder="ค้นหา" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Style="max-width:280px" />
+    </div>
+
+    @if (_rows.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            ยังไม่มีการมอบฉันทะ — ตั้งได้จากแบบฟอร์มด้านบนเมื่อคุณจะไม่อยู่
+        </MudText>
+    }
+    else
+    {
+        <MudTable Items="Filtered()" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>สถานะ</MudTh><MudTh>ผู้มอบ</MudTh><MudTh>ผู้รับมอบ</MudTh>
+                <MudTh>ช่วงวันที่</MudTh><MudTh>ประเภทงาน</MudTh><MudTh>เหตุผล</MudTh><MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    @if (!context.Row.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">ยกเลิกแล้ว</MudChip>
+                    }
+                    else if (context.Row.CoversDate(DateTime.Now))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">มีผลอยู่</MudChip>
+                    }
+                    else if (context.Row.StartDate.Date > DateTime.Now.Date)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">รอถึงกำหนด</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">หมดช่วงแล้ว</MudChip>
+                    }
+                </MudTd>
+                <MudTd>@context.FromName</MudTd>
+                <MudTd>@context.ToName</MudTd>
+                <MudTd>@context.Row.StartDate.ToString("d MMM yy") – @context.Row.EndDate.ToString("d MMM yy")</MudTd>
+                <MudTd>@(context.WorkflowName ?? "ทุกประเภท")</MudTd>
+                <MudTd>@context.Row.Reason</MudTd>
+                <MudTd>
+                    @if (context.Row.IsActive)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                                   Disabled="_busy" OnClick="@(() => RevokeAsync(context.Row))">ยกเลิก</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private record Line(Wf_ApproverDelegation Row, string FromName, string ToName, string? WorkflowName);
+
+    private long _actorUserId;
+    private bool _isAdmin;
+    private bool _busy;
+    private string? _error;
+    private string _search = "";
+
+    private sc_user? _from;
+    private sc_user? _to;
+    private DateTime? _start = DateTime.Today;
+    private DateTime? _end = DateTime.Today.AddDays(7);
+    private long? _workflowId;
+    private string? _reason;
+
+    private List<Line> _rows = new();
+    private List<wf_workflow> _workflows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        long.TryParse(state.User.FindFirst("sc_userid")?.Value, out _actorUserId);
+        _isAdmin = state.User.IsInRole("Admin")
+                || (state.User.FindFirst("menu")?.Value?.Contains("WF_WORKFLOW_ADMIN") ?? false);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _workflows = await db.wf_workflows.Where(w => w.isactive == true)
+            .OrderBy(w => w.wname).ToListAsync();
+        _from = await db.sc_users.FirstOrDefaultAsync(u => u.userid == _actorUserId);
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Wf_ApproverDelegations.AsQueryable();
+        if (!_isAdmin) q = q.Where(d => d.FromUserId == _actorUserId || d.ToUserId == _actorUserId);
+
+        var list = await q.OrderByDescending(d => d.StartDate).Take(200).ToListAsync();
+        var ids = list.SelectMany(d => new[] { d.FromUserId, d.ToUserId }).Distinct().ToList();
+        var names = await db.sc_users.Where(u => ids.Contains(u.userid))
+            .ToDictionaryAsync(u => u.userid, u => $"{u.firstname} {u.lastname}".Trim());
+        var wfNames = _workflows.ToDictionary(w => w.workflowid, w => w.wname);
+
+        _rows = list.Select(d => new Line(d,
+            names.GetValueOrDefault(d.FromUserId, $"#{d.FromUserId}"),
+            names.GetValueOrDefault(d.ToUserId, $"#{d.ToUserId}"),
+            d.WorkflowId is long wid ? wfNames.GetValueOrDefault(wid) : null)).ToList();
+    }
+
+    private IEnumerable<Line> Filtered() =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _rows
+            : _rows.Where(r => (r.FromName + r.ToName + r.Row.Reason + r.WorkflowName)
+                .Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private void OnSearchChanged(string v) => _search = v ?? "";
+
+    private async Task<IEnumerable<sc_user>> SearchUsersAsync(string text, CancellationToken ct)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync(ct);
+        var q = db.sc_users.Where(u => u.isdisable != true);
+        if (!string.IsNullOrWhiteSpace(text))
+            q = q.Where(u => (u.firstname + " " + u.lastname).Contains(text)
+                          || u.loginname!.Contains(text) || u.empid!.Contains(text));
+        return await q.OrderBy(u => u.firstname).Take(20).ToListAsync(ct);
+    }
+
+    private static string Name(sc_user? u) => u is null ? "" : $"{u.firstname} {u.lastname}".Trim();
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+
+        // ตรวจก่อนบันทึก แล้วบอกให้ชัดว่าผิดตรงไหนและต้องทำอะไร
+        if (_from is null) { _error = "ยังไม่ได้เลือกผู้มอบ"; return; }
+        if (_to is null) { _error = "ยังไม่ได้เลือกผู้รับมอบ"; return; }
+        if (_from.userid == _to.userid) { _error = "ผู้มอบกับผู้รับมอบเป็นคนเดียวกันไม่ได้"; return; }
+        if (!_isAdmin && _from.userid != _actorUserId) { _error = "ตั้งการมอบฉันทะให้คนอื่นไม่ได้"; return; }
+        if (_start is null || _end is null) { _error = "ต้องระบุช่วงวันที่ให้ครบ"; return; }
+        if (_end < _start) { _error = "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม"; return; }
+
+        _busy = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // ซ้อนช่วงกันเองไม่ได้ ไม่งั้นตอนหาผู้อนุมัติจะกำกวมว่าใครแทน
+            var clash = await db.Wf_ApproverDelegations.AnyAsync(d =>
+                d.IsActive && d.FromUserId == _from.userid
+                && d.WorkflowId == _workflowId
+                && d.StartDate <= _end && _start <= d.EndDate);
+            if (clash)
+            {
+                _error = "ช่วงวันที่นี้ทับกับการมอบฉันทะที่มีอยู่แล้ว — ยกเลิกของเดิมก่อน หรือเลือกช่วงอื่น";
+                return;
+            }
+
+            db.Wf_ApproverDelegations.Add(new Wf_ApproverDelegation
+            {
+                FromUserId = _from.userid,
+                ToUserId = _to.userid,
+                WorkflowId = _workflowId,
+                StartDate = _start.Value.Date,
+                EndDate = _end.Value.Date,
+                Reason = _reason,
+                IsActive = true,
+                CreatedByUserId = _actorUserId,
+                CreatedAt = DateTime.Now,
+            });
+            await db.SaveChangesAsync();
+
+            Snackbar.Add($"มอบฉันทะให้ {Name(_to)} เรียบร้อย", Severity.Success);
+            _to = null; _reason = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeAsync(Wf_ApproverDelegation row)
+    {
+        _busy = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var e = await db.Wf_ApproverDelegations.FirstOrDefaultAsync(d => d.Id == row.Id);
+            if (e is not null) { e.IsActive = false; await db.SaveChangesAsync(); }
+            Snackbar.Add("ยกเลิกการมอบฉันทะแล้ว งานจะกลับมาหาเจ้าตัวตามเดิม", Severity.Info);
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+}

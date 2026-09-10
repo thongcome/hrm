@@ -16,6 +16,7 @@
 @inject NavigationManager Nav
 @inject WorkflowButtonService Buttons
 @inject PrivateFileStorage FileStorage
+@inject IDialogService Dialog
 @attribute [Authorize]
 
 @*
@@ -127,6 +128,58 @@
         <div class="mt-3 mb-2">
             <WorkflowStepper JobMasterId="@Id" />
         </div>
+
+        @* ── เส้นทางทั้งหมด พร้อมชื่อผู้อนุมัติทุกขั้น ─────────────────────────
+           ต้นฉบับทำแบบนี้ทั้งคู่ — JSP getWorkflowRount() คืนทั้งเส้นทางพร้อมชื่อ
+           และ epms getPredictNextUser() ทายจาก config ผู้ยื่นจึงเห็นตั้งแต่ต้นว่า
+           เรื่องจะผ่านมือใครบ้าง ไม่ใช่รู้ทีละขั้นตอนที่งานเดินไปถึง *@
+        @if (_route.Count > 0)
+        {
+            <MudExpansionPanels Elevation="0" Class="mb-2">
+                <MudExpansionPanel Text="@($"เส้นทางอนุมัติทั้งหมด {_route.Count} ขั้น — ดูว่าเรื่องจะผ่านใครบ้าง")">
+                    <MudTable Items="_route" Dense="true" Hover="false" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>ขั้น</MudTh><MudTh>ชื่อขั้น</MudTh><MudTh>ผู้อนุมัติ</MudTh><MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Level</MudTd>
+                            <MudTd>
+                                @context.Name
+                                @if (context.IsTop)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Class="ml-1">ขั้นสุดท้าย</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                @if (context.Approvers.Count > 0)
+                                {
+                                    @string.Join(", ", context.Approvers)
+                                }
+                                else
+                                {
+                                    <span class="mud-text-secondary">@context.Source</span>
+                                }
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">@context.Source</MudText>
+                            </MudTd>
+                            <MudTd>
+                                @if (context.IsCurrent)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">อยู่ที่นี่</MudChip>
+                                }
+                                else if (context.IsDone)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">ผ่านแล้ว</MudChip>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        ขั้นที่ผ่านไปแล้วแสดงชื่อคนที่ทำจริง ขั้นที่ยังไม่ถึงอ่านจากการตั้งค่าของ workflow ณ ตอนนี้
+                        — ถ้าผังองค์กรหรือผู้รับมอบฉันทะเปลี่ยน รายชื่อจะเปลี่ยนตาม
+                    </MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
 
         @* ── 2. เอกสาร: เสียบหน้าของโมดูลตาม config ของขั้นนี้ (collapse2) ──── *@
         <MudDivider Class="my-3" />
@@ -301,7 +354,14 @@
                     @foreach (var b in _configButtons)
                     {
                         <MudButton Variant="Variant.Filled" Color="@ButtonColor(b.ColorOrClass)" Disabled="_busy"
-                                   OnClick="@(() => ActByKind(b.ActionKind))">@b.Label</MudButton>
+                                   OnClick="@(() => ActByKind(b.ActionKind))">
+                            @b.Label
+                            @* ปุ่มส่งกลับบอกชื่อปลายทางด้วย ผู้อนุมัติจะได้รู้ก่อนกดว่าเรื่องจะไปถึงใคร *@
+                            @if (b.ActionKind == WorkflowButtonService.ActionSendBack && _m.sendBackToName is not null)
+                            {
+                                <span>&nbsp;(@_m.sendBackToName)</span>
+                            }
+                        </MudButton>
                     }
                 </MudStack>
             }
@@ -342,20 +402,97 @@
                         ส่งกลับ (@_m.sendBackToName)
                     </MudButton>
                 }
+
+                @* "ไม่อนุมัติ" คนละเรื่องกับ "ส่งกลับ" และผู้ใช้สับสนกันบ่อย
+                   จึงขึ้นเฉพาะขั้นสุดท้าย และมีคำอธิบายกำกับใต้ปุ่มเสมอ *@
+                @if (_m.canDecline)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Block"
+                               OnClick="@(() => Act(Wf.DeclineAsync))">
+                        ไม่อนุมัติ
+                    </MudButton>
+                }
             </MudStack>
+
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">
+                @if (_m.canDecline)
+                {
+                    <span><b>ส่งกลับ</b> = ให้กลับไปแก้แล้วส่งมาใหม่ เรื่องยังเดินต่อได้ ·
+                          <b>ไม่อนุมัติ</b> = ปฏิเสธและปิดเรื่อง ไม่ต้องส่งมาอีก</span>
+                }
+                else if (_m.subWorkflow?.istop == true)
+                {
+                    <span>กดอนุมัติแล้วงานนี้จะจบทันที เพราะเป็นขั้นสุดท้าย</span>
+                }
+                else
+                {
+                    <span>กดแล้วเรื่องจะเดินไปขั้นถัดไป — ถ้าไม่เห็นด้วยให้ใช้ “ส่งกลับ”
+                          การปฏิเสธถาวรทำได้เฉพาะผู้อนุมัติขั้นสุดท้าย</span>
+                }
+            </MudText>
             }
         }
         else if (_m.jobMaster.isJobClosed != true)
         {
-            <MudAlert Severity="Severity.Normal">งานนี้ไม่ได้อยู่ที่คุณ</MudAlert>
+            <MudAlert Severity="Severity.Normal">
+                งานนี้ไม่ได้อยู่ที่คุณ — ตอนนี้รออยู่ที่ขั้นที่ @_m.jobMaster.lastLevel
+                คุณดูความคืบหน้าได้ แต่ยังกดดำเนินการแทนไม่ได้
+            </MudAlert>
+        }
+
+        @* ── สิ่งที่ "ผู้ยื่นคำขอ" ทำได้ — แยกจากสิ่งที่ผู้อนุมัติทำ ───────────── *@
+        @if (_m.isDraftHolder || _m.canCancel)
+        {
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle2">คำขอของคุณ</MudText>
+
+            @if (_m.isDraftHolder)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                    เรื่องนี้อยู่ในมือคุณ ยังไม่ได้เข้าสายอนุมัติ
+                    @if (!string.IsNullOrEmpty(_m.jobMaster.remark))
+                    {
+                        <span>— เหตุผลที่ถูกส่งกลับ: <b>@_m.jobMaster.remark</b></span>
+                    }
+                    <br />แก้เอกสารให้เรียบร้อยก่อน แล้วจึงกด “ส่งต่อ” เพื่อส่งเข้าสายอนุมัติอีกครั้ง
+                </MudText>
+                @if (_m.editUrl is not null)
+                {
+                    <MudButton Href="@_m.editUrl" Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Edit" Class="mr-2">แก้ไขเอกสาร</MudButton>
+                }
+            }
+
+            @if (_m.canCancel)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Disabled="_busy"
+                           StartIcon="@Icons.Material.Filled.DoNotDisturbOn"
+                           OnClick="CancelRequestAsync">ยกเลิกคำขอนี้</MudButton>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                    ยกเลิกแล้วเรื่องจะปิดทันทีและหายจากกล่องงานของผู้อนุมัติ
+                    ข้อมูลและประวัติยังเก็บไว้ครบ ไม่ได้ถูกลบ — แต่เปิดใหม่ไม่ได้ ต้องยื่นเรื่องใหม่
+                </MudText>
+            }
         }
 
         @* ── 3. ผู้อนุมัติขั้นถัดไป (ทายไว้ล่วงหน้า) ──────────────────────────── *@
         @if (_m.jobUserListPredict.Count > 0)
         {
-            <MudText Typo="Typo.subtitle2" Class="mt-4">ขั้นถัดไป</MudText>
-            <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                ขั้นที่ @_m.jobUserListPredict[0].wlevel — @string.Join(", ", _m.jobUserListPredict.Select(p => p.username))
+            @* บอกก่อนกดว่าเรื่องจะไปถึงใคร — ลดการส่งผิดทาง และทำให้ผู้อนุมัติ
+               ตัดสินใจได้เร็วขึ้นเพราะเห็นว่าใครจะรับช่วงต่อ (ข้อเสนอ BA ข้อ 5) *@
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle2">กดแล้วเรื่องจะไปที่ใคร</MudText>
+            <MudText Typo="Typo.body2">
+                ขั้นที่ @_m.jobUserListPredict[0].wlevel —
+                <b>@string.Join(", ", _m.jobUserListPredict.Select(p => p.username))</b>
+                @if (_m.jobUserListPredict.Count > 1)
+                {
+                    <span class="mud-text-secondary"> (@_m.jobUserListPredict.Count คน)</span>
+                }
+            </MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                คำนวณจากการตั้งค่าของขั้นถัดไป ณ ตอนนี้ — ถ้าผังองค์กรหรือผู้รับมอบฉันทะเปลี่ยนก่อนคุณกด รายชื่ออาจเปลี่ยนตาม
             </MudText>
         }
 
@@ -515,6 +652,7 @@
     // ปุ่มจาก config (wf_button) — ว่างเมื่อขั้นนี้ไม่ได้ตั้ง isManualButton
     // หรือตั้งแล้วแต่ยังไม่มีปุ่มใน wf_button ก็จะกลับไปใช้ปุ่มมาตรฐาน
     private List<WorkflowButtonService.WorkflowButtonDescriptor> _configButtons = new();
+    private List<WorkflowService.RouteStep> _route = new();
 
     private static Color ButtonColor(string c) => c?.ToLowerInvariant() switch
     {
@@ -531,9 +669,33 @@
     {
         "sendback" when _m?.canReturnToSender == true => Act(Wf.ReturnToSenderAsync),
         "sendback" => Act(Wf.RejectOneStepAsync),
+        // ปุ่มที่ config บอกว่าเป็น decline ต้องปฏิเสธจริง ไม่ใช่ส่งกลับ
+        "decline" when _m?.canDecline == true => Act(Wf.DeclineAsync),
         "decline"  => Act(Wf.RejectOneStepAsync),
         _          => _m?.subWorkflow?.istop == true ? Act(Wf.ApproveAsync) : Act(Wf.SubmitAsync),
     };
+
+    // ยกเลิกคำขอ — ต้องยืนยันก่อน เพราะปิดแล้วเปิดใหม่ไม่ได้
+    private async Task CancelRequestAsync()
+    {
+        var ok = await Dialog.ShowMessageBox("ยกเลิกคำขอนี้",
+            "เรื่องจะปิดทันทีและหายจากกล่องงานของผู้อนุมัติ ประวัติยังเก็บไว้ แต่เปิดใหม่ไม่ได้ ต้องยื่นเรื่องใหม่",
+            yesText: "ยกเลิกคำขอ", cancelText: "ไม่ใช่ตอนนี้");
+        if (ok != true) return;
+
+        _busy = true; _error = null;
+        try
+        {
+            await Wf.CancelAsync(new WorkFlowViewModel
+            {
+                jobmasterid = Id, actorUserId = _actorUserId,
+                reason = string.IsNullOrWhiteSpace(_reason) ? "ผู้ยื่นยกเลิกคำขอเอง" : _reason,
+            });
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
 
     private async Task ClaimAsync()
     {
@@ -557,6 +719,7 @@
         ResolveDocument();
         await LoadReasonsAsync();
         await LoadButtonsAsync();
+        _route = _m?.jobMaster is null ? new() : await Wf.GetRouteAsync(Id);
         await LoadAttachmentsAsync();
     }
 
@@ -623,9 +786,14 @@
     // (epms GetButtonList เลือกจาก isStart / istop / isAndCondition)
     private async Task LoadButtonsAsync()
     {
+        // CEO, 10 ก.ย. 2569: "ปุ่มไม่อนุมัติ -> config ใน table ได้เลย ดูจาก epms"
+        // epms อ่าน wf_button เสมอ (GetButtonList(isStart, istop, isAndCondition))
+        // ไม่มีเงื่อนไขว่าต้องติ๊กอะไรก่อน — เดิมเรากั้นด้วย isManualButton ทำให้
+        // ตารางปุ่มไม่เคยถูกใช้เลย ตอนนี้อ่านทุกครั้ง ถ้าไม่มีแถวที่ตรงก็ตกไปใช้
+        // ปุ่มมาตรฐานเหมือนเดิม (service คืนลิสต์ว่างเมื่อยังไม่ได้ config)
         _configButtons = new();
         var lv = _m?.subWorkflow;
-        if (lv?.isManualButton != true || _m?.isCurrentUser != true) return;
+        if (lv is null || _m?.isCurrentUser != true) return;
 
         _configButtons = await Buttons.GetButtonsForLevelAsync(
             lv.workflowid, lv.wlevel, lv.istop, lv.isandcondition);

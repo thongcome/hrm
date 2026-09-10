@@ -64,6 +64,12 @@ public class WorkFlowViewModel
     public int? sendBackToLevel { get; set; }
 
     // ── ขั้นแบบงานกอง (isPool) ── ต้องกดรับงานก่อนถึงจะดำเนินการได้
+    // ปุ่มไหนควรขึ้น — ตัดสินที่ service ที่เดียว หน้าจอไม่ต้องรู้กฎเอง
+    public bool canDecline { get; set; }      // ขั้นสุดท้ายเท่านั้นถึงปฏิเสธถาวรได้
+    public bool canCancel { get; set; }       // ผู้ยื่นถอนเรื่องของตัวเอง
+    public bool isDraftHolder { get; set; }   // ถืออยู่ที่ขั้นร่าง = แก้แล้วส่งใหม่ได้
+    public string? editUrl { get; set; }      // ลิงก์ไปหน้าแก้เอกสารต้นทาง
+
     public bool isPoolLevel { get; set; }
     public bool poolClaimedByMe { get; set; }
     public string? poolClaimedByName { get; set; }
@@ -276,6 +282,130 @@ public class WorkflowService
 
     public Task<WorkFlowViewModel> RejectOneStepAsync(WorkFlowViewModel m, CancellationToken ct = default)
         => MoveAsync(m, WorkflowMove.Backward, ct);
+
+    // ── ไม่อนุมัติ (Decline) — จบงานตรงนั้น ไม่ใช่ส่งกลับไปแก้ ────────────────
+    //
+    //  ต่างจาก "ส่งกลับ" คนละเรื่อง และผู้ใช้ต้องแยกออก:
+    //    ส่งกลับ  = ยังเอาอยู่ แต่ให้กลับไปแก้แล้วส่งมาใหม่ (งานยังไม่ตาย)
+    //    ไม่อนุมัติ = ปฏิเสธ จบ ไม่ต้องส่งมาอีก (งานปิด)
+    //
+    //  ทำได้เฉพาะขั้นสุดท้าย (istop) เหมือนกันทั้ง epms (wf_button ของ Decline
+    //  ตั้ง istop=1) และ engine เดิมของเรา — ขั้นกลางที่ไม่เห็นด้วยให้ใช้ส่งกลับ
+    //  เพราะคนที่ยังไม่ใช่ผู้ตัดสินสุดท้ายไม่ควรมีอำนาจปิดเรื่องของคนอื่น
+    public async Task<WorkFlowViewModel> DeclineAsync(WorkFlowViewModel m, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == m.jobmasterid, ct)
+            ?? throw new InvalidOperationException($"ไม่พบงาน id {m.jobmasterid}");
+        if (job.isJobClosed == true) throw new InvalidOperationException("งานนี้ปิดแล้ว");
+
+        var level = job.lastLevel ?? 0;
+        var target = await db.wf_sub_workflow_masters
+            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == level, ct)
+            ?? throw new InvalidOperationException($"ไม่พบการตั้งค่าของขั้นที่ {level}");
+        if (!target.istop)
+            throw new InvalidOperationException(
+                "\"ไม่อนุมัติ\" ใช้ได้เฉพาะขั้นสุดท้าย — ขั้นนี้ยังไม่ใช่ผู้ตัดสินสุดท้าย ถ้าไม่เห็นด้วยให้ใช้ \"ส่งกลับ\" แทน");
+
+        var rows = await db.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel == level && a.isLast == true)
+            .ToListAsync(ct);
+        var mine = rows.FirstOrDefault(a => a.userid == m.actorUserId
+            && string.Equals(a.jobstatus, Pending, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("งานนี้ไม่ได้อยู่ที่คุณ");
+
+        mine.jobstatus = Rejected;
+        mine.approvedate = DateTime.Now;
+        mine.reason = m.reason;
+        mine.comment = m.reason;
+        mine.mas_reason_id = m.mas_reason_id;
+        foreach (var r in rows) r.isLast = false;   // งานปิดแล้ว ไม่มีใครถือต่อ
+
+        var actor = await db.sc_users.FirstOrDefaultAsync(u => u.userid == m.actorUserId, ct);
+        var stamp = CreateJobSubWorkflow(job, target);
+        stamp.reason = m.reason;
+        stamp.modby = $"{actor?.firstname} {actor?.lastname}".Trim();
+        stamp.remark = $"Decline {level}";
+        stamp.endtime = DateTime.Now;
+        db.job_subworkflow_masters.Add(stamp);
+        job.jobseq = stamp.jobseq;
+
+        job.status = target.declinestatus ?? target.backwardstatus ?? Rejected;
+        job.isJobClosed = true;
+        job.reasonClosed = WorkflowEngineService.ClosedByDecline;
+        job.remark = m.reason;
+        job.approvedDate = DateTime.Now;
+        job.approvedUserID = m.actorUserId;
+        job.approvedBy = actor?.loginname;
+        job.enddate = DateTime.Now;
+
+        await db.SaveChangesAsync(ct);
+        await AuditAsync(job, "Decline", new { level, m.reason }, ct);
+        await NoticeEveryoneInvolvedAsync(db, job, m.actorUserId, m.reason, ct);
+
+        m.jobMaster = job; m.subWorkflow = target; m.jobsub = stamp;
+        m.direction = "Decline";
+        return m;
+    }
+
+    // ── ยกเลิกคำขอ — ผู้ยื่นถอนเรื่องของตัวเอง ────────────────────────────────
+    //
+    //  JSP ปี 2550 มีปุ่ม "ลบรายการ" ให้ผู้ยื่นตั้งแต่แรก (WorkFlowButton.java
+    //  แสดงเมื่อ jobstatus = 01) เพราะยื่นผิดเป็นเรื่องปกติ ถ้าไม่มีทางถอน
+    //  ผู้ยื่นต้องไปรบกวนผู้อนุมัติให้ตีกลับ ซึ่งคนละความหมายกันและทำให้ประวัติเพี้ยน
+    //
+    //  ที่นี่ "ยกเลิก" ไม่ลบข้อมูล — ปิดงานพร้อมเหตุผล ประวัติยังอยู่ครบ
+    public async Task<WorkFlowViewModel> CancelAsync(WorkFlowViewModel m, bool isAdminOverride = false,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == m.jobmasterid, ct)
+            ?? throw new InvalidOperationException($"ไม่พบงาน id {m.jobmasterid}");
+        if (job.isJobClosed == true) throw new InvalidOperationException("งานนี้ปิดแล้ว");
+        if (!isAdminOverride && job.createuserid != m.actorUserId)
+            throw new InvalidOperationException("ยกเลิกได้เฉพาะผู้ยื่นคำขอเองเท่านั้น");
+
+        var level = job.lastLevel ?? 0;
+        var target = await db.wf_sub_workflow_masters
+            .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == level, ct);
+
+        // ใบงานที่ยังค้างของทุกคน ต้องปิดด้วย ไม่งั้นงานที่ยกเลิกแล้วยังโผล่ในกล่องงาน
+        foreach (var r in await db.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.jobstatus == Pending).ToListAsync(ct))
+        {
+            r.jobstatus = WorkflowEngineService.StatusCancelled;
+            r.approvedate = DateTime.Now;
+            r.comment = m.reason;
+            r.isLast = false;
+        }
+
+        var actor = await db.sc_users.FirstOrDefaultAsync(u => u.userid == m.actorUserId, ct);
+        var stamp = target is null
+            ? DraftFootprint(job, $"{actor?.firstname} {actor?.lastname}".Trim(), $"Cancel {level}")
+            : CreateJobSubWorkflow(job, target);
+        if (target is not null)
+        {
+            stamp.modby = $"{actor?.firstname} {actor?.lastname}".Trim();
+            stamp.remark = $"Cancel {level}";
+        }
+        stamp.reason = m.reason;
+        stamp.endtime = DateTime.Now;
+        db.job_subworkflow_masters.Add(stamp);
+        job.jobseq = stamp.jobseq;
+
+        job.status = WorkflowEngineService.StatusCancelled;
+        job.isJobClosed = true;
+        job.reasonClosed = WorkflowEngineService.ClosedByCancel;
+        job.remark = m.reason;
+        job.enddate = DateTime.Now;
+
+        await db.SaveChangesAsync(ct);
+        await AuditAsync(job, "Cancel", new { level, m.reason, isAdminOverride }, ct);
+
+        m.jobMaster = job; m.jobsub = stamp;
+        m.direction = "Cancel";
+        return m;
+    }
 
     // ── อนุมัติอัตโนมัติทั้ง workflow (wf_workflow.isautoapprove) ─────────────
     //
@@ -579,6 +709,24 @@ public class WorkflowService
             && string.Equals(a.jobstatus, Pending, StringComparison.OrdinalIgnoreCase));
         model.isCurrentUser = model.jobUserListSession is not null && job.isJobClosed != true;
 
+        // ปฏิเสธถาวรได้เฉพาะผู้ตัดสินสุดท้าย ขั้นกลางใช้ "ส่งกลับ" แทน
+        model.canDecline = model.isCurrentUser && model.subWorkflow?.istop == true;
+
+        // ผู้ยื่นถอนเรื่องของตัวเองได้ตลอดจนกว่างานจะปิด — ไม่ต้องรอให้งานกลับมาถึงมือ
+        model.canCancel = job.isJobClosed != true && job.createuserid == actorUserId;
+
+        // งานอยู่ที่ขั้นร่าง (0) และคนดูคือคนถือ = เพิ่งถูกส่งกลับมาให้แก้ หรือยังไม่เคยส่ง
+        // ให้ลิงก์ไปหน้าเอกสารต้นทางเพื่อแก้ แล้วกลับมากดส่งใหม่
+        model.isDraftHolder = model.isCurrentUser && currentlevel == DraftLevel;
+        if (model.isDraftHolder && !string.IsNullOrWhiteSpace(job.refid))
+        {
+            var route = await db.wf_sub_workflow_masters
+                .Where(s => s.workflowid == job.workflowid && s.controller != null)
+                .OrderBy(s => s.wlevel).Select(s => s.controller).FirstOrDefaultAsync(ct);
+            if (!string.IsNullOrWhiteSpace(route))
+                model.editUrl = route.Replace("{refid}", job.refid, StringComparison.OrdinalIgnoreCase);
+        }
+
         // isPool — ขั้นแบบงานกอง: ทุกคนในกลุ่มเห็น แต่ต้องกดรับงานก่อนถึงจะทำได้
         // กันสองคนทำพร้อมกัน ใครกดรับก่อนได้ไป (ใช้ช่อง PoolClaimed* บน job_master
         // ที่มีอยู่แล้ว ไม่เพิ่มคอลัมน์)
@@ -631,8 +779,17 @@ public class WorkflowService
             }
         }
 
-        // ทายผู้อนุมัติขั้นถัดไป (เฉพาะเมื่อยังไม่ใช่ขั้นสุดท้าย)
-        if (model.subWorkflow is not null && !model.subWorkflow.istop && job.isJobClosed != true)
+        // ── กดแล้วเรื่องจะไปที่ใคร ────────────────────────────────────────────
+        //
+        // CEO, 10 ก.ย. 2569: "อ่านค่าจาก subworkflow ที่ workflow id ที่ผู้ใช้สร้าง job"
+        // — อ่านจาก wf_sub_workflow_master ของ workflow นั้นสด ๆ ไม่ใช่จากรอยเท้า
+        // ที่ freeze ไว้ตอนงานผ่านมา เพราะสิ่งที่ต้องบอกคือ "ถ้ากดตอนนี้จะไปหาใคร"
+        // ถ้าผังองค์กรหรือผู้รับมอบฉันทะเพิ่งเปลี่ยน คำตอบต้องเปลี่ยนตามทันที
+        //
+        // เงื่อนไขเดิมต้องมี subWorkflow ของขั้นปัจจุบันก่อน ทำให้ "ขั้นร่าง" ไม่เคย
+        // ทายให้เลย (ขั้น 0 ไม่มีแถว config ตามกฎที่ตกลงกันไว้) ทั้งที่จังหวะนั้นคือ
+        // จังหวะที่ผู้ยื่นอยากรู้ที่สุดว่ากดส่งแล้วเรื่องจะไปถึงใคร
+        if (job.isJobClosed != true && model.subWorkflow?.istop != true)
         {
             var next = await db.wf_sub_workflow_masters
                 .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == currentlevel + 1, ct);
@@ -943,9 +1100,128 @@ public class WorkflowService
     //  เรียกเมธอดของตัว config เอง (wf_sub_workflow_master.GetUserAsync)
     //  ไม่มีคลาสอะไรมาห่อมันอีกชั้น — มีคลาสเดียวคือ wf_sub_workflow_master
     // ========================================================================
-    internal static Task<List<sc_user>> GetUserRelateAsync(
+    // ── อ่านผู้อนุมัติล่วงหน้า "ทุกขั้น" ของเส้นทาง ────────────────────────────
+    //
+    //  CEO, 10 ก.ย. 2569: "ในแต่ละ level มี config ไว้แล้วว่าใครต้องอนุมัติ
+    //  คุณทำ service อ่านผู้อนุมัติในแต่ละ subworkflow level ได้เลย
+    //  ไปดูใน ของเก่าทั้ง JSP และ EPMS มีอ่านผู้อนุมัติล่วงหน้าทั้งคู่"
+    //
+    //  ต้นฉบับทำแบบนี้จริงทั้งสองระบบ:
+    //    JSP  WorkflowOrgVertical.getWorkflowRount(jobmastergroupid) คืนทั้งเส้นทาง
+    //         ทีละขั้น พร้อมชื่อ ตำแหน่ง หน่วยงาน และธงว่าขั้นไหนคือขั้นปัจจุบัน
+    //    epms getPredictNextUser(model) ทายผู้อนุมัติจาก config ของขั้นถัดไป
+    //
+    //  ของเราเดิมอ่านชื่อจาก job_user_list อย่างเดียว ซึ่งมีเฉพาะขั้นที่งานเดินผ่าน
+    //  มาแล้ว ขั้นข้างหน้าจึงขึ้นว่า "(ยังไม่มีผู้อนุมัติ)" ตลอด ทั้งที่ config บอกไว้
+    //  หมดแล้วว่าใคร — ผู้ยื่นควรเห็นตั้งแต่ต้นว่าเรื่องจะผ่านมือใครบ้าง
+    //
+    //  ขั้นที่ผ่านไปแล้วใช้ชื่อจริงจากประวัติ (ใครทำจริงสำคัญกว่าใครควรทำ)
+    //  ขั้นที่ยังไม่ถึงอ่านสดจาก config ผ่านทางเดียวกับตอนเดินจริง จึงได้ผลของ
+    //  ผังองค์กรและการมอบฉันทะไปด้วยโดยอัตโนมัติ
+    public record RouteStep(int Level, string Name, bool IsTop, bool IsCurrent, bool IsDone,
+        List<string> Approvers, string Source);
+
+    public async Task<List<RouteStep>> GetRouteAsync(long jobMasterId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct);
+        if (job is null) return new();
+
+        var levels = await db.wf_sub_workflow_masters
+            .Where(s => s.workflowid == job.workflowid && s.isshow)
+            .OrderBy(s => s.wlevel).ToListAsync(ct);
+
+        var history = await db.job_user_lists
+            .Where(a => a.jobmasterid == jobMasterId)
+            .Select(a => new { a.wlevel, a.username, a.userid, a.jobstatus })
+            .ToListAsync(ct);
+
+        var current = job.lastLevel ?? 0;
+        var steps = new List<RouteStep>(levels.Count);
+
+        foreach (var lv in levels)
+        {
+            var past = history.Where(h => (h.wlevel ?? 0) == lv.wlevel).ToList();
+            if (past.Count > 0)
+            {
+                steps.Add(new RouteStep(lv.wlevel, lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                    lv.wlevel == current, lv.wlevel < current,
+                    past.Select(p => p.username ?? $"#{p.userid}").Distinct().ToList(),
+                    "จากประวัติของงานนี้"));
+                continue;
+            }
+
+            // ขั้นที่ยังไม่ถึง — อ่านจาก config ของ workflow นี้สด ๆ
+            List<sc_user> who;
+            try { who = await GetUserRelateAsync(db, job, lv, ct); }
+            catch { who = new(); }   // config ไม่ครบไม่ควรทำให้ทั้งหน้าพัง
+
+            steps.Add(new RouteStep(lv.wlevel, lv.subject ?? $"ขั้นที่ {lv.wlevel}", lv.istop,
+                lv.wlevel == current, false,
+                who.Select(u => $"{u.firstname} {u.lastname}".Trim()).Where(n => n.Length > 0).ToList(),
+                who.Count > 0 ? "อ่านจากการตั้งค่าของขั้นนี้" : "ยังหาผู้อนุมัติจากการตั้งค่าไม่ได้"));
+        }
+
+        return steps;
+    }
+
+    internal static async Task<List<sc_user>> GetUserRelateAsync(
         HRMContext db, job_master job, wf_sub_workflow_master sub, CancellationToken ct)
-        => sub.GetUserAsync(db, job, ct);
+        => await ApplyDelegationAsync(db, job, await sub.GetUserAsync(db, job, ct), ct);
+
+    // ── มอบฉันทะ: แทนที่ผู้อนุมัติที่ไม่อยู่ ด้วยคนที่เขามอบไว้ ────────────────
+    //
+    //  จุดนี้คือจุดเดียวที่ทั้งระบบถามว่า "ขั้นนี้ใครอนุมัติ" การแทรกที่นี่จึงทำให้
+    //  ทุก workflow ได้ผลพร้อมกัน โดยไม่ต้องแก้ config ของ workflow ไหนเลย
+    //
+    //  กฎที่ตั้งใจให้เป็นแบบนี้:
+    //    - มีผลกับงานที่กำลังจะส่งไปเท่านั้น ใบที่ออกไปแล้วไม่ย้ายมือเอง
+    //      (ใบที่ออกไปแล้วใช้หน้า reassign) เพราะใบหนึ่งใบต้องมีเจ้าของคนเดียว
+    //      ตลอดอายุของมัน ไม่งั้นประวัติอ่านไม่รู้เรื่อง
+    //    - มอบต่อกันเป็นทอด ๆ ไม่ได้ (ก มอบ ข, ข มอบ ค -> งานของ ก ไปที่ ข เท่านั้น)
+    //      แทนที่รอบเดียวจบ กันวนไม่รู้จบและกันงานหลุดไปไกลกว่าที่ผู้มอบตั้งใจ
+    //    - ถ้าผู้รับมอบอยู่ในรายชื่อผู้อนุมัติขั้นนั้นอยู่แล้ว ไม่ซ้ำชื่อ
+    internal static async Task<List<sc_user>> ApplyDelegationAsync(
+        HRMContext db, job_master job, List<sc_user> users, CancellationToken ct)
+    {
+        if (users.Count == 0) return users;
+
+        var ids = users.Select(u => u.userid).ToList();
+        var today = DateTime.Now.Date;
+        var active = await db.Wf_ApproverDelegations
+            .Where(d => d.IsActive && ids.Contains(d.FromUserId)
+                     && d.StartDate <= today && today <= d.EndDate
+                     && (d.WorkflowId == null || d.WorkflowId == job.workflowid))
+            .ToListAsync(ct);
+        if (active.Count == 0) return users;
+
+        // workflow ที่ระบุเจาะจงชนะการมอบแบบทุกประเภทงาน
+        var byFrom = active
+            .GroupBy(d => d.FromUserId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(d => d.WorkflowId.HasValue).First().ToUserId);
+
+        var replacementIds = byFrom.Values.Distinct().ToList();
+        var replacements = await db.sc_users
+            .Where(u => replacementIds.Contains(u.userid)).ToListAsync(ct);
+
+        var result = new List<sc_user>();
+        foreach (var u in users)
+        {
+            if (byFrom.TryGetValue(u.userid, out var toId)
+                && replacements.FirstOrDefault(r => r.userid == toId) is sc_user stand)
+            {
+                Serilog.Log.Information(
+                    "Job {JobMasterId}: งานที่จะไปหา {From} ถูกมอบให้ {To} ตามที่ตั้งไว้",
+                    job.jobmasterid, u.userid, toId);
+                if (result.All(x => x.userid != stand.userid)) result.Add(stand);
+            }
+            else if (result.All(x => x.userid != u.userid))
+            {
+                result.Add(u);
+            }
+        }
+        return result;
+    }
 
 
     // ========================================================================

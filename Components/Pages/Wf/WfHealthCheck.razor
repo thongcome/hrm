@@ -1,0 +1,243 @@
+@page "/wf/health"
+@using HRM.Models
+@using HRM.Services.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
+
+@*
+    ตรวจสุขภาพ workflow — ข้อเสนอ BA ข้อ 6 (CEO, 10 ก.ย. 2569)
+
+    เหตุผลที่ต้องมี: ความผิดพลาดของ config เงียบจนกว่าจะมีคนยื่นเรื่องจริงแล้วงานค้าง
+    วันที่ตรวจระบบ (10 ก.ย. 2569) พบสองอย่างด้วยการไล่ query เอง —
+      - OT_APPROVAL ขั้น 2 ติ๊ก isLOA ไว้โดยไม่มีแถบวงเงินใน wf_loa เลย
+      - งานหนึ่งค้างอยู่ที่ขั้นที่หาหัวหน้าตามผังองค์กรไม่เจอ ไม่มีใครถือ
+    ทั้งสองอย่างไม่มีอะไรบอกเลยจนกว่าจะมีคนไปเจอ หน้านี้ทำให้ถามได้ในที่เดียวว่า
+    "ตอนนี้ workflow ไหนมีปัญหา" ก่อนที่ผู้ใช้จะเจอเอง
+*@
+
+<PageTitle>ตรวจสุขภาพ Workflow</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <div class="d-flex align-center justify-space-between flex-wrap">
+        <div>
+            <MudText Typo="Typo.h5">ตรวจสุขภาพ Workflow</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1" Style="max-width:72ch">
+                ตรวจการตั้งค่าและงานที่กำลังเดินอยู่ทั้งหมด แล้วรายงานเฉพาะสิ่งที่จะทำให้งานค้างหรือเดินผิด
+                ควรเปิดดูทุกครั้งหลังแก้ config หรือก่อนเปิดใช้ workflow ใหม่กับผู้ใช้จริง
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Outlined" OnClick="RunAsync" Disabled="_busy"
+                   StartIcon="@Icons.Material.Filled.Refresh">ตรวจอีกครั้ง</MudButton>
+    </div>
+</MudPaper>
+
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-3" />
+}
+else if (_findings.Count == 0)
+{
+    <MudAlert Severity="Severity.Success">
+        ไม่พบปัญหา — ทุก workflow มีปลายทางชัดเจน ทุกขั้นระบุได้ว่าใครอนุมัติ และไม่มีงานที่ค้างโดยไม่มีเจ้าของ
+    </MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle2">
+            พบ @_findings.Count(f => f.Severity == Sev.Blocking) เรื่องที่ทำให้ใช้งานไม่ได้ ·
+            @_findings.Count(f => f.Severity == Sev.Warning) เรื่องที่ควรแก้ ·
+            @_findings.Count(f => f.Severity == Sev.Info) ข้อสังเกต
+        </MudText>
+    </MudPaper>
+
+    @foreach (var grp in _findings.GroupBy(f => f.Severity).OrderBy(g => g.Key))
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-1">@Head(grp.Key)</MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">@Explain(grp.Key)</MudText>
+            <MudTable Items="grp" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>ที่ไหน</MudTh><MudTh>ปัญหา</MudTh><MudTh>ผลที่จะเกิด</MudTh><MudTh>แก้อย่างไร</MudTh><MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><b>@context.Where</b></MudTd>
+                    <MudTd>@context.What</MudTd>
+                    <MudTd>@context.Effect</MudTd>
+                    <MudTd>@context.Fix</MudTd>
+                    <MudTd>
+                        @if (context.Link is not null)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Href="@context.Link">เปิด</MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    private enum Sev { Blocking = 0, Warning = 1, Info = 2 }
+    private record Finding(Sev Severity, string Where, string What, string Effect, string Fix, string? Link = null);
+
+    private bool _busy = true;
+    private List<Finding> _findings = new();
+
+    protected override async Task OnInitializedAsync() => await RunAsync();
+
+    private async Task RunAsync()
+    {
+        _busy = true;
+        var found = new List<Finding>();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var workflows = await db.wf_workflows.ToListAsync();
+            var levels = await db.wf_sub_workflow_masters.ToListAsync();
+            var customUsers = await db.wf_custom_users.Where(c => c.isactive)
+                .Select(c => new { c.workflowid, c.wlevel }).ToListAsync();
+            var customRoles = await db.wf_custom_roles.Where(c => c.isactive != false)
+                .Select(c => new { c.workflowid, c.wlevel, c.roleid }).ToListAsync();
+            var loaBands = await db.wf_loas.Select(l => l.wfid).ToListAsync();
+            var roleHeadcount = await db.sc_user_roles.Where(ur => ur.isactive)
+                .GroupBy(ur => ur.roleid).Select(g => new { RoleId = g.Key, N = g.Count() })
+                .ToDictionaryAsync(x => x.RoleId, x => x.N);
+
+            foreach (var w in workflows)
+            {
+                var mine = levels.Where(s => s.workflowid == w.workflowid).ToList();
+                var visible = mine.Where(s => s.isshow).ToList();
+                var name = w.workflowcode ?? w.wname ?? $"#{w.workflowid}";
+                var design = $"/wf/design/{w.workflowid}";
+
+                if (mine.Count == 0)
+                {
+                    found.Add(new(Sev.Blocking, name, "ยังไม่มีขั้นตอนเลย",
+                        "เริ่มงานไม่ได้ ระบบจะแจ้งว่าไม่มีเส้นทางเดิน",
+                        "เพิ่มอย่างน้อยหนึ่งขั้นและกำหนดขั้นสุดท้าย", design));
+                    continue;
+                }
+
+                var tops = visible.Count(s => s.istop);
+                if (tops == 0)
+                    found.Add(new(Sev.Blocking, name, "ไม่มีขั้นสุดท้าย (istop)",
+                        "งานเดินไปเรื่อย ๆ แล้วไม่มีที่จบ ปิดงานไม่ได้",
+                        "ติ๊กขั้นสุดท้ายให้เป็น istop หนึ่งขั้น", design));
+                else if (tops > 1)
+                    found.Add(new(Sev.Blocking, name, $"มีขั้นสุดท้าย {tops} ขั้น",
+                        "งานอาจจบก่อนถึงคนที่ควรตัดสินจริง",
+                        "เหลือ istop ไว้ขั้นเดียว", design));
+
+                if (visible.Any(s => s.wlevel == 0))
+                    found.Add(new(Sev.Warning, name, "มีการตั้งค่าขั้นที่ 0",
+                        "ขั้น 0 คือร่างที่ผู้ยื่นถืออยู่ ระบบจัดการเอง การตั้งค่าไว้ทำให้เส้นทางซ้ำ",
+                        "ลบขั้น 0 ออก เริ่มเส้นทางที่ขั้น 1", design));
+
+                var gaps = visible.Select(s => s.wlevel).OrderBy(x => x).ToList();
+                for (var i = 1; i < gaps.Count; i++)
+                    if (gaps[i] != gaps[i - 1] + 1)
+                    {
+                        found.Add(new(Sev.Warning, name, $"เลขขั้นข้ามจาก {gaps[i - 1]} ไป {gaps[i]}",
+                            "งานเดินทีละขั้น ถ้าเลขขาดช่วง งานจะไปไม่ถึงขั้นถัดไป",
+                            "แก้เลขขั้นให้ต่อเนื่อง", design));
+                        break;
+                    }
+
+                foreach (var s in visible)
+                {
+                    var at = $"{name} ขั้น {s.wlevel}";
+                    var hasSource = s.iscustomUser || s.iscustomRole || s.isupperrole || s.isupperuser
+                                 || s.isAdhocUser || s.isLOA || s.isApproverSameOrg || s.isApproverSameCostCenter
+                                 || (s.isNeedsupervisorapprove ?? 0) > 0
+                                 || s.userid1 is not null || s.userid2 is not null || s.userid3 is not null;
+                    if (!hasSource)
+                    {
+                        found.Add(new(Sev.Blocking, at, "ไม่ได้ระบุว่าใครอนุมัติขั้นนี้",
+                            "งานเดินมาถึงแล้วหาผู้รับไม่เจอ จะค้างอยู่ตรงนี้",
+                            "เลือกแหล่งผู้อนุมัติ เช่น หัวหน้าตามผังองค์กร หรือ role", design));
+                        continue;
+                    }
+
+                    if (s.iscustomUser && !customUsers.Any(c => c.workflowid == s.workflowid && c.wlevel == s.wlevel))
+                        found.Add(new(Sev.Blocking, at, "ติ๊กระบุรายชื่อ แต่ยังไม่ได้เลือกใคร",
+                            "งานมาถึงแล้วไม่มีผู้รับ",
+                            "เลือกรายชื่อผู้อนุมัติ หรือเปลี่ยนไปใช้ role", design));
+
+                    var myRoles = customRoles.Where(c => c.workflowid == s.workflowid && c.wlevel == s.wlevel).ToList();
+                    if (s.iscustomRole && myRoles.Count == 0)
+                        found.Add(new(Sev.Blocking, at, "ติ๊กใช้ role แต่ยังไม่ได้เลือก role",
+                            "งานมาถึงแล้วไม่มีผู้รับ", "เลือก role ที่จะอนุมัติขั้นนี้", design));
+
+                    foreach (var r in myRoles.Where(r => roleHeadcount.GetValueOrDefault(r.roleid) == 0))
+                        found.Add(new(Sev.Blocking, at, "role ที่เลือกไว้ยังไม่มีใครถือ",
+                            "งานมาถึงแล้วหาคนไม่เจอ เพราะไม่มีพนักงานคนไหนได้รับ role นี้",
+                            "มอบ role ให้พนักงานที่เกี่ยวข้อง ที่หน้าสิทธิ์ผู้ใช้", "/sc_user_roles"));
+
+                    if (myRoles.Count > 0 && !s.isorcondition && !s.isandcondition
+                        && myRoles.Sum(r => roleHeadcount.GetValueOrDefault(r.roleid)) > 1)
+                        found.Add(new(Sev.Warning, at, "ใช้ role หลายคน แต่ไม่ได้ตั้งว่าใครก็ได้",
+                            "ค่าเริ่มต้นคือทุกคนต้องกดอนุมัติครบ — ทุกคนใน role ต้องกดทุกใบ",
+                            "ติ๊ก “ใครก็ได้ในกลุ่ม” (isorcondition) ถ้าไม่ได้ตั้งใจให้ครบทุกคน", design));
+
+                    if (s.isLOA && !loaBands.Contains(s.workflowid))
+                        found.Add(new(Sev.Blocking, at, "ติ๊กอนุมัติตามวงเงิน แต่ยังไม่ได้ตั้งแถบวงเงิน",
+                            "หาผู้อนุมัติตามวงเงินไม่ได้ งานจะค้างหรือหลุดไปใช้เงื่อนไขอื่น",
+                            "ตั้งแถบวงเงินที่หน้า LOA หรือปลดติ๊กถ้าไม่ได้ใช้", "/wf/loa"));
+                }
+
+                if (w.isactive == true && string.IsNullOrWhiteSpace(w.tableref)
+                    && !mine.Any(s => !string.IsNullOrWhiteSpace(s.controller)))
+                    found.Add(new(Sev.Info, name, "ยังไม่ได้ผูกหน้าเอกสาร",
+                        "ผู้อนุมัติจะเห็นเฉพาะข้อมูลสรุปของคำขอ ไม่เห็นเอกสารต้นทาง",
+                        "ตั้งช่องหน้ารายละเอียดของขั้น หรือปล่อยไว้ถ้าโมดูลยังไม่มีหน้ารายรายการ", design));
+            }
+
+            // ── งานที่กำลังเดินอยู่ ──────────────────────────────────────────
+            var openJobs = await db.job_masters.Where(j => j.isJobClosed != true)
+                .Select(j => new { j.jobmasterid, j.workflowcode, j.lastLevel, j.status, j.subject })
+                .ToListAsync();
+            var holders = await db.job_user_lists
+                .Where(a => a.isLast == true && a.jobstatus == WorkflowEngineService.StatusPending)
+                .Select(a => new { a.jobmasterid, a.wlevel }).ToListAsync();
+
+            foreach (var j in openJobs)
+            {
+                var mine = holders.Where(h => h.jobmasterid == j.jobmasterid).ToList();
+                if (mine.Count == 0 && (j.lastLevel ?? 0) > 0)
+                    found.Add(new(Sev.Blocking, $"งาน #{j.jobmasterid} ({j.workflowcode})",
+                        "ไม่มีใครถืองานนี้อยู่",
+                        "งานค้างถาวร ไม่มีใครเห็นในกล่องงาน และผู้ยื่นรอไปเรื่อย ๆ",
+                        "มอบหมายผู้อนุมัติให้งานนี้", "/wf/vacant-approvals"));
+                else if (mine.Any(h => h.wlevel != j.lastLevel))
+                    found.Add(new(Sev.Warning, $"งาน #{j.jobmasterid} ({j.workflowcode})",
+                        "ขั้นที่บันทึกไว้กับใบงานที่ค้างไม่ตรงกัน",
+                        "กล่องงานอาจแสดงงานที่กดไม่ได้",
+                        "เปิดงานนี้เพื่อตรวจ", $"/workflow/detail/{j.jobmasterid}"));
+            }
+
+            _findings = found
+                .OrderBy(f => f.Severity).ThenBy(f => f.Where, StringComparer.Ordinal).ToList();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string Head(Sev s) => s switch
+    {
+        Sev.Blocking => "ใช้งานไม่ได้ — ต้องแก้ก่อนเปิดใช้",
+        Sev.Warning => "ควรแก้ — ใช้ได้แต่จะสร้างปัญหา",
+        _ => "ข้อสังเกต",
+    };
+
+    private static string Explain(Sev s) => s switch
+    {
+        Sev.Blocking => "ถ้ามีคนยื่นเรื่องตอนนี้ งานจะค้างหรือปิดไม่ได้",
+        Sev.Warning => "งานเดินได้ แต่พฤติกรรมอาจไม่ตรงกับที่ตั้งใจ",
+        _ => "ไม่ใช่ข้อผิดพลาด แต่ควรรู้ไว้",
+    };
+}

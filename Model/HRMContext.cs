@@ -346,6 +346,9 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<wf_workflow> wf_workflows { get; set; }
 
+    /// <summary>มอบฉันทะการอนุมัติชั่วคราว — ดู Wf_ApproverDelegation</summary>
+    public virtual DbSet<Wf_ApproverDelegation> Wf_ApproverDelegations { get; set; }
+
     public virtual DbSet<wf_workflow_in_workflow> wf_workflow_in_workflows { get; set; }
 
     // ----- Pay_* module (new, code-first — see Docs/Payroll design plan) -----
