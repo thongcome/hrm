@@ -119,3 +119,11 @@ public enum PayrollAnomalySeverity
     Warning = 1,
     Critical = 2
 }
+
+// รอบจ่ายใช้กับพนักงานกลุ่มไหน (Pay_PaySchedule.AppliesTo) — ค่าเริ่มต้นตามประเภทพนักงาน ทับรายคนได้
+public enum PayScheduleGroup
+{
+    MonthlySalaried = 0,
+    DailyWage = 1,
+    All = 2,
+}

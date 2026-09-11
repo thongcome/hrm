@@ -77,21 +77,49 @@ public static class TaxBracketCalculator
         // ค่าลดหย่อนรายปีที่ได้เต็มไม่ว่าทำงานกี่เดือน (ลดหย่อนส่วนตัว 60,000 + รายการที่พนักงานแจ้ง)
         // นับครั้งเดียว ไม่ใช่ "ต่อเดือน × เดือนที่เหลือ" ซึ่งทำให้คนเข้ากลางปีได้ลดหย่อนแค่ครึ่ง (audit M1)
         decimal annualFixedDeduction = 0m)
-    {
-        if (remainingPeriodsIncludingThis <= 0) remainingPeriodsIncludingThis = 1;
+        // รายเดือน = กรณีพิเศษของสูตรตามปฏิทินจ่าย (1 งวด/เดือน จำนวนเดือน = จำนวนงวด)
+        => CalculatePeriodWithholding(ytdAccumulatedIncome, thisPeriodIncome, ytdAccumulatedDeduction, thisPeriodFlatDeduction,
+            expenseDeductionRate, expenseDeductionCap, remainingPeriodsIncludingThis, remainingPeriodsIncludingThis, 1,
+            ytdAccumulatedTax, brackets, annualFixedDeduction);
 
-        var projectedAnnualIncome = ytdAccumulatedIncome + thisPeriodIncome * remainingPeriodsIncludingThis;
+    // ภาษีหัก ณ ที่จ่ายของงวดใดก็ได้ตามปฏิทินจ่ายจริง (audit M8, CEO 11 ก.ย. 2569 — รอบจ่ายเป็น config):
+    //   1. แปลงเงินได้/รายการหักของงวดนี้เป็นรายเดือนก่อน (งวดครึ่งเดือน × 2)
+    //   2. ประมาณการทั้งปี = สะสมจริงถึงงวดก่อน + รายเดือน × จำนวนเดือนที่เหลือ (รวมส่วนของเดือนนี้ที่ยังไม่จ่าย)
+    //   3. ภาษีที่เหลือหารด้วยจำนวนงวดจริงที่เหลือตามปฏิทิน — เปลี่ยนความถี่กลางปีจึงถูกเอง เพราะที่ผ่านมาใช้ของจริง
+    //      ส่วนที่เหลือใช้ปฏิทินที่ตั้งไว้
+    public static (decimal MonthlyWithholding, TaxCalculationResult AnnualCalculation) CalculatePeriodWithholding(
+        decimal ytdAccumulatedIncome,
+        decimal thisPeriodIncome,
+        decimal ytdAccumulatedDeduction,
+        decimal thisPeriodFlatDeduction,
+        decimal expenseDeductionRate,
+        decimal expenseDeductionCap,
+        decimal remainingMonthsIncludingThis,
+        int remainingPeriodsIncludingThis,
+        int periodsPerMonth,
+        decimal ytdAccumulatedTax,
+        IReadOnlyList<Pay_TaxBracket> brackets,
+        decimal annualFixedDeduction = 0m)
+    {
+        if (periodsPerMonth <= 0) periodsPerMonth = 1;
+        if (remainingPeriodsIncludingThis <= 0) remainingPeriodsIncludingThis = 1;
+        if (remainingMonthsIncludingThis <= 0) remainingMonthsIncludingThis = 1m / periodsPerMonth;
+
+        var monthlyIncome = thisPeriodIncome * periodsPerMonth;
+        var monthlyFlatDeduction = thisPeriodFlatDeduction * periodsPerMonth;
+
+        var projectedAnnualIncome = ytdAccumulatedIncome + monthlyIncome * remainingMonthsIncludingThis;
         var expenseDeduction = Math.Min(Math.Max(0m, projectedAnnualIncome) * expenseDeductionRate, expenseDeductionCap);
-        var projectedAnnualDeduction = ytdAccumulatedDeduction + thisPeriodFlatDeduction * remainingPeriodsIncludingThis
+        var projectedAnnualDeduction = ytdAccumulatedDeduction + monthlyFlatDeduction * remainingMonthsIncludingThis
                                        + annualFixedDeduction + expenseDeduction;
         var taxableIncome = Math.Max(0m, projectedAnnualIncome - projectedAnnualDeduction);
 
         var annualCalculation = CalculateProgressiveTax(taxableIncome, brackets);
 
         var remainingTax = Math.Max(0m, annualCalculation.TotalAnnualTax - ytdAccumulatedTax);
-        var monthlyWithholding = Math.Round(remainingTax / remainingPeriodsIncludingThis, 2, MidpointRounding.AwayFromZero);
+        var periodWithholding = Math.Round(remainingTax / remainingPeriodsIncludingThis, 2, MidpointRounding.AwayFromZero);
 
-        return (monthlyWithholding, annualCalculation);
+        return (periodWithholding, annualCalculation);
     }
 
     // ภาษีหัก ณ ที่จ่ายของเงินได้จ่ายครั้งเดียว (โบนัส/คอมมิชชัน) ตามวิธีส่วนต่างที่กรมสรรพากรใช้:
@@ -111,8 +139,25 @@ public static class TaxBracketCalculator
         decimal expenseDeductionCap,
         IReadOnlyList<Pay_TaxBracket> brackets,
         decimal annualFixedDeduction = 0m)
+        => CalculateBonusWithholding(ytdIncomeIncludingThisPeriod, ytdDeductionIncludingThisPeriod, ytdTaxWithheld,
+            regularMonthlyIncome, regularMonthlyFlatDeduction, bonusAmount, (decimal)remainingPeriodsAfterThis,
+            expenseDeductionRate, expenseDeductionCap, brackets, annualFixedDeduction);
+
+    // จำนวนเดือนที่เหลือเป็นเศษได้ (จ่ายครึ่งเดือน: โบนัสงวดที่ 2 ของ ก.ย. เหลือ 3 เดือน, งวดที่ 1 เหลือ 3.5)
+    public static (decimal Withholding, TaxCalculationResult AnnualCalculation) CalculateBonusWithholding(
+        decimal ytdIncomeIncludingThisPeriod,
+        decimal ytdDeductionIncludingThisPeriod,
+        decimal ytdTaxWithheld,
+        decimal regularMonthlyIncome,
+        decimal regularMonthlyFlatDeduction,
+        decimal bonusAmount,
+        decimal remainingMonthsAfterThis,
+        decimal expenseDeductionRate,
+        decimal expenseDeductionCap,
+        IReadOnlyList<Pay_TaxBracket> brackets,
+        decimal annualFixedDeduction = 0m)
     {
-        if (remainingPeriodsAfterThis < 0) remainingPeriodsAfterThis = 0;
+        var remainingPeriodsAfterThis = Math.Max(0m, remainingMonthsAfterThis);
 
         var baseIncome = ytdIncomeIncludingThisPeriod + regularMonthlyIncome * remainingPeriodsAfterThis;
         var baseDeduction = ytdDeductionIncludingThisPeriod + regularMonthlyFlatDeduction * remainingPeriodsAfterThis + annualFixedDeduction;

@@ -20,6 +20,14 @@ public enum PayDailyWageDaysMode
 {
     CalendarDays = 0,   // DailyWage × calendar days in the period (pro-rated by join/resign)
     AttendanceDays = 1, // DailyWage × days with an attendance record that is not absent
+    WorkingDays = 2,    // DailyWage × working days (company work-day mask, minus company holidays) — ค่าเริ่มต้น (audit M6)
+}
+
+// อัตราต่อวันของพนักงานรายเดือนใช้สูตรเดียวทั้งตอนคิดสัดส่วนเข้า-ออกกลางเดือนและตอนหักขาดงาน (audit M7)
+public enum PayProrationMode
+{
+    ActualDaysInPeriod = 0, // เงินเดือน × วันที่ทำงานจริง ÷ จำนวนวันของงวด (28–31)
+    DaysPerMonthDivisor = 1, // เงินเดือน ÷ DaysPerMonthDivisor (เช่น 30) × วันที่ทำงานจริง ไม่เกินเงินเดือนเต็ม — ตรงกับสูตรหักขาดงาน
 }
 
 // Config-first rules for turning attendance facts (Att_DailyAttendance) into
@@ -58,7 +66,10 @@ public class Pay_AttendanceDeductionPolicy
     [Column(TypeName = "decimal(4,1)")]
     public decimal HoursPerDay { get; set; } = 8m;
 
-    public PayDailyWageDaysMode DailyWageMode { get; set; } = PayDailyWageDaysMode.CalendarDays;
+    public PayDailyWageDaysMode DailyWageMode { get; set; } = PayDailyWageDaysMode.WorkingDays;
+
+    // สัดส่วนเงินเดือนของคนเข้า/ออกกลางงวดคิดจากอะไร — ค่าเริ่มต้นใช้ตัวหารเดียวกับการหักขาดงาน (audit M7)
+    public PayProrationMode ProrationMode { get; set; } = PayProrationMode.DaysPerMonthDivisor;
 
     public bool IsActive { get; set; } = true;
     public DateTime ModifiedDate { get; set; } = DateTime.Now;

@@ -47,7 +47,7 @@
             <MudTh>หมวด</MudTh>
             <MudTh>เครื่องหมาย</MudTh>
             <MudTh>คิดภาษี</MudTh>
-            <MudTh>ฐาน SSO</MudTh>
+            <MudTh>ฐาน SSO</MudTh><MudTh>ฐาน PF</MudTh>
             <MudTh>ตามวันทำงาน</MudTh>
             <MudTh>บัญชี GL</MudTh>
             <MudTh>ลำดับ</MudTh>
@@ -75,6 +75,7 @@
                 </MudTd>
                 <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsTaxable" /></MudTd>
                 <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsSsoWageBase" /></MudTd>
+                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsProvidentFundWageBase" /></MudTd>
                 <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsProrated" /></MudTd>
                 <MudTd><MudTextField T="string" @bind-Value="_editing.GLAccountCode" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:110px;" /></MudTd>
                 <MudTd><MudNumericField T="int" @bind-Value="_editing.SortOrder" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:80px;" /></MudTd>
@@ -93,6 +94,7 @@
                 <MudTd>@(context.DefaultSignFlag > 0 ? "+" : "−")</MudTd>
                 <MudTd>@Flag(context.IsTaxable)</MudTd>
                 <MudTd>@Flag(context.IsSsoWageBase)</MudTd>
+                <MudTd>@Flag(context.IsProvidentFundWageBase)</MudTd>
                 <MudTd>@Flag(context.IsProrated)</MudTd>
                 <MudTd>@context.GLAccountCode</MudTd>
                 <MudTd>@context.SortOrder</MudTd>
@@ -132,6 +134,7 @@
             <MudItem xs="12" sm="2"><MudTextField T="string" @bind-Value="_new.GLAccountCode" Label="บัญชี GL" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
             <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsTaxable" Label="คิดภาษี" /></MudItem>
             <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsSsoWageBase" Label="นับเป็นฐานประกันสังคม" /></MudItem>
+            <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsProvidentFundWageBase" Label="นับเป็นฐานกองทุนสำรองเลี้ยงชีพ" /></MudItem>
             <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_new.IsProrated" Label="คิดตามวันทำงาน" /></MudItem>
             <MudItem xs="12" sm="2"><MudNumericField T="int" @bind-Value="_new.SortOrder" Label="ลำดับ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
             <MudItem xs="12" sm="4"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">เพิ่ม</MudButton></MudItem>
@@ -189,6 +192,7 @@
         Id = t.Id, Code = t.Code, NameTh = t.NameTh, NameEn = t.NameEn, Category = t.Category, DefaultSignFlag = t.DefaultSignFlag,
         IsSystemReserved = t.IsSystemReserved, GLAccountCode = t.GLAccountCode, IsActive = t.IsActive, SortOrder = t.SortOrder,
         IsTaxable = t.IsTaxable, IsSsoWageBase = t.IsSsoWageBase, IsProrated = t.IsProrated,
+        IsProvidentFundWageBase = t.IsProvidentFundWageBase,
     };
 
     private static string? ValidateCode(string? code)
@@ -215,6 +219,7 @@
         row.GLAccountCode = string.IsNullOrWhiteSpace(_editing.GLAccountCode) ? null : _editing.GLAccountCode.Trim();
         row.SortOrder = _editing.SortOrder;
         row.IsTaxable = _editing.IsTaxable; row.IsSsoWageBase = _editing.IsSsoWageBase; row.IsProrated = _editing.IsProrated;
+        row.IsProvidentFundWageBase = _editing.IsProvidentFundWageBase;
         await ctx.SaveChangesAsync();
         _editing = null;
         Snackbar.Add("บันทึกแล้ว — มีผลกับรอบที่คำนวณหลังจากนี้", Severity.Success);
@@ -235,6 +240,7 @@
             DefaultSignFlag = _new.Category == PayItemCategory.Deduction ? -1 : 1,
             GLAccountCode = string.IsNullOrWhiteSpace(_new.GLAccountCode) ? null : _new.GLAccountCode.Trim(),
             IsTaxable = _new.IsTaxable, IsSsoWageBase = _new.IsSsoWageBase, IsProrated = _new.IsProrated,
+            IsProvidentFundWageBase = _new.IsProvidentFundWageBase,
             SortOrder = _new.SortOrder, IsActive = true, IsSystemReserved = false,
         });
         await ctx.SaveChangesAsync();

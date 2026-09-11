@@ -362,6 +362,8 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_EmployeeTaxDeductionElection> Pay_EmployeeTaxDeductionElections { get; set; }
 
     public virtual DbSet<Pay_EmployeePriorEmployerIncome> Pay_EmployeePriorEmployerIncomes { get; set; }
+    public virtual DbSet<Pay_PaySchedule> Pay_PaySchedules { get; set; }
+    public virtual DbSet<Pay_EmployeePayScheduleOverride> Pay_EmployeePayScheduleOverrides { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
     public virtual DbSet<Pay_PayrollAnomaly> Pay_PayrollAnomalies { get; set; }
@@ -1597,6 +1599,18 @@ public partial class HRMContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.HremployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Pay_PaySchedule>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompanyId, e.EffectiveFrom });
+        });
+
+        modelBuilder.Entity<Pay_EmployeePayScheduleOverride>(entity =>
+        {
+            entity.HasOne(d => d.Hremployee).WithMany().HasForeignKey(d => d.HremployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(d => d.PaySchedule).WithMany().HasForeignKey(d => d.PayScheduleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.HremployeeId);
         });
 
         modelBuilder.Entity<Pay_ProvidentFundRateChangeWindow>(entity =>

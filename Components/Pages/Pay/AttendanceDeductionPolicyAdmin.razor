@@ -78,6 +78,12 @@
             <MudItem xs="12" sm="6">
                 <MudNumericField T="int" @bind-Value="_policy.DaysPerMonthDivisor" Label="เงินเดือน ÷ กี่วัน = ค่าจ้างรายวัน (กฎหมายแรงงานใช้ 30)" Min="1" Max="31" Variant="Variant.Outlined" />
             </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudSelect T="PayProrationMode" @bind-Value="_policy.ProrationMode" Label="คนเข้า/ออกกลางงวด คิดสัดส่วนเงินเดือนจาก" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayProrationMode" Value="PayProrationMode.DaysPerMonthDivisor">ตัวหารเดียวกับการหักขาดงาน (เงินเดือน ÷ ตัวหารด้านบน × วันที่ทำงาน) — ค่าจ้างต่อวันตัวเลขเดียวทั้งระบบ</MudSelectItem>
+                    <MudSelectItem T="PayProrationMode" Value="PayProrationMode.ActualDaysInPeriod">จำนวนวันจริงของงวด (28–31 วัน)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12" sm="6">
                 <MudNumericField T="decimal" @bind-Value="_policy.HoursPerDay" Label="ชั่วโมงทำงานต่อวัน" Format="0.#" Min="1" Max="24" Variant="Variant.Outlined" />
             </MudItem>
@@ -87,7 +93,8 @@
         <MudGrid>
             <MudItem xs="12" sm="8">
                 <MudSelect T="PayDailyWageDaysMode" @bind-Value="_policy.DailyWageMode" Label="นับวันจ่ายค่าจ้างรายวันจาก" Variant="Variant.Outlined">
-                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.CalendarDays">วันตามปฏิทินในงวด (ตามสัดส่วนวันเข้า-ออก)</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.WorkingDays">วันทำงานของบริษัทในงวด — ไม่นับวันหยุดประจำสัปดาห์และวันหยุดบริษัท (ค่าเริ่มต้น)</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.CalendarDays">วันตามปฏิทินในงวด รวมเสาร์-อาทิตย์ (ตามสัดส่วนวันเข้า-ออก)</MudSelectItem>
                     <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.AttendanceDays">วันที่มีการลงเวลาและไม่ขาดงาน (ถ้าไม่มีข้อมูลลงเวลาจะกลับไปใช้วันตามปฏิทิน)</MudSelectItem>
                 </MudSelect>
             </MudItem>
@@ -148,6 +155,7 @@
             row.LateAmountPerOccurrence = Math.Max(0, _policy.LateAmountPerOccurrence);
             row.AbsentMode = _policy.AbsentMode;
             row.DaysPerMonthDivisor = Math.Clamp(_policy.DaysPerMonthDivisor, 1, 31);
+            row.ProrationMode = _policy.ProrationMode;
             row.HoursPerDay = Math.Clamp(_policy.HoursPerDay, 1m, 24m);
             row.DailyWageMode = _policy.DailyWageMode;
             row.IsActive = true;

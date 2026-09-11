@@ -37,6 +37,8 @@ public class Pay_PayItemType
     // employee's working-day proration factor like base salary.
     public bool IsTaxable { get; set; } = true;
     public bool IsSsoWageBase { get; set; }
+    // นับเป็น "ค่าจ้าง" ฐานกองทุนสำรองเลี้ยงชีพ (audit M2) — ค่าเริ่มต้นเฉพาะเงินเดือน/ค่าจ้างรายวัน (BASE) ไม่รวม OT/สวัสดิการ
+    public bool IsProvidentFundWageBase { get; set; }
     public bool IsProrated { get; set; }
 
     public bool IsActive { get; set; } = true;

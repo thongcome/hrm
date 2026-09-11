@@ -218,6 +218,7 @@ public static class ScMenuNavCatalog
         new("GRP_PAYROLL", "PAY_ADHOC", "/pay/recurring-items", "เงินได้เงินหักประจำ", "Recurring Pay Items", "Icons.Material.Filled.Repeat", 80),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/payslip-settings", "ตั้งค่าสลิป", "Payslip Settings", "Icons.Material.Filled.Receipt", 90),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/periods", "จัดการงวดเงินเดือน", "Payroll Periods", "Icons.Material.Filled.CalendarMonth", 100),
+        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/pay-schedules", "รอบจ่ายเงินเดือน (กี่งวด/เดือน)", "Pay Schedules", "Icons.Material.Filled.EventRepeat", 101),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/salary-grades", "โครงสร้างเงินเดือน (Pay Grade)", "Salary Structure (Pay Grade)", "Icons.Material.Filled.BarChart", 110),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/lifecycle-task-templates", "Checklist การเริ่มงาน/ลาออก", "Onboarding/Offboarding Checklist", "Icons.Material.Filled.ChecklistRtl", 120),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/insurance-plans", "แผนประกันกลุ่ม", "Group Insurance Plans", "Icons.Material.Filled.HealthAndSafety", 130),
