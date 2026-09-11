@@ -143,7 +143,8 @@ public class BackwardMove : WorkflowMove
 {
     public override string Name => "Reject";
     public override int Delta => -1;
-    public override string ActorRowStatus => WorkflowService.Rejected;
+    // ใบงานของคนที่ส่งกลับอ่านว่า RETURNED เหมือน engine เดิม (audit M6) — REJECTED สงวนไว้ให้ "ไม่อนุมัติ"
+    public override string ActorRowStatus => WorkflowService.StatusReturned;
 
     public override string? StampOn(wf_sub_workflow_master target)
         => target.backwardstatus;
@@ -386,7 +387,7 @@ public class WorkflowService
         await db.SaveChangesAsync(ct);
         await AuditAsync(job, "Decline", new { level, m.reason }, ct);
         await WriteBackAsync(job, ct);
-        await NoticeEveryoneInvolvedAsync(db, job, m.actorUserId, m.reason, ct);
+        await NoticeEveryoneInvolvedAsync(db, job, m.actorUserId, m.reason, ct, declined: true);
 
         m.jobMaster = job; m.subWorkflow = target; m.jobsub = stamp;
         m.direction = "Decline";
@@ -526,6 +527,7 @@ public class WorkflowService
         await db.SaveChangesAsync(ct);
         await AuditAsync(job, "AutoApprove", new { job.workflowcode }, ct);
         await WriteBackAsync(job, ct);
+        await NotifyRequesterClosedAsync(job, ct);
 
         m.jobMaster = job;
         m.jobsub = stamp;
@@ -974,8 +976,41 @@ public class WorkflowService
 
         // เขียนผลกลับเอกสารหลัง commit เท่านั้น — handler เปิด context ของตัวเองและต้องเห็นงานที่ปิดแล้วจริง
         if (result.jobMaster?.isJobClosed == true)
+        {
             await WriteBackAsync(result.jobMaster, ct);
+            await NotifyRequesterClosedAsync(result.jobMaster, ct);
+        }
         return result;
+    }
+
+    // ผู้ยื่นต้องรู้ทันทีว่าเรื่องของตัวเองอนุมัติแล้ว (audit M5: engine ใหม่ไม่เคยแจ้งผู้ยื่นตอนปิดงาน)
+    // job.empid = Hremployee.EmpNo ของผู้ขอ (engine เดิมก็อ่านแบบนี้ใน NotifyRequesterAsync)
+    private async Task NotifyRequesterClosedAsync(job_master job, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(job.empid)) return;
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var emp = await db.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == job.empid, ct);
+            if (emp is null) return;
+            var email = await EmployeeEmailResolver.ResolveAsync(db, emp.id, ct);
+            if (string.IsNullOrWhiteSpace(email)) return;
+
+            var outcome = job.reasonClosed switch
+            {
+                WorkflowEngineService.ClosedByDecline => "ไม่ได้รับการอนุมัติ",
+                WorkflowEngineService.ClosedByCancel => "ถูกยกเลิก",
+                _ => "ได้รับการอนุมัติเรียบร้อยแล้ว",
+            };
+            await _emailSender.SendEmailAsync(email,
+                $"ผลการอนุมัติ: {job.subject ?? job.wname}",
+                $"<p>คำขอของคุณเรื่อง \"{job.subject}\" {outcome}</p><p>สถานะปัจจุบัน: {job.status}</p>"
+                + (string.IsNullOrWhiteSpace(job.remark) ? "" : $"<p>หมายเหตุ: {job.remark}</p>"));
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "แจ้งผลปิดงาน {JobMasterId} ให้ผู้ยื่นไม่สำเร็จ", job.jobmasterid);
+        }
     }
 
     private async Task<WorkFlowViewModel> MoveCoreAsync(HRMContext db, WorkFlowViewModel model, WorkflowMove move,
@@ -1051,6 +1086,8 @@ public class WorkflowService
                     throw new InvalidOperationException(
                         $"ไต่หาหัวหน้าชั้นที่ {hopNow} ไม่พบ — {next?.Note ?? "ตรวจสอบผังองค์กร"}");
                 recipients = await db.sc_users.Where(u => ids.Contains(u.userid)).ToListAsync(ct);
+                // หัวหน้าชั้นถัดไปที่ตั้งผู้แทนไว้ ต้องได้ผู้แทนเหมือนขั้นแรก (audit M2)
+                recipients = await ApplyDelegationAsync(db, job, recipients, ct);
             }
         }
 
@@ -1210,7 +1247,7 @@ public class WorkflowService
     //  อ่านรายชื่อจาก job_user_list ทั้งหมดของงาน ไม่ใช่เฉพาะขั้นปัจจุบัน
     // ------------------------------------------------------------------------
     private async Task NoticeEveryoneInvolvedAsync(
-        HRMContext db, job_master job, long actorUserId, string? reason, CancellationToken ct)
+        HRMContext db, job_master job, long actorUserId, string? reason, CancellationToken ct, bool declined = false)
     {
         try
         {
@@ -1222,9 +1259,13 @@ public class WorkflowService
             var actor = await db.sc_users.Where(u => u.userid == actorUserId)
                 .Select(u => (u.firstname + " " + u.lastname).Trim()).FirstOrDefaultAsync(ct);
 
-            var subject = $"งานถูกส่งกลับไปแก้ไข: {job.subject ?? job.wname}";
-            var body = $"<p>งาน \"{job.subject}\" (Workflow: {job.wname}) ถูกส่งกลับไปยังผู้กรอกแบบฟอร์มเพื่อแก้ไข</p>"
-                     + $"<p>ผู้ส่งกลับ: {actor}</p>"
+            // "ไม่อนุมัติ" กับ "ส่งกลับ" คนละเรื่อง — อีเมลต้องบอกให้ถูก (audit M5)
+            var subject = declined
+                ? $"งานไม่ได้รับการอนุมัติ: {job.subject ?? job.wname}"
+                : $"งานถูกส่งกลับไปแก้ไข: {job.subject ?? job.wname}";
+            var body = (declined
+                        ? $"<p>งาน \"{job.subject}\" (Workflow: {job.wname}) ไม่ได้รับการอนุมัติ และปิดเรื่องแล้ว</p><p>ผู้พิจารณา: {actor}</p>"
+                        : $"<p>งาน \"{job.subject}\" (Workflow: {job.wname}) ถูกส่งกลับไปยังผู้กรอกแบบฟอร์มเพื่อแก้ไข</p><p>ผู้ส่งกลับ: {actor}</p>")
                      + (string.IsNullOrWhiteSpace(reason) ? "" : $"<p>เหตุผล: {reason}</p>")
                      + "<p>แจ้งเพื่อทราบ เนื่องจากท่านเคยเกี่ยวข้องกับงานนี้</p>";
 
@@ -1544,6 +1585,19 @@ public class WorkflowService
             backwardlevel = sub.backwardlevel,
             isshow = sub.isshow,
             isLOA = sub.isLOA,
+            // รอยเท้าต้องเป็น snapshot เต็มของขั้น (audit M1): หน้า pool / การรับงาน / การไต่หัวหน้า
+            // อ่านธงพวกนี้จากรอยเท้าของงาน ไม่ใช่จาก config สด — เดิมขาด 4 ตัวแรก งาน pool บน engine ใหม่จึงหาย
+            isPool = sub.isPool,
+            empLevel = sub.empLevel,
+            isNeedsupervisorapprove = sub.isNeedsupervisorapprove,
+            verticalMaxLevel = sub.verticalMaxLevel,
+            isAdhocUser = sub.isAdhocUser,
+            iscustomApprover = sub.iscustomApprover,
+            approvedstatus = sub.approvedstatus,
+            declinestatus = sub.declinestatus,
+            loacode = sub.loacode,
+            isAutoApproveAllow = sub.isAutoApproveAllow,
+            isNeedBudgetApproval = sub.isNeedBudgetApproval,
             controller = sub.controller,
             action = sub.action,
             actionEdit = sub.actionEdit,

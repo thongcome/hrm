@@ -604,6 +604,14 @@ public class WorkflowEngineService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 
+        // งานของ engine ใหม่ยกเลิกด้วย engine ใหม่ — มีรอยเท้า ปิด enddate ล้าง isLast ครบ (audit M3)
+        // หน้าเดิม (my-requests, ใบลา) ยังเรียกทางนี้อยู่ จึงแยกทางให้ตรงนี้แทนที่จะไล่แก้ทุกหน้า
+        if (await JobUsesNewEngineAsync(context, jobMasterId, ct))
+        {
+            await NewEngine.CancelAsync(Carry(jobMasterId, actorUserId, reason, null), isAdminOverride, ct);
+            return;
+        }
+
         var job = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct)
             ?? throw new InvalidOperationException($"ไม่พบงาน id {jobMasterId}");
         if (job.isJobClosed == true)
@@ -770,6 +778,8 @@ public class WorkflowEngineService
 
         row.userid = assigneeUserId;
         row.empid = assignee.empid;
+        row.username = $"{assignee.firstname} {assignee.lastname}".Trim();   // snapshot ตามคนที่ได้รับมอบหมาย (audit M3)
+        row.orgcode = assignee.orgcode;
         row.reason = string.IsNullOrWhiteSpace(note) ? row.reason : $"{row.reason} | มอบหมายโดย admin: {note}";
         await context.SaveChangesAsync(ct);
 
@@ -805,7 +815,20 @@ public class WorkflowEngineService
         var oldUserId = row.userid;
         row.userid = newUserId;
         row.empid = newAssignee.empid;
+        // snapshot บนใบงานต้องตามคนใหม่ด้วย — หน้าจอและรายงานอ่านชื่อ/หน่วยงานจากใบงาน ไม่ได้ join สด (audit M3)
+        row.username = $"{newAssignee.firstname} {newAssignee.lastname}".Trim();
+        row.orgcode = newAssignee.orgcode;
         row.reason = string.IsNullOrWhiteSpace(row.reason) ? $"เปลี่ยนผู้อนุมัติโดย admin: {reason}" : $"{row.reason} | เปลี่ยนผู้อนุมัติโดย admin: {reason}";
+
+        // ถ้าคนเดิมรับงาน pool ไว้ ต้องปล่อยคืน ไม่งั้นคนใหม่กดไม่ได้เพราะ "มีคนอื่นรับไปแล้ว"
+        var pooled = await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == row.jobmasterid, ct);
+        if (pooled is not null && pooled.PoolClaimedByUserId == oldUserId && pooled.PoolClaimedWLevel == row.wlevel)
+        {
+            pooled.PoolClaimedByUserId = null;
+            pooled.PoolClaimedWLevel = null;
+            pooled.PoolClaimedJobSeq = null;
+            pooled.PoolClaimedDate = null;
+        }
         await context.SaveChangesAsync(ct);
 
         await _auditLogger.LogChangeAsync(AuditActionType.Update, "job_user_list", jobApproverId.ToString(),
@@ -973,9 +996,11 @@ public class WorkflowEngineService
             throw new InvalidOperationException("มีเพื่อนร่วมทีมรับงานนี้ไปแล้ว");
         }
 
+        // ใบงานที่ "มีชีวิต" = PENDING + isLast + ขั้นตรงกับ lastLevel — ห้ามใช้ jobseq (engine ใหม่ขยับ
+        // job.jobseq ทุก action คนที่สองในขั้น pool จึงรับงานไม่ได้ทั้งที่ยังถือใบงานอยู่) (audit M1)
         var myPendingRow = await context.job_user_lists.FirstOrDefaultAsync(a =>
             a.jobmasterid == jobMasterId && a.userid == actorUserId && a.jobstatus == StatusPending
-            && a.wlevel == job.lastLevel && (a.jobseq ?? 0) == (job.jobseq ?? 0), ct)
+            && a.wlevel == job.lastLevel && a.isLast == true, ct)
             ?? throw new InvalidOperationException("คุณไม่ใช่ผู้ได้รับมอบหมายในระดับปัจจุบันของงานนี้");
 
         var levelSnapshot = await CurrentFootprintAsync(context, jobMasterId, myPendingRow.wlevel, ct);
@@ -1023,10 +1048,12 @@ public class WorkflowEngineService
     public async Task<List<job_user_list>> GetMyInvolvementAsync(long userId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        // ประวัติทั้งหมดของคนหนึ่งโตไม่มีที่สิ้นสุด — หน้ากล่องงานเอาล่าสุด 300 รายการพอ (audit M11)
         return await context.job_user_lists
             .Include(a => a.jobmaster).ThenInclude(j => j.workflow)
             .Where(a => a.userid == userId)
-            .OrderByDescending(a => a.jobmaster.createdate)
+            .OrderByDescending(a => a.jobmaster.createdate).ThenByDescending(a => a.jobapproverid)
+            .Take(300)
             .ToListAsync(ct);
     }
 
@@ -2508,6 +2535,46 @@ public class WorkflowEngineService
         }
 
         return plan;
+    }
+
+    // หน้ารายการ (เช่น งานที่ฉันขอไป) ถามทีเดียวทั้งชุด ไม่วนถามทีละงาน (audit M11)
+    public async Task<Dictionary<long, string>> GetPendingApproverNamesAsync(IEnumerable<long> jobMasterIds, CancellationToken ct = default)
+    {
+        var ids = jobMasterIds.Distinct().ToList();
+        var result = new Dictionary<long, string>();
+        if (ids.Count == 0) return result;
+
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var pending = await context.job_user_lists
+            .Where(IsLiveApprovalRow)
+            .Where(a => ids.Contains(a.jobmasterid))
+            .Select(a => new { a.jobmasterid, a.userid })
+            .ToListAsync(ct);
+        if (pending.Count == 0) return result;
+
+        var userIds = pending.Where(p => p.userid.HasValue).Select(p => p.userid!.Value).Distinct().ToList();
+        var users = await context.sc_users
+            .Where(u => userIds.Contains(u.userid))
+            .Select(u => new { u.userid, u.empid, u.loginname })
+            .ToListAsync(ct);
+        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var nameByEmpNo = (await context.Hremployee
+            .Where(e => empIds.Contains(e.EmpNo))
+            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .ToListAsync(ct))
+            .ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        var nameByUser = users.ToDictionary(u => u.userid, u =>
+            u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n
+                : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
+
+        foreach (var g in pending.GroupBy(p => p.jobmasterid))
+        {
+            var names = g.Where(p => p.userid.HasValue).Select(p => nameByUser.GetValueOrDefault(p.userid!.Value, $"#{p.userid}")).Distinct();
+            var joined = string.Join(" / ", names);
+            if (!string.IsNullOrWhiteSpace(joined)) result[g.Key] = joined;
+        }
+        return result;
     }
 
     public async Task<string> GetPendingApproverNamesAsync(long jobMasterId, CancellationToken ct = default)

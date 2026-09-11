@@ -211,12 +211,16 @@ else
         if (_job is null) return steps;
 
         var current = _job.lastLevel ?? 0;
-        var currentSeq = _job.jobseq ?? 0;
 
+        // แต่ละขั้นแสดง "รอบที่ออกใบงานล่าสุด" ของขั้นนั้น (jobseq สูงสุดในขั้น) — ห้ามกรองด้วย job.jobseq
+        // ปัจจุบัน เพราะ engine ใหม่ขยับ jobseq ทุกครั้งที่ใครกด ผู้อนุมัติร่วมขั้นที่ยังไม่กดจะหายจากภาพ (audit M7)
         var byLevel = _job.job_user_lists
-            .Where(a => (a.jobseq ?? 0) == currentSeq)
             .GroupBy(a => a.wlevel ?? 0)
-            .ToDictionary(g => g.Key, g => g.ToList());
+            .ToDictionary(g => g.Key, g =>
+            {
+                var latest = g.Max(a => a.jobseq ?? 0);
+                return g.Where(a => (a.jobseq ?? 0) == latest).ToList();
+            });
 
         var levels = _stageDefs.Count > 0
             ? _stageDefs.Select(d => d.Level).ToList()

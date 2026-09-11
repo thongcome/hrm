@@ -119,12 +119,9 @@
         try
         {
             _requests = await Engine.GetMyRequestsAsync(_actorUserId);
-            _pendingWith = new();
-            foreach (var job in _requests.Where(j => j.isJobClosed != true))
-            {
-                var who = await Engine.GetPendingApproverNamesAsync(job.jobmasterid);
-                if (!string.IsNullOrWhiteSpace(who)) _pendingWith[job.jobmasterid] = who;
-            }
+            // ถามทีเดียวทั้งชุด — เดิมวนถามทีละงาน (audit M11)
+            _pendingWith = await Engine.GetPendingApproverNamesAsync(
+                _requests.Where(j => j.isJobClosed != true).Select(j => j.jobmasterid));
         }
         finally
         {

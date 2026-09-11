@@ -135,6 +135,24 @@ else
                         "งานอาจจบก่อนถึงคนที่ควรตัดสินจริง",
                         "เหลือ istop ไว้ขั้นเดียว", design));
 
+                // ขั้นแรกของเส้นทางต้องเป็น 1 — ร่างคือขั้น 0 แล้ว "ส่งต่อ" ไป lastLevel + 1 = 1 เสมอ
+                if (visible.Count > 0 && visible.Min(s => s.wlevel) > 1)
+                    found.Add(new(Sev.Blocking, name, $"ขั้นแรกคือขั้น {visible.Min(s => s.wlevel)} ไม่ใช่ขั้น 1",
+                        "ผู้ยื่นกดส่งต่อจากร่างแล้วระบบหาขั้นที่ 1 ไม่พบ เริ่มงานไม่ได้",
+                        "เรียงเลขขั้นใหม่ให้เริ่มที่ 1", design));
+
+                // สถานะปิดงานที่ istop ต้องเป็น COMPLETED — โมดูลอ่าน reasonClosed แล้ว แต่รายงาน/กล่องงานเดิมยังอ่าน status
+                foreach (var top in visible.Where(s => s.istop && !string.Equals(s.forwardstatus, WorkflowEngineService.StatusCompleted, StringComparison.OrdinalIgnoreCase)))
+                    found.Add(new(Sev.Warning, $"{name} ขั้น {top.wlevel}",
+                        $"ขั้นสุดท้ายปิดงานด้วยสถานะ \"{top.forwardstatus ?? "(ว่าง)"}\" ไม่ใช่ COMPLETED",
+                        "รายงานและหน้ารวมงานที่นับงาน COMPLETED จะไม่นับงานของเส้นทางนี้",
+                        "ตั้งสถานะเมื่อผ่านขั้นสุดท้าย (forwardstatus) เป็น COMPLETED", design));
+
+                if (w.isactive == true && w.useNewEngine != true)
+                    found.Add(new(Sev.Warning, name, "ยังเดินด้วย engine เดิม",
+                        "เส้นทางธุรกิจทั้งหมดย้ายมา engine ใหม่แล้ว (ร่างก่อนส่ง, ส่งกลับหาผู้กรอก, เขียนผลกลับเอกสาร) เส้นทางนี้จะได้พฤติกรรมต่างจากเส้นทางอื่น",
+                        "ปิดงานที่ค้างของเส้นทางนี้ แล้วเปิด useNewEngine", design));
+
                 if (visible.Any(s => s.wlevel == 0))
                     found.Add(new(Sev.Warning, name, "มีการตั้งค่าขั้นที่ 0",
                         "ขั้น 0 คือร่างที่ผู้ยื่นถืออยู่ ระบบจัดการเอง การตั้งค่าไว้ทำให้เส้นทางซ้ำ",
@@ -210,6 +228,32 @@ else
                         "ผู้อนุมัติจะเห็นเฉพาะข้อมูลสรุปของคำขอ ไม่เห็นเอกสารต้นทาง",
                         "ตั้งช่องหน้ารายละเอียดของขั้น หรือปล่อยไว้ถ้าโมดูลยังไม่มีหน้ารายรายการ", design));
             }
+
+            // ── ข้อมูลหลักที่เส้นทางพึ่งพา (ผังองค์กร / ผู้ใช้) ─────────────────────
+            // engine หาผู้อนุมัติจาก Hremployee.orgcode → com_organization.approver_empid → sc_user.empid
+            // ข้อมูลพวกนี้ผิด เส้นทางที่ตั้งค่าถูกก็เดินไม่ถึงคน
+            var dupEmp = await db.sc_users.Where(u => u.empid != null)
+                .GroupBy(u => u.empid!).Where(g => g.Count() > 1)
+                .Select(g => new { EmpNo = g.Key, N = g.Count() }).ToListAsync();
+            foreach (var d in dupEmp)
+                found.Add(new(Sev.Warning, $"ผู้ใช้รหัสพนักงาน {d.EmpNo}",
+                    $"มีบัญชีผู้ใช้ {d.N} บัญชีผูกกับรหัสพนักงานเดียวกัน",
+                    "ระบบเลือกบัญชีแรกที่เจอเป็นผู้อนุมัติ งานอาจไปโผล่ในกล่องของบัญชีที่ไม่ได้ใช้",
+                    "ให้รหัสพนักงานหนึ่งรหัสผูกกับบัญชีเดียว (ปิดหรือถอดรหัสออกจากบัญชีที่เหลือ)", "/sc_users"));
+
+            var noOrg = await db.Hremployee.CountAsync(e => e.IsActive && (e.orgcode == null || e.orgcode == ""));
+            if (noOrg > 0)
+                found.Add(new(Sev.Warning, "พนักงานที่ไม่มีหน่วยงาน",
+                    $"พนักงานที่ยังทำงานอยู่ {noOrg:N0} คน ไม่มีรหัสหน่วยงาน (orgcode)",
+                    "ยื่นเรื่องผ่านสายบังคับบัญชาไม่ได้ — ระบบหาหัวหน้าจากหน่วยงานของผู้ยื่น",
+                    "กำหนดหน่วยงานให้พนักงานเหล่านี้ในทะเบียนประวัติ", "/hremployees"));
+
+            var topOrgs = await db.com_organizations.CountAsync(o => o.isActive && o.istop);
+            if (topOrgs != 1)
+                found.Add(new(topOrgs == 0 ? Sev.Blocking : Sev.Warning, "ผังองค์กร",
+                    topOrgs == 0 ? "ไม่มีหน่วยงานยอด (istop)" : $"มีหน่วยงานยอด (istop) {topOrgs} หน่วย",
+                    "การไต่หาหัวหน้าขึ้นไปจนสุดสายใช้หน่วยงานยอดเป็นจุดหยุด ถ้าไม่มีหรือมีหลายจุด งานอาจไต่ไม่สุดหรือหยุดผิดที่",
+                    "ให้เหลือหน่วยงานยอดหน่วยเดียว = บริษัทที่ซื้อระบบ", "/com_organizations"));
 
             // ── งานที่กำลังเดินอยู่ ──────────────────────────────────────────
             var openJobs = await db.job_masters.Where(j => j.isJobClosed != true)
