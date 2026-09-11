@@ -1,8 +1,10 @@
 # แผนแยกโปรเจค: Advance.Payroll · Advance.Workflow · HumanOk (HRM)
 
-เวอร์ชัน 1.0 — 12 ก.ย. 2569 — ร่างเพื่อตัดสินใจ (ยังไม่เริ่มทำ)
+เวอร์ชัน 1.1 — 12 ก.ย. 2569 — ร่างเพื่อตัดสินใจ (ยังไม่เริ่มทำ) · v1.1: Advance.Workflow มี component คน-ผังของตัวเอง (Workflow.Org) ตามคำ CEO
 
 > โจทย์จาก CEO: "ถ้าจะแยกโปรเจค Payroll ออกมาเป็น Payroll Lite (HumanOk) ตัวนี้จะชื่อ Advance.Payroll แต่ยังไม่ชัวร์ ช่วยทำ plan แยกทั้ง HRM, Workflow" และก่อนหน้านี้ "เดี๋ยวผมจะแยกโปรเจคเอาไปขายบริษัทเล็ก ๆ รวมทั้ง SaaS"
+>
+> **วัตถุประสงค์ (CEO ยืนยัน 12 ก.ย. 2569): "จะเอาทั้ง Payroll และ Workflow ไปขายแยก โดยไม่เอา HRM ตัวเต็มไปเลยด้วย"** — ทั้งสองต้องเป็นผลิตภัณฑ์ที่ติดตั้ง/สมัครใช้ได้เอง มี login ผู้ใช้ สิทธิ์ ทะเบียนคน/ผัง ของตัวเองครบ ไม่ใช่แค่ package สำหรับ HumanOk
 
 ---
 
@@ -48,12 +50,14 @@
 
 | สิ่งที่ engine อ่าน | ใช้ทำอะไร | ใน package จะเป็น |
 |---|---|---|
-| `sc_user`, `sc_role`, `sc_user_role` | ผู้ยื่น/ผู้อนุมัติเป็นใคร บทบาท | `IWorkflowUserDirectory` — host (HumanOk/Payroll) implement |
-| `Hremployee`, `com_organization` (approver_empid, สายบังคับบัญชา) | หาผู้อนุมัติแนวดิ่งจากผังองค์กร | `IApproverResolver` — host implement (Lite: หัวหน้าตรงจากตารางพนักงาน) |
+| `sc_user`, `sc_role`, `sc_user_role` | ผู้ยื่น/ผู้อนุมัติเป็นใคร บทบาท | ตารางผู้ใช้/บทบาทของ **Workflow.Org** (component คน-ผังของ Workflow เอง) |
+| `Hremployee`, `com_organization` (approver_empid, สายบังคับบัญชา) | หาผู้อนุมัติแนวดิ่งจากผังองค์กร | ผังองค์กร + ทะเบียนคนของ **Workflow.Org** — HumanOk ซิงก์ให้ / ลูกค้าที่ซื้อ Workflow อย่างเดียวดูแลเองในผลิตภัณฑ์ |
 | `AuditLog`, อีเมล | บันทึก/แจ้งเตือน | Advance.Platform + `IWorkflowNotifier` |
 | 17 handler เขียนกลับเอกสารเมื่อปิดงาน (`WorkflowDocumentWriteback`) | บอกโมดูลเจ้าของเอกสารว่าอนุมัติ/ปฏิเสธแล้ว | **อยู่กับโมดูลเจ้าของ ไม่ย้ายไปกับ engine** — engine รู้จักแค่ interface `IWorkflowDocumentHandler` |
 
 engine ใหม่ (`WorkflowService`) เดินงานอยู่แล้ว 25 workflow ผ่านสวิตช์ `useNewEngine`; engine เก่า (`WorkflowEngineService`) ยังเป็น facade — **ต้องปลดของเก่าออกก่อนแยก** ไม่งั้นได้ package ที่มีสอง engine
+
+**CEO (12 ก.ย. 2569): "Advance.Workflow จะต้องแยกไปขาย โดยมี workflow component HR เกี่ยวกับผัง และ workflow"** — ผลิตภัณฑ์ Workflow ต้องมี "คนและผังองค์กร" ของตัวเอง ขายได้โดยไม่ต้องมี HumanOk. ตรงกับแบบเดิมของระบบ JSP อยู่แล้ว: ตาราง `wf_employee` และ `wf_org_type` (ทะเบียนคน + ผังของ workflow เอง, ตอนนี้ว่าง 1/0 แถว มีหน้า admin แล้ว) คือร่องรอยของการออกแบบนั้น วันนี้ engine อ่าน `Hremployee`/`com_organization` ของ HR ตรง ๆ แทน — จึงต้องย้ายกลับไปอ่านจากตารางของ Workflow เอง
 
 ---
 
@@ -65,8 +69,12 @@ engine ใหม่ (`WorkflowService`) เดินงานอยู่แล�
 
 ระดับ 2    Advance.Workflow  ──────────────────────────────────────────────┐
            ├─ Advance.Workflow.Contracts  (IWorkflowEngine, IWorkflowDocumentHandler,          │
-           │                               IApproverResolver, IWorkflowUserDirectory,          │
+           │                               IOrgDirectorySource (ให้ HumanOk ซิงก์คน/ผังเข้ามา),  │
            │                               IWorkflowNotifier, WorkflowClosedEvent)             │
+           ├─ Advance.Workflow.Org        (component คน-ผัง: ผังองค์กรแบบต้นไม้ + ผู้อนุมัติ    │
+           │                               ประจำหน่วย + ทะเบียนคน + ผู้ใช้/บทบาท + LOA +        │
+           │                               มอบอำนาจ — ตาราง wf_org_type/wf_employee ฟื้นใช้    │
+           │                               + หน้า admin ผัง/คน/บทบาท)                         │
            ├─ Advance.Workflow.Domain     (wf_*, job_* 29 entities — ชื่อตารางเดิม)            │
            ├─ Advance.Workflow.Data       (WorkflowDbContext + migrations ของตัวเอง)           │
            ├─ Advance.Workflow.Engine     (WorkflowService, health check, stepper model)        │
@@ -86,11 +94,14 @@ engine ใหม่ (`WorkflowService`) เดินงานอยู่แล�
 
 กติกา: Payroll.Engine ห้ามอ้าง HRM · HumanOk อ้าง Payroll/Workflow ได้ · Workflow ห้ามอ้างทั้งสอง · ทุก "ข้อมูลจากโมดูลอื่น" เข้า Payroll ผ่าน feed interface เท่านั้น (HumanOk implement จากระบบเวลา/OT/สวัสดิการ, Lite implement จากหน้ากรอก/นำเข้า)
 
+**Workflow.Org — ใครเป็นเจ้าของ "คนและผัง":** engine อ่านผู้อนุมัติจาก Workflow.Org เท่านั้น (ทางเดียว ไม่มี if ว่าอยู่ใน HumanOk หรือไม่). ขายเดี่ยว = ลูกค้าดูแลผัง/คน/ผู้ใช้ในหน้า admin ของ Workflow เอง (หรือนำเข้า Excel). อยู่ใน HumanOk = `Hremployee`/`com_organization`/`sc_user` ยังเป็นต้นทาง แล้วซิงก์เข้า Workflow.Org ผ่าน `IOrgDirectorySource` ทุกครั้งที่ผัง/คนเปลี่ยน (แบบเดียวกับ `pay_employee` ของ Payroll) — ผู้ใช้ HumanOk ไม่ต้องดูแลสองที่
+
 ### 3.1 เจ้าของตาราง (ownership) หลังแยก
 
 | กลุ่ม | ตาราง | เจ้าของ | หมายเหตุ |
 |---|---|---|---|
 | Workflow | `wf_*` (18), `job_*` (11) | Advance.Workflow | schema `wf` — ชื่อคอลัมน์เดิม ไม่ migrate ข้อมูล |
+| คนและผังของ Workflow | `wf_org_type` (ผังต้นไม้), `wf_employee` (ทะเบียนคน), ผู้ใช้/บทบาทของ Workflow (ใหม่), `wf_loa*`, `Wf_ApproverDelegation` | Advance.Workflow.Org | ขายเดี่ยว = ต้นทางจริง · ใน HumanOk = ซิงก์ one-way จาก `com_organization`/`Hremployee`/`sc_user` |
 | Payroll | `Pay_*` (45), `Hrucfsecurity` (อัตราประกันสังคม), `Pay_PayrollPeriod` | Advance.Payroll | เพิ่ม `TenantId` (SaaS) — HumanOk ใส่ค่าเดียว |
 | พนักงานสำหรับจ่าย | `pay_employee` (ใหม่ ~25 คอลัมน์) | Advance.Payroll | HumanOk ซิงก์จาก `Hremployee` ผ่าน `IEmployeeSource` (one-way, ทุกครั้งก่อนคำนวณ) — Lite เป็นทะเบียนพนักงานตัวจริง |
 | วันหยุด/วันทำงาน | `pay_holiday`, `pay_workday_setting` (ใหม่) | Advance.Payroll | HumanOk ซิงก์จาก `Lve_*` |
@@ -98,17 +109,33 @@ engine ใหม่ (`WorkflowService`) เดินงานอยู่แล�
 
 ---
 
+## 3.2 สิ่งที่ผลิตภัณฑ์เดี่ยวทั้งสองต้องมีเหมือนกัน (ทำครั้งเดียว ใช้สองที่)
+
+ขายโดยไม่มี HumanOk แปลว่าแต่ละตัวต้องยืนเองได้ครบ — ของที่วันนี้ HumanOk ให้ฟรี:
+
+| ต้องมี | วันนี้อยู่ที่ | ในผลิตภัณฑ์เดี่ยว |
+|---|---|---|
+| login / ผู้ใช้ / รหัสผ่าน / นโยบายรหัสผ่าน | ASP.NET Identity + `sc_user` ใน HRM | **host shell** เดียวกัน (Identity ชุดเดียวกับที่ HumanOk ใช้หลัง migrate) — ย้ายเข้า Advance.Auth เมื่อมี |
+| เมนู + สิทธิ์รายหน้า (AD.CRUDManage) | `sc_menu`, `sc_role_menu`, `sc_program_role` + `ProgramRoleService` | shell เดียวกัน: package ประกาศ route ให้ shell seed |
+| ทะเบียนคน + ผังองค์กร | `Hremployee`, `com_organization` | Payroll: `pay_employee` · Workflow: Workflow.Org — และเมื่อขายคู่กัน (Payroll + Workflow) ใช้ Workflow.Org เป็นผังร่วม |
+| หลายบริษัท/หลาย tenant | string `CompanyId` บริษัทเดียว | `TenantId` ใน shell ทุก query กรองอัตโนมัติ |
+| audit / PDPA / security headers / log | Advance.Platform baseline ใน HRM | Advance.Platform package |
+| นำเข้า Excel (คน ผัง OT ขาด/สาย) | ไม่มี (HumanOk มีโมดูลป้อนเอง) | ตัวนำเข้ากลางใน shell |
+| อีเมล/แจ้งเตือน | `EmailSender` ใน HRM | Advance.Notify (หรือ EmailSender ชุดเดียวกันย้ายเข้า shell) |
+
+**ข้อเสนอ:** สร้าง `Advance.Host` (shell) หนึ่งตัว = โครง Web + Identity + เมนู/สิทธิ์ + tenant + นำเข้า Excel + Platform baseline แล้วทั้ง `Advance.Payroll.Web` และ `Advance.Workflow.Web` ประกอบจาก shell นี้ — ไม่เขียน login/สิทธิ์สองรอบ (ตรงกับ Advance.Template ในสถาปัตยกรรมกลาง)
+
 ## 4. แผนงานเป็นเฟส
 
 | เฟส | งาน | ผลลัพธ์ | ประมาณ |
 |---|---|---|---|
 | **0 — ทำตะเข็บให้เห็น** (ใน repo HRM เดิม) | 1) ปิดผลทดสอบเงินเดือนทั้งปี 2568 + แก้บั๊กที่เจอ 2) ประกาศ interface ทั้ง 7 ตัว (ข้อ 3) ไว้ใน HRM แล้วให้ `PayrollCalculationService`/`WorkflowService` เรียกผ่าน interface แทนอ่านตารางอื่นตรง ๆ 3) ปลด engine เก่าของ workflow (เหลือ facade บาง ๆ) 4) เทสสถาปัตยกรรม 1 ตัว: `Services/Pay` ห้ามอ้าง namespace อื่นนอกจาก Pay/Shared/Contracts 5) ย้ายหน้า Payroll ระบบเก่า 13 หน้าเข้าโฟลเดอร์ `Legacy/` ปิดเมนู (ยังไม่ลบ ตามคำสั่งเดิม) | HRM ยัง deploy เหมือนเดิม แต่ Pay/Workflow ไม่มีสายพันกับโมดูลอื่นแล้ว | 2 สัปดาห์ |
-| **1 — แยก Advance.Workflow เป็น project** (solution เดียวกัน) | สร้าง 5 project ตามข้อ 3 ใน `HRM.sln` · ย้าย entity/service/หน้าจอ · `WorkflowDbContext` ชี้ตารางเดิม · HRM implement `IApproverResolver`/`IWorkflowUserDirectory`/`IWorkflowNotifier` · 17 handler ยังอยู่ใน HRM · `HRMContext` ตัด DbSet ของ wf/job ออก | HumanOk ใช้ workflow ผ่าน package (ProjectReference ก่อน, NuGet ทีหลัง) เทส 167 ตัวยังเขียว | 2–3 สัปดาห์ |
+| **1 — แยก Advance.Workflow เป็น project** | สร้าง 6 project ตามข้อ 3 (repo ใหม่ `Advance.Workflow` ได้เลย HRM อ้างผ่าน ProjectReference/local NuGet) · **Workflow.Org**: ฟื้น `wf_org_type`/`wf_employee` + ผู้ใช้/บทบาทของ Workflow + หน้า admin ผัง/คน · ย้าย engine ให้อ่านผู้อนุมัติจาก Workflow.Org แทน `Hremployee`/`com_organization` · HRM implement `IOrgDirectorySource` (ซิงก์คน/ผัง) และ `IWorkflowNotifier` · 17 handler ยังอยู่ใน HRM · `HRMContext` ตัด DbSet ของ wf/job ออก | HumanOk ใช้ workflow ผ่าน package พฤติกรรมเดิมทุกอย่าง (เทส 170 ตัว + health check เขียว) และ Workflow รันเดี่ยวได้ด้วยผัง/คนของตัวเอง | 3–4 สัปดาห์ |
 | **2 — แยก Advance.Payroll เป็น project** (solution เดียวกัน) | สร้าง Core/Domain/Data/Engine/Reports/Blazor · `pay_employee` + ซิงก์จาก `Hremployee` · feed interfaces 5 ตัว HRM implement · `PayrollDbContext` · เทสทั้งปี 2568 ย้ายไปเป็นชุดตรวจรับของ Payroll · ตัด trigger SQL → กฎในโค้ด (interceptor) | HumanOk ใช้ Payroll ผ่าน package · Payroll คำนวณได้โดยไม่มี HRM (เทสพิสูจน์ด้วย feed จำลอง) | 4–6 สัปดาห์ |
 | **3 — Advance.Payroll SaaS host** (repo ใหม่ `Advance.Payroll`) | Payroll.Web: tenant (TenantId + filter ทุก query), สมัคร/ตั้งค่าบริษัท (wizard: รอบจ่าย วันหยุด ประกันสังคม กองทุน บัญชี), ทะเบียนพนักงาน + นำเข้า Excel, กรอก OT/ขาด/สาย/รายการเฉพาะกิจ, ESS สลิป/50 ทวิ, ส่งสลิปอีเมล · **e-Filing**: ภ.ง.ด.1/1ก (text ตาม spec สรรพากร), สปส.1-10 (ไฟล์ประกันสังคม), กองทุนสำรองเลี้ยงชีพ (ไฟล์ตาม บลจ.) · format ธนาคาร 3 ธนาคารหลัก · แพ็กเกจ/สิทธิ์ผ่าน Advance.Center (entitlement) · login ผ่าน Identity ชุดของ Payroll (ย้ายไป Advance.Auth เมื่อมี) | ขายได้: บริษัทเล็กสมัครใช้เอง จ่ายรายเดือน | 6–8 สัปดาห์ |
-| **4 — Advance.Workflow เป็นผลิตภัณฑ์เดี่ยว** | host + REST API (start/act/inbox/query) + designer (`/wf/canvas`) + ตัวแทน "คน/องค์กร" ผ่าน Advance.Member · ทำเมื่อมีลูกค้าถามซื้อแยกจริง (AutoX กลุ่ม D เป็นกรณีแรก) | ขายแยกได้ | 4–6 สัปดาห์ (หลังเฟส 1 นิ่ง) |
+| **4 — Advance.Workflow เป็นผลิตภัณฑ์เดี่ยว** (ทำต่อจากเฟส 1 ได้ทันที คู่ขนานกับเฟส 2) | `Advance.Workflow.Web` บน shell (login, เมนู, สิทธิ์, tenant) + REST API (start/act/inbox/query) ให้ระบบอื่นยื่นงานเข้ามา + designer (`/wf/canvas`) + นำเข้าผัง/คนจาก Excel · Workflow.Org จากเฟส 1 คือฐานของผลิตภัณฑ์นี้ · AutoX กลุ่ม D เป็นลูกค้ากรณีแรก | ขายแยกได้: ลูกค้าไม่มี HumanOk ก็ตั้งผัง ตั้งสายอนุมัติ ยื่น-อนุมัติงานได้ | 4–6 สัปดาห์ |
 
-รวมถึงจุดขาย Lite ได้: **เฟส 0–3 ≈ 14–19 สัปดาห์** (คนเดียว + Claude Code เต็มเวลา) — เฟส 1 กับ 2 ทำสลับกันได้ถ้ามีคนสอง
+สองจุดขาย: **Workflow เดี่ยวขายได้หลังเฟส 0 + 1 + 4 ≈ 9–12 สัปดาห์** · **Payroll Lite ขายได้หลังเฟส 0–3 ≈ 15–20 สัปดาห์** (คนเดียว + Claude Code เต็มเวลา; shell ในข้อ 3.2 สร้างครั้งแรกในเฟส 4 แล้ว Payroll.Web ใช้ต่อในเฟส 3) — เฟส 2 กับ 4 ทำคู่ขนานได้ถ้ามีคนสอง
 
 ---
 
@@ -131,6 +158,7 @@ engine ใหม่ (`WorkflowService`) เดินงานอยู่แล�
 | 5 | ทะเบียนพนักงานใน HumanOk | `Hremployee` ยังเป็นต้นทาง · Payroll ซิงก์เข้า `pay_employee` ก่อนคำนวณทุกครั้ง (ไม่แก้สองที่) |
 | 6 | ทำอะไรก่อนระหว่างเฟส 1 (Workflow) กับเฟส 2 (Payroll) | **Workflow ก่อน** — เล็กกว่า พึ่งพาน้อยกว่า และ Payroll ต้องใช้มัน (คำขอกองทุน) |
 | 7 | e-Filing/format ธนาคาร | ทำในเฟส 3 (ก่อนขาย Lite) — วันนี้ยังไม่มีทั้งใน HumanOk ควรทำครั้งเดียวใน Payroll.Reports ให้ทั้งสองผลิตภัณฑ์ใช้ |
+| 8 | ผังองค์กรใน HumanOk หลังมี Workflow.Org | `com_organization` ยังเป็นต้นทางของ HumanOk (โมดูล Org/ตำแหน่ง/คำขอเปลี่ยนผังใช้อยู่) · Workflow.Org เป็นสำเนาที่ซิงก์ — ไม่ย้ายโมดูล Org ทั้งก้อนไปอยู่กับ Workflow (ตัดสิน 12 ก.ย. 2569 ตามคำ CEO: Workflow มี "component ผัง" ของตัวเอง ไม่ใช่เอา HR ทั้งโมดูลไป) |
 
 ---
 
