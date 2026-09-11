@@ -35,6 +35,21 @@ public class PayrollWorkflowService
         _ => new HashSet<PayrollAction>(),
     };
 
+    // ชนิดของรอบตัดสิทธิ์เพิ่มจากสถานะ (11 ก.ย. 2569, audit C2/M12):
+    //   รอบกลับรายการ (Reversal) = ค่าลบของรอบต้นทางเสมอ ห้าม "คำนวณใหม่" (จะกลายเป็นบวก
+    //   แล้วจ่ายซ้ำ) ห้ามกลับรายการซ้อน และห้ามสร้างรอบปรับปรุงจากมัน
+    public static IReadOnlySet<PayrollAction> GetAllowedActions(Pay_PayrollRun run)
+    {
+        var allowed = new HashSet<PayrollAction>(GetAllowedActions(run.Status));
+        if (run.RunType == PayrollRunType.Reversal)
+        {
+            allowed.Remove(PayrollAction.Calculate);
+            allowed.Remove(PayrollAction.Reverse);
+            allowed.Remove(PayrollAction.CreateAdjustment);
+        }
+        return allowed;
+    }
+
     public Task<PayrollRunCalculationSummary> CalculateAsync(long runId, long actorUserId, CancellationToken ct = default)
         => _calculationService.CalculateAsync(runId, actorUserId, progress: null, ct: ct);
 
@@ -42,7 +57,8 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
-        EnsureAllowed(run.Status, PayrollAction.SubmitForReview);
+        EnsureAllowed(run, PayrollAction.SubmitForReview);
+        await EnsureReadyForReviewAsync(context, run, ct);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Reviewed;
@@ -57,7 +73,8 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
-        EnsureAllowed(run.Status, PayrollAction.Approve);
+        EnsureAllowed(run, PayrollAction.Approve);
+        await EnsureReadyForReviewAsync(context, run, ct);
 
         var hasUnresolvedNegativePay = await context.Pay_PayrollEmployees
             .AnyAsync(e => e.PayrollRunId == runId && e.IsNegativeNetPayFlag && !e.IsExcluded, ct);
@@ -78,7 +95,7 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
-        EnsureAllowed(run.Status, PayrollAction.Post);
+        EnsureAllowed(run, PayrollAction.Post);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Posted;
@@ -93,7 +110,7 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
-        EnsureAllowed(run.Status, PayrollAction.MarkPaid);
+        EnsureAllowed(run, PayrollAction.MarkPaid);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Paid;
@@ -108,7 +125,7 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
-        EnsureAllowed(run.Status, PayrollAction.Cancel);
+        EnsureAllowed(run, PayrollAction.Cancel);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Cancelled;
@@ -133,6 +150,20 @@ public class PayrollWorkflowService
             adv.Status = PaySalaryAdvanceStatus.Approved;
             adv.ConsumedByPayrollRunId = null;
         }
+        // และงวดผ่อนเงินกู้ที่รอบนี้หักไปแล้ว (audit H2): เดิมไม่คืน งวดนั้นหายไปจากการหักตลอดกาล
+        // เพราะยอดคงเหลือของเงินกู้ถูกลดไปแล้วและรอบใหม่หยิบเฉพาะงวด Pending
+        var consumedInstallments = await context.Pay_EmployeeLoanInstallments
+            .Include(i => i.Pay_EmployeeLoan)
+            .Where(i => i.ConsumedByPayrollRunId == runId)
+            .ToListAsync(ct);
+        foreach (var inst in consumedInstallments)
+        {
+            inst.Status = Pay_LoanInstallmentStatus.Pending;
+            inst.ConsumedByPayrollRunId = null;
+            inst.Pay_EmployeeLoan.RemainingBalance = inst.BalanceAfter + inst.Amount;
+            if (inst.Pay_EmployeeLoan.Status == Pay_EmployeeLoanStatus.PaidOff)
+                inst.Pay_EmployeeLoan.Status = Pay_EmployeeLoanStatus.Active;
+        }
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);
@@ -145,7 +176,7 @@ public class PayrollWorkflowService
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var original = await LoadRunOrThrowAsync(context, originalRunId, ct);
-        EnsureAllowed(original.Status, PayrollAction.CreateAdjustment);
+        EnsureAllowed(original, PayrollAction.CreateAdjustment);
 
         var adjustment = new Pay_PayrollRun
         {
@@ -191,9 +222,10 @@ public class PayrollWorkflowService
 
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var original = await LoadRunOrThrowAsync(context, originalRunId, ct);
-        EnsureAllowed(original.Status, PayrollAction.Reverse);
+        EnsureAllowed(original, PayrollAction.Reverse);
 
-        if (await context.Pay_PayrollRuns.AnyAsync(r => r.AdjustmentOfRunId == originalRunId && r.Remark != null && r.Remark.StartsWith("REVERSAL") && r.Status != PayrollRunStatus.Cancelled, ct))
+        if (await context.Pay_PayrollRuns.AnyAsync(r => r.AdjustmentOfRunId == originalRunId
+                && r.RunType == PayrollRunType.Reversal && r.Status != PayrollRunStatus.Cancelled, ct))
             throw new InvalidOperationException($"รอบ #{originalRunId} ถูกกลับรายการไปแล้ว — กลับรายการซ้ำไม่ได้");
 
         var reversal = new Pay_PayrollRun
@@ -203,7 +235,7 @@ public class PayrollWorkflowService
             PeriodStart = original.PeriodStart,
             PeriodEnd = original.PeriodEnd,
             PayDate = original.PayDate,
-            RunType = PayrollRunType.Adjustment,
+            RunType = PayrollRunType.Reversal,
             Status = PayrollRunStatus.Calculated,
             AdjustmentOfRunId = original.Id,
             CreatedByUserId = actorUserId,
@@ -290,10 +322,23 @@ public class PayrollWorkflowService
         return reversal.Id;
     }
 
-    private static void EnsureAllowed(PayrollRunStatus status, PayrollAction action)
+    private static void EnsureAllowed(Pay_PayrollRun run, PayrollAction action)
     {
-        if (!GetAllowedActions(status).Contains(action))
-            throw new InvalidPayrollStatusTransitionException(status, action.ToString());
+        if (!GetAllowedActions(run).Contains(action))
+            throw new InvalidPayrollStatusTransitionException(run.Status, action.ToString());
+    }
+
+    // ส่งตรวจ/อนุมัติได้ต่อเมื่อ (1) ไม่มีงานคำนวณค้างอยู่ — ไม่งั้นงานที่ค้างจะเขียนทับ
+    // รอบที่อนุมัติไปแล้ว และ (2) มีแถวพนักงานจริง — การคำนวณที่ล้มกลางทางทิ้งรอบว่างไว้
+    // ในสถานะ Calculated ซึ่งเดิมอนุมัติและ post ได้ (audit H5)
+    private static async Task EnsureReadyForReviewAsync(HRMContext context, Pay_PayrollRun run, CancellationToken ct)
+    {
+        if (run.IsCalculating)
+            throw new InvalidOperationException("รอบนี้กำลังคำนวณอยู่ รอให้เสร็จก่อนจึงส่งตรวจ/อนุมัติได้");
+        if (!string.IsNullOrEmpty(run.CalcError))
+            throw new InvalidOperationException($"การคำนวณล่าสุดล้มเหลว ({run.CalcError}) — คำนวณใหม่ให้สำเร็จก่อน");
+        if (!await context.Pay_PayrollEmployees.AnyAsync(e => e.PayrollRunId == run.Id, ct))
+            throw new InvalidOperationException("รอบนี้ยังไม่มีรายการพนักงาน — คำนวณก่อนส่งตรวจ/อนุมัติ");
     }
 
     private static async Task<Pay_PayrollRun> LoadRunOrThrowAsync(HRMContext context, long runId, CancellationToken ct)

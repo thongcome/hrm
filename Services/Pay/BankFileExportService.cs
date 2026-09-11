@@ -27,12 +27,25 @@ public class BankFileExportService
 
         if (run.Status < PayrollRunStatus.Approved || run.Status == PayrollRunStatus.Cancelled)
             throw new InvalidOperationException("สร้างไฟล์ธนาคารได้เฉพาะรอบที่อนุมัติแล้ว (Approved ขึ้นไป) เท่านั้น");
+        if (run.RunType == PayrollRunType.Reversal)
+            throw new InvalidOperationException("รอบกลับรายการไม่มีการโอนเงิน — ไฟล์ธนาคารสร้างจากรอบปรับปรุงที่คำนวณใหม่แทน");
 
         var employees = await context.Pay_PayrollEmployees
             .Include(e => e.Hremployee)
             .Where(e => e.PayrollRunId == runId && !e.IsExcluded)
             .OrderBy(e => e.EmpNo)
             .ToListAsync(ct);
+
+        // ไฟล์ที่ธนาคารรับต้องมีเลขบัญชีทุกแถวและยอดเป็นบวก (audit M9) — เจอแถวเสียให้หยุดและบอกชื่อ
+        // ดีกว่าตัดคนออกเงียบ ๆ แล้วมีพนักงานไม่ได้เงิน
+        var noAccount = employees.Where(e => string.IsNullOrWhiteSpace(e.BankAccountNo)).Select(e => e.EmpNo).ToList();
+        if (noAccount.Count > 0)
+            throw new InvalidOperationException(
+                $"พนักงาน {noAccount.Count} คนไม่มีเลขบัญชีธนาคาร (เช่น {string.Join(", ", noAccount.Take(5))}) — บันทึกเลขบัญชีในทะเบียนพนักงานแล้วคำนวณใหม่ หรือกันคนเหล่านี้ออกจากรอบก่อน");
+        var nonPositive = employees.Where(e => e.NetPay <= 0m).Select(e => e.EmpNo).ToList();
+        if (nonPositive.Count > 0)
+            throw new InvalidOperationException(
+                $"พนักงาน {nonPositive.Count} คนมียอดสุทธิเป็นศูนย์หรือติดลบ (เช่น {string.Join(", ", nonPositive.Take(5))}) — กันออกจากรอบก่อนสร้างไฟล์");
 
         var csv = new StringBuilder();
         csv.AppendLine("EmpNo,Name,BankCode,BankBranchCode,BankAccountNo,Amount");

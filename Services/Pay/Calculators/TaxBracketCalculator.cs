@@ -89,4 +89,38 @@ public static class TaxBracketCalculator
 
         return (monthlyWithholding, annualCalculation);
     }
+
+    // ภาษีหัก ณ ที่จ่ายของเงินได้จ่ายครั้งเดียว (โบนัส/คอมมิชชัน) ตามวิธีส่วนต่างที่กรมสรรพากรใช้:
+    //   ประมาณการทั้งปีโดยไม่รวมโบนัส = สะสมถึงงวดนี้ + เงินเดือนงวดนี้ × เดือนที่เหลือ
+    //   ภาษีโบนัส = ภาษีทั้งปี(ประมาณการ + โบนัส) − ภาษีทั้งปี(ประมาณการ)
+    // หักทั้งก้อนในงวดที่จ่าย ไม่กระจาย 12 เดือน — ต่างจาก CalculateMonthlyWithholding
+    // ที่คูณเงินได้งวดนี้ด้วยเดือนที่เหลือ (ถ้าใช้กับโบนัสจะได้ "โบนัส × 12 เดือน")
+    public static (decimal Withholding, TaxCalculationResult AnnualCalculation) CalculateBonusWithholding(
+        decimal ytdIncomeIncludingThisPeriod,
+        decimal ytdDeductionIncludingThisPeriod,
+        decimal ytdTaxWithheld,
+        decimal regularMonthlyIncome,
+        decimal regularMonthlyFlatDeduction,
+        decimal bonusAmount,
+        int remainingPeriodsAfterThis,
+        decimal expenseDeductionRate,
+        decimal expenseDeductionCap,
+        IReadOnlyList<Pay_TaxBracket> brackets)
+    {
+        if (remainingPeriodsAfterThis < 0) remainingPeriodsAfterThis = 0;
+
+        var baseIncome = ytdIncomeIncludingThisPeriod + regularMonthlyIncome * remainingPeriodsAfterThis;
+        var baseDeduction = ytdDeductionIncludingThisPeriod + regularMonthlyFlatDeduction * remainingPeriodsAfterThis;
+
+        TaxCalculationResult TaxOn(decimal income)
+        {
+            var expense = Math.Min(Math.Max(0m, income) * expenseDeductionRate, expenseDeductionCap);
+            return CalculateProgressiveTax(Math.Max(0m, income - baseDeduction - expense), brackets);
+        }
+
+        var withBonus = TaxOn(baseIncome + bonusAmount);
+        var without = TaxOn(baseIncome);
+        var withholding = Math.Round(Math.Max(0m, withBonus.TotalAnnualTax - without.TotalAnnualTax), 2, MidpointRounding.AwayFromZero);
+        return (withholding, withBonus);
+    }
 }

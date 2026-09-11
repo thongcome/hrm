@@ -37,7 +37,7 @@ public class PayrollStatutorySummaryReport(IDbContextFactory<HRMContext> dbFacto
             throw new InvalidOperationException("กรุณาเลือกงวดเงินเดือน");
 
         await using var context = await dbFactory.CreateDbContextAsync(ct);
-        var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId, ct)
+        var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId && r.CompanyId == ctx.CompanyId, ct)
             ?? throw new InvalidOperationException("ไม่พบงวดเงินเดือนนี้");
 
         var lines = await context.Pay_PayrollEmployees

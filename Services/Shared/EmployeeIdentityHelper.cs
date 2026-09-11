@@ -16,9 +16,10 @@ public record IdCardCheckResult(IdCardMatchResult Result, Hremployee? Matched);
 // implementation both call).
 public static class EmployeeIdentityHelper
 {
-    public static async Task<IdCardCheckResult> CheckAsync(HRMContext context, string idCard, CancellationToken ct = default)
+    // companyId (11 ก.ย. 2569, audit H8): จำกัดการค้นเลขบัตรไว้ในบริษัทของผู้ใช้ — null = ทั้งฐาน (เฉพาะจุดที่ยังไม่มีบริบทบริษัท)
+    public static async Task<IdCardCheckResult> CheckAsync(HRMContext context, string idCard, string? companyId = null, CancellationToken ct = default)
     {
-        var matches = await context.Hremployee.Where(e => e.IdCard == idCard).ToListAsync(ct);
+        var matches = await context.Hremployee.Where(e => e.IdCard == idCard && (companyId == null || e.companyid == companyId)).ToListAsync(ct);
 
         var active = matches.FirstOrDefault(EmployeeStatusHelper.CanTransact);
         if (active is not null)

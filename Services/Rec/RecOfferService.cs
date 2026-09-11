@@ -152,7 +152,7 @@ public class RecOfferService(IDbContextFactory<HRMContext> dbFactory, WorkflowEn
         if (string.IsNullOrWhiteSpace(candidate.IdCard))
             throw new InvalidOperationException("ต้องกรอกเลขบัตรประชาชนของผู้สมัครก่อน (ที่หน้าข้อมูลผู้สมัคร) จึงจะส่งอนุมัติการจ้างได้");
 
-        var identityCheck = await EmployeeIdentityHelper.CheckAsync(context, candidate.IdCard, ct);
+        var identityCheck = await EmployeeIdentityHelper.CheckAsync(context, candidate.IdCard, null, ct);
         if (identityCheck.Result == IdCardMatchResult.MatchesActiveEmployee)
             throw new InvalidOperationException($"เลขบัตรประชาชนนี้ตรงกับพนักงานที่ยังทำงานอยู่ ({identityCheck.Matched!.EmpNo} {identityCheck.Matched.EmpName} {identityCheck.Matched.EmpSurname}) ไม่สามารถจ้างซ้ำได้");
         if (identityCheck.Result == IdCardMatchResult.MatchesDepartedEmployee)

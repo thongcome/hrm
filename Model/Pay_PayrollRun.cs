@@ -9,7 +9,8 @@ namespace HRM.Models;
 // Replaces the old Hrpayroll.PayrollStatus field, which was hard-coded to 0
 // and never transitioned anywhere in the legacy Payroll pages.
 [Table("Pay_PayrollRun")]
-[Index(nameof(CompanyId), nameof(PayrollPeriod), nameof(RunType), IsUnique = true)]
+// unique (CompanyId, PayrollPeriod, RunType) is configured in HRMContext.OnModelCreating as a FILTERED
+// index (Status <> Cancelled) so a cancelled run does not lock the period forever
 public class Pay_PayrollRun
 {
     [Key]

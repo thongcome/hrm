@@ -101,7 +101,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var duplicate = await context.Pay_PayrollRuns.AnyAsync(r =>
-            r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.RunType == _model.RunType);
+            r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.RunType == _model.RunType && r.Status != PayrollRunStatus.Cancelled);
         if (duplicate)
         {
             _error = string.Format(L.Translate("PayRunDuplicateError"), _model.RunType, period, _model.CompanyId);

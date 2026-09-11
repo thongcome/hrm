@@ -11,6 +11,11 @@ using Microsoft.EntityFrameworkCore;
 // there is exactly one place that decides "which employee is this person" —
 // duplicating that logic per page is how role/menu claims drifted apart
 // once already in this app (see ScUserClaimsPrincipalFactory.cs).
+//
+// 11 ก.ย. 2569 (audit C3): EmpNo is unique only within a company, so the
+// lookup also matches the account's company (payroll_company claim) when the
+// claim is present — two tenants with employee "0001" must never see each
+// other's payslips.
 public static class EssEmployeeResolver
 {
     public static async Task<Hremployee?> ResolveAsync(HRMContext context, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct = default)
@@ -19,6 +24,8 @@ public static class EssEmployeeResolver
         if (string.IsNullOrWhiteSpace(empno))
             return null;
 
-        return await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == empno, ct);
+        var company = user.FindFirst("payroll_company")?.Value;
+        return await context.Hremployee.FirstOrDefaultAsync(
+            e => e.EmpNo == empno && (company == null || e.companyid == company), ct);
     }
 }

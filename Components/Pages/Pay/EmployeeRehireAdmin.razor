@@ -117,7 +117,9 @@
         }
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var result = await EmployeeIdentityHelper.CheckAsync(context, _idCard);
+        // รับกลับได้เฉพาะพนักงานเก่าของบริษัทตัวเอง (audit H8/B4)
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var result = await EmployeeIdentityHelper.CheckAsync(context, _idCard, authState.User.FindFirstValue("payroll_company"));
 
         if (result.Result == IdCardMatchResult.NoMatch)
         {

@@ -27,7 +27,11 @@ public static class EssFileEndpoints
             if (payslip is null) return Results.NotFound();
 
             var empno = httpContext.User.FindFirst("empno")?.Value;
-            if (string.IsNullOrWhiteSpace(empno) || payslip.Pay_PayrollEmployee.EmpNo != empno || !payslip.IsPublishedToEmployee)
+            var company = httpContext.User.FindFirst("payroll_company")?.Value;
+            // EmpNo ซ้ำกันข้ามบริษัทได้ (alternate key คือ companyid+EmpNo) จึงต้องเทียบบริษัทด้วย
+            if (string.IsNullOrWhiteSpace(empno) || payslip.Pay_PayrollEmployee.EmpNo != empno
+                || (payslip.Pay_PayrollEmployee.CompanyId != null && company != null && payslip.Pay_PayrollEmployee.CompanyId != company)
+                || !payslip.IsPublishedToEmployee)
                 return Results.Forbid();
 
             await auditLogger.LogAccessAsync("Pay_Payslip", payslipId.ToString(), isSensitive: true,

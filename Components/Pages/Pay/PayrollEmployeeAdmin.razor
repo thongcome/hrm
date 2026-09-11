@@ -341,7 +341,7 @@
             // comment for why this used to be missing entirely.
             if (!string.IsNullOrWhiteSpace(_formEmployee.IdCard))
             {
-                var identityCheck = await EmployeeIdentityHelper.CheckAsync(context, _formEmployee.IdCard, default);
+                var identityCheck = await EmployeeIdentityHelper.CheckAsync(context, _formEmployee.IdCard, _companyId);
                 if (identityCheck.Result == IdCardMatchResult.MatchesActiveEmployee)
                 {
                     _formError = $"เลขบัตรประชาชนนี้ตรงกับพนักงานที่ยังทำงานอยู่ ({identityCheck.Matched!.EmpNo} {identityCheck.Matched.EmpName} {identityCheck.Matched.EmpSurname}) ไม่สามารถสร้างซ้ำได้";

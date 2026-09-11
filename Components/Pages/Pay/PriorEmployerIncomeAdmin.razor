@@ -148,6 +148,8 @@
     private string? _info;
 
     private long _actorUserId;
+    // ค้นพนักงานได้เฉพาะบริษัทของตัวเอง (audit H8) — เดิมค้นได้ทั้งฐาน HR บริษัท A แก้ข้อมูลพนักงานบริษัท B ได้
+    private string? _companyId;
 
     private const string ProgramPath = "/pay/admin/prior-employer-income";
     private ProgramRoleService.ProgramRights? _rights;
@@ -156,6 +158,7 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
     }
 
@@ -184,7 +187,7 @@
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
     {
         await using var context = await DbFactory.CreateDbContextAsync(ct);
-        var query = context.Hremployee.AsQueryable();
+        var query = context.Hremployee.Where(e => _companyId == null || e.companyid == _companyId);
         if (!string.IsNullOrWhiteSpace(term))
             query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
         return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);

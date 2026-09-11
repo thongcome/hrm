@@ -1505,6 +1505,12 @@ public partial class HRMContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.AdjustmentOfRunId)
                 .OnDelete(DeleteBehavior.Restrict);
+            // หนึ่งรอบต่อ (บริษัท, งวด, ชนิด) เฉพาะรอบที่ยังไม่ยกเลิก — เดิม index ไม่กรอง
+            // รอบที่ยกเลิกแล้วจึงล็อกงวดนั้นถาวร (audit H1); Manual SQL 2026-09-11 ทำฝั่ง DB
+            entity.HasIndex(r => new { r.CompanyId, r.PayrollPeriod, r.RunType })
+                .IsUnique()
+                .HasDatabaseName("IX_Pay_PayrollRun_CompanyId_PayrollPeriod_RunType")
+                .HasFilter("[Status] <> 9");
         });
 
         modelBuilder.Entity<Pay_PayrollEmployee>(entity =>

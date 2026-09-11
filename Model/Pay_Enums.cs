@@ -15,7 +15,10 @@ public enum PayrollRunType
 {
     Regular = 0,
     Adjustment = 1,
-    Bonus = 2
+    Bonus = 2,
+    // รอบกลับรายการ (negation ของรอบที่ post แล้ว) — แยกจาก Adjustment เพื่อให้ห้าม "คำนวณใหม่"
+    // และไม่ชนกับ unique index (CompanyId, PayrollPeriod, RunType) ของรอบปรับปรุง
+    Reversal = 3
 }
 
 public enum PayItemCategory

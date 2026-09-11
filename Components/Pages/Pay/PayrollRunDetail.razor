@@ -197,7 +197,7 @@ else
             </MudPaper>
             @if (_allowed.Contains(PayrollAction.SubmitForReview))
             {
-                <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="_busy">@L.Translate("SubmitForReviewButton")</MudButton>
+                <MudButton Color="Color.Info" Variant="Variant.Filled" OnClick="SubmitForReviewAsync" Disabled="@(_busy || _calcRunning)">@L.Translate("SubmitForReviewButton")</MudButton>
             }
             @if (_allowed.Contains(PayrollAction.Approve))
             {
@@ -552,7 +552,7 @@ else
 
         _employees = employees.Select(e => new EmployeeRow(e)).ToList();
         _negativeCount = employees.Count(e => e.IsNegativeNetPayFlag && !e.IsExcluded);
-        _allowed = PayrollWorkflowService.GetAllowedActions(_run.Status);
+        _allowed = PayrollWorkflowService.GetAllowedActions(_run);
 
         _pendingAdhocCount = await context.Pay_AdhocPayItems
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
