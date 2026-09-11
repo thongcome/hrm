@@ -365,6 +365,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_PaySchedule> Pay_PaySchedules { get; set; }
     public virtual DbSet<Sys_ProtectedSetting> Sys_ProtectedSettings { get; set; }
     public virtual DbSet<Pay_EmployeePayScheduleOverride> Pay_EmployeePayScheduleOverrides { get; set; }
+    public virtual DbSet<Pay_PayScheduleChangeLog> Pay_PayScheduleChangeLogs { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
     public virtual DbSet<Pay_PayrollAnomaly> Pay_PayrollAnomalies { get; set; }

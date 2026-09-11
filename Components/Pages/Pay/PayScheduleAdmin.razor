@@ -1,6 +1,7 @@
 @page "/pay/admin/pay-schedules"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Pay
 @using HRM.Services.Security
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -18,9 +19,14 @@
     <MudText Typo="Typo.h5">รอบจ่ายเงินเดือน (Pay Schedule)</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
         กำหนดว่าจ่ายกี่งวดต่อเดือน ใช้กับพนักงานกลุ่มไหน และมีผลตั้งแต่-ถึงวันที่ — ตัวคำนวณภาษีหัก ณ ที่จ่ายอ่านปฏิทินจากตรงนี้
-        (ไม่ใช่สูตรตายตัวเดือนละงวด) เปลี่ยนความถี่กลางปีได้โดยเพิ่มแถวใหม่พร้อมวันที่มีผล และใส่วันสิ้นสุดให้แถวเดิม
         ค่าเริ่มต้นเมื่อไม่มีแถวใด = เดือนละ 1 งวด · ทับเฉพาะรายคนได้ด้านล่าง
     </MudText>
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+        รอบจ่ายกระทบการประมาณการภาษีของทุกคนที่เหลือทั้งปี จึงแก้ได้จำกัด:
+        แถวที่มีงวดอนุมัติแล้ว <b>ล็อก</b> (แก้ได้แค่ชื่อ หมายเหตุ และวันสิ้นสุดที่ไม่ย้อนก่อนงวดอนุมัติล่าสุด) ·
+        แถวใหม่ต้องมีผล <b>วันที่ 1 ของเดือน และไม่ก่อน @(_minEffectiveFrom?.ToString("dd/MM/yyyy") ?? "เดือนใดก็ได้ (ยังไม่มีงวดอนุมัติ)")</b> ·
+        ทุกการเปลี่ยนแปลง <b>ต้องระบุเหตุผล</b> และถูกบันทึกไว้ด้านล่าง
+    </MudAlert>
 
     @if (_rights is { CanEdit: false, CanCreate: false })
     {
@@ -42,35 +48,37 @@
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
+            @{ var locked = _lockedIds.Contains(context.Id); }
             @if (_editing is not null && _editing.Id == context.Id)
             {
-                <MudTd>@context.Code</MudTd>
+                <MudTd>@context.Code @if (locked) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">ล็อก</MudChip> }</MudTd>
                 <MudTd><MudTextField T="string" @bind-Value="_editing.Name" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
                 <MudTd>
-                    <MudSelect T="int" @bind-Value="_editing.PeriodsPerMonth" Margin="Margin.Dense" Variant="Variant.Outlined">
+                    <MudSelect T="int" @bind-Value="_editing.PeriodsPerMonth" Disabled="locked" Margin="Margin.Dense" Variant="Variant.Outlined">
                         <MudSelectItem T="int" Value="1">1 งวด</MudSelectItem>
                         <MudSelectItem T="int" Value="2">2 งวด</MudSelectItem>
                     </MudSelect>
                 </MudTd>
-                <MudTd><MudNumericField T="int" @bind-Value="_editing.SecondTermStartDay" Min="2" Max="28" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:90px;" /></MudTd>
+                <MudTd><MudNumericField T="int" @bind-Value="_editing.SecondTermStartDay" Disabled="locked" Min="2" Max="28" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width:90px;" /></MudTd>
                 <MudTd>
-                    <MudSelect T="PayScheduleGroup" @bind-Value="_editing.AppliesTo" Margin="Margin.Dense" Variant="Variant.Outlined">
+                    <MudSelect T="PayScheduleGroup" @bind-Value="_editing.AppliesTo" Disabled="locked" Margin="Margin.Dense" Variant="Variant.Outlined">
                         <MudSelectItem T="PayScheduleGroup" Value="PayScheduleGroup.MonthlySalaried">พนักงานรายเดือน</MudSelectItem>
                         <MudSelectItem T="PayScheduleGroup" Value="PayScheduleGroup.DailyWage">พนักงานรายวัน</MudSelectItem>
                         <MudSelectItem T="PayScheduleGroup" Value="PayScheduleGroup.All">ทุกคน</MudSelectItem>
                     </MudSelect>
                 </MudTd>
-                <MudTd><MudDatePicker Date="_editFrom" DateChanged="d => _editFrom = d" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
+                <MudTd><MudDatePicker Date="_editFrom" DateChanged="d => _editFrom = d" Disabled="locked" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
                 <MudTd><MudDatePicker Date="_editTo" DateChanged="d => _editTo = d" Clearable="true" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
-                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsActive" Dense="true" /></MudTd>
+                <MudTd><MudCheckBox T="bool" @bind-Value="_editing.IsActive" Disabled="locked" Dense="true" /></MudTd>
                 <MudTd style="white-space:nowrap;">
+                    <MudTextField T="string" @bind-Value="_reason" Label="เหตุผล (บังคับ)" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:220px;" />
                     <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" Size="Size.Small" OnClick="SaveEditAsync" />
                     <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _editing = null)" />
                 </MudTd>
             }
             else
             {
-                <MudTd><b>@context.Code</b></MudTd>
+                <MudTd><b>@context.Code</b> @if (locked) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">ล็อก</MudChip> }</MudTd>
                 <MudTd>@context.Name</MudTd>
                 <MudTd>@context.PeriodsPerMonth งวด</MudTd>
                 <MudTd>@(context.PeriodsPerMonth == 2 ? context.SecondTermStartDay.ToString() : "-")</MudTd>
@@ -94,7 +102,7 @@
     @if (_rights?.CanCreate == true)
     {
         <MudDivider Class="my-4" />
-        <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มรอบจ่าย</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มรอบจ่าย (มีผลไปข้างหน้าเท่านั้น)</MudText>
         <MudGrid>
             <MudItem xs="12" sm="2"><MudTextField T="string" @bind-Value="_new.Code" Label="รหัส" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
             <MudItem xs="12" sm="3"><MudTextField T="string" @bind-Value="_new.Name" Label="ชื่อ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
@@ -112,9 +120,9 @@
                     <MudSelectItem T="PayScheduleGroup" Value="PayScheduleGroup.All">ทุกคน</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="3"><MudDatePicker Label="มีผลตั้งแต่" Date="_newFrom" DateChanged="d => _newFrom = d" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudDatePicker Label="มีผลตั้งแต่ (วันที่ 1)" Date="_newFrom" DateChanged="d => _newFrom = d" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
             <MudItem xs="12" sm="3"><MudDatePicker Label="ถึง (เว้นว่าง = ไม่กำหนด)" Date="_newTo" DateChanged="d => _newTo = d" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-            <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_new.Note" Label="หมายเหตุ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newReason" Label="เหตุผลที่เพิ่ม (บังคับ)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
             <MudItem xs="12" sm="2"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">เพิ่ม</MudButton></MudItem>
         </MudGrid>
     }
@@ -122,7 +130,7 @@
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
     <MudText Typo="Typo.h6">ทับรายคน</MudText>
-    <MudText Typo="Typo.body2" Class="mt-1 mb-3">พนักงานที่ต้องใช้รอบจ่ายต่างจากค่าเริ่มต้นของกลุ่ม — มีผลตั้งแต่-ถึงวันที่ หมดช่วงแล้วกลับไปใช้ค่าเริ่มต้นเอง</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1 mb-3">พนักงานที่ต้องใช้รอบจ่ายต่างจากค่าเริ่มต้นของกลุ่ม — วันมีผลต้องเป็นวันที่ 1 และไปข้างหน้าเท่านั้น หมดช่วงแล้วกลับไปใช้ค่าเริ่มต้นเอง</MudText>
 
     <MudAutocomplete T="Hremployee" Label="พนักงาน" Value="_selectedEmployee" ValueChanged="OnEmployeeChangedAsync" SearchFunc="SearchEmployeesAsync"
                      ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} {e.EmpName} {e.EmpSurname}")" MinCharacters="0" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
@@ -130,7 +138,7 @@
     @if (_selectedEmployee is not null)
     {
         <MudText Typo="Typo.body2" Class="mt-2">
-            ค่าเริ่มต้นของคนนี้: <b>@GroupLabel(HRM.Services.Pay.PayScheduleResolver.GroupOf(_selectedEmployee))</b>
+            ค่าเริ่มต้นของคนนี้: <b>@GroupLabel(PayScheduleResolver.GroupOf(_selectedEmployee))</b>
         </MudText>
         <MudTable Items="_overrides" Dense="true" Hover="true" Class="mt-2">
             <HeaderContent>
@@ -147,9 +155,10 @@
                 <MudTd>@(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่กำหนด")</MudTd>
                 <MudTd>@context.Note</MudTd>
                 <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิด")</MudTd>
-                <MudTd>
+                <MudTd style="white-space:nowrap;">
                     @if (_rights?.CanEdit == true && context.IsActive)
                     {
+                        <MudTextField T="string" @bind-Value="_ovDeactivateReason" Label="เหตุผล" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:200px;" />
                         <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => DeactivateOverrideAsync(context))">ปิดใช้</MudButton>
                     }
                 </MudTd>
@@ -168,13 +177,34 @@
                         }
                     </MudSelect>
                 </MudItem>
-                <MudItem xs="12" sm="3"><MudDatePicker Label="มีผลตั้งแต่" Date="_ovFrom" DateChanged="d => _ovFrom = d" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="3"><MudDatePicker Label="มีผลตั้งแต่ (วันที่ 1)" Date="_ovFrom" DateChanged="d => _ovFrom = d" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                 <MudItem xs="12" sm="3"><MudDatePicker Label="ถึง" Date="_ovTo" DateChanged="d => _ovTo = d" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-                <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_ovNote" Label="หมายเหตุ" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_ovNote" Label="เหตุผล (บังคับ)" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                 <MudItem xs="12" sm="2"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddOverrideAsync">เพิ่ม</MudButton></MudItem>
             </MudGrid>
         }
     }
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudText Typo="Typo.h6">ประวัติการเปลี่ยนแปลงรอบจ่าย</MudText>
+    <MudTable Items="_log" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>เมื่อ</MudTh>
+            <MudTh>การกระทำ</MudTh>
+            <MudTh>อะไรเปลี่ยน</MudTh>
+            <MudTh>เหตุผล</MudTh>
+            <MudTh>โดย</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ChangedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>@ActionLabel(context.Action)</MudTd>
+            <MudTd>@context.Detail</MudTd>
+            <MudTd>@context.Reason</MudTd>
+            <MudTd>@(_userNames.GetValueOrDefault(context.ChangedByUserId, $"#{context.ChangedByUserId}"))</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีการเปลี่ยนแปลง</MudText></NoRecordsContent>
+    </MudTable>
 </MudPaper>
 
 @code {
@@ -185,20 +215,29 @@
     private ProgramRoleService.ProgramRights? _rights;
 
     private List<Pay_PaySchedule> _schedules = new();
+    private HashSet<long> _lockedIds = new();
+    private DateOnly? _lastApprovedPeriodStart;
+    private DateOnly? _minEffectiveFrom;
     private Pay_PaySchedule? _editing;
     private DateTime? _editFrom;
     private DateTime? _editTo;
+    private string? _reason;
 
     private Pay_PaySchedule _new = new() { PeriodsPerMonth = 1, SecondTermStartDay = 16, AppliesTo = PayScheduleGroup.All };
-    private DateTime? _newFrom = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _newFrom;
     private DateTime? _newTo;
+    private string? _newReason;
 
     private Hremployee? _selectedEmployee;
     private List<Pay_EmployeePayScheduleOverride> _overrides = new();
     private long? _ovScheduleId;
-    private DateTime? _ovFrom = DateTime.Today;
+    private DateTime? _ovFrom;
     private DateTime? _ovTo;
     private string? _ovNote;
+    private string? _ovDeactivateReason;
+
+    private List<Pay_PayScheduleChangeLog> _log = new();
+    private Dictionary<long, string> _userNames = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -223,12 +262,36 @@
         _ => "ทุกคน",
     };
 
+    private static string ActionLabel(string a) => a switch
+    {
+        "Add" => "เพิ่มรอบจ่าย",
+        "Edit" => "แก้ไขรอบจ่าย",
+        "Close" => "ปิดรอบจ่าย",
+        "OverrideAdd" => "ทับรายคน",
+        "OverrideDeactivate" => "ปิดการทับรายคน",
+        _ => a,
+    };
+
     private async Task LoadAsync()
     {
         await using var ctx = await DbFactory.CreateDbContextAsync();
         _schedules = await ctx.Pay_PaySchedules
             .Where(s => _companyId == null || s.CompanyId == _companyId)
             .OrderBy(s => s.AppliesTo).ThenBy(s => s.EffectiveFrom).ToListAsync();
+        if (!string.IsNullOrWhiteSpace(_companyId))
+        {
+            _lockedIds = await PayScheduleGuard.LockedScheduleIdsAsync(ctx, _companyId, _schedules);
+            _lastApprovedPeriodStart = await PayScheduleGuard.LastApprovedPeriodStartAsync(ctx, _companyId);
+            _minEffectiveFrom = PayScheduleGuard.MinEffectiveFrom(_lastApprovedPeriodStart);
+            _newFrom ??= (_minEffectiveFrom ?? new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1)).ToDateTime(TimeOnly.MinValue);
+            _ovFrom ??= _newFrom;
+            _log = await ctx.Pay_PayScheduleChangeLogs
+                .Where(l => l.CompanyId == _companyId)
+                .OrderByDescending(l => l.ChangedDate).Take(50).ToListAsync();
+            var userIds = _log.Select(l => l.ChangedByUserId).Distinct().ToList();
+            _userNames = await ctx.sc_users.Where(u => userIds.Contains(u.userid))
+                .ToDictionaryAsync(u => u.userid, u => (u.firstname + " " + u.lastname).Trim());
+        }
         if (_selectedEmployee is not null)
             _overrides = await ctx.Pay_EmployeePayScheduleOverrides
                 .Where(o => o.HremployeeId == _selectedEmployee.id)
@@ -245,23 +308,56 @@
         };
         _editFrom = s.EffectiveFrom.ToDateTime(TimeOnly.MinValue);
         _editTo = s.EffectiveTo?.ToDateTime(TimeOnly.MinValue);
+        _reason = null;
     }
 
     private async Task SaveEditAsync()
     {
-        if (_editing is null) return;
+        if (_editing is null || string.IsNullOrWhiteSpace(_companyId)) return;
         if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        if (PayScheduleGuard.ValidateReason(_reason) is string badReason) { Snackbar.Add(badReason, Severity.Warning); return; }
         if (_editFrom is null) { Snackbar.Add("ต้องระบุวันที่มีผล", Severity.Warning); return; }
+
         await using var ctx = await DbFactory.CreateDbContextAsync();
         var row = await ctx.Pay_PaySchedules.FirstOrDefaultAsync(s => s.Id == _editing.Id);
         if (row is null) { Snackbar.Add("ไม่พบรอบจ่าย", Severity.Error); return; }
+
+        var locked = _lockedIds.Contains(row.Id);
+        var newFrom = DateOnly.FromDateTime(_editFrom.Value);
+        var newTo = _editTo is null ? null : (DateOnly?)DateOnly.FromDateTime(_editTo.Value);
+
+        if (locked)
+        {
+            // ข้อ 1: แถวที่ถูกใช้แล้ว แก้ได้แค่ชื่อ/หมายเหตุ/วันสิ้นสุด (ไม่ย้อนก่อนงวดอนุมัติล่าสุดภายใต้แถวนี้)
+            var minTo = await PayScheduleGuard.MinEffectiveToAsync(ctx, _companyId, row);
+            if (PayScheduleGuard.ValidateEffectiveTo(newTo, row.EffectiveFrom, minTo) is string badTo) { Snackbar.Add(badTo, Severity.Warning); return; }
+        }
+        else
+        {
+            if (PayScheduleGuard.ValidateEffectiveFrom(newFrom, _lastApprovedPeriodStart) is string badFrom) { Snackbar.Add(badFrom, Severity.Warning); return; }
+            if (PayScheduleGuard.ValidateEffectiveTo(newTo, newFrom, null) is string badTo) { Snackbar.Add(badTo, Severity.Warning); return; }
+        }
+
+        var detail = locked
+            ? $"{row.Code}: ถึง {row.EffectiveTo?.ToString("dd/MM/yyyy") ?? "ไม่กำหนด"} → {newTo?.ToString("dd/MM/yyyy") ?? "ไม่กำหนด"}; ชื่อ {row.Name} → {_editing.Name.Trim()}"
+            : $"{row.Code}: {row.PeriodsPerMonth} งวด/{GroupLabel(row.AppliesTo)}/{row.EffectiveFrom:dd/MM/yyyy}–{row.EffectiveTo?.ToString("dd/MM/yyyy") ?? "∞"}/{(row.IsActive ? "ใช้งาน" : "ปิด")} → {_editing.PeriodsPerMonth} งวด/{GroupLabel(_editing.AppliesTo)}/{newFrom:dd/MM/yyyy}–{newTo?.ToString("dd/MM/yyyy") ?? "∞"}/{(_editing.IsActive ? "ใช้งาน" : "ปิด")}";
+
         row.Name = _editing.Name.Trim();
-        row.PeriodsPerMonth = _editing.PeriodsPerMonth;
-        row.SecondTermStartDay = _editing.SecondTermStartDay;
-        row.AppliesTo = _editing.AppliesTo;
-        row.EffectiveFrom = DateOnly.FromDateTime(_editFrom.Value);
-        row.EffectiveTo = _editTo is null ? null : DateOnly.FromDateTime(_editTo.Value);
-        row.IsActive = _editing.IsActive;
+        row.Note = string.IsNullOrWhiteSpace(_editing.Note) ? row.Note : _editing.Note.Trim();
+        row.EffectiveTo = newTo;
+        if (!locked)
+        {
+            row.PeriodsPerMonth = _editing.PeriodsPerMonth;
+            row.SecondTermStartDay = _editing.SecondTermStartDay;
+            row.AppliesTo = _editing.AppliesTo;
+            row.EffectiveFrom = newFrom;
+            row.IsActive = _editing.IsActive;
+        }
+        ctx.Pay_PayScheduleChangeLogs.Add(new Pay_PayScheduleChangeLog
+        {
+            CompanyId = _companyId, PayScheduleId = row.Id, Action = locked && newTo != _editing.EffectiveTo ? "Close" : "Edit",
+            Reason = _reason!.Trim(), Detail = detail, ChangedByUserId = _actorUserId, ChangedDate = DateTime.Now,
+        });
         await ctx.SaveChangesAsync();
         _editing = null;
         Snackbar.Add("บันทึกแล้ว — มีผลกับรอบที่คำนวณหลังจากนี้", Severity.Success);
@@ -274,19 +370,35 @@
         if (string.IsNullOrWhiteSpace(_companyId)) { Snackbar.Add("บัญชีของคุณไม่ได้ผูกกับบริษัทเงินเดือน", Severity.Error); return; }
         if (string.IsNullOrWhiteSpace(_new.Code) || string.IsNullOrWhiteSpace(_new.Name)) { Snackbar.Add("ต้องระบุรหัสและชื่อ", Severity.Warning); return; }
         if (_newFrom is null) { Snackbar.Add("ต้องระบุวันที่มีผล", Severity.Warning); return; }
+        if (PayScheduleGuard.ValidateReason(_newReason) is string badReason) { Snackbar.Add(badReason, Severity.Warning); return; }
+
+        var from = DateOnly.FromDateTime(_newFrom.Value);
+        var to = _newTo is null ? null : (DateOnly?)DateOnly.FromDateTime(_newTo.Value);
+        // ข้อ 2: ไปข้างหน้าเท่านั้น วันที่ 1 ของเดือน
+        if (PayScheduleGuard.ValidateEffectiveFrom(from, _lastApprovedPeriodStart) is string badFrom) { Snackbar.Add(badFrom, Severity.Warning); return; }
+        if (PayScheduleGuard.ValidateEffectiveTo(to, from, null) is string badTo) { Snackbar.Add(badTo, Severity.Warning); return; }
+
         await using var ctx = await DbFactory.CreateDbContextAsync();
         var code = _new.Code.Trim().ToUpperInvariant();
         if (await ctx.Pay_PaySchedules.AnyAsync(s => s.CompanyId == _companyId && s.Code == code)) { Snackbar.Add($"รหัส {code} มีอยู่แล้ว", Severity.Warning); return; }
-        ctx.Pay_PaySchedules.Add(new Pay_PaySchedule
+        var row = new Pay_PaySchedule
         {
             CompanyId = _companyId, Code = code, Name = _new.Name.Trim(), PeriodsPerMonth = _new.PeriodsPerMonth,
             SecondTermStartDay = _new.SecondTermStartDay, AppliesTo = _new.AppliesTo,
-            EffectiveFrom = DateOnly.FromDateTime(_newFrom.Value), EffectiveTo = _newTo is null ? null : DateOnly.FromDateTime(_newTo.Value),
-            IsActive = true, Note = string.IsNullOrWhiteSpace(_new.Note) ? null : _new.Note.Trim(),
+            EffectiveFrom = from, EffectiveTo = to, IsActive = true, Note = _newReason!.Trim(),
+        };
+        ctx.Pay_PaySchedules.Add(row);
+        await ctx.SaveChangesAsync();
+        ctx.Pay_PayScheduleChangeLogs.Add(new Pay_PayScheduleChangeLog
+        {
+            CompanyId = _companyId, PayScheduleId = row.Id, Action = "Add", Reason = _newReason!.Trim(),
+            Detail = $"{code}: {row.PeriodsPerMonth} งวด/เดือน, {GroupLabel(row.AppliesTo)}, มีผล {from:dd/MM/yyyy}–{to?.ToString("dd/MM/yyyy") ?? "∞"}",
+            ChangedByUserId = _actorUserId, ChangedDate = DateTime.Now,
         });
         await ctx.SaveChangesAsync();
         Snackbar.Add($"เพิ่มรอบจ่าย {code} แล้ว", Severity.Success);
         _new = new() { PeriodsPerMonth = 1, SecondTermStartDay = 16, AppliesTo = PayScheduleGroup.All };
+        _newReason = null;
         await LoadAsync();
     }
 
@@ -308,16 +420,30 @@
 
     private async Task AddOverrideAsync()
     {
-        if (_selectedEmployee is null) return;
+        if (_selectedEmployee is null || string.IsNullOrWhiteSpace(_companyId)) return;
         if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
         if (_ovScheduleId is null || _ovFrom is null) { Snackbar.Add("เลือกรอบจ่ายและวันที่มีผล", Severity.Warning); return; }
+        if (PayScheduleGuard.ValidateReason(_ovNote) is string badReason) { Snackbar.Add(badReason, Severity.Warning); return; }
+        var from = DateOnly.FromDateTime(_ovFrom.Value);
+        var to = _ovTo is null ? null : (DateOnly?)DateOnly.FromDateTime(_ovTo.Value);
+        if (PayScheduleGuard.ValidateEffectiveFrom(from, _lastApprovedPeriodStart) is string badFrom) { Snackbar.Add(badFrom, Severity.Warning); return; }
+        if (PayScheduleGuard.ValidateEffectiveTo(to, from, null) is string badTo) { Snackbar.Add(badTo, Severity.Warning); return; }
+
         await using var ctx = await DbFactory.CreateDbContextAsync();
-        ctx.Pay_EmployeePayScheduleOverrides.Add(new Pay_EmployeePayScheduleOverride
+        var ov = new Pay_EmployeePayScheduleOverride
         {
             HremployeeId = _selectedEmployee.id, PayScheduleId = _ovScheduleId.Value,
-            EffectiveFrom = DateOnly.FromDateTime(_ovFrom.Value), EffectiveTo = _ovTo is null ? null : DateOnly.FromDateTime(_ovTo.Value),
-            Note = string.IsNullOrWhiteSpace(_ovNote) ? null : _ovNote.Trim(), IsActive = true,
+            EffectiveFrom = from, EffectiveTo = to, Note = _ovNote!.Trim(), IsActive = true,
             EnteredByUserId = _actorUserId, EnteredDate = DateTime.Now,
+        };
+        ctx.Pay_EmployeePayScheduleOverrides.Add(ov);
+        await ctx.SaveChangesAsync();
+        var schedName = _schedules.FirstOrDefault(s => s.Id == ov.PayScheduleId)?.Name ?? $"#{ov.PayScheduleId}";
+        ctx.Pay_PayScheduleChangeLogs.Add(new Pay_PayScheduleChangeLog
+        {
+            CompanyId = _companyId, OverrideId = ov.Id, PayScheduleId = ov.PayScheduleId, Action = "OverrideAdd", Reason = _ovNote!.Trim(),
+            Detail = $"{_selectedEmployee.EmpNo} {_selectedEmployee.EmpName}: ใช้ {schedName} มีผล {from:dd/MM/yyyy}–{to?.ToString("dd/MM/yyyy") ?? "∞"}",
+            ChangedByUserId = _actorUserId, ChangedDate = DateTime.Now,
         });
         await ctx.SaveChangesAsync();
         Snackbar.Add("บันทึกการทับรายคนแล้ว", Severity.Success);
@@ -327,12 +453,21 @@
 
     private async Task DeactivateOverrideAsync(Pay_EmployeePayScheduleOverride o)
     {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
         if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        if (PayScheduleGuard.ValidateReason(_ovDeactivateReason) is string badReason) { Snackbar.Add(badReason, Severity.Warning); return; }
         await using var ctx = await DbFactory.CreateDbContextAsync();
         var row = await ctx.Pay_EmployeePayScheduleOverrides.FirstOrDefaultAsync(x => x.Id == o.Id);
         if (row is null) return;
         row.IsActive = false;
+        ctx.Pay_PayScheduleChangeLogs.Add(new Pay_PayScheduleChangeLog
+        {
+            CompanyId = _companyId, OverrideId = row.Id, PayScheduleId = row.PayScheduleId, Action = "OverrideDeactivate", Reason = _ovDeactivateReason!.Trim(),
+            Detail = $"{_selectedEmployee?.EmpNo}: ปิดการทับรายคนที่มีผล {row.EffectiveFrom:dd/MM/yyyy}",
+            ChangedByUserId = _actorUserId, ChangedDate = DateTime.Now,
+        });
         await ctx.SaveChangesAsync();
+        _ovDeactivateReason = null;
         await LoadAsync();
     }
 }
