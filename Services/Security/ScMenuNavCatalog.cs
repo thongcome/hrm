@@ -220,6 +220,7 @@ public static class ScMenuNavCatalog
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/periods", "จัดการงวดเงินเดือน", "Payroll Periods", "Icons.Material.Filled.CalendarMonth", 100),
         new("GRP_PAYROLL", "PAY_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นเงินเดือน)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 1),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/pay-schedules", "รอบจ่ายเงินเดือน (กี่งวด/เดือน)", "Pay Schedules", "Icons.Material.Filled.EventRepeat", 101),
+        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/bank-file-formats", "รูปแบบไฟล์ธนาคาร", "Bank File Formats", "Icons.Material.Filled.AccountBalance", 103),
         new("GRP_PAYROLL", "PAY_GL_ADMIN", "/pay/admin/gl-account-mapping", "บัญชี GL ฝั่งนายจ้าง (ฝ่ายบัญชี)", "GL Account Mapping", "Icons.Material.Filled.AccountBalance", 102),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/salary-grades", "โครงสร้างเงินเดือน (Pay Grade)", "Salary Structure (Pay Grade)", "Icons.Material.Filled.BarChart", 110),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/lifecycle-task-templates", "Checklist การเริ่มงาน/ลาออก", "Onboarding/Offboarding Checklist", "Icons.Material.Filled.ChecklistRtl", 120),

@@ -94,25 +94,32 @@ public class BankFileExportService
             throw new InvalidOperationException(
                 $"พนักงาน {nonPositive.Count} คนมียอดสุทธิเป็นศูนย์หรือติดลบ (เช่น {string.Join(", ", nonPositive.Take(5))}) — กันออกจากรอบก่อนสร้างไฟล์");
 
-        var csv = new StringBuilder();
-        csv.AppendLine("EmpNo,Name,BankCode,BankBranchCode,BankAccountNo,Amount");
-        foreach (var (emp, amount) in lines)
-        {
-            var name = $"{emp.Hremployee.EmpName} {emp.Hremployee.EmpSurname}".Replace("\"", "\"\"");
-            csv.AppendLine($"{emp.EmpNo},\"{name}\",{emp.BankCode},{emp.BankBranchCode},{emp.BankAccountNo},{amount:0.00}");
-        }
-
-        var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
-        var fileBytes = utf8WithBom.GetPreamble().Concat(utf8WithBom.GetBytes(csv.ToString())).ToArray();
-        var fileName = $"bankfile_{(paidOriginal is null ? "" : "delta_")}{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
-        var (relativePath, _) = await _fileStorage.SaveAsync("bank-exports", fileName, fileBytes, ct);
+        // รูปแบบไฟล์ตาม spec ธนาคารเป็น config ต่อบริษัท (12 ก.ย. 2569): แม่แบบที่ตั้งเป็นค่าเริ่มต้น ไม่มี = CSV กลางแบบเดิม
+        var format = await context.Pay_BankFileFormats.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.CompanyId == run.CompanyId && f.IsActive && f.IsDefault, ct);
+        var companyName = await context.Pay_PayslipSettings.AsNoTracking()
+            .Where(s => s.CompanyId == run.CompanyId).Select(s => s.CompanyName).FirstOrDefaultAsync(ct) ?? run.CompanyId;
+        var totalAmount = lines.Sum(l => l.Amount);
+        var batchNo = $"BF{run.PayrollPeriod}-{runId}";
+        var fileValues = BankFileValues.ForFile(companyName, format, run.PayDate, run.PayrollPeriod, batchNo, lines.Count, totalAmount);
+        var seqNo = 0;
+        var lineValues = lines.Select(l => BankFileValues.ForLine(++seqNo, l.Emp.EmpNo, l.Emp.Hremployee.EmpName, l.Emp.Hremployee.EmpSurname,
+            l.Emp.BankCode, l.Emp.BankBranchCode, l.Emp.BankAccountNo, l.Amount, l.Emp.Hremployee.IdCard, l.Emp.Hremployee.AdnEmail)).ToList();
+        var text = format is null
+            ? BankFileTemplate.Build(BankFileTemplate.GenericCsvHeader, BankFileTemplate.GenericCsvLine, null, "CRLF", fileValues, lineValues)
+            : BankFileTemplate.Build(format.HeaderTemplate, format.LineTemplate, format.TrailerTemplate, format.LineEnding, fileValues, lineValues);
+        var fileBytes = BankFileTemplate.Encode(text, format?.Encoding ?? "UTF8BOM");
+        var fileName = format is not null && !string.IsNullOrWhiteSpace(format.FileNamePattern)
+            ? BankFileTemplate.Render(format.FileNamePattern, fileValues).Replace('/', '_').Replace('\\', '_')
+            : $"bankfile_{(paidOriginal is null ? "" : "delta_")}{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
+        var (relativePath, _) = await _fileStorage.SaveAsync("bank-exports", $"{runId}_{DateTime.Now:yyyyMMddHHmmss}_{fileName}", fileBytes, ct);
 
         var batch = new Pay_BankFileExportBatch
         {
             PayrollRunId = runId,
-            BankFormatCode = "GENERIC_CSV",
+            BankFormatCode = format?.Code ?? "GENERIC_CSV",
             FilePath = relativePath,
-            TotalAmount = lines.Sum(l => l.Amount),
+            TotalAmount = totalAmount,
             TotalRecordCount = lines.Count,
             Status = BankFileExportStatus.Generated,
             GeneratedByUserId = actorUserId,

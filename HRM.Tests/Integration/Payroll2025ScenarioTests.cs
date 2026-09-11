@@ -121,6 +121,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         await ctx.Pay_PaySchedules.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
         await ctx.Pay_AttendanceDeductionPolicies.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
         await ctx.Pay_GLAccountMappings.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
+        await ctx.Pay_BankFileFormats.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
         await ctx.Pay_PayslipSettings.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
         await ctx.Lve_CompanySettings.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
         await ctx.Lve_CompanyHolidays.Where(x => cos.Contains(x.CompanyId)).ExecuteDeleteAsync();
@@ -776,6 +777,15 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             ["S002"] = NewEmp(Co2, "S002", "สมปอง", "รายวัน", null, 500m, new(2022, 1, 1)),
         };
         ctx.Hremployee.AddRange(e.Values);
+        ctx.Pay_BankFileFormats.Add(new Pay_BankFileFormat
+        {
+            CompanyId = Co2, Code = "FIXED", Name = "ตัวอย่างความยาวคงที่", Encoding = "TIS620", LineEnding = "CRLF", IsDefault = true, IsActive = true,
+            CompanyBankCode = "014", CompanyBranchCode = "0001", CompanyAccountNo = "1234567890",
+            HeaderTemplate = "H{CompanyBankCode:,3,0}{CompanyAccountNo:,-15}{PayDateBE:ddMMyyyy}{RecordCount:,6,0}{TotalAmountCents:,15,0}",
+            LineTemplate = "D{Seq:,6,0}{BankCode:,3,0}{BranchCode:,4,0}{AccountNo:,-15}{Name:,-50}{AmountCents:,13,0}{EmpNo:,-10}",
+            TrailerTemplate = "T{RecordCount:,6,0}{TotalAmountCents:,15,0}",
+            FileNamePattern = "PAYROLL_{Period}_{PayDate:yyyyMMdd}.txt",
+        });
         await ctx.SaveChangesAsync();
         return e.ToDictionary(k => k.Key, k => k.Value.id);
     }
@@ -799,6 +809,8 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
                     await wf.SubmitForReviewAsync(runId, Calc);
                     await wf.ApproveAsync(runId, Approver, null);
                     await wf.PostAsync(runId, Approver);
+                    if (m == 1 && term == 1)
+                        await CheckTemplatedBankFileAsync(sp, factory, runId, label);
                     await wf.MarkPaidAsync(runId, Approver);
                 }
                 catch (Exception ex)
@@ -844,6 +856,26 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             Expect("SEMI", "ภ.ง.ด.1 มี.ค. รวม 2 งวดเป็นบรรทัดเดียวต่อคน", por1 is not null && por1.Lines.Count == por1.Lines.Select(l => l.EmpNo).Distinct().Count(), $"{por1?.Lines.Count}");
         }
         Note("PTEST2: รอบครึ่งเดือนใช้ PayrollPeriod เดือนเดียวกันทั้งสองงวด แยกด้วย TermNo (หน้าสร้างรอบมีตัวเลือกงวดเมื่อบริษัทตั้งปฏิทิน 2 งวด/เดือน)");
+    }
+
+    // ไฟล์ธนาคารตามแม่แบบ config (ความยาวคงที่ TIS-620): H = 48 ตัว, D = 102 ตัว, T = 22 ตัว
+    private async Task CheckTemplatedBankFileAsync(ServiceProvider sp, IDbContextFactory<HRMContext> factory, long runId, string label)
+    {
+        var bank = sp.GetRequiredService<BankFileExportService>();
+        var storage = sp.GetRequiredService<PrivateFileStorage>();
+        var batchId = await bank.ExportAsync(runId, Approver);
+        await using var ctx = await factory.CreateDbContextAsync();
+        var b = await ctx.Pay_BankFileExportBatches.AsNoTracking().FirstAsync(x => x.Id == batchId);
+        Expect("BANKFMT", $"{label} ไฟล์ใช้แม่แบบ FIXED ของบริษัท", b.BankFormatCode == "FIXED", b.BankFormatCode);
+        Expect("BANKFMT", $"{label} ชื่อไฟล์ตาม pattern", b.FilePath.Contains("PAYROLL_202501_"), b.FilePath);
+        var bytes = await storage.ReadAsync(b.FilePath);
+        var text = Encoding.GetEncoding(874).GetString(bytes);
+        var fileLines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Expect("BANKFMT", $"{label} หัว/รายคน/ท้าย = 1 + {b.TotalRecordCount} + 1 บรรทัด", fileLines.Length == b.TotalRecordCount + 2, $"{fileLines.Length}");
+        Expect("BANKFMT", $"{label} บรรทัดหัวยาว 48", fileLines[0].StartsWith("H014") && fileLines[0].Length == 48, $"{fileLines[0].Length}: {fileLines[0]}");
+        Expect("BANKFMT", $"{label} บรรทัดรายคนยาว 102 ทุกบรรทัด", fileLines.Skip(1).Take(b.TotalRecordCount).All(l => l.StartsWith("D") && l.Length == 102), string.Join(",", fileLines.Skip(1).Take(b.TotalRecordCount).Select(l => l.Length)));
+        Expect("BANKFMT", $"{label} บรรทัดท้ายยาว 22 และยอดรวมเป็นสตางค์", fileLines[^1].Length == 22 && fileLines[^1] == "T" + b.TotalRecordCount.ToString("000000") + ((long)Math.Round(b.TotalAmount * 100)).ToString("000000000000000"), fileLines[^1]);
+        Expect("BANKFMT", $"{label} วันที่จ่ายในหัวเป็น พ.ศ.", fileLines[0].Substring(19, 8).EndsWith("2568"), fileLines[0].Substring(19, 8));
     }
 
     // ═════════════════════════════════════════════════════════════════════════════

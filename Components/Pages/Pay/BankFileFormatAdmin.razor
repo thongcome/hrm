@@ -1,0 +1,238 @@
+@page "/pay/admin/bank-file-formats"
+@using HRM.Models
+@using HRM.Services.Pay
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>รูปแบบไฟล์ธนาคาร</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">รูปแบบไฟล์โอนเงินเดือน (ตาม spec ของธนาคาร)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ธนาคารแต่ละแห่งมี spec ไฟล์ของตัวเอง (ได้จากธนาคารตอนเปิดบริการ เช่น KBank SMART Payroll, SCB Payroll, BBL BIZ) — ตั้ง "แม่แบบบรรทัด" ตาม spec นั้นได้ที่นี่
+        แล้วปุ่มสร้างไฟล์ธนาคารในรอบเงินเดือนจะใช้แม่แบบที่ตั้งเป็นค่าเริ่มต้นของบริษัท · ไม่มีแม่แบบ = CSV กลางแบบเดิม
+    </MudText>
+    <MudText Typo="Typo.caption" Class="d-block mt-2 mud-text-secondary">
+        ช่อง: <code>{ช่อง}</code> · <code>{ช่อง:รูปแบบ}</code> · <code>{ช่อง:รูปแบบ,ความกว้าง}</code> (บวก = ชิดขวา, ลบ = ชิดซ้าย) · <code>{ช่อง:รูปแบบ,ความกว้าง,ตัวเติม}</code><br />
+        รายบรรทัด: Seq EmpNo Name FirstName LastName BankCode BranchCode AccountNo Amount AmountCents IdCard Email ·
+        หัว/ท้าย: CompanyName CompanyAccountNo CompanyBankCode CompanyBranchCode PayDate PayDateBE Period RecordCount TotalAmount TotalAmountCents BatchNo Today TodayBE<br />
+        ตัวอย่าง: <code>{AccountNo:,-20}</code> เลขบัญชีชิดซ้ายกว้าง 20 · <code>{AmountCents:,13,0}</code> ยอดเป็นสตางค์เติม 0 กว้าง 13 · <code>{PayDateBE:ddMMyyyy}</code> วันที่ พ.ศ.
+    </MudText>
+    @if (_rights is { CanEdit: false, CanCreate: false })
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>รหัส</MudTh>
+            <MudTh>ชื่อ</MudTh>
+            <MudTh>บัญชีบริษัท</MudTh>
+            <MudTh>รหัสอักขระ</MudTh>
+            <MudTh>ค่าเริ่มต้น</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.CompanyBankCode @context.CompanyAccountNo</MudTd>
+            <MudTd>@context.Encoding / @context.LineEnding</MudTd>
+            <MudTd>@(context.IsDefault ? "ใช้สร้างไฟล์" : "")</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิด")</MudTd>
+            <MudTd style="white-space:nowrap;">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => Preview(context))" />
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => BeginEdit(context))" />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีแม่แบบ — ไฟล์ธนาคารใช้ CSV กลาง (EmpNo,Name,BankCode,BankBranchCode,BankAccountNo,Amount)</MudText></NoRecordsContent>
+    </MudTable>
+
+    @if (_previewText is not null)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4">ตัวอย่างไฟล์ (ข้อมูลสมมติ 2 คน)</MudText>
+        <pre style="white-space:pre; overflow-x:auto; background:var(--mud-palette-background-gray); padding:8px;">@_previewText</pre>
+    }
+</MudPaper>
+
+@if (_edit is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">@(_edit.Id == 0 ? "เพิ่มแม่แบบ" : $"แก้ไขแม่แบบ {_edit.Code}")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_edit.Code" Label="รหัส (ลงในไฟล์ที่สร้าง)" MaxLength="30" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_edit.Name" Label="ชื่อ/ธนาคาร/บริการ" MaxLength="200" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_edit.IsDefault" Label="ค่าเริ่มต้นของบริษัท" /></MudItem>
+            <MudItem xs="6" sm="2"><MudCheckBox T="bool" @bind-Value="_edit.IsActive" Label="ใช้งาน" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_edit.CompanyBankCode" Label="รหัสธนาคารบริษัท" MaxLength="50" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_edit.CompanyBranchCode" Label="รหัสสาขาบริษัท" MaxLength="50" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_edit.CompanyAccountNo" Label="เลขบัญชีบริษัทที่โอนออก" MaxLength="50" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_edit.HeaderTemplate" Label="บรรทัดหัว (ว่าง = ไม่มี)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="font-family:monospace" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_edit.LineTemplate" Label="บรรทัดรายคน (จำเป็น)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="font-family:monospace" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_edit.TrailerTemplate" Label="บรรทัดท้าย (ว่าง = ไม่มี)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="font-family:monospace" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_edit.Encoding" Label="รหัสอักขระ" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="string" Value="@("UTF8BOM")">UTF-8 (มี BOM)</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("UTF8")">UTF-8</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("TIS620")">TIS-620 (ANSI ไทย)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_edit.LineEnding" Label="ตัวขึ้นบรรทัด" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="string" Value="@("CRLF")">CRLF (Windows)</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("LF")">LF</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("NONE")">ไม่มี (ความยาวคงที่ต่อกัน)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_edit.FileNamePattern" Label="ชื่อไฟล์ เช่น PAYROLL_{Period}_{PayDate:yyyyMMdd}.txt" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_edit.Note" Label="หมายเหตุ (เช่น spec เวอร์ชันไหน ได้จากใคร)" MaxLength="1000" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        </MudGrid>
+        <MudStack Row="true" Class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => Preview(_edit))">ดูตัวอย่าง</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _edit = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+else if (_rights?.CanCreate == true)
+{
+    <MudStack Row="true" Class="mb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => BeginNew(null))">เพิ่มแม่แบบ</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="@(() => BeginNew("csv"))">เริ่มจาก CSV กลาง</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="@(() => BeginNew("fixed"))">เริ่มจากตัวอย่างความยาวคงที่</MudButton>
+    </MudStack>
+}
+
+@code {
+    private const string ProgramPath = "/pay/admin/bank-file-formats";
+
+    private string? _companyId;
+    private long _actorUserId;
+    private ProgramRoleService.ProgramRights? _rights;
+    private List<Pay_BankFileFormat> _rows = new();
+    private Pay_BankFileFormat? _edit;
+    private string? _previewText;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _rows = await ctx.Pay_BankFileFormats.Where(f => f.CompanyId == _companyId).OrderByDescending(f => f.IsDefault).ThenBy(f => f.Code).ToListAsync();
+    }
+
+    private void BeginNew(string? sample)
+    {
+        _edit = new Pay_BankFileFormat { CompanyId = _companyId ?? "", Encoding = "UTF8BOM", LineEnding = "CRLF", IsActive = true };
+        if (sample == "csv")
+        {
+            _edit.Code = "CSV"; _edit.Name = "CSV กลาง";
+            _edit.HeaderTemplate = BankFileTemplate.GenericCsvHeader; _edit.LineTemplate = BankFileTemplate.GenericCsvLine;
+            _edit.FileNamePattern = "bankfile_{Period}.csv";
+        }
+        else if (sample == "fixed")
+        {
+            _edit.Code = "FIXED"; _edit.Name = "ตัวอย่างความยาวคงที่ (ปรับตาม spec ธนาคาร)"; _edit.Encoding = "TIS620";
+            _edit.HeaderTemplate = "H{CompanyBankCode:,3,0}{CompanyAccountNo:,-15}{PayDateBE:ddMMyyyy}{RecordCount:,6,0}{TotalAmountCents:,15,0}";
+            _edit.LineTemplate = "D{Seq:,6,0}{BankCode:,3,0}{BranchCode:,4,0}{AccountNo:,-15}{Name:,-50}{AmountCents:,13,0}{EmpNo:,-10}";
+            _edit.TrailerTemplate = "T{RecordCount:,6,0}{TotalAmountCents:,15,0}";
+            _edit.FileNamePattern = "PAYROLL_{Period}_{PayDate:yyyyMMdd}.txt";
+        }
+        _previewText = null;
+    }
+
+    private void BeginEdit(Pay_BankFileFormat f)
+    {
+        _edit = new Pay_BankFileFormat
+        {
+            Id = f.Id, CompanyId = f.CompanyId, Code = f.Code, Name = f.Name, CompanyBankCode = f.CompanyBankCode, CompanyBranchCode = f.CompanyBranchCode,
+            CompanyAccountNo = f.CompanyAccountNo, HeaderTemplate = f.HeaderTemplate, LineTemplate = f.LineTemplate, TrailerTemplate = f.TrailerTemplate,
+            Encoding = f.Encoding, LineEnding = f.LineEnding, FileNamePattern = f.FileNamePattern, IsDefault = f.IsDefault, IsActive = f.IsActive, Note = f.Note,
+        };
+        _previewText = null;
+    }
+
+    private void Preview(Pay_BankFileFormat f)
+    {
+        try
+        {
+            var file = BankFileValues.ForFile("บริษัท ตัวอย่าง จำกัด", f, new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 25), "202501", "PREVIEW", 2, 45000m);
+            var lines = new[]
+            {
+                BankFileValues.ForLine(1, "E001", "สมชาย", "ตั้งใจ", "004", "0001", "1234567890", 30000m, "1100400000001", "somchai@example.com"),
+                BankFileValues.ForLine(2, "E002", "สมหญิง", "ขยัน", "014", "0002", "9876543210", 15000m, "1100400000002", "somying@example.com"),
+            };
+            _previewText = BankFileTemplate.Build(f.HeaderTemplate, f.LineTemplate ?? "", f.TrailerTemplate, f.LineEnding, file, lines);
+        }
+        catch (Exception ex) { _previewText = "แม่แบบผิด: " + ex.Message; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_edit is null) return;
+        var action = _edit.Id == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit;
+        if (await RequireRightAsync(action) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        if (string.IsNullOrWhiteSpace(_edit.Code) || string.IsNullOrWhiteSpace(_edit.Name) || string.IsNullOrWhiteSpace(_edit.LineTemplate))
+        { Snackbar.Add("กรอกรหัส ชื่อ และบรรทัดรายคน", Severity.Warning); return; }
+        try { Preview(_edit); if (_previewText?.StartsWith("แม่แบบผิด") == true) { Snackbar.Add(_previewText, Severity.Error); return; } }
+        catch { }
+
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        Pay_BankFileFormat row;
+        if (_edit.Id == 0)
+        {
+            if (await ctx.Pay_BankFileFormats.AnyAsync(f => f.CompanyId == _companyId && f.Code == _edit.Code.Trim()))
+            { Snackbar.Add($"มีรหัส {_edit.Code} อยู่แล้ว", Severity.Warning); return; }
+            row = new Pay_BankFileFormat { CompanyId = _companyId ?? "" };
+            ctx.Pay_BankFileFormats.Add(row);
+        }
+        else
+        {
+            row = await ctx.Pay_BankFileFormats.FirstAsync(f => f.Id == _edit.Id);
+        }
+        row.Code = _edit.Code.Trim().ToUpperInvariant(); row.Name = _edit.Name.Trim();
+        row.CompanyBankCode = _edit.CompanyBankCode?.Trim(); row.CompanyBranchCode = _edit.CompanyBranchCode?.Trim(); row.CompanyAccountNo = _edit.CompanyAccountNo?.Trim();
+        row.HeaderTemplate = string.IsNullOrWhiteSpace(_edit.HeaderTemplate) ? null : _edit.HeaderTemplate;
+        row.LineTemplate = _edit.LineTemplate;
+        row.TrailerTemplate = string.IsNullOrWhiteSpace(_edit.TrailerTemplate) ? null : _edit.TrailerTemplate;
+        row.Encoding = _edit.Encoding; row.LineEnding = _edit.LineEnding; row.FileNamePattern = _edit.FileNamePattern?.Trim();
+        row.IsDefault = _edit.IsDefault; row.IsActive = _edit.IsActive; row.Note = _edit.Note;
+        row.ModifiedDate = DateTime.Now; row.ModifiedByUserId = _actorUserId;
+        if (row.IsDefault)
+        {
+            // หนึ่งบริษัทมีค่าเริ่มต้นเดียว
+            var others = await ctx.Pay_BankFileFormats.Where(f => f.CompanyId == _companyId && f.Id != row.Id && f.IsDefault).ToListAsync();
+            foreach (var o in others) o.IsDefault = false;
+        }
+        await ctx.SaveChangesAsync();
+        _edit = null;
+        Snackbar.Add("บันทึกแล้ว — มีผลกับไฟล์ธนาคารที่สร้างหลังจากนี้", Severity.Success);
+        await LoadAsync();
+    }
+}

@@ -12,6 +12,9 @@ public partial class HRMContext
     public virtual DbSet<Pay_AttendanceDeductionPolicy> Pay_AttendanceDeductionPolicies { get; set; }
     public virtual DbSet<Pay_SalaryAdvance> Pay_SalaryAdvances { get; set; }
 
+    // รูปแบบไฟล์ธนาคารต่อบริษัท (12 ก.ย. 2569) — Migrations/Manual/2026-09-12_bank_file_formats.sql
+    public virtual DbSet<Pay_BankFileFormat> Pay_BankFileFormats { get; set; }
+
     // Called from OnModelCreatingPartial (HRMContext.Security.cs).
     private static void ConfigurePayrollModel(ModelBuilder modelBuilder)
     {
