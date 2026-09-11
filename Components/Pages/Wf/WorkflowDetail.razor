@@ -16,6 +16,7 @@
 @inject NavigationManager Nav
 @inject PrivateFileStorage FileStorage
 @inject IDialogService Dialog
+@inject IAuthorizationService AuthorizationService
 @attribute [Authorize]
 
 @*
@@ -231,6 +232,13 @@
         }
         else if (_docLink is not null)
         {
+            @if (_docDenied is not null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                    หน้าเอกสารที่ตั้งค่าไว้สำหรับขั้นนี้จำกัดสิทธิ์ (@_docDenied) จึงไม่แสดงในงาน —
+                    ผู้ดูแล workflow ควรตั้ง "หน้ารายละเอียด (controller)" เป็นหน้าอ่านอย่างเดียวที่ผู้อนุมัติเปิดได้
+                </MudAlert>
+            }
             <MudButton Href="@_docLink" Target="_blank" Variant="Variant.Outlined" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.OpenInNew" Class="mt-1">
                 ดูเอกสารต้นทาง (@_m.jobMaster.reftable #@_m.jobMaster.refid)
@@ -506,10 +514,11 @@
     // งานต้องผูกกับเอกสารเสมอ ไม่งั้นผู้อนุมัติไม่มีอะไรให้ดู
     // (CEO, 10 ก.ย. 2569: "คุณทำ workflow แต่ไม่รู้ว่าอนุมัติอะไร")
     // โมดูลเรียกมาแบบ /workflow/create/{wfid}?reftable=Exp_ClaimHeader&refid=12
-    [SupplyParameterFromQuery(Name = "reftable")] public string? RefTable { get; set; }
-    [SupplyParameterFromQuery(Name = "refid")] public string? RefIdParam { get; set; }
-    [SupplyParameterFromQuery(Name = "subject")] public string? SubjectParam { get; set; }
-    [SupplyParameterFromQuery(Name = "amount")] public decimal? AmountParam { get; set; }
+    // ไม่รับ reftable/refid จาก query string อีกต่อไป (11 ก.ย. 2569): ใครก็ใส่ refid ของ
+    // เอกสารคนอื่นได้ แล้วกลายเป็น "ผู้สร้างงาน" ที่ endpoint ไฟล์ให้ดูเอกสารต้นทาง (IDOR)
+    // งานที่ผูกเอกสารต้องเกิดจาก service ของโมดูลนั้น (StartJobAsync) ซึ่งตรวจเจ้าของแล้ว
+    // หน้านี้สร้างได้เฉพาะงานเปล่าจากหน้าแรก /workflow เท่านั้น
+    private bool _creating;
 
     private WorkFlowViewModel? _m;
     private long _actorUserId;
@@ -521,6 +530,29 @@
     private Type? _docType;
     private Dictionary<string, object> _docParams = new();
     private string? _docLink;
+    private string? _docDenied;
+
+    // สิทธิ์ของหน้าที่จะฝัง: ทุก [Authorize] บน type ต้องผ่านสำหรับผู้ใช้คนนี้
+    // คืน null = ฝังได้, ไม่งั้นคืนชื่อสิทธิ์ที่ขาด
+    private async Task<string?> EmbedDeniedReasonAsync(Type type)
+    {
+        var attrs = type.GetCustomAttributes<AuthorizeAttribute>(inherit: true).ToList();
+        if (attrs.Count == 0) return null;
+        var user = (await AuthProvider.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated != true) return "ต้องเข้าสู่ระบบ";
+        foreach (var a in attrs)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Policy))
+            {
+                var r = await AuthorizationService.AuthorizeAsync(user, null, a.Policy);
+                if (!r.Succeeded) return a.Policy;
+            }
+            if (!string.IsNullOrWhiteSpace(a.Roles)
+                && !a.Roles.Split(',').Any(role => user.IsInRole(role.Trim())))
+                return $"role {a.Roles}";
+        }
+        return null;
+    }
 
     // OnParametersSetAsync ไม่ใช่ OnInitializedAsync — Create แล้ว redirect ไป
     // route detail เป็น component ตัวเดิม Blazor จึงไม่เรียก OnInitialized ซ้ำ
@@ -537,10 +569,14 @@
 
         if (WorkflowId is long wfid)
         {
+            // สร้างเฉพาะตอน interactive และครั้งเดียว — หน้านี้ prerender ก่อนแล้วค่อยต่อ
+            // SignalR ถ้าสร้างทั้งสองรอบจะได้งาน 2 ใบทุกครั้ง (DB มีคู่ 10099/10100, 10101/10102)
+            if (!RendererInfo.IsInteractive || _creating) return;
+            _creating = true;
             try
             {
                 var created = await Wf.CreateAsync(wfid, _actorUserId, empno,
-                    subject: SubjectParam, reftable: RefTable, refid: RefIdParam, amount: AmountParam);
+                    subject: null, reftable: null, refid: null, amount: null);
                 Nav.NavigateTo($"/workflow/detail/{created.jobmasterid}", replace: true);
                 return;
             }
@@ -694,7 +730,7 @@
     private async Task LoadAsync()
     {
         _m = await Wf.DetailAsync(Id, _actorUserId);
-        ResolveDocument();
+        await ResolveDocumentAsync();
         await LoadReasonsAsync();
         _route = _m?.jobMaster is null ? new() : await Wf.GetRouteAsync(Id);
         await LoadAttachmentsAsync();
@@ -829,9 +865,9 @@
     // wf_sub_workflow_master.controller เก็บ route ของหน้าโมดูล เช่น
     // "/leave-requests/detail/{refid}" -> แทนค่า refid แล้วเทียบกับ route table
     // จริงของแอป ได้ Type แล้วเสียบด้วย <DynamicComponent> พร้อมส่ง id เข้าไป
-    private void ResolveDocument()
+    private async Task ResolveDocumentAsync()
     {
-        _docType = null; _docParams = new(); _docLink = null;
+        _docType = null; _docParams = new(); _docLink = null; _docDenied = null;
         var route = _m?.subWorkflow?.controller;
         var refid = _m?.jobMaster?.refid ?? "";
         if (string.IsNullOrWhiteSpace(route)) return;
@@ -845,6 +881,12 @@
         var url = route.Replace("{refid}", refid, StringComparison.OrdinalIgnoreCase);
         var (type, prms) = MatchRoute(url);
         if (type is null) { _docLink = url; return; }
+
+        // <DynamicComponent> ไม่ผ่าน AuthorizeRouteView — [Authorize(Policy=...)] ของหน้าที่ถูกฝัง
+        // จึงไม่ถูกตรวจเลย (config ของ SEPARATION เคยฝัง /pay/employees/{refid} ซึ่งเป็นหน้า
+        // PAY_ADMIN ให้หัวหน้าสายเห็น) ตรวจสิทธิ์ของหน้าเป้าหมายกับผู้ใช้คนนี้ก่อนทุกครั้ง
+        var denied = await EmbedDeniedReasonAsync(type);
+        if (denied is not null) { _docDenied = denied; _docLink = url; return; }
 
         AddIfDeclared(type, prms, "RefId", refid);
         AddIfDeclared(type, prms, "JobMasterId", Id);

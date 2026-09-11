@@ -7,11 +7,13 @@
 // and to show a friendly offline page when a navigation fails with no network,
 // instead of the browser's raw error. Everything else passes straight through
 // to the network so the app is never served stale.
-const CACHE = 'humanok-shell-v1';
+const CACHE = 'humanok-shell-v2';
 const OFFLINE_URL = '/offline.html';
+// หน้า offline ต้องมีโลโก้ไปด้วย ไม่งั้นตอนไม่มีเน็ตรูปจะหาย
+const PRECACHE = [OFFLINE_URL, '/ad-logo.png', '/favicon.png'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.add(OFFLINE_URL)));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
   self.skipWaiting();
 });
 

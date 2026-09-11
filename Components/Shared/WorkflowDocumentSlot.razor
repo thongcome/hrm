@@ -4,8 +4,12 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuthorizationService AuthorizationService
 
 @*
     WorkflowDocumentSlot — the "pluggable document" slot of the generic
@@ -174,6 +178,13 @@
             {
                 var resolvedUrl = controller!.Replace("{refid}", job.refid ?? "", StringComparison.OrdinalIgnoreCase);
                 var (routeType, routeParams) = MatchRoute(resolvedUrl);
+                // <DynamicComponent> ไม่ผ่าน AuthorizeRouteView — ต้องตรวจ [Authorize] ของหน้า
+                // เป้าหมายกับผู้ใช้คนนี้เอง ไม่งั้นหน้า admin (เช่น /pay/employees/{id}) โผล่ให้ผู้อนุมัติทั่วไป
+                if (routeType is not null && !await CanEmbedAsync(routeType))
+                {
+                    _docLink = resolvedUrl;
+                    return;
+                }
                 if (routeType is not null)
                 {
                     AddOptionalParameter(routeType, routeParams, "RefId", job.refid ?? "");
@@ -190,7 +201,7 @@
                     {
                         var secondUrl = approveController!.Replace("{refid}", job.refid ?? "", StringComparison.OrdinalIgnoreCase);
                         var (type2, params2) = MatchRoute(secondUrl);
-                        if (type2 is not null)
+                        if (type2 is not null && await CanEmbedAsync(type2))
                         {
                             AddOptionalParameter(type2, params2, "RefId", job.refid ?? "");
                             AddOptionalParameter(type2, params2, "JobMasterId", JobMasterId);
@@ -225,6 +236,25 @@
         {
             _loading = false;
         }
+    }
+
+    // ทุก [Authorize] บน type ของหน้าที่จะฝังต้องผ่านสำหรับผู้ใช้คนนี้
+    private async Task<bool> CanEmbedAsync(Type type)
+    {
+        var attrs = type.GetCustomAttributes<AuthorizeAttribute>(inherit: true).ToList();
+        if (attrs.Count == 0) return true;
+        var user = (await AuthProvider.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated != true) return false;
+        foreach (var a in attrs)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Policy)
+                && !(await AuthorizationService.AuthorizeAsync(user, null, a.Policy)).Succeeded)
+                return false;
+            if (!string.IsNullOrWhiteSpace(a.Roles)
+                && !a.Roles.Split(',').Any(role => user.IsInRole(role.Trim())))
+                return false;
+        }
+        return true;
     }
 
     // The app's own route table, built once: every routable component with

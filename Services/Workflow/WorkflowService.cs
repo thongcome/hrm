@@ -492,13 +492,12 @@ public class WorkflowService
             if (here?.isReturnSender != true)
                 throw new InvalidOperationException("ขั้นนี้ไม่ได้เปิดสิทธิ์ส่งกลับหาผู้กรอกแบบฟอร์ม (isReturnSender)");
 
-            var creatorLevel = await db.wf_sub_workflow_masters
-                .Where(s => s.workflowid == job.workflowid)
-                .MinAsync(s => s.wlevel, ct);
-            if (creatorLevel >= from)
-                throw new InvalidOperationException("ขั้นนี้เป็นขั้นแรกอยู่แล้ว ส่งกลับไม่ได้");
+            // ผู้กรอกแบบฟอร์มถืองานที่ "ขั้นร่าง" (0) ไม่ใช่ขั้นแรกของ config — เดิมส่งไปขั้น 1
+            // ผู้ยื่นจึงได้ใบงานของหัวหน้าขั้น 1 แล้วกด "ส่งต่อ" ข้ามหัวหน้าไปได้เลย
+            if (from <= DraftLevel)
+                throw new InvalidOperationException("งานอยู่ที่ผู้กรอกแบบฟอร์มอยู่แล้ว ส่งกลับไม่ได้");
 
-            return await MoveAsync(m, new ReturnToSenderMove(creatorLevel, from), ct);
+            return await MoveAsync(m, new ReturnToSenderMove(DraftLevel, from), ct);
         }
     }
 
@@ -526,12 +525,27 @@ public class WorkflowService
         var wf = await db.wf_workflows.FirstOrDefaultAsync(w => w.workflowid == workflowid, ct)
             ?? throw new InvalidOperationException($"ไม่พบ workflow id {workflowid}");
 
+        if (wf.isactive != true)
+            throw new InvalidOperationException($"workflow '{wf.wname}' ปิดใช้งานอยู่ ไม่สามารถเริ่มงานใหม่ได้");
+
         var levelCount = await db.wf_sub_workflow_masters.CountAsync(s => s.workflowid == workflowid, ct);
         if (levelCount == 0)
             throw new InvalidOperationException($"workflow {wf.workflowcode} ยังไม่มีเส้นทางเดิน (wf_sub_workflow_master ว่าง)");
 
         var user = await db.sc_users.FirstOrDefaultAsync(u => u.userid == actorUserId, ct);
         var fullName = $"{user?.firstname} {user?.lastname}".Trim();
+
+        // หน่วยงาน/cost center ของ "ผู้ขอ" อ่านจาก Hremployee.orgcode เท่านั้น (CEO, 11 ก.ย. 2569:
+        // "เราใช้ใน HRemployee.orgcode") — sc_user.orgcode ว่าง 7,005 จาก 7,006 คน ถ้าอ่านจากตรงนั้น
+        // ขั้นหัวหน้าตามสายบังคับบัญชาจะหาใครไม่เจอเลย เหมือนที่ StartJobAsync ของ engine เดิมทำ
+        // empid ที่ส่งมาคือ "เจ้าของเรื่อง" (งานยื่นแทน เช่น HR เปิดเรื่องพ้นสภาพให้พนักงาน)
+        // ไม่มีก็ใช้พนักงานของคนกดเอง
+        var subjectEmpNo = empid ?? user?.empid;
+        var subjectEmp = string.IsNullOrWhiteSpace(subjectEmpNo) ? null
+            : await db.Hremployee.Where(e => e.EmpNo == subjectEmpNo)
+                .Select(e => new { e.orgcode, e.CostCenterCode, e.EmpName, e.EmpSurname })
+                .FirstOrDefaultAsync(ct);
+        var subjectName = subjectEmp is null ? fullName : $"{subjectEmp.EmpName} {subjectEmp.EmpSurname}".Trim();
 
         var job = new job_master
         {
@@ -545,11 +559,12 @@ public class WorkflowService
             reftable = reftable,
             refid = refid,
             createuserid = actorUserId,
-            empid = empid ?? user?.empid,
+            empid = subjectEmpNo,
             createby = user?.loginname,
             createusername = fullName,
-            reqName = fullName,
-            reqOrg = user?.orgcode,
+            reqName = subjectName,
+            reqOrg = subjectEmp?.orgcode,
+            costcenter = subjectEmp?.CostCenterCode,
             createdate = DateTime.Now,
             reqdate = DateTime.Now,
             reqamont = amount,
@@ -588,7 +603,7 @@ public class WorkflowService
                 userid = actorUserId,
                 empid = job.empid,
                 username = fullName,
-                orgcode = user?.orgcode,
+                orgcode = subjectEmp?.orgcode ?? user?.orgcode,
                 jobstatus = Pending,
                 jobseq = job.jobseq,
                 isLast = true,
@@ -653,7 +668,7 @@ public class WorkflowService
             userid = owner.userid,
             empid = owner.empid,
             username = $"{owner.firstname} {owner.lastname}".Trim(),
-            orgcode = owner.orgcode,
+            orgcode = job.reqOrg ?? owner.orgcode,   // หน่วยงานมาจาก Hremployee ที่ snapshot ไว้ตอนสร้างงาน
             jobstatus = Pending,
             jobseq = job.jobseq,
             isLast = true,
@@ -785,11 +800,11 @@ public class WorkflowService
             var firstLevel = await db.wf_sub_workflow_masters
                 .Where(s => s.workflowid == job.workflowid).MinAsync(s => s.wlevel, ct);
 
-            if (model.subWorkflow.isReturnSender && currentlevel > firstLevel)
+            if (model.subWorkflow.isReturnSender && currentlevel > DraftLevel)
             {
-                // ส่งกลับถึงผู้กรอกแบบฟอร์มได้เลย — ชื่อคือผู้สร้างงาน
+                // ส่งกลับถึงผู้กรอกแบบฟอร์มได้เลย — ชื่อคือผู้สร้างงาน ปลายทางคือขั้นร่าง (0)
                 model.canReturnToSender = true;
-                model.sendBackToLevel = firstLevel;
+                model.sendBackToLevel = DraftLevel;
                 model.sendBackToName = job.createusername ?? job.reqName;
             }
             else if (currentlevel > firstLevel)
@@ -883,7 +898,10 @@ public class WorkflowService
     //  MoveAsync — หนึ่งก้าวของงาน ใช้ร่วมกันทั้งสามการขยับ
     //  ไม่มี if เช็คทิศทางเลย ทุกความต่างอยู่ในคลาส WorkflowMove
     // ========================================================================
-    private async Task<WorkFlowViewModel> MoveAsync(WorkFlowViewModel model, WorkflowMove move, CancellationToken ct)
+    // internalHop = engine เรียกตัวเองต่อ (ข้ามขั้นที่ไม่มีผู้อนุมัติ / ขั้นครบเงื่อนไขแล้วเดินต่อเอง /
+    // ขั้นล่มถอยกลับ) — คนกดผ่านการตรวจสิทธิ์ที่ขั้นเดิมไปแล้ว ไม่ต้องถือใบงานที่ขั้นใหม่
+    private async Task<WorkFlowViewModel> MoveAsync(WorkFlowViewModel model, WorkflowMove move, CancellationToken ct,
+        bool internalHop = false)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
@@ -893,6 +911,32 @@ public class WorkflowService
 
         var fromLevel = job.lastLevel ?? 0;
         var toLevel = fromLevel + move.Delta;
+
+        // ── ใครกดได้ ──────────────────────────────────────────────────────
+        // CEO: "สิทธิ์มันเห็นจาก job_user_list อยู่แล้ว" — จะ "ทำ" ได้ก็ต้องถือใบงานที่ยัง
+        // มีชีวิตอยู่ที่ขั้นนี้จริง (PENDING + isLast + ขั้นตรงกับ lastLevel) ไม่งั้นแท็บที่ค้าง
+        // ไว้ของคนที่อนุมัติไปแล้ว หรือคนในวงที่ไม่ใช่ผู้ถืองาน กดแล้วงานเดินข้ามขั้นได้
+        var holdsLiveRow = internalHop || await db.job_user_lists.AnyAsync(a =>
+            a.jobmasterid == job.jobmasterid && a.userid == model.actorUserId
+            && a.wlevel == fromLevel && a.isLast == true && a.jobstatus == Pending, ct);
+        if (!holdsLiveRow)
+            throw new InvalidOperationException(
+                "งานนี้ไม่ได้อยู่ในมือคุณแล้ว — อาจถูกดำเนินการไปแล้วหรือเลื่อนไปขั้นอื่น กรุณาโหลดหน้าใหม่");
+
+        // ขั้นแบบ pool ต้อง "รับงาน" ก่อน และคนที่รับไปแล้วเท่านั้นที่กดได้
+        if (!internalHop && fromLevel > DraftLevel)
+        {
+            var hereIsPool = await db.wf_sub_workflow_masters
+                .Where(s => s.workflowid == job.workflowid && s.wlevel == fromLevel)
+                .Select(s => s.isPool).FirstOrDefaultAsync(ct);
+            if (hereIsPool)
+            {
+                if (job.PoolClaimedByUserId is null || job.PoolClaimedWLevel != fromLevel)
+                    throw new InvalidOperationException("ขั้นนี้เป็นงานกลาง ต้องกด \"รับงาน\" ก่อนจึงจะดำเนินการได้");
+                if (job.PoolClaimedByUserId != model.actorUserId)
+                    throw new InvalidOperationException("งานนี้มีคนอื่นรับไปแล้ว");
+            }
+        }
 
         // ส่งกลับถึงระดับ draft — ไม่มี config ให้อ่าน เพราะ draft ไม่ใช่ขั้นที่ตั้งค่า
         // งานกลับไปอยู่ในมือผู้กรอกเหมือนตอนยังไม่ส่ง
@@ -952,7 +996,7 @@ public class WorkflowService
             job.lastLevel = toLevel;
             await db.SaveChangesAsync(ct);
 
-            return await MoveAsync(model, WorkflowMove.Forward, ct);   // ไปขั้นถัดไปต่อ
+            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true);   // ไปขั้นถัดไปต่อ
         }
 
         if (move.LeavesLevel && recipients.Count == 0)
@@ -999,6 +1043,7 @@ public class WorkflowService
         job.jobseq = jobSub.jobseq;   // jobseq เป็นของรอยเท้า job คัดลอกกลับ
 
         // 5. stamp ลง job_master
+        var statusBefore = job.status;
         job.lastLevel = toLevel;
         job.status = move.StampOn(target) ?? job.status;
         job.remark = model.reason;
@@ -1028,6 +1073,12 @@ public class WorkflowService
             var outcome = WorkflowEngineService.EvaluateLevel(jobSub, roundRows);
             levelDone = outcome == WorkflowEngineService.LevelOutcome.Complete;
             levelFailed = outcome == WorkflowEngineService.LevelOutcome.Failed;
+
+            // ขั้นสุดท้ายที่มีผู้อนุมัติหลายคน: คนแรกกดแล้วงานยังไม่จบ ต้องไม่ประทับ
+            // สถานะปิดงาน (forwardstatus เช่น COMPLETED) ลง job_master ก่อนเวลา
+            // ไม่งั้นทุกรายการเห็นว่า "เสร็จแล้ว" ทั้งที่ isJobClosed ยังเป็น false
+            if (!levelDone)
+                job.status = target.standstatus ?? statusBefore;
         }
 
         // ยังไต่หัวหน้าไม่ครบ หรือยังรอคนอื่นในขั้นเดียวกัน = ระดับนี้ยังไม่จบ
@@ -1076,11 +1127,11 @@ public class WorkflowService
         // ระดับนี้ครบเงื่อนไขแล้วและไม่ใช่ขั้นสุดท้าย -> งานเดินต่อเอง
         // ผู้อนุมัติแค่กด "อนุมัติ" ไม่ต้องมีใครมากดส่งต่ออีกที
         if (move.Delta == 0 && hopNow == 0 && levelDone && !target.istop)
-            return await MoveAsync(model, WorkflowMove.Forward, ct);
+            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true);
 
         // ระดับนี้ล่ม (ถูกปฏิเสธ / น้ำหนักไม่ถึงเกณฑ์แล้ว) -> ถอยกลับตาม config
         if (move.Delta == 0 && hopNow == 0 && levelFailed)
-            return await MoveAsync(model, WorkflowMove.Backward, ct);
+            return await MoveAsync(model, WorkflowMove.Backward, ct, internalHop: true);
 
         return model;
     }
