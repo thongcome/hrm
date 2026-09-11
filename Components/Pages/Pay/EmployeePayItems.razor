@@ -194,6 +194,12 @@ else
                 <MudItem xs="12" sm="6">
                     <MudCheckBox @bind-Value="_form.IsTaxable" Label="@L.Translate("AdhocIsTaxableLabel")" />
                 </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="PayrollRunType" @bind-Value="_form.TargetRunType" Label="จ่ายในรอบ" HelperText="รอบโบนัส = จ่ายแยก ภาษีคิดส่วนต่างทั้งก้อน">
+                        <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Regular">รอบปกติ</MudSelectItem>
+                        <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Bonus">รอบโบนัส</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
                 <MudItem xs="12">
                     <MudTextField @bind-Value="_form.Reason" Label="@L.Translate("ReasonLabel")" Required="true" Lines="2" />
                 </MudItem>
@@ -231,6 +237,7 @@ else
         public decimal Amount { get; set; }
         public bool IsTaxable { get; set; } = true;
         public string Reason { get; set; } = "";
+        public PayrollRunType TargetRunType { get; set; } = PayrollRunType.Regular;
     }
 
     // InvariantCulture: the server's ambient culture is Thai, whose default
@@ -350,6 +357,7 @@ else
             HremployeeId = HremployeeId,
             PayItemTypeId = _form.PayItemTypeId,
             TargetPeriod = TargetPeriod,
+            TargetRunType = _form.TargetRunType,
             Amount = _form.Amount,
             IsTaxable = _form.IsTaxable,
             Reason = _form.Reason,

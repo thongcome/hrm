@@ -252,6 +252,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
     }
     private readonly List<RunLog> _runs = new();
     private decimal _e002MayTax;
+    private decimal _e001Recovery;
 
     private async Task RunMonthlyCompanyYearAsync(ServiceProvider sp, IDbContextFactory<HRMContext> factory, Dictionary<string, long> ids)
     {
@@ -275,6 +276,9 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
                 ctx.Pay_PayrollRunHolds.Add(new Pay_PayrollRunHold { PayrollRunId = runId, HremployeeId = ids["E007"], EmpNo = "E007", Reason = "เอกสารไม่ครบ รอตรวจ", HeldByUserId = Calc, HeldDate = DateTime.Now, IsActive = true });
                 await ctx.SaveChangesAsync();
             }
+
+            if (m == 12)
+                await SeedDecemberBonusItemsAsync(factory, ids);   // ตั้งไว้ก่อนรอบปกติ — รอบปกติต้องไม่หยิบไป
 
             var summary = await wf.CalculateAsync(runId, Calc);
             var expectedCount = ExpectedHeadcount(m) - (m == 2 ? 1 : 0);
@@ -465,6 +469,14 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         Near("OT", $"{period} E002 ค่าล่วงเวลา", Line(byNo["E002"], "OT"), otExpected, 0.01m);
         // ค่าคอมฯ มิ.ย.
         if (m == 6) Near("ADHOC", $"{period} E002 ค่าคอมมิชชัน 20,000 เข้ารอบปกติ", Line(byNo["E002"], "BONUS"), 20000m, 0.01m);
+        // ธ.ค.: โบนัสที่ตั้ง "รอบโบนัส" ไว้ก่อนคำนวณ ต้องไม่ถูกรอบปกติหยิบไป
+        if (m == 12)
+        {
+            Near("ADHOC", $"{period} E002 รอบปกติไม่มีโบนัส (ตั้งเป็นรอบโบนัสไว้)", Line(byNo["E002"], "BONUS"), 0m, 0.001m);
+            Near("ADHOC", $"{period} E008 รอบปกติไม่มีโบนัส (ตั้งเป็นรอบโบนัสไว้)", Line(byNo["E008"], "BONUS"), 0m, 0.001m);
+        }
+        // พ.ย.: รายการหักคืนเงินที่โอนเกิน (จากรอบปรับปรุง ต.ค. ที่ E001 ยอดลด) ถูกหักในรอบปกติถัดไป
+        if (m == 11) Near("BANK", $"{period} E001 หักคืนเงินที่โอนเกินจากรอบปรับปรุง ต.ค.", Line(byNo["E001"], "ADHOC_DEDUCT"), _e001Recovery, 0.01m);
 
         // ภาษี ม.ค. ของคนเงินเดือนคงที่ = ภาษีทั้งปี ÷ 12 (ตรวจสูตรประมาณการ)
         if (m == 1)
@@ -514,9 +526,10 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         await using (var ctx = await factory.CreateDbContextAsync())
         {
             ctx.HrwOts.Add(NewOt(Co, "E002", "OT2510B", new DateTime(Year, 10, 20), 5000m));
+            ctx.Att_DailyAttendances.Add(new Att_DailyAttendance { HremployeeId = ids["E001"], CompanyId = Co, WorkDate = new DateOnly(Year, 10, 20), IsAbsent = true, WorkLocation = AttWorkLocation.Office });
             await ctx.SaveChangesAsync();
         }
-        var rev = await wf.CreateReversalRunAsync(octRunId, Calc, "OT ของ E002 ตกหล่น 5,000");
+        var rev = await wf.CreateReversalRunAsync(octRunId, Calc, "OT ของ E002 ตกหล่น 5,000 และ E001 ขาดงาน 20 ต.ค. ไม่ได้หัก");
         _runs.Add(new RunLog { Id = rev, Period = $"{Year}10", Type = PayrollRunType.Reversal, Month = 10, Label = "รอบกลับรายการ ต.ค." });
         try { await wf.CreateReversalRunAsync(octRunId, Calc, "ซ้ำ"); Fail("STATE", "กลับรายการซ้ำต้องถูกปฏิเสธ", "ผ่าน"); }
         catch (InvalidOperationException ex) { Pass("STATE", "กลับรายการซ้ำถูกปฏิเสธ", ex.Message); }
@@ -557,25 +570,45 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             var e002 = adjRows.First(e => e.EmpNo == "E002");
             Near("ADJ", "รอบปรับปรุง E002 OT = 2,000 + 5,000", e002.Pay_PayrollLineItems.Where(l => l.Pay_PayItemType.Code == "OT").Sum(l => l.Amount), 7000m, 0.01m);
             var origRows = await ctx.Pay_PayrollEmployees.AsNoTracking().Where(e => e.PayrollRunId == octRunId).ToListAsync();
-            foreach (var o in origRows.Where(o => o.EmpNo != "E002"))
+            foreach (var o in origRows.Where(o => o.EmpNo != "E002" && o.EmpNo != "E001"))
                 Near("ADJ", $"รอบปรับปรุง {o.EmpNo} สุทธิเท่ารอบเดิม (ไม่มีอะไรเปลี่ยน)", adjRows.First(a => a.EmpNo == o.EmpNo).NetPay, o.NetPay, 0.01m);
+            var adjE001 = adjRows.First(a => a.EmpNo == "E001");
+            var origE001 = origRows.First(o => o.EmpNo == "E001");
+            Near("ADJ", "รอบปรับปรุง E001 หักขาดงาน 20 ต.ค. 1 วัน", adjE001.Pay_PayrollLineItems.Where(l => l.Pay_PayItemType.Code == "ABSENT").Sum(l => l.Amount), 1000m, 0.01m);
+            Expect("ADJ", "รอบปรับปรุง E001 สุทธิต่ำกว่าที่โอนไปแล้ว", adjE001.NetPay < origE001.NetPay, $"{adjE001.NetPay:N2} < {origE001.NetPay:N2}");
+            _e001Recovery = origE001.NetPay - adjE001.NetPay;
+            var recovery = await ctx.Pay_AdhocPayItems.FirstOrDefaultAsync(a => a.HremployeeId == ids["E001"] && a.Remark != null && a.Remark.StartsWith("BANKDELTA:"));
+            Expect("BANK", "สร้างรายการหักคืนให้ E001 ในงวดถัดไป (รอ HR อนุมัติ)", recovery is not null && recovery.TargetPeriod == $"{Year}11" && recovery.Status == PayAdhocItemStatus.Pending, recovery is null ? "ไม่พบ" : $"{recovery.TargetPeriod} {recovery.Amount:N2} {recovery.Status}");
+            if (recovery is not null)
+            {
+                Near("BANK", "ยอดหักคืน E001 = ที่โอนแล้ว − ยอดใหม่", recovery.Amount, _e001Recovery, 0.005m);
+                recovery.Status = PayAdhocItemStatus.Approved; recovery.ApprovedByUserId = Approver; recovery.ApprovedDate = DateTime.Now;   // HR อนุมัติ → หักใน พ.ย.
+                await ctx.SaveChangesAsync();
+            }
             var b = await ctx.Pay_BankFileExportBatches.AsNoTracking().FirstAsync(x => x.Id == bankId);
-            Near("BANK", "รอบปรับปรุง ต.ค. ยอดโอน = Σ สุทธิรอบปรับปรุง", b.TotalAmount, adjRows.Where(a => !a.IsExcluded).Sum(a => a.NetPay), 0.005m);
-            Note("ต.ค.: ไฟล์ธนาคารรอบปรับปรุงเป็นยอดเต็มงวดอีกครั้ง (ไม่ใช่ส่วนต่าง) — ฝ่ายบัญชีต้องหักกลบกับที่โอนไปแล้ว ระบบยังไม่มี 'โอนเฉพาะส่วนต่าง'");
+            var origE002 = origRows.First(o => o.EmpNo == "E002");
+            Expect("BANK", "รอบปรับปรุง ต.ค. ไฟล์ธนาคารเป็น 'ส่วนต่าง' จากรอบที่จ่ายแล้ว", b.DeltaOfPayrollRunId == octRunId, $"DeltaOfPayrollRunId={b.DeltaOfPayrollRunId}");
+            Near("BANK", "รอบปรับปรุง ต.ค. ยอดโอน = ส่วนต่างสุทธิของ E002 เท่านั้น (คนอื่นไม่เปลี่ยน ไม่โอนซ้ำ)", b.TotalAmount, e002.NetPay - origE002.NetPay, 0.005m);
+            Expect("BANK", "รอบปรับปรุง ต.ค. ไฟล์มี 1 แถว", b.TotalRecordCount == 1, $"{b.TotalRecordCount} แถว — {b.Remark}");
+            Expect("BANK", "รอบปรับปรุง ต.ค. รายการเรียกคืนมีเฉพาะ E001", await ctx.Pay_AdhocPayItems.CountAsync(a => a.Remark != null && a.Remark.StartsWith("BANKDELTA:")) == 1, "");
         }
     }
 
     // ธ.ค.: รอบโบนัส (รายการเฉพาะกิจที่ HR อนุมัติหลังรอบปกติ) — ภาษีแบบส่วนต่าง
-    private async Task BonusRunDecemberAsync(IDbContextFactory<HRMContext> factory, PayrollWorkflowService wf, BankFileExportService bank, GLExportService gl, Dictionary<string, long> ids)
+    private async Task SeedDecemberBonusItemsAsync(IDbContextFactory<HRMContext> factory, Dictionary<string, long> ids)
     {
         await using (var ctx = await factory.CreateDbContextAsync())
         {
             var bonusType = await ctx.Pay_PayItemTypes.FirstAsync(t => t.Code == "BONUS");
             ctx.Pay_AdhocPayItems.AddRange(
-                new Pay_AdhocPayItem { HremployeeId = ids["E002"], PayItemTypeId = bonusType.Id, TargetPeriod = $"{Year}12", Amount = 100000m, IsTaxable = true, Reason = "โบนัสประจำปี", Status = PayAdhocItemStatus.Approved, RequestedByUserId = Calc, RequestedDate = DateTime.Now, ApprovedByUserId = Approver, ApprovedDate = DateTime.Now },
-                new Pay_AdhocPayItem { HremployeeId = ids["E008"], PayItemTypeId = bonusType.Id, TargetPeriod = $"{Year}12", Amount = 50000m, IsTaxable = true, Reason = "โบนัสประจำปี", Status = PayAdhocItemStatus.Approved, RequestedByUserId = Calc, RequestedDate = DateTime.Now, ApprovedByUserId = Approver, ApprovedDate = DateTime.Now });
+                new Pay_AdhocPayItem { HremployeeId = ids["E002"], PayItemTypeId = bonusType.Id, TargetPeriod = $"{Year}12", TargetRunType = PayrollRunType.Bonus, Amount = 100000m, IsTaxable = true, Reason = "โบนัสประจำปี", Status = PayAdhocItemStatus.Approved, RequestedByUserId = Calc, RequestedDate = DateTime.Now, ApprovedByUserId = Approver, ApprovedDate = DateTime.Now },
+                new Pay_AdhocPayItem { HremployeeId = ids["E008"], PayItemTypeId = bonusType.Id, TargetPeriod = $"{Year}12", TargetRunType = PayrollRunType.Bonus, Amount = 50000m, IsTaxable = true, Reason = "โบนัสประจำปี", Status = PayAdhocItemStatus.Approved, RequestedByUserId = Calc, RequestedDate = DateTime.Now, ApprovedByUserId = Approver, ApprovedDate = DateTime.Now });
             await ctx.SaveChangesAsync();
         }
+    }
+
+    private async Task BonusRunDecemberAsync(IDbContextFactory<HRMContext> factory, PayrollWorkflowService wf, BankFileExportService bank, GLExportService gl, Dictionary<string, long> ids)
+    {
         var bonus = await CreateRunAsync(factory, Co, 12, 1, 1, PayrollRunType.Bonus);
         _runs.Add(new RunLog { Id = bonus, Period = $"{Year}12", Type = PayrollRunType.Bonus, Month = 12, Label = "รอบโบนัส ธ.ค." });
         var s = await wf.CalculateAsync(bonus, Calc);

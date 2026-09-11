@@ -443,12 +443,20 @@ else
             <MudTable Items="_bankFileBatches" Hover="true" Dense="true">
                 <HeaderContent>
                     <MudTh>@L.Translate("ColGeneratedDate")</MudTh>
+                    <MudTh>แบบ</MudTh>
                     <MudTh>@L.Translate("ColRecordCount")</MudTh>
                     <MudTh>@L.Translate("ColTotalAmount")</MudTh>
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>
+                        @(context.DeltaOfPayrollRunId is long dof ? $"ส่วนต่างจากรอบ #{dof}" : "เต็มงวด")
+                        @if (!string.IsNullOrWhiteSpace(context.Remark))
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@context.Remark</MudText>
+                        }
+                    </MudTd>
                     <MudTd>@context.TotalRecordCount</MudTd>
                     <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
                     <MudTd><MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank">@L.Translate("DownloadButton")</MudLink></MudTd>
@@ -590,13 +598,16 @@ else
         _negativeCount = employees.Count(e => e.IsNegativeNetPayFlag && !e.IsExcluded);
         _allowed = PayrollWorkflowService.GetAllowedActions(_run);
 
+        var forBonus = _run.RunType == PayrollRunType.Bonus;
         _pendingAdhocCount = await context.Pay_AdhocPayItems
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
                 && a.Hremployee.companyid == _run.CompanyId
+                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
                 && a.Status == PayAdhocItemStatus.Pending);
         _unconsumedApprovedAdhocCount = await context.Pay_AdhocPayItems
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
                 && a.Hremployee.companyid == _run.CompanyId
+                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
                 && a.Status == PayAdhocItemStatus.Approved);
 
         _canGenerateDocuments = _run.Status >= PayrollRunStatus.Approved && _run.Status != PayrollRunStatus.Cancelled;

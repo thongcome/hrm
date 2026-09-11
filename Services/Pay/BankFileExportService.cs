@@ -36,28 +36,75 @@ public class BankFileExportService
             .OrderBy(e => e.EmpNo)
             .ToListAsync(ct);
 
+        // รอบปรับปรุง = คำนวณงวดใหม่ทั้งงวดหลังกลับรายการ แต่เงินของรอบต้นทาง "โอนไปแล้ว" — ไฟล์ธนาคารจึงต้องเป็น
+        // ส่วนต่าง (ใหม่ − ที่โอนแล้ว) ไม่ใช่ยอดเต็มงวดซ้ำ (12 ก.ย. 2569 พบจากเทสทั้งปี 2568) ยอดใหม่ที่ต่ำกว่าที่โอนแล้ว
+        // โอนติดลบไม่ได้ → สร้างรายการหักคืนในงวดถัดไปให้ HR อนุมัติ  ถ้ารอบต้นทางยังไม่ได้จ่าย/ยังไม่ได้ส่งไฟล์ = ไฟล์เต็มงวดตามเดิม
+        Pay_PayrollRun? paidOriginal = null;
+        if (run.RunType == PayrollRunType.Adjustment && run.AdjustmentOfRunId is long originalId)
+        {
+            var original = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == originalId, ct);
+            var sent = original is not null && (original.Status == PayrollRunStatus.Paid
+                || await context.Pay_BankFileExportBatches.AnyAsync(b => b.PayrollRunId == originalId && b.Status >= BankFileExportStatus.Downloaded, ct));
+            if (sent) paidOriginal = original;
+        }
+
+        var lines = new List<(Pay_PayrollEmployee Emp, decimal Amount)>();
+        var recoveries = new List<(long HremployeeId, string EmpNo, decimal PaidBefore, decimal NewNet)>();
+        string? remark = null;
+        if (paidOriginal is null)
+        {
+            lines.AddRange(employees.Select(e => (e, e.NetPay)));
+        }
+        else
+        {
+            var paidBefore = await context.Pay_PayrollEmployees
+                .Where(e => e.PayrollRunId == paidOriginal.Id && !e.IsExcluded)
+                .Select(e => new { e.HremployeeId, e.EmpNo, e.NetPay })
+                .ToListAsync(ct);
+            var paidByEmp = paidBefore.ToDictionary(p => p.HremployeeId, p => p.NetPay);
+            foreach (var e in employees)
+            {
+                var delta = e.NetPay - paidByEmp.GetValueOrDefault(e.HremployeeId);
+                if (delta > 0m) lines.Add((e, delta));
+                else if (delta < 0m) recoveries.Add((e.HremployeeId, e.EmpNo ?? "?", paidByEmp[e.HremployeeId], e.NetPay));
+            }
+            // คนที่โอนไปแล้วแต่ไม่อยู่ในรอบปรับปรุง (ถูกกันออก) = ต้องเรียกคืนทั้งก้อน
+            var inAdjustment = employees.Select(e => e.HremployeeId).ToHashSet();
+            foreach (var p in paidBefore.Where(p => !inAdjustment.Contains(p.HremployeeId) && p.NetPay > 0m))
+                recoveries.Add((p.HremployeeId, p.EmpNo ?? "?", p.NetPay, 0m));
+
+            if (lines.Count == 0 && recoveries.Count == 0)
+                throw new InvalidOperationException($"รอบปรับปรุงนี้ยอดสุทธิทุกคนเท่ากับรอบ #{paidOriginal.Id} ที่โอนไปแล้ว — ไม่มีส่วนต่างต้องโอน");
+
+            await CreateRecoveryItemsAsync(context, run, paidOriginal, recoveries, actorUserId, ct);
+            remark = $"ส่วนต่างจากรอบ #{paidOriginal.Id}: โอนเพิ่ม {lines.Count} คน {lines.Sum(l => l.Amount):N2} บาท"
+                     + (recoveries.Count > 0
+                         ? $" · เรียกคืน {recoveries.Count} คน {recoveries.Sum(r => r.PaidBefore - r.NewNet):N2} บาท ({string.Join(", ", recoveries.Take(5).Select(r => r.EmpNo))}{(recoveries.Count > 5 ? " …" : "")}) — สร้างรายการหักคืนงวดถัดไปไว้แล้ว รอ HR อนุมัติ"
+                         : "");
+        }
+
         // ไฟล์ที่ธนาคารรับต้องมีเลขบัญชีทุกแถวและยอดเป็นบวก (audit M9) — เจอแถวเสียให้หยุดและบอกชื่อ
         // ดีกว่าตัดคนออกเงียบ ๆ แล้วมีพนักงานไม่ได้เงิน
-        var noAccount = employees.Where(e => string.IsNullOrWhiteSpace(e.BankAccountNo)).Select(e => e.EmpNo).ToList();
+        var noAccount = lines.Where(l => string.IsNullOrWhiteSpace(l.Emp.BankAccountNo)).Select(l => l.Emp.EmpNo).ToList();
         if (noAccount.Count > 0)
             throw new InvalidOperationException(
                 $"พนักงาน {noAccount.Count} คนไม่มีเลขบัญชีธนาคาร (เช่น {string.Join(", ", noAccount.Take(5))}) — บันทึกเลขบัญชีในทะเบียนพนักงานแล้วคำนวณใหม่ หรือกันคนเหล่านี้ออกจากรอบก่อน");
-        var nonPositive = employees.Where(e => e.NetPay <= 0m).Select(e => e.EmpNo).ToList();
+        var nonPositive = lines.Where(l => l.Amount <= 0m).Select(l => l.Emp.EmpNo).ToList();
         if (nonPositive.Count > 0)
             throw new InvalidOperationException(
                 $"พนักงาน {nonPositive.Count} คนมียอดสุทธิเป็นศูนย์หรือติดลบ (เช่น {string.Join(", ", nonPositive.Take(5))}) — กันออกจากรอบก่อนสร้างไฟล์");
 
         var csv = new StringBuilder();
         csv.AppendLine("EmpNo,Name,BankCode,BankBranchCode,BankAccountNo,Amount");
-        foreach (var emp in employees)
+        foreach (var (emp, amount) in lines)
         {
             var name = $"{emp.Hremployee.EmpName} {emp.Hremployee.EmpSurname}".Replace("\"", "\"\"");
-            csv.AppendLine($"{emp.EmpNo},\"{name}\",{emp.BankCode},{emp.BankBranchCode},{emp.BankAccountNo},{emp.NetPay:0.00}");
+            csv.AppendLine($"{emp.EmpNo},\"{name}\",{emp.BankCode},{emp.BankBranchCode},{emp.BankAccountNo},{amount:0.00}");
         }
 
         var utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
         var fileBytes = utf8WithBom.GetPreamble().Concat(utf8WithBom.GetBytes(csv.ToString())).ToArray();
-        var fileName = $"bankfile_{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
+        var fileName = $"bankfile_{(paidOriginal is null ? "" : "delta_")}{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
         var (relativePath, _) = await _fileStorage.SaveAsync("bank-exports", fileName, fileBytes, ct);
 
         var batch = new Pay_BankFileExportBatch
@@ -65,15 +112,17 @@ public class BankFileExportService
             PayrollRunId = runId,
             BankFormatCode = "GENERIC_CSV",
             FilePath = relativePath,
-            TotalAmount = employees.Sum(e => e.NetPay),
-            TotalRecordCount = employees.Count,
+            TotalAmount = lines.Sum(l => l.Amount),
+            TotalRecordCount = lines.Count,
             Status = BankFileExportStatus.Generated,
             GeneratedByUserId = actorUserId,
+            DeltaOfPayrollRunId = paidOriginal?.Id,
+            Remark = remark,
         };
         context.Pay_BankFileExportBatches.Add(batch);
         await context.SaveChangesAsync(ct);
 
-        foreach (var emp in employees)
+        foreach (var (emp, amount) in lines)
         {
             context.Pay_BankFileExportLines.Add(new Pay_BankFileExportLine
             {
@@ -82,11 +131,42 @@ public class BankFileExportService
                 BankCode = emp.BankCode,
                 BankBranchCode = emp.BankBranchCode,
                 BankAccountNo = emp.BankAccountNo,
-                Amount = emp.NetPay,
+                Amount = amount,
             });
         }
         await context.SaveChangesAsync(ct);
 
         return batch.Id;
+    }
+
+    // ยอดใหม่ต่ำกว่าที่โอนไปแล้ว → รายการหัก (ADHOC_DEDUCT, ไม่กระทบภาษี) ในงวดถัดไป สถานะรอ HR อนุมัติ
+    // ทำเครื่องหมายไว้ใน Remark กันสร้างซ้ำถ้าสร้างไฟล์ธนาคารรอบเดิมอีกครั้ง
+    private static async Task CreateRecoveryItemsAsync(HRMContext context, Pay_PayrollRun run, Pay_PayrollRun original,
+        List<(long HremployeeId, string EmpNo, decimal PaidBefore, decimal NewNet)> recoveries, long actorUserId, CancellationToken ct)
+    {
+        if (recoveries.Count == 0) return;
+        var deductType = await context.Pay_PayItemTypes.FirstOrDefaultAsync(t => t.Code == "ADHOC_DEDUCT", ct)
+            ?? throw new InvalidOperationException("ไม่พบรายการรับ-จ่ายรหัส ADHOC_DEDUCT สำหรับสร้างรายการหักคืน");
+        var nextPeriod = run.PeriodStart.AddMonths(1).ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+        var marker = $"BANKDELTA:{run.Id}";
+        var existing = (await context.Pay_AdhocPayItems
+                .Where(a => a.Remark != null && a.Remark.StartsWith(marker) && a.Status != PayAdhocItemStatus.Cancelled && a.Status != PayAdhocItemStatus.Rejected)
+                .Select(a => a.HremployeeId).ToListAsync(ct)).ToHashSet();
+        foreach (var r in recoveries.Where(r => !existing.Contains(r.HremployeeId)))
+        {
+            context.Pay_AdhocPayItems.Add(new Pay_AdhocPayItem
+            {
+                HremployeeId = r.HremployeeId,
+                PayItemTypeId = deductType.Id,
+                TargetPeriod = nextPeriod,
+                TargetRunType = PayrollRunType.Regular,
+                Amount = r.PaidBefore - r.NewNet,
+                IsTaxable = false,
+                Reason = $"เรียกคืนเงินที่โอนเกินจากรอบ #{original.Id} งวด {original.PayrollPeriod}: โอนไปแล้ว {r.PaidBefore:N2} ยอดใหม่ตามรอบปรับปรุง #{run.Id} = {r.NewNet:N2}",
+                Remark = $"{marker}:{r.HremployeeId}",
+                Status = PayAdhocItemStatus.Pending,
+                RequestedByUserId = actorUserId,
+            });
+        }
     }
 }

@@ -93,7 +93,8 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var pending = new List<PendingItem>();
         var pendingAdhoc = await ctx.Pay_AdhocPayItems
             .Include(a => a.Pay_PayItemType)
-            .Where(a => a.TargetPeriod == run.PayrollPeriod && a.Status == PayAdhocItemStatus.Pending)
+            .Where(a => a.TargetPeriod == run.PayrollPeriod && a.Status == PayAdhocItemStatus.Pending
+                        && (run.RunType == PayrollRunType.Bonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus))
             .ToListAsync(ct);
         foreach (var a in pendingAdhoc)
         {

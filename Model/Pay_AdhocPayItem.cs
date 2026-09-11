@@ -30,6 +30,13 @@ public class Pay_AdhocPayItem
     [Required, StringLength(6)]
     public string TargetPeriod { get; set; } = null!;
 
+    // จ่ายในรอบไหนของงวด (12 ก.ย. 2569 — พบจากเทสทั้งปี 2568): เดิมรอบปกติหยิบทุกรายการของงวดไปก่อน
+    // โบนัสที่ HR อนุมัติไว้ก่อนคำนวณรอบปกติจึงไปโผล่ในรอบปกติแทนรอบโบนัส — Regular = รอบปกติ/ปรับปรุง, Bonus = รอบโบนัส
+    public PayrollRunType TargetRunType { get; set; } = PayrollRunType.Regular;
+
+    // งวดที่ของเดือนสำหรับบริษัทจ่าย 2 งวด (null = รอบแรกของเดือนที่คำนวณ)
+    public int? TargetTermNo { get; set; }
+
     [Column(TypeName = "decimal(15,2)")]
     public decimal Amount { get; set; }
 

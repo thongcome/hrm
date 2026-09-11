@@ -85,6 +85,20 @@
                 <MudNumericField @bind-Value="_form.Amount" Label="@L.Translate("AmountLabel")" Required="true" />
             </MudItem>
             <MudItem xs="12" sm="6">
+                <MudSelect T="PayrollRunType" @bind-Value="_form.TargetRunType" Label="จ่ายในรอบ"
+                    HelperText="รอบโบนัส = จ่ายแยกจากเงินเดือน ภาษีคิดแบบส่วนต่างทั้งก้อน · รอบปกติ = รวมในสลิปเงินเดือนของงวด">
+                    <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Regular">รอบปกติ</MudSelectItem>
+                    <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Bonus">รอบโบนัส</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int?" @bind-Value="_form.TargetTermNo" Label="งวดที่ของเดือน (บริษัทจ่าย 2 งวด)" Clearable="true"
+                    HelperText="ว่าง = รอบแรกของเดือนที่คำนวณ">
+                    <MudSelectItem T="int?" Value="1">งวดที่ 1</MudSelectItem>
+                    <MudSelectItem T="int?" Value="2">งวดที่ 2</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
                 <MudCheckBox @bind-Value="_form.IsTaxable" Label="@L.Translate("AdhocIsTaxableLabel")" />
             </MudItem>
             <MudItem xs="12">
@@ -142,7 +156,7 @@
                 <RowTemplate>
                     <MudTd>@context.Hremployee.EmpNo — @context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
                     <MudTd>@context.Pay_PayItemType.NameTh</MudTd>
-                    <MudTd>@context.TargetPeriod</MudTd>
+                    <MudTd>@context.TargetPeriod@(context.TargetRunType == PayrollRunType.Bonus ? " (รอบโบนัส)" : "")@(context.TargetTermNo is int tn ? $" งวด {tn}" : "")</MudTd>
                     <MudTd>
                         @context.Amount.ToString("N2")
                         @if (context.IsAmountAnomalyFlagged)
@@ -238,6 +252,8 @@
         public decimal Amount { get; set; }
         public bool IsTaxable { get; set; } = true;
         public string Reason { get; set; } = "";
+        public PayrollRunType TargetRunType { get; set; } = PayrollRunType.Regular;
+        public int? TargetTermNo { get; set; }
     }
 
     // "ALL" is a sentinel route value (not a real "yyyyMM" period) meaning
@@ -439,6 +455,8 @@
             HremployeeId = _form.SelectedEmployee.id,
             PayItemTypeId = _form.PayItemTypeId,
             TargetPeriod = targetPeriod,
+            TargetRunType = _form.TargetRunType,
+            TargetTermNo = _form.TargetTermNo,
             Amount = _form.Amount,
             IsTaxable = _form.IsTaxable,
             Reason = _form.Reason,

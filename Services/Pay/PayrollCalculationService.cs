@@ -290,6 +290,7 @@ public class PayrollCalculationService
         {
             var withItems = (await context.Pay_AdhocPayItems
                     .Where(a => a.TargetPeriod == run.PayrollPeriod
+                                && a.TargetRunType == PayrollRunType.Bonus
                                 && (a.Status == PayAdhocItemStatus.Approved
                                     || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
                     .Select(a => a.HremployeeId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -384,9 +385,13 @@ public class PayrollCalculationService
 
         // โหลดครั้งเดียวต่อรอบแทน query ต่อพนักงาน (audit M14: 7,000 คน = 35,000 round-trip)
         // รายการเฉพาะกิจของงวดนี้ที่อนุมัติแล้ว หรือที่รอบนี้เคยใช้ไปแล้ว (คำนวณซ้ำหยิบเดิมได้)
+        // รายการระบุรอบ (12 ก.ย. 2569): รอบโบนัสเห็นเฉพาะรายการที่ตั้ง "รอบโบนัส"; รอบปกติ/ปรับปรุงเห็นที่เหลือ
+        // และบริษัทจ่าย 2 งวด: รายการที่ระบุงวดที่ของเดือนไปเฉพาะงวดนั้น (ไม่ระบุ = รอบแรกที่คำนวณ)
         var adhocByEmployee = (await context.Pay_AdhocPayItems
                 .Include(a => a.Pay_PayItemType)
                 .Where(a => a.TargetPeriod == run.PayrollPeriod
+                            && (supplementary ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
+                            && (a.TargetTermNo == null || a.TargetTermNo == run.TermNo)
                             && (a.Status == PayAdhocItemStatus.Approved
                                 || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
                 .ToListAsync(ct))

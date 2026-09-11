@@ -34,6 +34,14 @@ public class Pay_BankFileExportBatch
     public long GeneratedByUserId { get; set; }
     public DateTime GeneratedDate { get; set; } = DateTime.Now;
 
+    // ไฟล์ "ส่วนต่าง" ของรอบปรับปรุง (12 ก.ย. 2569): ยอดในไฟล์ = สุทธิรอบปรับปรุง − สุทธิที่โอนไปแล้วในรอบต้นทางนี้
+    // (null = ไฟล์เต็มงวดตามปกติ) — เดิมรอบปรับปรุงออกไฟล์เต็มงวดซ้ำ เสี่ยงจ่ายซ้ำถ้าบัญชีไม่หักกลบเอง
+    public long? DeltaOfPayrollRunId { get; set; }
+
+    // สรุปสิ่งที่ไฟล์นี้ทำ/ไม่ได้ทำ (เช่น คนที่ต้องเรียกคืนเพราะยอดใหม่ต่ำกว่าที่โอนไปแล้ว)
+    [StringLength(2000)]
+    public string? Remark { get; set; }
+
     public virtual Pay_PayrollRun Pay_PayrollRun { get; set; } = null!;
     public virtual ICollection<Pay_BankFileExportLine> Pay_BankFileExportLines { get; set; } = new List<Pay_BankFileExportLine>();
 }
