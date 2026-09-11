@@ -37,5 +37,9 @@ public class Pay_TaxDeductionSetting
     [Column(TypeName = "decimal(15,2)")]
     public decimal ExpenseDeductionCap { get; set; } = 100000m;
 
+    // เพดานลดหย่อนเงินสะสมกองทุนสำรองเลี้ยงชีพต่อปี (มาตรา 47(1)(ช)) — เดิมฝังในโค้ด (Super Master, 11 ก.ย. 2569)
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal ProvidentFundDeductionCapPerYear { get; set; } = 500000m;
+
     public bool IsActive { get; set; } = true;
 }

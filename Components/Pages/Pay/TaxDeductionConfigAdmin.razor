@@ -34,6 +34,9 @@
         <MudItem xs="12" sm="4">
             <MudNumericField T="decimal" @bind-Value="_expenseCap" Label="เพดานค่าใช้จ่าย (บาท/ปี)" Format="N2" Min="0" />
         </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="decimal" @bind-Value="_pfCap" Label="เพดานลดหย่อนเงินสะสมกองทุนสำรองเลี้ยงชีพ (บาท/ปี)" Format="N2" Min="0" />
+        </MudItem>
         <MudItem xs="12">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettingAsync">บันทึกค่าลดหย่อนมาตรฐานปี @_selectedYear</MudButton>
         </MudItem>
@@ -128,6 +131,7 @@
     private decimal _personalAllowance = 60000m;
     private decimal _expenseRatePercent = 50m;
     private decimal _expenseCap = 100000m;
+    private decimal _pfCap = 500000m;
     private string? _settingInfo;
 
     private List<Pay_TaxDeductionType> _types = new();
@@ -157,6 +161,7 @@
             _personalAllowance = setting.PersonalAllowancePerYear;
             _expenseRatePercent = setting.ExpenseDeductionRate * 100m;
             _expenseCap = setting.ExpenseDeductionCap;
+            _pfCap = setting.ProvidentFundDeductionCapPerYear;
         }
         else
         {
@@ -166,6 +171,7 @@
             _personalAllowance = 60000m;
             _expenseRatePercent = 50m;
             _expenseCap = 100000m;
+            _pfCap = 500000m;
         }
 
         _types = await context.Pay_TaxDeductionTypes
@@ -187,6 +193,7 @@
                 PersonalAllowancePerYear = _personalAllowance,
                 ExpenseDeductionRate = _expenseRatePercent / 100m,
                 ExpenseDeductionCap = _expenseCap,
+                ProvidentFundDeductionCapPerYear = _pfCap,
                 IsActive = true,
             });
         }
@@ -195,6 +202,7 @@
             existing.PersonalAllowancePerYear = _personalAllowance;
             existing.ExpenseDeductionRate = _expenseRatePercent / 100m;
             existing.ExpenseDeductionCap = _expenseCap;
+            existing.ProvidentFundDeductionCapPerYear = _pfCap;
         }
         await context.SaveChangesAsync();
 

@@ -396,6 +396,7 @@ public static class ScMenuNavCatalog
         new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/reports/absenteeism", "รายงานการขาดงาน (Absenteeism)", "Absenteeism Report", "Icons.Material.Filled.EventBusy", 40),
 
         // ---- GRP_SYS_ADMIN (group guarded by Has("SYS_ADMIN")) ----
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นระบบ)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 5),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/menus", "จัดการเมนู", "Menu Management", "Icons.Material.Filled.AccountTree", 10),
         new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/roles", "จัดการกลุ่มผู้ใช้", "User Group Management", "Icons.Material.Filled.Groups", 20),
         // AD.CRUDManage permission-admin screen (สิทธิ์ราย role × หน้า) — added 1 ก.ย. 2569.

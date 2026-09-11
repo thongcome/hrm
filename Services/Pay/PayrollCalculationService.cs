@@ -181,6 +181,7 @@ public class PayrollCalculationService
         var personalAllowancePerYear = taxDeductionSetting?.PersonalAllowancePerYear ?? 60000m;
         var expenseDeductionRate = taxDeductionSetting?.ExpenseDeductionRate ?? 0.50m;
         var expenseDeductionCap = taxDeductionSetting?.ExpenseDeductionCap ?? 100000m;
+        var providentFundDeductionCap = taxDeductionSetting?.ProvidentFundDeductionCapPerYear ?? 500000m;
 
         // Only elections the employee chose to apply monthly ("จ่ายให้น้อยสุด")
         // reduce withholding now — ApplyMonthly=false ("จ่ายก่อนขอคืน") rows
@@ -693,7 +694,7 @@ public class PayrollCalculationService
             var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = await GetYtdAccumulatorsAsync(context, emp.id, run, priorEmployerIncome, ct, includeSamePeriod: supplementary);
 
             // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 500,000 บาท/ปี (audit M2) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
-            var pfDeductible = Math.Min(pf.EmployeeAmount, Math.Max(0m, ProvidentFundAnnualDeductionCap - ytdProvidentFund));
+            var pfDeductible = Math.Min(pf.EmployeeAmount, Math.Max(0m, providentFundDeductionCap - ytdProvidentFund));
             var thisPeriodFlatDeduction = ssoAmount + pfDeductible;
             decimal monthlyTax;
             TaxBracketCalculator.TaxCalculationResult annualCalc;
@@ -864,9 +865,6 @@ public class PayrollCalculationService
     // separate running-accumulator table.
     // ยอดสะสมนับเฉพาะรอบที่ "อนุมัติแล้ว" (audit H3) — รอบที่ยังแก้ได้ไม่ใช่ข้อเท็จจริง
     // includeSamePeriod = รอบเสริม (โบนัส) ต้องนับรอบปกติของงวดเดียวกันด้วย
-    // เพดานลดหย่อนเงินสะสมกองทุนสำรองเลี้ยงชีพต่อปี (ประมวลรัษฎากร มาตรา 47(1)(ช) + กฎกระทรวง) — ค่าคงที่ตามกฎหมาย
-    private const decimal ProvidentFundAnnualDeductionCap = 500000m;
-
     private static async Task<(decimal YtdIncome, decimal YtdDeduction, decimal YtdTax, decimal YtdProvidentFund)> GetYtdAccumulatorsAsync(
         HRMContext context, long hremployeeId, Pay_PayrollRun run, Pay_EmployeePriorEmployerIncome? priorEmployerIncome,
         CancellationToken ct, bool includeSamePeriod = false)

@@ -363,6 +363,7 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Pay_EmployeePriorEmployerIncome> Pay_EmployeePriorEmployerIncomes { get; set; }
     public virtual DbSet<Pay_PaySchedule> Pay_PaySchedules { get; set; }
+    public virtual DbSet<Sys_ProtectedSetting> Sys_ProtectedSettings { get; set; }
     public virtual DbSet<Pay_EmployeePayScheduleOverride> Pay_EmployeePayScheduleOverrides { get; set; }
     public virtual DbSet<Pay_ProvidentFundElection> Pay_ProvidentFundElections { get; set; }
     public virtual DbSet<Pay_PayrollAuditLog> Pay_PayrollAuditLogs { get; set; }
@@ -1604,6 +1605,11 @@ public partial class HRMContext : DbContext
         modelBuilder.Entity<Pay_PaySchedule>(entity =>
         {
             entity.HasIndex(e => new { e.CompanyId, e.EffectiveFrom });
+        });
+
+        modelBuilder.Entity<Sys_ProtectedSetting>(entity =>
+        {
+            entity.HasIndex(e => e.SettingKey).IsUnique();
         });
 
         modelBuilder.Entity<Pay_EmployeePayScheduleOverride>(entity =>
