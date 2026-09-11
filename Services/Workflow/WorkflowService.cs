@@ -305,15 +305,27 @@ public class WorkflowService
     public async Task<WorkFlowViewModel> ActAsync(WorkFlowViewModel m, string actionKind, CancellationToken ct = default)
     {
         var cur = await DetailAsync(m.jobmasterid, m.actorUserId, ct);
-        return actionKind switch
+        try
         {
-            WorkflowButtonService.ActionSendBack when cur.canReturnToSender => await ReturnToSenderAsync(m, ct),
-            WorkflowButtonService.ActionSendBack => await RejectOneStepAsync(m, ct),
-            WorkflowButtonService.ActionDecline => await DeclineAsync(m, ct),
-            _ when cur.subWorkflow?.istop == true => await ApproveAsync(m, ct),
-            _ => await SubmitAsync(m, ct),
-        };
+            return actionKind switch
+            {
+                WorkflowButtonService.ActionSendBack when cur.canReturnToSender => await ReturnToSenderAsync(m, ct),
+                WorkflowButtonService.ActionSendBack => await RejectOneStepAsync(m, ct),
+                WorkflowButtonService.ActionDecline => await DeclineAsync(m, ct),
+                // ขั้น 0 (ร่าง) มีแต่ "ส่งต่อ" — ผู้กรอกไม่ได้อนุมัติอะไร
+                _ when (cur.jobMaster?.lastLevel ?? 0) <= DraftLevel => await SubmitAsync(m, ct),
+                // ทุกขั้นอนุมัติ = Stand: ตัดสินที่ขั้นตัวเอง แล้ว engine ดูเงื่อนไขของขั้น (ครบทุกคน /
+                // คนใดคนหนึ่ง / น้ำหนักถึงเกณฑ์ / ไต่หัวหน้าครบชั้น) ก่อนเดินต่อเอง — เดิมขั้นกลางถูกส่ง
+                // เป็น Forward ตรง ๆ คนแรกที่กดจึงพางานข้ามเพื่อนร่วมขั้นและชั้นหัวหน้าที่เหลือ (audit H7)
+                _ => await ApproveAsync(m, ct),
+            };
+        }
+        catch (DbUpdateConcurrencyException ex) { throw ConcurrentActionError(ex); }
     }
+
+    // สองคนกดงานเดียวกันพร้อมกัน — job_master.RowVersion ให้คนที่ commit ทีหลังล้ม ไม่ให้เขียนทับ (audit H5)
+    internal static InvalidOperationException ConcurrentActionError(Exception inner)
+        => new("มีผู้ดำเนินการงานนี้พร้อมกับคุณ ระบบบันทึกผลของคนที่กดก่อน กรุณาโหลดหน้าใหม่แล้วดูสถานะล่าสุด", inner);
 
     // ── ไม่อนุมัติ (Decline) — จบงานตรงนั้น ไม่ใช่ส่งกลับไปแก้ ────────────────
     //
@@ -947,10 +959,28 @@ public class WorkflowService
     // internalHop = engine เรียกตัวเองต่อ (ข้ามขั้นที่ไม่มีผู้อนุมัติ / ขั้นครบเงื่อนไขแล้วเดินต่อเอง /
     // ขั้นล่มถอยกลับ) — คนกดผ่านการตรวจสิทธิ์ที่ขั้นเดิมไปแล้ว ไม่ต้องถือใบงานที่ขั้นใหม่
     private async Task<WorkFlowViewModel> MoveAsync(WorkFlowViewModel model, WorkflowMove move, CancellationToken ct,
-        bool internalHop = false)
+        bool internalHop = false, HRMContext? sharedDb = null)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // engine เรียกตัวเองต่อ (ข้ามขั้นที่ไม่มีผู้อนุมัติ / เดินต่อเมื่อครบเงื่อนไข / ถอยเมื่อล่ม) ใช้ context
+        // และ transaction เดียวกับก้าวแรก — ทุกก้าวที่เกิดจากการกดครั้งเดียว commit พร้อมกันหรือไม่เกิดเลย
+        // (audit H4: เดิมข้ามขั้นแล้ว SaveChanges ก่อน recurse ถ้าก้าวถัดไปล้ม งานค้างครึ่งทางไม่มีใครถือ)
+        if (sharedDb is not null)
+            return await MoveCoreAsync(sharedDb, model, move, ct, internalHop);
 
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var result = await MoveCoreAsync(db, model, move, ct, internalHop);
+        await tx.CommitAsync(ct);
+
+        // เขียนผลกลับเอกสารหลัง commit เท่านั้น — handler เปิด context ของตัวเองและต้องเห็นงานที่ปิดแล้วจริง
+        if (result.jobMaster?.isJobClosed == true)
+            await WriteBackAsync(result.jobMaster, ct);
+        return result;
+    }
+
+    private async Task<WorkFlowViewModel> MoveCoreAsync(HRMContext db, WorkFlowViewModel model, WorkflowMove move,
+        CancellationToken ct, bool internalHop)
+    {
         var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == model.jobmasterid, ct)
             ?? throw new InvalidOperationException("ไม่พบงาน");
         if (job.isJobClosed == true) throw new InvalidOperationException("งานนี้ปิดแล้ว");
@@ -1027,25 +1057,11 @@ public class WorkflowService
         // isAutoApproveAllow — ขั้นนี้ไม่มีใครเลย ให้ข้ามไปขั้นถัดไปเองแทนที่จะค้าง
         // (เช่นหน่วยงานยังไม่ได้ตั้งผู้อนุมัติ หรือ role นั้นยังไม่มีสมาชิก)
         // ประทับรอยเท้าไว้ด้วยว่าขั้นนี้ถูกข้าม จะได้อ่านประวัติออกว่าเกิดอะไรขึ้น
-        if (move.LeavesLevel && recipients.Count == 0 && target.isAutoApproveAllow && !target.istop)
-        {
-            var skipper = await db.sc_users.Where(u => u.userid == model.actorUserId)
-                .Select(u => (u.firstname + " " + u.lastname).Trim()).FirstOrDefaultAsync(ct);
+        // ข้ามขั้นไม่ใช่ทางลัด: ขั้นที่ออกมายังต้องปิดใบงาน/ประทับแถวคนกด/ปิดรอยเท้าเหมือนก้าวปกติ
+        // (audit H4: เดิม return ก่อนข้อ 3 ใบงานของขั้นเดิมค้าง PENDING+isLast ไว้ที่ขั้นที่งานไม่อยู่แล้ว)
+        var autoSkip = move.LeavesLevel && recipients.Count == 0 && target.isAutoApproveAllow && !target.istop;
 
-            var skipStamp = CreateJobSubWorkflow(job, target);
-            skipStamp.modby = skipper;
-            skipStamp.remark = $"AutoSkip {fromLevel} -> {toLevel} (ไม่มีผู้อนุมัติ)";
-            skipStamp.endtime = DateTime.Now;
-            db.job_subworkflow_masters.Add(skipStamp);
-
-            job.jobseq = skipStamp.jobseq;
-            job.lastLevel = toLevel;
-            await db.SaveChangesAsync(ct);
-
-            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true);   // ไปขั้นถัดไปต่อ
-        }
-
-        if (move.LeavesLevel && recipients.Count == 0)
+        if (move.LeavesLevel && recipients.Count == 0 && !autoSkip)
             throw new InvalidOperationException($"ขั้นที่ {toLevel} ยังไม่มีผู้เกี่ยวข้อง — ตรวจสอบการตั้งค่า");
 
         // 3. ปิดรอยเท้าของขั้นที่เพิ่งทำเสร็จ + ตราสถานะลงแถวของคนที่กด
@@ -1084,7 +1100,10 @@ public class WorkflowService
         var jobSub = CreateJobSubWorkflow(job, target);
         jobSub.reason = model.reason;
         jobSub.modby = actorName;                                  // ใครทำ
-        jobSub.remark = $"{move.Name} {fromLevel} -> {toLevel}";   // ทำอะไร
+        jobSub.remark = autoSkip
+            ? $"AutoSkip {fromLevel} -> {toLevel} (ไม่มีผู้อนุมัติ)"   // ขั้นนี้ไม่มีใคร ถูกข้าม (อ่านออกในประวัติ)
+            : $"{move.Name} {fromLevel} -> {toLevel}";               // ทำอะไร
+        if (autoSkip) jobSub.endtime = DateTime.Now;
         db.job_subworkflow_masters.Add(jobSub);
         job.jobseq = jobSub.jobseq;   // jobseq เป็นของรอยเท้า job คัดลอกกลับ
 
@@ -1161,9 +1180,9 @@ public class WorkflowService
         await AuditAsync(job, move.Name,
             new { from = fromLevel, to = toLevel, hop = hopNow, closed = job.isJobClosed, model.reason }, ct);
 
-        // ถึง istop และผ่านแล้ว = สิ้นสุดงาน → เขียนผลกลับเอกสารทันที ไม่รอให้ใครเปิดหน้า
-        if (job.isJobClosed == true)
-            await WriteBackAsync(job, ct);
+        // ขั้นปลายทางไม่มีใคร → เดินต่อไปขั้นถัดไปใน transaction เดียวกัน
+        if (autoSkip)
+            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true, sharedDb: db);
 
         // คนที่เพิ่งได้รับงานต้องรู้ว่ามีงานมาถึงมือ
         if (model.jobUserList.Count > 0)
@@ -1177,11 +1196,11 @@ public class WorkflowService
         // ระดับนี้ครบเงื่อนไขแล้วและไม่ใช่ขั้นสุดท้าย -> งานเดินต่อเอง
         // ผู้อนุมัติแค่กด "อนุมัติ" ไม่ต้องมีใครมากดส่งต่ออีกที
         if (move.Delta == 0 && hopNow == 0 && levelDone && !target.istop)
-            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true);
+            return await MoveAsync(model, WorkflowMove.Forward, ct, internalHop: true, sharedDb: db);
 
         // ระดับนี้ล่ม (ถูกปฏิเสธ / น้ำหนักไม่ถึงเกณฑ์แล้ว) -> ถอยกลับตาม config
         if (move.Delta == 0 && hopNow == 0 && levelFailed)
-            return await MoveAsync(model, WorkflowMove.Backward, ct, internalHop: true);
+            return await MoveAsync(model, WorkflowMove.Backward, ct, internalHop: true, sharedDb: db);
 
         return model;
     }

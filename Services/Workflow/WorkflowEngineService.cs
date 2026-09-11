@@ -183,18 +183,22 @@ public class WorkflowEngineService
             return;
         }
 
-        switch (actionKind)
+        try
         {
-            case WorkflowButtonService.ActionSendBack:
-                await SendBackAsync(jobApproverId, actorUserId, comment, reasonId, ct);
-                break;
-            case WorkflowButtonService.ActionDecline:
-                await DeclineAsync(jobApproverId, actorUserId, comment, reasonId, ct);
-                break;
-            default:
-                await ApproveAsync(jobApproverId, actorUserId, comment, reasonId, ct);
-                break;
+            switch (actionKind)
+            {
+                case WorkflowButtonService.ActionSendBack:
+                    await SendBackAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                    break;
+                case WorkflowButtonService.ActionDecline:
+                    await DeclineAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                    break;
+                default:
+                    await ApproveAsync(jobApproverId, actorUserId, comment, reasonId, ct);
+                    break;
+            }
         }
+        catch (DbUpdateConcurrencyException ex) { throw WorkflowService.ConcurrentActionError(ex); }   // audit H5
     }
 
     // ── ร่าง: โมดูลบันทึกเอกสารของตัวเองก่อน แล้วเปิดงานที่ขั้น 0 ด้วย id ที่เพิ่งได้ ─────
@@ -1203,6 +1207,12 @@ public class WorkflowEngineService
         HRMContext context, job_master job, int wlevel,
         StepDirection direction, CancellationToken ct)
     {
+        // ถอยถึงขั้น 0 = คืนเรื่องให้ผู้ขอ — ขั้น 0 ไม่มีแถว config ให้อ่าน (แบบเดียวกับ
+        // ReturnToDraftAsync ของ engine ใหม่) เดิม return null ตรงนี้ ผู้อนุมัติขั้นแรกจึงกด
+        // "ส่งกลับ" ไม่ได้เลย ทั้งที่ปุ่มขึ้น (audit H6, 11 ก.ย. 2569)
+        if (direction == StepDirection.Backward && wlevel <= 0)
+            return await StepBackToRequesterAsync(context, job, ct);
+
         // 1. อ่านสคริปต์ของ level นี้
         var level = await context.wf_sub_workflow_masters
             .FirstOrDefaultAsync(s => s.workflowid == job.workflowid && s.wlevel == wlevel, ct);
@@ -1275,6 +1285,56 @@ public class WorkflowEngineService
 
         // 7. เดินหน้า/อยู่ที่เดิม — resolve ผู้เกี่ยวข้องตาม config ของขั้นนี้
         return await AssignLevelApproversAsync(context, job, level, ct);
+    }
+
+    // คืนเรื่องให้ผู้ขอที่ขั้น 0 — รอยเท้าและใบงานรูปเดียวกับ draft ของ engine ใหม่ ผู้ขอแก้แล้วกด
+    // "ส่งต่อ" ที่ขั้น 0 ได้ตามปกติ (ApproveAsync → TryAdvanceLevelAsync(0) → Forward ไปขั้น 1)
+    private async Task<WorkflowOutcome?> StepBackToRequesterAsync(HRMContext context, job_master job, CancellationToken ct)
+    {
+        if (job.createuserid is not long creator) return null;
+        var owner = await context.sc_users.FirstOrDefaultAsync(u => u.userid == creator, ct);
+        if (owner is null) return null;
+
+        job.jobseq = (job.jobseq ?? 0) + 1;
+        job.lastLevel = 0;
+        job.status = StatusReturned;
+        context.job_subworkflow_masters.Add(new job_subworkflow_master
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = 0,
+            wfcode = job.workflowcode,
+            jobseq = job.jobseq,
+            subject = "ผู้กรอกแบบฟอร์ม (draft)",
+            status = StatusReturned,
+            istop = false,
+            starttime = DateTime.Now,
+            moddate = DateTime.Now,
+            remark = "SendBack -> 0 (คืนเรื่องให้ผู้ขอ)",
+        });
+
+        var prior = await context.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.isLast == true).ToListAsync(ct);
+        foreach (var r in prior) r.isLast = false;
+
+        context.job_user_lists.Add(new job_user_list
+        {
+            jobmasterid = job.jobmasterid,
+            workflowid = job.workflowid,
+            wlevel = 0,
+            userid = owner.userid,
+            empid = owner.empid,
+            username = $"{owner.firstname} {owner.lastname}".Trim(),
+            orgcode = job.reqOrg ?? owner.orgcode,
+            jobstatus = StatusPending,
+            sendDate = DateTime.Now,
+            recievedate = DateTime.Now,
+            jobseq = job.jobseq,
+            isLast = true,
+            moddate = DateTime.Now,
+        });
+        await NotifyApproverAsync(context, job, owner.userid, owner.empid, ct);
+        return WorkflowOutcome.StillOpen;
     }
 
     // สามประตูของกระบวนการ ตามที่ CEO อธิบายไว้ (9 ก.ย. 2569):

@@ -12,6 +12,12 @@ public partial class job_master
     [Key]    [DatabaseGenerated(DatabaseGeneratedOption.Identity)] // ✅ กำหนดให้เป็น Auto-Increment
     public long jobmasterid { get; set; }
 
+    // กันกดพร้อมกัน (audit H5, 11 ก.ย. 2569): ทุก action ของ engine เขียนแถวนี้ (jobseq/lastLevel/status)
+    // ผู้อนุมัติสองคนกดขั้นเดียวกันพร้อมกัน คนที่ commit ทีหลังได้ DbUpdateConcurrencyException
+    // แทนที่จะเขียนทับผลของคนแรกจนงานค้าง — คอลัมน์เพิ่มด้วย Migrations/Manual/2026-09-11_workflow_concurrency_and_engine_default.sql
+    [Timestamp]
+    public byte[]? RowVersion { get; set; }
+
     [StringLength(1000)]
     public string? jobmastername { get; set; }
 

@@ -131,7 +131,8 @@ public partial class wf_workflow
     //   true       = WorkflowService ตัวใหม่
     // ย้ายโมดูลมาใช้ตัวใหม่ = ติ๊กช่องนี้ ไม่ต้องแก้โค้ดโมดูล ไม่ต้อง deploy
     // ถอยกลับ = ปลดติ๊ก งานที่วิ่งอยู่ใช้ตารางชุดเดียวกันทั้งคู่จึงไม่หาย
-    public bool? useNewEngine { get; set; }
+    // workflow ใหม่ทุกตัวขึ้น engine ใหม่ (ทุก workflow ธุรกิจย้ายแล้ว 10 ก.ย. 2569) — เดิมค่าว่าง = engine เดิมเงียบ ๆ
+    public bool? useNewEngine { get; set; } = true;
 
     [StringLength(50)]
     
