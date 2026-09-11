@@ -131,6 +131,11 @@ public class WorkflowEngineService
     private readonly IServiceProvider _sp;
     private WorkflowService NewEngine => _sp.GetRequiredService<WorkflowService>();
 
+    // เขียนผลกลับไปที่เอกสารของโมดูล (reftable/refid) ทันทีที่งานปิด — CEO, 11 ก.ย. 2569
+    // resolve ตอนใช้เพื่อไม่ผูก DI cycle (module services ← engine ← writeback ← module services)
+    private Task WriteBackAsync(job_master job, CancellationToken ct)
+        => _sp.GetService<WorkflowDocumentWriteback>()?.NotifyClosedAsync(job, ct) ?? Task.CompletedTask;
+
     public WorkflowEngineService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender,
         HRM.Services.Audit.IAuditLogger auditLogger, IServiceProvider sp)
     {
@@ -622,6 +627,7 @@ public class WorkflowEngineService
             new { status = StatusPending }, new { status = StatusCancelled, reason }, isSensitive: false, ct);
         Serilog.Log.Information("Job {JobMasterId} cancelled by user {ActorUserId} (admin override: {IsAdminOverride})",
             jobMasterId, actorUserId, isAdminOverride);
+        await WriteBackAsync(job, ct);
     }
 
     // "ไม่อนุมัติ (Decline)" — the terminal NO, allowed ONLY at the istop
@@ -2271,6 +2277,10 @@ public class WorkflowEngineService
     // TrySendCredentialEmailAsync pattern exactly (catch, log, swallow).
     private async Task NotifyRequesterAsync(HRMContext context, job_master job, WorkflowOutcome outcome, CancellationToken ct)
     {
+        // ทุกจุดที่เรียกมาถึงนี่ SaveChanges ไปแล้ว — ถ้างานปิด (Approved/Rejected) ให้เอกสารรับผลก่อนส่งเมล
+        // (BouncedBack งานยังเปิดอยู่ dispatcher จะไม่ทำอะไร)
+        await WriteBackAsync(job, ct);
+
         try
         {
             if (string.IsNullOrWhiteSpace(job.empid))

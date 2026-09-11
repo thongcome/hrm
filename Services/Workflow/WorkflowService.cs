@@ -218,14 +218,22 @@ public class WorkflowService
     private readonly IDbContextFactory<HRMContext> _dbFactory;
     private readonly EmailSender _emailSender;
     private readonly HRM.Services.Audit.IAuditLogger _audit;
+    // เขียนผลกลับไปที่เอกสารของโมดูล (reftable/refid) ทันทีที่งานปิด — CEO, 11 ก.ย. 2569
+    private readonly WorkflowDocumentWriteback? _writeback;
 
     public WorkflowService(IDbContextFactory<HRMContext> dbFactory, EmailSender emailSender,
-        HRM.Services.Audit.IAuditLogger audit)
+        HRM.Services.Audit.IAuditLogger audit, WorkflowDocumentWriteback? writeback = null)
     {
         _dbFactory = dbFactory;
         _emailSender = emailSender;
         _audit = audit;
+        _writeback = writeback;
     }
+
+    // งานปิดแล้ว (commit แล้ว) → ให้โมดูลเจ้าของเอกสารเขียนสถานะลงแถวของตัวเอง
+    // dispatcher กันไว้เองว่าไม่ทำอะไรถ้างานยังไม่ปิด และไม่โยน exception กลับมาที่ผู้อนุมัติ
+    private Task WriteBackAsync(job_master job, CancellationToken ct)
+        => _writeback?.NotifyClosedAsync(job, ct) ?? Task.CompletedTask;
 
     // ── แจ้งเตือนผู้รับงาน ──────────────────────────────────────────────
     // งานถึงมือแล้วต้องรู้ ไม่ใช่ต้องเปิดระบบมาเช็คเอง
@@ -365,6 +373,7 @@ public class WorkflowService
 
         await db.SaveChangesAsync(ct);
         await AuditAsync(job, "Decline", new { level, m.reason }, ct);
+        await WriteBackAsync(job, ct);
         await NoticeEveryoneInvolvedAsync(db, job, m.actorUserId, m.reason, ct);
 
         m.jobMaster = job; m.subWorkflow = target; m.jobsub = stamp;
@@ -456,6 +465,7 @@ public class WorkflowService
 
         await db.SaveChangesAsync(ct);
         await AuditAsync(job, "Cancel", new { level, m.reason, isAdminOverride }, ct);
+        await WriteBackAsync(job, ct);
 
         m.jobMaster = job; m.jobsub = stamp;
         m.direction = "Cancel";
@@ -503,6 +513,7 @@ public class WorkflowService
 
         await db.SaveChangesAsync(ct);
         await AuditAsync(job, "AutoApprove", new { job.workflowcode }, ct);
+        await WriteBackAsync(job, ct);
 
         m.jobMaster = job;
         m.jobsub = stamp;
@@ -1149,6 +1160,10 @@ public class WorkflowService
 
         await AuditAsync(job, move.Name,
             new { from = fromLevel, to = toLevel, hop = hopNow, closed = job.isJobClosed, model.reason }, ct);
+
+        // ถึง istop และผ่านแล้ว = สิ้นสุดงาน → เขียนผลกลับเอกสารทันที ไม่รอให้ใครเปิดหน้า
+        if (job.isJobClosed == true)
+            await WriteBackAsync(job, ct);
 
         // คนที่เพิ่งได้รับงานต้องรู้ว่ามีงานมาถึงมือ
         if (model.jobUserList.Count > 0)

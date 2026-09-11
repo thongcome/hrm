@@ -23,6 +23,7 @@ using HRM.Interface;
 using System.Text;
 using HRM.Services.Payroll;
 using HRM.Services.Pay;
+using HRM.Services.Workflow;
 using HRM.Services.Pay.Calculators;
 using System.Security.Claims;
 using OpenIddict.Abstractions;
@@ -478,6 +479,8 @@ builder.Services.AddScoped<HRM.Services.Workflow.WorkflowEngineService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowStateChangeService>();
 builder.Services.AddScoped<HRM.Services.Workflow.WorkflowButtonService>();
+// ปิดงานแล้วเขียนผลกลับไปที่เอกสารของโมดูล (reftable/refid) ทันที — CEO, 11 ก.ย. 2569
+HRM.Services.Workflow.WorkflowDocumentHandlers.AddWorkflowDocumentHandlers(builder.Services);
 builder.Services.AddScoped<HRM.Services.Org.OrgChangeRequestService>();
 builder.Services.AddScoped<HRM.Services.Org.OrgBossApproverService>();
 builder.Services.AddScoped<HRM.Services.Leave.LeaveBalanceService>();
