@@ -1512,7 +1512,8 @@ public partial class HRMContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
             // หนึ่งรอบต่อ (บริษัท, งวด, ชนิด) เฉพาะรอบที่ยังไม่ยกเลิก — เดิม index ไม่กรอง
             // รอบที่ยกเลิกแล้วจึงล็อกงวดนั้นถาวร (audit H1); Manual SQL 2026-09-11 ทำฝั่ง DB
-            entity.HasIndex(r => new { r.CompanyId, r.PayrollPeriod, r.RunType })
+            // + TermNo (12 ก.ย. 2569): บริษัทจ่าย 2 งวด/เดือนมีรอบปกติสองรอบต่อ PayrollPeriod — Manual SQL 2026-09-12_payroll_run_term.sql
+            entity.HasIndex(r => new { r.CompanyId, r.PayrollPeriod, r.TermNo, r.RunType })
                 .IsUnique()
                 .HasDatabaseName("IX_Pay_PayrollRun_CompanyId_PayrollPeriod_RunType")
                 .HasFilter("[Status] <> 9");

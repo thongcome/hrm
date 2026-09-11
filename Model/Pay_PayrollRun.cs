@@ -27,6 +27,10 @@ public class Pay_PayrollRun
     public DateOnly PeriodEnd { get; set; }
     public DateOnly PayDate { get; set; }
 
+    // งวดที่ของเดือน: 1 = เดือนละงวด/ครึ่งแรก, 2 = ครึ่งหลัง (ปฏิทินจ่าย 2 งวด/เดือน — Pay_PaySchedule.PeriodsPerMonth)
+    // PayrollPeriod ยังเป็น "YYYYMM" ทั้งสองงวด เพื่อให้ ภ.ง.ด.1/ประกันสังคม/ยอดสะสมรายเดือนรวมสองงวดเป็นเดือนเดียว
+    public int TermNo { get; set; } = 1;
+
     public PayrollRunType RunType { get; set; } = PayrollRunType.Regular;
     public PayrollRunStatus Status { get; set; } = PayrollRunStatus.Draft;
 

@@ -28,6 +28,15 @@
            the default pay date from company config — mixing @bind-Date with an
            explicit handler is the RZ10010 compile error. *@
         <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodMonthChangedAsync" Label="@L.Translate("PayRunFieldPeriodMonth")" Class="mt-3" />
+        @if (_periodsPerMonth == 2 && _model.RunType == PayrollRunType.Regular)
+        {
+            @* ปฏิทินจ่ายของบริษัทเป็น 2 งวด/เดือน (Pay_PaySchedule) — เลือกครึ่งเดือน; งวด YYYYMM เดียวกันทั้งสองรอบ *@
+            <MudSelect T="int" @bind-Value="_termNo" Label="งวดที่ของเดือน" Class="mt-3"
+                HelperText="@($"บริษัทตั้งปฏิทินจ่าย 2 งวด/เดือน — งวดที่ 1 = วันที่ 1–{_secondTermStartDay - 1}, งวดที่ 2 = วันที่ {_secondTermStartDay}–สิ้นเดือน")">
+                <MudSelectItem T="int" Value="1">งวดที่ 1 (วันที่ 1–@(_secondTermStartDay - 1))</MudSelectItem>
+                <MudSelectItem T="int" Value="2">งวดที่ 2 (วันที่ @_secondTermStartDay–สิ้นเดือน)</MudSelectItem>
+            </MudSelect>
+        }
         <MudDatePicker @bind-Date="_payDate" Label="@L.Translate("PayRunFieldPayDate")" Class="mt-3"
             HelperText="ค่าเริ่มต้นจาก config (วันจ่ายประจำเดือน เลื่อนเข้าถ้าตรงวันหยุด) — แก้ทับได้" />
 
@@ -49,6 +58,9 @@
     private DateTime? _periodMonth = DateTime.Today;
     private DateTime? _payDate = DateTime.Today;
     private string? _error;
+    private int _periodsPerMonth = 1;
+    private int _secondTermStartDay = 16;
+    private int _termNo = 1;
 
     private class CreateModel
     {
@@ -77,6 +89,21 @@
         if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null) return;
         var d = await PayDates.ComputeDefaultPayDateAsync(_model.CompanyId, _periodMonth.Value.Year, _periodMonth.Value.Month);
         _payDate = d.ToDateTime(TimeOnly.MinValue);
+        await LoadPayScheduleAsync();
+    }
+
+    // ปฏิทินจ่ายที่มีผลกับเดือนที่เลือก (แถว "ทุกคน" หรือกลุ่มใดกลุ่มหนึ่งที่ตั้ง 2 งวด) — ถ้ามี ให้เลือกงวดที่ของเดือนได้
+    private async Task LoadPayScheduleAsync()
+    {
+        var first = new DateOnly(_periodMonth!.Value.Year, _periodMonth.Value.Month, 1);
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var schedules = await context.Pay_PaySchedules
+            .Where(s => s.CompanyId == _model.CompanyId && s.IsActive && s.EffectiveFrom <= first && (s.EffectiveTo == null || s.EffectiveTo >= first))
+            .ToListAsync();
+        var semi = schedules.Where(s => s.PeriodsPerMonth == 2).OrderByDescending(s => s.EffectiveFrom).FirstOrDefault();
+        _periodsPerMonth = semi is null ? 1 : 2;
+        _secondTermStartDay = Math.Clamp(semi?.SecondTermStartDay ?? 16, 2, 28);
+        if (_periodsPerMonth == 1) _termNo = 1;
     }
 
     private async Task SaveAsync()
@@ -93,6 +120,13 @@
 
         var periodStart = new DateOnly(_periodMonth.Value.Year, _periodMonth.Value.Month, 1);
         var periodEnd = periodStart.AddMonths(1).AddDays(-1);
+        // รอบครึ่งเดือน: งวดที่ 1 = 1..(วันเริ่มงวด 2 − 1), งวดที่ 2 = วันเริ่มงวด 2..สิ้นเดือน; รอบโบนัสเป็นทั้งเดือนเสมอ
+        var termNo = _periodsPerMonth == 2 && _model.RunType == PayrollRunType.Regular ? _termNo : 1;
+        if (_periodsPerMonth == 2 && _model.RunType == PayrollRunType.Regular)
+        {
+            if (termNo == 1) periodEnd = new DateOnly(periodStart.Year, periodStart.Month, _secondTermStartDay - 1);
+            else periodStart = new DateOnly(periodStart.Year, periodStart.Month, _secondTermStartDay);
+        }
         // InvariantCulture: the server's ambient culture is Thai, whose default
         // calendar formats "yyyy" as the Buddhist year (e.g. 2569, not 2026) —
         // PayrollPeriod must stay Gregorian to match Pay_TaxBracket.EffectiveYear.
@@ -101,10 +135,10 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var duplicate = await context.Pay_PayrollRuns.AnyAsync(r =>
-            r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.RunType == _model.RunType && r.Status != PayrollRunStatus.Cancelled);
+            r.CompanyId == _model.CompanyId && r.PayrollPeriod == period && r.TermNo == termNo && r.RunType == _model.RunType && r.Status != PayrollRunStatus.Cancelled);
         if (duplicate)
         {
-            _error = string.Format(L.Translate("PayRunDuplicateError"), _model.RunType, period, _model.CompanyId);
+            _error = string.Format(L.Translate("PayRunDuplicateError"), _model.RunType, termNo == 1 && _periodsPerMonth == 1 ? period : $"{period} งวดที่ {termNo}", _model.CompanyId);
             return;
         }
 
@@ -114,6 +148,7 @@
         {
             CompanyId = _model.CompanyId,
             PayrollPeriod = period,
+            TermNo = termNo,
             PeriodStart = periodStart,
             PeriodEnd = periodEnd,
             PayDate = DateOnly.FromDateTime(_payDate.Value),

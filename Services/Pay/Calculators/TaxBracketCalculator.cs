@@ -99,27 +99,47 @@ public static class TaxBracketCalculator
         int periodsPerMonth,
         decimal ytdAccumulatedTax,
         IReadOnlyList<Pay_TaxBracket> brackets,
-        decimal annualFixedDeduction = 0m)
+        decimal annualFixedDeduction = 0m,
+        // เงินได้จ่ายครั้งเดียวในงวดนี้ (ค่าคอมมิชชัน/โบนัสที่ HR ใส่เป็นรายการเฉพาะกิจในรอบปกติ) — ไม่ใช่รายได้ประจำ
+        // จึงห้ามคูณเดือนที่เหลือ (พบจากเทสทั้งปี 2568: ค่าคอมฯ 20,000 ใน มิ.ย. ถูกประมาณการเป็น 20,000 × 7 เดือน
+        // ภาษีเดือนนั้นกระโดดจาก 4,944 เป็น 8,696 แล้วค่อยลดกลับ) ภาษีของก้อนนี้คิดแบบส่วนต่างเหมือนรอบโบนัส
+        // และหักทั้งก้อนในงวดที่จ่าย ตามวิธีของกรมสรรพากรสำหรับเงินได้จ่ายครั้งเดียว
+        decimal thisPeriodOneOffIncome = 0m,
+        // รายการหักคงที่ที่ "เหลือทั้งปีนับจากงวดนี้" (รวมงวดนี้) ที่ผู้เรียกประมาณการเองอย่างแม่นกว่า × จำนวนเดือน —
+        // จำเป็นกับประกันสังคมในบริษัทจ่ายครึ่งเดือน: เพดาน 750 เป็นรายเดือน งวดแรกหัก 750 งวดสองหัก 0
+        // ถ้าคูณ "งวดนี้ × 2 งวด × เดือนที่เหลือ" จะได้ 18,000 หรือ 0 แทน 9,000 (พบจากเทสทั้งปี 2568) — null = คูณตามเดิม
+        decimal? projectedRemainingFlatDeduction = null)
     {
         if (periodsPerMonth <= 0) periodsPerMonth = 1;
         if (remainingPeriodsIncludingThis <= 0) remainingPeriodsIncludingThis = 1;
         if (remainingMonthsIncludingThis <= 0) remainingMonthsIncludingThis = 1m / periodsPerMonth;
+        if (thisPeriodOneOffIncome < 0) thisPeriodOneOffIncome = 0m;
 
-        var monthlyIncome = thisPeriodIncome * periodsPerMonth;
+        var recurringThisPeriod = thisPeriodIncome - thisPeriodOneOffIncome;
+        var monthlyIncome = recurringThisPeriod * periodsPerMonth;
         var monthlyFlatDeduction = thisPeriodFlatDeduction * periodsPerMonth;
 
-        var projectedAnnualIncome = ytdAccumulatedIncome + monthlyIncome * remainingMonthsIncludingThis;
-        var expenseDeduction = Math.Min(Math.Max(0m, projectedAnnualIncome) * expenseDeductionRate, expenseDeductionCap);
-        var projectedAnnualDeduction = ytdAccumulatedDeduction + monthlyFlatDeduction * remainingMonthsIncludingThis
-                                       + annualFixedDeduction + expenseDeduction;
-        var taxableIncome = Math.Max(0m, projectedAnnualIncome - projectedAnnualDeduction);
+        var projectedRecurringIncome = ytdAccumulatedIncome + monthlyIncome * remainingMonthsIncludingThis;
+        var remainingFlat = projectedRemainingFlatDeduction ?? monthlyFlatDeduction * remainingMonthsIncludingThis;
+        var projectedFlatDeduction = ytdAccumulatedDeduction + remainingFlat + annualFixedDeduction;
 
-        var annualCalculation = CalculateProgressiveTax(taxableIncome, brackets);
+        TaxCalculationResult TaxOn(decimal annualIncome)
+        {
+            var expenseDeduction = Math.Min(Math.Max(0m, annualIncome) * expenseDeductionRate, expenseDeductionCap);
+            return CalculateProgressiveTax(Math.Max(0m, annualIncome - projectedFlatDeduction - expenseDeduction), brackets);
+        }
 
-        var remainingTax = Math.Max(0m, annualCalculation.TotalAnnualTax - ytdAccumulatedTax);
+        // ภาษีของรายได้ประจำ กระจายตามงวดที่เหลือ
+        var recurringCalculation = TaxOn(projectedRecurringIncome);
+        var remainingTax = Math.Max(0m, recurringCalculation.TotalAnnualTax - ytdAccumulatedTax);
         var periodWithholding = Math.Round(remainingTax / remainingPeriodsIncludingThis, 2, MidpointRounding.AwayFromZero);
+        if (thisPeriodOneOffIncome <= 0m)
+            return (periodWithholding, recurringCalculation);
 
-        return (periodWithholding, annualCalculation);
+        // + ภาษีส่วนต่างของเงินได้ครั้งเดียว หักเต็มในงวดนี้
+        var withOneOff = TaxOn(projectedRecurringIncome + thisPeriodOneOffIncome);
+        var oneOffTax = Math.Round(Math.Max(0m, withOneOff.TotalAnnualTax - recurringCalculation.TotalAnnualTax), 2, MidpointRounding.AwayFromZero);
+        return (periodWithholding + oneOffTax, withOneOff);
     }
 
     // ภาษีหัก ณ ที่จ่ายของเงินได้จ่ายครั้งเดียว (โบนัส/คอมมิชชัน) ตามวิธีส่วนต่างที่กรมสรรพากรใช้:
