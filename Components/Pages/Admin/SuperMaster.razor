@@ -10,7 +10,7 @@
 @inject ProgramRoleService ProgramRoles
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
-@attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>Super Master</PageTitle>
 
@@ -27,7 +27,7 @@
     </div>
 </MudPaper>
 
-@foreach (var section in Sections)
+@foreach (var section in Sections.Where(s => !s.SystemOnly || _isSystemAdmin))
 {
     <MudText Typo="Typo.h6" Class="mt-4 mb-2">@section.Title</MudText>
     <MudGrid>
@@ -136,7 +136,7 @@
     private const string ProgramPath = "/admin/super-master";
 
     private record Card(string Title, string Description, string Icon, string Url);
-    private record Section(string Title, Card[] Cards);
+    private record Section(string Title, Card[] Cards, bool SystemOnly = false);
 
     private static readonly Section[] Sections =
     {
@@ -152,7 +152,8 @@
             new Card("กองทุนสำรองเลี้ยงชีพ", "อัตราสะสม/สมทบ vesting", Icons.Material.Filled.Savings, "/pay/admin/provident-fund-policy"),
             new Card("บัญชี GL ฝั่งนายจ้าง", "บัญชีของประกันสังคม/กองทุน/ประกันส่วนนายจ้าง และเงินเดือนค้างจ่าย", Icons.Material.Filled.AccountBalance, "/pay/admin/gl-account-mapping"),
         }),
-        new("ระบบ", new[]
+        // ส่วนระบบเห็นเฉพาะ system admin (CEO 12 ก.ย. 2569: HR ดูแลค่าเงินเดือน, admin ดูแลสิทธิ์/เมนู)
+        new("ระบบ", SystemOnly: true, Cards: new[]
         {
             new Card("สิทธิ์การใช้งานรายหน้า", "ใครสร้าง/แก้/ลบได้ในแต่ละหน้า", Icons.Material.Filled.Rule, "/admin/system/program-rights"),
             new Card("จัดการเมนู", "โครงสร้างเมนูและการมองเห็น", Icons.Material.Filled.AccountTree, "/admin/system/menus"),
@@ -160,6 +161,7 @@
     };
 
     private ProgramRoleService.ProgramRights? _rights;
+    private bool _isSystemAdmin;
     private long _actorUserId;
     private List<Sys_ProtectedSetting> _rows = new();
     private Sys_ProtectedSetting? _editing;
@@ -171,6 +173,7 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _isSystemAdmin = state.User.HasClaim("menu", "SYS_ADMIN");
         await LoadAsync();
     }
 
