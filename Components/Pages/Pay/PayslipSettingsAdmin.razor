@@ -75,6 +75,14 @@
             <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="_settings.CompanyAddress" Label="@L.Translate("CompanyAddressLabel")" Lines="2" />
             </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.SsoEmployerAccountNo" Label="เลขที่บัญชีนายจ้างประกันสังคม (10 หลัก)" MaxLength="10"
+                    HelperText="ใช้ในหัวไฟล์ สปส.1-10 ที่ยื่นผ่าน e-Service ประกันสังคม" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_settings.SsoBranchSeq" Label="ลำดับที่สาขา ประกันสังคม (6 หลัก)" MaxLength="6"
+                    HelperText="สำนักงานใหญ่ = 000000" />
+            </MudItem>
         </MudGrid>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync">@L.Translate("SaveCompanyInfoButton")</MudButton>
 
@@ -315,6 +323,8 @@
         existing.CompanyNameEn = _settings.CompanyNameEn;
         existing.CompanyTaxId = _settings.CompanyTaxId;
         existing.CompanyAddress = _settings.CompanyAddress;
+        existing.SsoEmployerAccountNo = string.IsNullOrWhiteSpace(_settings.SsoEmployerAccountNo) ? null : _settings.SsoEmployerAccountNo.Trim();
+        existing.SsoBranchSeq = string.IsNullOrWhiteSpace(_settings.SsoBranchSeq) ? null : _settings.SsoBranchSeq.Trim();
         existing.ModifiedDate = DateTime.Now;
         existing.ModifiedByUserId = await GetCurrentUserIdAsync();
         await context.SaveChangesAsync();

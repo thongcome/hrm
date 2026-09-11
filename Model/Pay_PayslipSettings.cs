@@ -41,6 +41,12 @@ public class Pay_PayslipSettings
     [StringLength(500)]
     public string? CompanyAddress { get; set; }
 
+    // ประกันสังคม (ไฟล์ สปส.1-10 สำหรับ e-Service, 12 ก.ย. 2569): เลขที่บัญชีนายจ้าง 10 หลัก + ลำดับที่สาขา 6 หลัก (สำนักงานใหญ่ = 000000)
+    [StringLength(50)]
+    public string? SsoEmployerAccountNo { get; set; }
+    [StringLength(50)]
+    public string? SsoBranchSeq { get; set; }
+
     // Auto-generate formula for Hremployee.EmpNo: EmpCodePrefix + running
     // number zero-padded to EmpCodeDigits (e.g. prefix "EMP", digits 3 ->
     // "EMP001"). EmpNo also doubles as sc_user.loginname now, so the

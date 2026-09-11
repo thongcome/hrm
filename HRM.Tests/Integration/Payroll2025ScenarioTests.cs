@@ -48,6 +48,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         var root = Path.Combine(Path.GetTempPath(), "hrm-payroll-2025-test");
         Directory.CreateDirectory(root);
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);   // TIS-620 สำหรับไฟล์ สปส.1-10
 
         await using var sp = DevDatabase.BuildPayrollServices(root);
         var factory = sp.GetRequiredService<IDbContextFactory<HRMContext>>();
@@ -660,7 +661,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         Expect("RUNS", "รอบปกติทุกรอบสถานะจ่ายแล้ว", runs.Where(r => r.RunType == PayrollRunType.Regular).All(r => r.Status == PayrollRunStatus.Paid), string.Join(",", runs.Where(r => r.RunType == PayrollRunType.Regular && r.Status != PayrollRunStatus.Paid).Select(r => r.PayrollPeriod)));
 
         var brackets = await ctx.Pay_TaxBrackets.AsNoTracking().Where(b => b.EffectiveYear == Year && b.IsActive).ToListAsync();
-        var rows = await ctx.Pay_PayrollEmployees.AsNoTracking()
+        var rows = await ctx.Pay_PayrollEmployees.AsNoTracking().Include(e => e.Pay_PayrollRun)
             .Where(e => e.CompanyId == Co && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved && e.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled && e.Pay_PayrollRun.PeriodStart.Year == Year)
             .ToListAsync();
         var elected = new Dictionary<string, decimal> { ["E002"] = 50000m };
@@ -715,6 +716,47 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             for (var m = 1; m <= 12; m++)
                 por1Monthly += (await Por1DataService.BuildMonthlyAsync(ctx, Co, $"{Year}{m:00}"))?.TotalTaxWithheld ?? 0m;
             Near("POR1K", "Σ ภ.ง.ด.1 รายเดือน 12 เดือน = ภ.ง.ด.1ก", por1Monthly, annual.TotalTaxWithheld, 0.005m);
+        }
+
+        // ไฟล์ e-Filing: ภ.ง.ด.1 ต.ค. (เดือนที่มีกลับรายการ+ปรับปรุง) ต้องตรงกับ ภ.ง.ด.1 PDF และ สปส.1-10 ต้องยาว 135 ทุกบรรทัด
+        {
+            var oct = $"{Year}10";
+            var por1Oct = await Por1DataService.BuildMonthlyAsync(ctx, Co, oct);
+            var pnd1 = await EFilingExportService.BuildPnd1Async(ctx, Co, oct);
+            Expect("EFILE", "ภ.ง.ด.1 ต.ค. สร้างไฟล์ได้", pnd1 is not null, "");
+            if (pnd1 is not null && por1Oct is not null)
+            {
+                var text = Encoding.UTF8.GetString(pnd1.Content);
+                var fileLines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+                Expect("EFILE", "ภ.ง.ด.1 ต.ค. จำนวนบรรทัด = จำนวนคนที่มีภาษี", fileLines.Length == por1Oct.Lines.Count && pnd1.RowCount == por1Oct.Lines.Count, $"{fileLines.Length}/{por1Oct.Lines.Count}");
+                Expect("EFILE", "ภ.ง.ด.1 ต.ค. ทุกบรรทัดมี 10 ช่อง คั่นด้วย |", fileLines.All(l => l.Split('|').Length == 10), "");
+                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ ภาษีในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[8], CultureInfo.InvariantCulture)), por1Oct.TotalTaxWithheld, 0.005m);
+                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ เงินได้ในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[7], CultureInfo.InvariantCulture)), por1Oct.TotalTaxableIncome, 0.005m);
+                Expect("EFILE", "ภ.ง.ด.1 ต.ค. เลขบัตรครบ 13 หลักทุกคน (ไม่มีคำเตือน)", pnd1.Warnings.Count == 0, string.Join("; ", pnd1.Warnings));
+                Expect("EFILE", "ภ.ง.ด.1 ต.ค. วันที่จ่ายเป็น พ.ศ. 2568", fileLines.All(l => l.Split('|')[6].EndsWith("2568")), fileLines.FirstOrDefault()?.Split('|')[6] ?? "");
+            }
+            var sso = await EFilingExportService.BuildSso110Async(ctx, Co, oct);
+            Expect("EFILE", "สปส.1-10 ต.ค. สร้างไฟล์ได้", sso is not null, "");
+            if (sso is not null)
+            {
+                var text = Encoding.GetEncoding(874).GetString(sso.Content);
+                var fileLines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+                Expect("EFILE", "สปส.1-10 ต.ค. ทุกบรรทัดยาว 135 ตัวอักษร", fileLines.All(l => l.Length == 135), string.Join(",", fileLines.Select(l => l.Length).Distinct()));
+                Expect("EFILE", "สปส.1-10 ต.ค. บรรทัดแรกเป็นหัว (1) ที่เหลือเป็นรายคน (2)", fileLines[0].StartsWith("1") && fileLines.Skip(1).All(l => l.StartsWith("2")), "");
+                var ssoRows = rows.Where(r => r.Pay_PayrollRun.PayrollPeriod == oct).GroupBy(r => r.HremployeeId).Select(g => new { Emp = g.Sum(r => r.SocialSecurityAmount), Er = g.Sum(r => r.SocialSecurityCompanyAmount) }).Where(x => x.Emp > 0).ToList();
+                Expect("EFILE", "สปส.1-10 ต.ค. จำนวนผู้ประกันตน = คนที่มีเงินสมทบสุทธิ > 0", sso.RowCount == ssoRows.Count && fileLines.Length == ssoRows.Count + 1, $"{sso.RowCount}/{ssoRows.Count}");
+                Near("EFILE", "สปส.1-10 ต.ค. เงินสมทบรวม (ลูกจ้าง+นายจ้าง) = Σ จากรอบที่อนุมัติ", sso.Total2, ssoRows.Sum(x => x.Emp + x.Er), 0.005m);
+                Expect("EFILE", "สปส.1-10 ต.ค. ค่าจ้างต่อคนไม่เกินเพดาน 15,000", fileLines.Skip(1).All(l => decimal.Parse(l.Substring(82, 14), CultureInfo.InvariantCulture) <= 15000m), "");
+                Note("สปส.1-10: ไฟล์ทดสอบเตือน '" + string.Join("; ", sso.Warnings) + "' — บริษัททดสอบไม่ได้ตั้งเลขที่บัญชีนายจ้าง (ตั้งได้ที่หน้าตั้งค่าสลิป/บริษัท)");
+            }
+            var pnd1k = await EFilingExportService.BuildPnd1KorAsync(ctx, Co, Year);
+            Expect("EFILE", "ภ.ง.ด.1ก สร้างไฟล์ได้", pnd1k is not null, "");
+            if (pnd1k is not null && annual is not null)
+            {
+                var fileLines = Encoding.UTF8.GetString(pnd1k.Content).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+                Expect("EFILE", "ภ.ง.ด.1ก ทุกบรรทัดมี 9 ช่อง", fileLines.All(l => l.Split('|').Length == 9), "");
+                Near("EFILE", "ภ.ง.ด.1ก Σ ภาษีในไฟล์ = ภ.ง.ด.1ก", fileLines.Sum(l => decimal.Parse(l.Split('|')[7], CultureInfo.InvariantCulture)), annual.TotalTaxWithheld, 0.005m);
+            }
         }
 
         // GL ทุก batch สมดุล

@@ -155,6 +155,39 @@ public static class PayrollFileEndpoints
             return Results.File(bytes, "application/pdf", $"por1kor_{companyId}_{taxYear}.pdf");
         });
 
+        // ไฟล์ e-Filing (12 ก.ย. 2569): ภ.ง.ด.1 / ภ.ง.ด.1ก สำหรับ RD Prep และ สปส.1-10 สำหรับ e-Service ประกันสังคม
+        // ข้อมูลส่วนบุคคลเต็มไฟล์ → บันทึกการเข้าถึงเหมือน ภ.ง.ด.1 PDF; คำเตือน (เลขบัตรไม่ครบ ฯลฯ) ส่งกลับใน header X-EFiling-Warnings
+        employeeDocGroup.MapGet("/efiling/pnd1/{companyId}/{payrollPeriod}", async (
+            string companyId, string payrollPeriod, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            if (companyId != httpContext.User.FindFirst("payroll_company")?.Value) return Results.Forbid();
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var file = await EFilingExportService.BuildPnd1Async(context, companyId, payrollPeriod);
+            if (file is null) return Results.NotFound();
+            await auditLogger.LogAccessAsync("Pnd1EFiling", $"{companyId}:{payrollPeriod}", isSensitive: true, note: $"ภ.ง.ด.1 e-Filing text for company {companyId}, period {payrollPeriod}");
+            return EFilingFile(httpContext, file);
+        });
+        employeeDocGroup.MapGet("/efiling/pnd1kor/{companyId}/{taxYear:int}", async (
+            string companyId, int taxYear, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            if (companyId != httpContext.User.FindFirst("payroll_company")?.Value) return Results.Forbid();
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var file = await EFilingExportService.BuildPnd1KorAsync(context, companyId, taxYear);
+            if (file is null) return Results.NotFound();
+            await auditLogger.LogAccessAsync("Pnd1KorEFiling", $"{companyId}:{taxYear}", isSensitive: true, note: $"ภ.ง.ด.1ก e-Filing text for company {companyId}, year {taxYear}");
+            return EFilingFile(httpContext, file);
+        });
+        employeeDocGroup.MapGet("/efiling/sso110/{companyId}/{payrollPeriod}", async (
+            string companyId, string payrollPeriod, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, IAuditLogger auditLogger) =>
+        {
+            if (companyId != httpContext.User.FindFirst("payroll_company")?.Value) return Results.Forbid();
+            await using var context = await dbFactory.CreateDbContextAsync();
+            var file = await EFilingExportService.BuildSso110Async(context, companyId, payrollPeriod);
+            if (file is null) return Results.NotFound();
+            await auditLogger.LogAccessAsync("Sso110EFiling", $"{companyId}:{payrollPeriod}", isSensitive: true, note: $"สปส.1-10 e-Service text for company {companyId}, period {payrollPeriod}");
+            return EFilingFile(httpContext, file);
+        });
+
         // Salary certification letter — position/department/purpose/addressee
         // are supplied by HR at generation time (query string), not stored;
         // see SalaryCertificateGenerate.razor.
@@ -175,5 +208,12 @@ public static class PayrollFileEndpoints
             var bytes = SalaryCertificatePdfService.Generate(data, position ?? "", department ?? "", purpose, addressee, DateTime.Now);
             return Results.File(bytes, "application/pdf", $"salary_cert_{hremployeeId}.pdf");
         });
+    }
+
+    private static IResult EFilingFile(HttpContext httpContext, EFilingExportService.TextFile file)
+    {
+        if (file.Warnings.Count > 0)
+            httpContext.Response.Headers["X-EFiling-Warnings"] = Uri.EscapeDataString(string.Join(" | ", file.Warnings));
+        return Results.File(file.Content, "text/plain", file.FileName);
     }
 }
