@@ -192,6 +192,42 @@ public class WorkflowEngineService
         }
     }
 
+    // ── ร่าง: โมดูลบันทึกเอกสารของตัวเองก่อน แล้วเปิดงานที่ขั้น 0 ด้วย id ที่เพิ่งได้ ─────
+    //
+    //  CEO, 11 ก.ย. 2569: "ตอน save draft เราจะรู้ id ของที่เราสร้าง เราสร้าง status -> draft
+    //  ตอน level 0 ... ตอน workflow วิ่ง id ที่เราสร้างคือ refid — workflow ให้สนใจ logic
+    //  บนตารางหลัก สร้าง method ไว้ call ถ้าโปรแกรมทำงานถูกมันจะถูกเสมอ"
+    //
+    //  ลำดับที่โมดูลต้องทำ:
+    //    1. บันทึกแถวในตารางของโมดูล (เช่น Exp_ClaimHeader) -> ได้ id
+    //    2. CreateDraftAsync(workflowcode, reftable, id, ...) -> ได้ jobmasterid เก็บกลับลงแถวนั้น
+    //    3. ผู้ยื่นกด "ส่งต่อ" ในหน้างาน (หรือโมดูลเรียก ActAsync approve ที่ขั้น 0) งานถึงเข้าเส้นทาง
+    //    4. ก่อนวิ่ง ลบได้ด้วย DeleteDraftAsync แล้วโมดูลลบแถวของตัวเอง
+    //  reftable/refid มาจากโค้ดของโมดูลเท่านั้น ไม่รับจาก URL (ปิดช่อง IDOR 11 ก.ย. 2569)
+    public async Task<long> CreateDraftAsync(string workflowCode, string reftable, string refid,
+        long requesterUserId, string? requesterEmpId, string? subject, decimal? amount, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reftable) || string.IsNullOrWhiteSpace(refid))
+            throw new InvalidOperationException("ต้องระบุตารางและ id ของเอกสารที่บันทึกแล้ว (reftable/refid)");
+
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == workflowCode, ct)
+            ?? throw new InvalidOperationException($"ไม่พบ workflow '{workflowCode}'");
+        if (workflow.useNewEngine != true)
+            throw new InvalidOperationException($"workflow '{workflow.wname}' ยังใช้เครื่องเดิมซึ่งไม่มีขั้นร่าง — ใช้ StartJobAsync");
+        if (await context.job_masters.AnyAsync(j => j.workflowid == workflow.workflowid
+                && j.reftable == reftable && j.refid == refid && j.isJobClosed != true, ct))
+            throw new InvalidOperationException($"เอกสาร {reftable} #{refid} มีงานที่ยังเปิดอยู่แล้ว");
+
+        var created = await NewEngine.CreateAsync(workflow.workflowid, requesterUserId, requesterEmpId,
+            subject, reftable, refid, amount, ct);
+        return created.jobmasterid;
+    }
+
+    // ลบร่าง (ขั้น 0 ที่ยังไม่เคยวิ่ง) — โมดูลเรียกก่อนลบแถวเอกสารของตัวเอง
+    public Task DeleteDraftAsync(long jobMasterId, long actorUserId, CancellationToken ct = default)
+        => NewEngine.DeleteDraftAsync(jobMasterId, actorUserId, ct);
+
     // Starts a new approval instance for any document type — reftable/refid
     // is the generic routing pair (Block 7 uses this to build the link back
     // to the originating record).

@@ -14,11 +14,16 @@ public class PayrollWorkflowService
 {
     private readonly IDbContextFactory<HRMContext> _dbFactory;
     private readonly PayrollCalculationService _calculationService;
+    // แยกหน้าที่ (audit H6): คนส่งตรวจกับคนอนุมัติต้องเป็นคนละคน — ปิดได้ใน appsettings
+    // ("Payroll:RequireSeparateApprover": false) สำหรับ dev/demo ที่มีผู้ใช้คนเดียว
+    private readonly bool _requireSeparateApprover;
 
-    public PayrollWorkflowService(IDbContextFactory<HRMContext> dbFactory, PayrollCalculationService calculationService)
+    public PayrollWorkflowService(IDbContextFactory<HRMContext> dbFactory, PayrollCalculationService calculationService,
+        Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _dbFactory = dbFactory;
         _calculationService = calculationService;
+        _requireSeparateApprover = configuration?.GetValue<bool?>("Payroll:RequireSeparateApprover") ?? true;
     }
 
     // Single source of truth for "what buttons should be enabled" — shared by
@@ -75,6 +80,9 @@ public class PayrollWorkflowService
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Approve);
         await EnsureReadyForReviewAsync(context, run, ct);
+        if (_requireSeparateApprover && (run.ReviewedByUserId == actorUserId || run.CalculatedByUserId == actorUserId))
+            throw new InvalidOperationException(
+                "ผู้อนุมัติต้องเป็นคนละคนกับผู้คำนวณ/ผู้ส่งตรวจ (แยกหน้าที่) — ให้ผู้มีสิทธิ์อีกคนเป็นผู้อนุมัติ");
 
         var hasUnresolvedNegativePay = await context.Pay_PayrollEmployees
             .AnyAsync(e => e.PayrollRunId == runId && e.IsNegativeNetPayFlag && !e.IsExcluded, ct);
@@ -118,6 +126,35 @@ public class PayrollWorkflowService
         run.PaidDate = DateTime.Now;
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Paid, actorUserId);
+        await context.SaveChangesAsync(ct);
+    }
+
+    // กันพนักงานออกจากรอบ / เอากลับเข้า — ก่อนอนุมัติเท่านั้น (audit M11: IsExcluded ไม่เคยมีใครเขียน
+    // ทั้งที่ ApproveAsync บอกให้ "กันคนที่ยอดติดลบออก")
+    public async Task SetEmployeeExclusionAsync(long runId, long payrollEmployeeId, bool excluded, string? reason, long actorUserId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var run = await LoadRunOrThrowAsync(context, runId, ct);
+        if (run.Status >= PayrollRunStatus.Approved)
+            throw new InvalidOperationException("รอบที่อนุมัติแล้วแก้รายชื่อไม่ได้ — ใช้การกลับรายการ/รอบปรับปรุง");
+        if (excluded && string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("กรุณาระบุเหตุผลที่กันพนักงานออกจากรอบ");
+
+        var row = await context.Pay_PayrollEmployees.FirstOrDefaultAsync(e => e.Id == payrollEmployeeId && e.PayrollRunId == runId, ct)
+            ?? throw new InvalidOperationException("ไม่พบรายการพนักงานในรอบนี้");
+        row.IsExcluded = excluded;
+        row.ExcludeReason = excluded ? reason!.Trim() : null;
+
+        context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
+        {
+            PayrollRunId = runId,
+            PayrollEmployeeId = payrollEmployeeId,
+            EventType = PayAuditEventType.StatusTransition,
+            FromStatus = run.Status,
+            ToStatus = run.Status,
+            ActorUserId = actorUserId,
+            Comment = excluded ? $"Excluded {row.EmpNo}: {reason!.Trim()}" : $"Re-included {row.EmpNo}",
+        });
         await context.SaveChangesAsync(ct);
     }
 
@@ -267,6 +304,7 @@ public class PayrollWorkflowService
                 TotalDeductions = -src.TotalDeductions,
                 NetPay = -src.NetPay,
                 TaxAmount = -src.TaxAmount,
+                TaxableIncome = -src.TaxableIncome,
                 TaxDeductionAmount = -src.TaxDeductionAmount,
                 SocialSecurityAmount = -src.SocialSecurityAmount,
                 ProvidentFundEmployeeAmount = -src.ProvidentFundEmployeeAmount,

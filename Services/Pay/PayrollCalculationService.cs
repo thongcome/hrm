@@ -171,7 +171,7 @@ public class PayrollCalculationService
         // zero-deduction bug just because a year's row is missing.
         var taxDeductionSetting = await context.Pay_TaxDeductionSettings
             .FirstOrDefaultAsync(s => s.EffectiveYear == run.PeriodStart.Year && s.IsActive, ct);
-        var personalAllowancePerMonth = (taxDeductionSetting?.PersonalAllowancePerYear ?? 60000m) / 12m;
+        var personalAllowancePerYear = taxDeductionSetting?.PersonalAllowancePerYear ?? 60000m;
         var expenseDeductionRate = taxDeductionSetting?.ExpenseDeductionRate ?? 0.50m;
         var expenseDeductionCap = taxDeductionSetting?.ExpenseDeductionCap ?? 100000m;
 
@@ -310,6 +310,23 @@ public class PayrollCalculationService
                 .GroupBy(s => s.HremployeeId!.Value)
                 .Select(g => new { Emp = g.Key, Pos = g.Min(x => x.PosExecTypeId!.Value) })
                 .ToDictionaryAsync(x => x.Emp, x => x.Pos, ct);
+
+        // โหลดครั้งเดียวต่อรอบแทน query ต่อพนักงาน (audit M14: 7,000 คน = 35,000 round-trip)
+        // รายการเฉพาะกิจของงวดนี้ที่อนุมัติแล้ว หรือที่รอบนี้เคยใช้ไปแล้ว (คำนวณซ้ำหยิบเดิมได้)
+        var adhocByEmployee = (await context.Pay_AdhocPayItems
+                .Include(a => a.Pay_PayItemType)
+                .Where(a => a.TargetPeriod == run.PayrollPeriod
+                            && (a.Status == PayAdhocItemStatus.Approved
+                                || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
+                .ToListAsync(ct))
+            .GroupBy(a => a.HremployeeId).ToDictionary(g => g.Key, g => g.ToList());
+        var installmentsByEmployee = (await context.Pay_EmployeeLoanInstallments
+                .Include(i => i.Pay_EmployeeLoan)
+                .Where(i => i.Period == run.PayrollPeriod
+                            && (i.Status == Pay_LoanInstallmentStatus.Pending
+                                || (i.Status == Pay_LoanInstallmentStatus.Consumed && i.ConsumedByPayrollRunId == run.Id)))
+                .ToListAsync(ct))
+            .GroupBy(i => i.Pay_EmployeeLoan.HremployeeId).ToDictionary(g => g.Key, g => g.ToList());
 
         var negativeCount = 0;
         var totalNet = 0m;
@@ -525,9 +542,9 @@ public class PayrollCalculationService
             // HR-entered company loans (Pay_EmployeeLoan) — separate pathway
             // from the cooperative KPTEMPRECEIVE loan above; an employee
             // could have both types of deduction in the same period.
-            var empLoanInstallments = supplementary
+            var empLoanInstallments = supplementary || !installmentsByEmployee.TryGetValue(emp.id, out var instRows)
                 ? new List<Pay_EmployeeLoanInstallment>()   // งวดผ่อนหักในรอบปกติแล้ว
-                : await LoanDeductionCalculator.GetEmployeeLoanInstallmentsForPeriodAsync(context, emp.id, run.PayrollPeriod, run.Id, ct);
+                : instRows;
             foreach (var installment in empLoanInstallments)
             {
                 lineItems.Add(NewLine(payItemTypes["LOAN"], PayLineSourceType.Loan, installment.Amount, -1, ++seq, "Pay_EmployeeLoanInstallment", installment.Id,
@@ -544,13 +561,7 @@ public class PayrollCalculationService
             // approved and targeting this exact period. Query includes items
             // already consumed by THIS run so recalculation re-picks them up
             // idempotently rather than losing them.
-            var adhocItems = await context.Pay_AdhocPayItems
-                .Include(a => a.Pay_PayItemType)
-                .Where(a => a.HremployeeId == emp.id
-                            && a.TargetPeriod == run.PayrollPeriod
-                            && (a.Status == PayAdhocItemStatus.Approved
-                                || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
-                .ToListAsync(ct);
+            var adhocItems = adhocByEmployee.TryGetValue(emp.id, out var adhocRows) ? adhocRows : new List<Pay_AdhocPayItem>();
 
             var adhocTaxableEarnings = 0m;
             var adhocNonTaxableEarnings = 0m;
@@ -581,10 +592,12 @@ public class PayrollCalculationService
             var taxableGrossThisPeriod = Math.Max(0m, baseSalary - attendanceDeduction) + otAmount + adhocTaxableEarnings + welfareTaxableAllowance;
 
             var empMonthlyElections = monthlyTaxElections.Where(e => e.HremployeeId == emp.id).ToList();
-            var electedMonthlyDeduction = empMonthlyElections.Sum(e => e.AnnualAmount) / 12m;
-            // รอบเสริมไม่หักค่าลดหย่อนซ้ำ — ค่าลดหย่อนของเดือนนี้ใช้ไปในรอบปกติแล้ว
-            var thisPeriodFlatDeduction = supplementary ? 0m
-                : personalAllowancePerMonth + ssoAmount + pf.EmployeeAmount + electedMonthlyDeduction;
+            var electedAnnualDeduction = empMonthlyElections.Sum(e => e.AnnualAmount);
+            // รายการหักรายเดือนที่คูณเดือนที่เหลือ = เฉพาะประกันสังคม+กองทุน (audit M1) ส่วนลดหย่อนส่วนตัว
+            // และรายการที่พนักงานแจ้งเป็น "รายปี" ได้เต็มไม่ว่าเข้างานเดือนไหน — นับครั้งเดียวใน annualFixedDeduction
+            // (รอบเสริมทั้งสองเป็น 0 อยู่แล้ว เพราะ SSO/PF ไม่คิดในรอบเสริม และลดหย่อนรายปีถูกใช้ผ่านฐานรอบปกติ)
+            var thisPeriodFlatDeduction = ssoAmount + pf.EmployeeAmount;
+            var annualFixedDeduction = supplementary ? 0m : personalAllowancePerYear + electedAnnualDeduction;
 
             var priorEmployerIncome = priorEmployerIncomes.FirstOrDefault(p => p.HremployeeId == emp.id);
             var (ytdIncome, ytdDeduction, ytdTax) = await GetYtdAccumulatorsAsync(context, emp.id, run, priorEmployerIncome, ct, includeSamePeriod: supplementary);
@@ -598,13 +611,15 @@ public class PayrollCalculationService
                     ytdIncome, ytdDeduction, ytdTax,
                     regularRow?.GrossEarnings ?? 0m, regularRow?.TaxDeductionAmount ?? 0m,
                     taxableGrossThisPeriod, 12 - run.PeriodStart.Month,
-                    expenseDeductionRate, expenseDeductionCap, taxBrackets);
+                    expenseDeductionRate, expenseDeductionCap, taxBrackets,
+                    annualFixedDeduction: personalAllowancePerYear + electedAnnualDeduction);
             }
             else
             {
                 (monthlyTax, annualCalc) = TaxBracketCalculator.CalculateMonthlyWithholding(
                     ytdIncome, taxableGrossThisPeriod, ytdDeduction, thisPeriodFlatDeduction,
-                    expenseDeductionRate, expenseDeductionCap, remainingPeriods, ytdTax, taxBrackets);
+                    expenseDeductionRate, expenseDeductionCap, remainingPeriods, ytdTax, taxBrackets,
+                    annualFixedDeduction: annualFixedDeduction);
             }
             if (monthlyTax != 0)
                 lineItems.Add(NewLine(payItemTypes["TAX"], PayLineSourceType.Tax, monthlyTax, -1, ++seq, null, null,
@@ -629,6 +644,7 @@ public class PayrollCalculationService
             payEmp.TotalDeductions = totalDeductions;
             payEmp.NetPay = netPayResult.AdjustedNetPay;
             payEmp.TaxAmount = monthlyTax;
+            payEmp.TaxableIncome = taxableGrossThisPeriod;   // 50 ทวิ / ภ.ง.ด.1 อ่านจากตรงนี้ ไม่ต้องย้อนคำนวณจาก gross
             payEmp.TaxDeductionAmount = thisPeriodFlatDeduction;
             payEmp.SocialSecurityAmount = ssoAmount;
             payEmp.ProvidentFundEmployeeAmount = pf.EmployeeAmount;
@@ -664,10 +680,10 @@ public class PayrollCalculationService
                     },
                     DeductionBreakdown = new
                     {
-                        PersonalAllowancePerMonth = personalAllowancePerMonth,
+                        PersonalAllowancePerYear = personalAllowancePerYear,
                         SocialSecurity = ssoAmount,
                         ProvidentFund = pf.EmployeeAmount,
-                        ElectedMonthlyDeductions = electedMonthlyDeduction,
+                        ElectedAnnualDeductions = electedAnnualDeduction,
                         ThisPeriodFlatDeductionTotal = thisPeriodFlatDeduction,
                         ExpenseDeductionRate = expenseDeductionRate,
                         ExpenseDeductionCap = expenseDeductionCap,
@@ -764,7 +780,7 @@ public class PayrollCalculationService
             .ToListAsync(ct);
 
         return FoldPriorEmployerIncome(
-            priorRows.Sum(r => r.GrossEarnings), priorRows.Sum(r => r.TaxDeductionAmount), priorRows.Sum(r => r.TaxAmount),
+            priorRows.Sum(r => r.GrossEarnings), priorRows.Sum(r => r.SocialSecurityAmount + r.ProvidentFundEmployeeAmount), priorRows.Sum(r => r.TaxAmount),
             priorEmployerIncome);
     }
 

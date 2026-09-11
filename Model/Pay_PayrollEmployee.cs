@@ -38,6 +38,11 @@ public class Pay_PayrollEmployee
     [Column(TypeName = "decimal(15,2)")]
     public decimal TaxAmount { get; set; }
 
+    // เงินได้ที่ต้องเสียภาษีของงวดนี้ (ฐานที่ใช้คำนวณ TaxAmount จริง: ไม่รวมรายการเฉพาะกิจที่ไม่ต้องเสียภาษี
+    // และสวัสดิการที่ไม่ต้องเสียภาษี หักขาด/สายแล้ว) — 50 ทวิ และ ภ.ง.ด.1 ใช้ค่านี้ (audit M3)
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal TaxableIncome { get; set; }
+
     // The flat-per-period deduction actually applied when computing TaxAmount
     // above (personal allowance/12 + SocialSecurityAmount + ProvidentFund-
     // EmployeeAmount + any ApplyMonthly elections/12 this period) — does NOT

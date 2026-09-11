@@ -449,6 +449,16 @@
                     <MudButton Href="@_m.editUrl" Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
                                StartIcon="@Icons.Material.Filled.Edit" Class="mr-2">แก้ไขเอกสาร</MudButton>
                 }
+                @* CEO, 11 ก.ย. 2569: ร่างที่ไม่ใช้ก็เป็นขยะ ลบได้ — แต่พอส่งเข้า workflow แล้วยกเลิกได้อย่างเดียว
+                   ปุ่มนี้จึงขึ้นเฉพาะร่างที่ยังไม่เคยวิ่ง (service เช็คซ้ำอีกชั้น) *@
+                @if (_m.canDeleteDraft)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.DeleteOutline" OnClick="DeleteDraftAsync">ลบร่างนี้</MudButton>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                        ลบได้เพราะยังไม่เคยส่งเข้าสายอนุมัติ — ถ้าส่งไปแล้วจะทำได้แค่ "ยกเลิกคำขอ" ซึ่งเก็บประวัติไว้
+                    </MudText>
+                }
             }
 
             @if (_m.canCancel)
@@ -706,6 +716,23 @@
                 reason = string.IsNullOrWhiteSpace(_reason) ? "ผู้ยื่นยกเลิกคำขอเอง" : _reason,
             });
             await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteDraftAsync()
+    {
+        var ok = await Dialog.ShowMessageBox("ลบร่างนี้?",
+            "ร่างที่ยังไม่ได้ส่งเข้าสายอนุมัติจะถูกลบทิ้งทั้งงานและใบงาน ไม่สามารถกู้คืนได้ (เอกสารในโมดูลต้นทางต้องลบแยกเอง)",
+            yesText: "ลบร่าง", cancelText: "ไม่ลบ");
+        if (ok != true) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Wf.DeleteDraftAsync(Id, _actorUserId);
+            Nav.NavigateTo("/workflow");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }

@@ -10,6 +10,7 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
 
 @* HR gap wave 1 (REQ-104): salary advances. One advance → one full recovery
@@ -154,6 +155,8 @@
         _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirst("payroll_company")?.Value ?? "";
         _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        // PDPA: หน้านี้แสดงยอดเบิกล่วงหน้าของพนักงาน — บันทึกการเปิดดู (audit M15)
+        await AuditLogger.LogAccessAsync("Pay_SalaryAdvance", _companyId, isSensitive: true, note: "view salary advances");
         await LoadAsync();
     }
 

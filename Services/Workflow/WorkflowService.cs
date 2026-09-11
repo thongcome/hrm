@@ -73,6 +73,7 @@ public class WorkFlowViewModel
     public bool canDecline { get; set; }      // ขั้นสุดท้ายเท่านั้นถึงปฏิเสธถาวรได้
     public bool canCancel { get; set; }       // ผู้ยื่นถอนเรื่องของตัวเอง
     public bool isDraftHolder { get; set; }   // ถืออยู่ที่ขั้นร่าง = แก้แล้วส่งใหม่ได้
+    public bool canDeleteDraft { get; set; }  // ร่างที่ไม่เคยวิ่ง = ลบทิ้งได้ (ส่งแล้วยกเลิกได้อย่างเดียว)
     public string? editUrl { get; set; }      // ลิงก์ไปหน้าแก้เอกสารต้นทาง
 
     public bool isPoolLevel { get; set; }
@@ -378,6 +379,37 @@ public class WorkflowService
     //  ผู้ยื่นต้องไปรบกวนผู้อนุมัติให้ตีกลับ ซึ่งคนละความหมายกันและทำให้ประวัติเพี้ยน
     //
     //  ที่นี่ "ยกเลิก" ไม่ลบข้อมูล — ปิดงานพร้อมเหตุผล ประวัติยังอยู่ครบ
+    // ── ลบร่าง — งานที่ยังอยู่ขั้น 0 และไม่เคยวิ่ง ─────────────────────────────
+    //
+    //  CEO, 11 ก.ย. 2569: "ตอน save draft เราจะรู้ id ของที่เราสร้าง เราสร้าง status -> draft
+    //  ตอน level 0 (ถ้า workflow ยังไม่วิ่ง ลบได้)" — ร่างไม่ใช่ประวัติ ไม่มีใครเคยพิจารณา
+    //  จึงลบจริงทั้งงานและใบงาน/รอยเท้าของมัน (ต่างจาก CancelAsync ที่ใช้กับงานที่วิ่งแล้ว
+    //  ซึ่งต้องเก็บรอยเท้าไว้) เอกสารในตารางของโมดูลเป็นหน้าที่ของโมดูลลบเอง
+    public async Task DeleteDraftAsync(long jobMasterId, long actorUserId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var job = await db.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == jobMasterId, ct)
+            ?? throw new InvalidOperationException($"ไม่พบงาน id {jobMasterId}");
+        if (job.createuserid != actorUserId)
+            throw new InvalidOperationException("ลบร่างได้เฉพาะผู้สร้างงานเองเท่านั้น");
+        if (job.isJobClosed == true || (job.lastLevel ?? 0) != DraftLevel)
+            throw new InvalidOperationException("งานนี้เข้าเส้นทางอนุมัติแล้ว ลบไม่ได้ — ใช้ \"ยกเลิกคำขอ\" แทน");
+        // เคยเดินแล้วถูกส่งกลับมาขั้นร่าง = มีประวัติผู้อนุมัติ ต้องยกเลิกไม่ใช่ลบ
+        if (await db.job_user_lists.AnyAsync(a => a.jobmasterid == jobMasterId && a.wlevel > DraftLevel, ct))
+            throw new InvalidOperationException("งานนี้เคยวิ่งเข้าเส้นทางแล้ว ลบไม่ได้ — ใช้ \"ยกเลิกคำขอ\" แทน");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.wf_adhoc_users.Where(a => a.jobmasterid == jobMasterId).ExecuteDeleteAsync(ct);
+        await db.job_loas.Where(l => l.jobmasterid == jobMasterId).ExecuteDeleteAsync(ct);
+        await db.job_user_lists.Where(a => a.jobmasterid == jobMasterId).ExecuteDeleteAsync(ct);
+        await db.job_subworkflow_masters.Where(s => s.jobmasterid == jobMasterId).ExecuteDeleteAsync(ct);
+        db.job_masters.Remove(job);            // ผ่าน change tracker ให้ audit interceptor บันทึกการลบ
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        await AuditAsync(job, "DeleteDraft", new { job.workflowcode, job.reftable, job.refid }, ct);
+    }
+
     public async Task<WorkFlowViewModel> CancelAsync(WorkFlowViewModel m, bool isAdminOverride = false,
         CancellationToken ct = default)
     {
@@ -760,6 +792,9 @@ public class WorkflowService
         // งานอยู่ที่ขั้นร่าง (0) และคนดูคือคนถือ = เพิ่งถูกส่งกลับมาให้แก้ หรือยังไม่เคยส่ง
         // ให้ลิงก์ไปหน้าเอกสารต้นทางเพื่อแก้ แล้วกลับมากดส่งใหม่
         model.isDraftHolder = model.isCurrentUser && currentlevel == DraftLevel;
+        // ลบได้เฉพาะร่างที่ยังไม่เคยเข้าเส้นทาง — เคยวิ่งแล้วถูกส่งกลับมาร่างจะมีใบงานขั้น >0 อยู่ (CEO, 11 ก.ย. 2569)
+        model.canDeleteDraft = model.isDraftHolder && job.createuserid == actorUserId
+            && !model.jobUserList.Any(a => a.wlevel > DraftLevel);
         if (model.isDraftHolder && !string.IsNullOrWhiteSpace(job.refid))
         {
             var route = await db.wf_sub_workflow_masters

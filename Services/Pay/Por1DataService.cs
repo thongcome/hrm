@@ -72,7 +72,7 @@ public static class Por1DataService
                     pe.EmpNo ?? pe.Hremployee.EmpNo,
                     $"{pe.Hremployee.EmpName} {pe.Hremployee.EmpSurname}",
                     pe.Hremployee.IdCard,
-                    pe.GrossEarnings - nonTaxable,
+                    pe.TaxableIncome,   // persisted per period (audit M3) — gross − non-taxable adhoc still over-counted late/absence and welfare
                     pe.TaxAmount);
             })
             .OrderBy(l => l.EmpNo)
@@ -112,14 +112,13 @@ public static class Por1DataService
             .Select(g =>
             {
                 var first = g.First();
-                var grossTotal = g.Sum(pe => pe.GrossEarnings);
-                var nonTaxableTotal = g.Sum(pe => nonTaxableByPayEmployee.TryGetValue(pe.Id, out var t) ? t : 0m);
+                var taxableTotal = g.Sum(pe => pe.TaxableIncome);   // persisted per period (audit M3)
                 return new Por1KorLineItem(
                     g.Key,
                     first.EmpNo ?? first.Hremployee.EmpNo,
                     $"{first.Hremployee.EmpName} {first.Hremployee.EmpSurname}",
                     first.Hremployee.IdCard,
-                    grossTotal - nonTaxableTotal,
+                    taxableTotal,
                     g.Sum(pe => pe.TaxAmount));
             })
             .OrderBy(l => l.EmpNo)

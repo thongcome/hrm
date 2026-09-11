@@ -227,13 +227,19 @@
             _error = "ไม่พบประเภทลดหย่อนที่เลือก";
             return;
         }
-        if (_newAmount > type.MaxAmountPerYear)
+        await using var context = await DbFactory.CreateDbContextAsync();
+        // เพดานคิดต่อประเภทต่อปี ไม่ใช่ต่อแถว (audit M13) — สองแถวประเภทเดียวกันรวมกันต้องไม่เกิน
+        var alreadyElected = await context.Pay_EmployeeTaxDeductionElections
+            .Where(e => e.HremployeeId == _selectedEmployee.id && e.DeductionTypeId == type.Id && e.IsActive)
+            .SumAsync(e => e.AnnualAmount);
+        if (alreadyElected + _newAmount > type.MaxAmountPerYear)
         {
-            _error = $"จำนวนที่ใช้สิทธิเกินเพดานของประเภทนี้ ({type.MaxAmountPerYear:N2} บาท/ปี)";
+            _error = alreadyElected > 0
+                ? $"ประเภทนี้ใช้สิทธิไปแล้ว {alreadyElected:N2} บาท รวมกับรายการใหม่จะเกินเพดาน ({type.MaxAmountPerYear:N2} บาท/ปี)"
+                : $"จำนวนที่ใช้สิทธิเกินเพดานของประเภทนี้ ({type.MaxAmountPerYear:N2} บาท/ปี)";
             return;
         }
 
-        await using var context = await DbFactory.CreateDbContextAsync();
         context.Pay_EmployeeTaxDeductionElections.Add(new Pay_EmployeeTaxDeductionElection
         {
             HremployeeId = _selectedEmployee.id,

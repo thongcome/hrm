@@ -39,7 +39,7 @@ public static class WithholdingCertificateDataService
         var nonTaxableAdhocTotal = await TaxableIncomeHelper.GetNonTaxableAdhocTotalAsync(context, payEmployeeIds, ct);
 
         var totalGross = payEmployees.Sum(pe => pe.GrossEarnings);
-        var totalTaxableIncome = totalGross - nonTaxableAdhocTotal;
+        var totalTaxableIncome = payEmployees.Sum(pe => pe.TaxableIncome);   // persisted per period (audit M3)
         var totalTaxWithheld = payEmployees.Sum(pe => pe.TaxAmount);
         var totalSsf = payEmployees.Sum(pe => pe.SocialSecurityAmount);
         var totalPf = payEmployees.Sum(pe => pe.ProvidentFundEmployeeAmount);

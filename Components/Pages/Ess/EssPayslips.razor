@@ -13,6 +13,7 @@
 @inject HRM.Services.Pay.PayslipEmailService PayslipEmail
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
 
 <PageTitle>@L.Translate("Payslips")</PageTitle>
@@ -102,6 +103,8 @@
                 .ToListAsync();
 
             _rows = payEmployees.Select(pe => new Row(pe.Pay_PayrollRun, pe, pe.Pay_Payslip!)).ToList();
+            // PDPA: สลิปเงินเดือนของตัวเอง — บันทึกการเปิดดู (audit M15)
+            await AuditLogger.LogAccessAsync("Pay_Payslip", _employee.id.ToString(), isSensitive: true, note: "ESS view payslips");
 
             _ownEmail = await EmployeeEmailResolver.ResolveAsync(context, _employee.id);
 

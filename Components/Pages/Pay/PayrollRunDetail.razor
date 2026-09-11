@@ -2,6 +2,8 @@
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Pay
+@using HRM.Services.Security
+@using HRM.Services.Audit
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -21,6 +23,8 @@
 @inject PayrollCalcJobRegistry CalcJobs
 @inject PayrollCalcJobService CalcJobService
 @inject PayrollPreflightService Preflight
+@inject ProgramRoleService ProgramRoles
+@inject IAuditLogger AuditLogger
 @implements IDisposable
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
@@ -79,6 +83,11 @@ else
         }
 
         <MudDivider Class="my-3" />
+
+        @if (_rights is not null && !_rights.CanEdit)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว ปุ่มดำเนินการจะถูกปฏิเสธ</MudAlert>
+        }
 
         <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
             @if (_allowed.Contains(PayrollAction.Calculate))
@@ -395,6 +404,29 @@ else
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}/employee/{context.Employee.Id}"))">
                         @L.Translate("DescriptionLabel")
                     </MudButton>
+                    @* กันออก/เอากลับ — ก่อนอนุมัติเท่านั้น (audit M11: เดิม IsExcluded ไม่มีปุ่มเขียนเลย) *@
+                    @if (_run is not null && _run.Status < PayrollRunStatus.Approved && _rights?.CanEdit == true)
+                    {
+                        @if (context.Employee.IsExcluded)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-1">กันออก: @context.Employee.ExcludeReason</MudChip>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Class="ml-1" Disabled="_busy"
+                                       OnClick="@(() => SetExclusionAsync(context.Employee.Id, false, null))">เอากลับเข้ารอบ</MudButton>
+                        }
+                        else if (_excludeTargetId == context.Employee.Id)
+                        {
+                            <MudTextField T="string" @bind-Value="_excludeReason" Placeholder="เหตุผลที่กันออก" Immediate="true"
+                                          Margin="Margin.Dense" Variant="Variant.Outlined" Class="ml-1" Style="max-width:220px;display:inline-flex" />
+                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Filled" Class="ml-1" Disabled="_busy"
+                                       OnClick="@(() => SetExclusionAsync(context.Employee.Id, true, _excludeReason))">ยืนยันกันออก</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _excludeTargetId = null)">ยกเลิก</MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Class="ml-1" Disabled="_busy"
+                                       OnClick="@(() => { _excludeTargetId = context.Employee.Id; _excludeReason = null; })">กันออก</MudButton>
+                        }
+                    }
                 </MudTd>
             </RowTemplate>
             <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" /></PagerContent>
@@ -543,6 +575,10 @@ else
             _run = null;
             return;
         }
+        // AD.CRUDManage: สิทธิ์ต่อบทบาทของหน้านี้ (ปุ่มดำเนินการ = Edit, ยกเลิกรอบ = Delete)
+        _rights = await ProgramRoles.GetRightsAsync(authState.User, ProgramPath);
+        // PDPA: หน้านี้แสดงเงินเดือนสุทธิของทั้งบริษัท — บันทึกการเปิดดูทุกครั้ง (audit M15)
+        await AuditLogger.LogAccessAsync("Pay_PayrollRun", RunId.ToString(), isSensitive: true, note: "view run detail");
 
         var employees = await context.Pay_PayrollEmployees
             .Include(e => e.Hremployee)
@@ -636,8 +672,22 @@ else
         return long.TryParse(idClaim, out var id) ? id : 0;
     }
 
-    private async Task RunActionAsync(Func<long, Task> action, string successMessage)
+    // AD.CRUDManage: ทุกปุ่มที่เปลี่ยนสถานะรอบต้องมีสิทธิ์ Edit ของ /pay/runs (ยกเลิก = Delete)
+    // ตรวจฝั่งเซิร์ฟเวอร์ทุกครั้ง ไม่ใช่แค่ซ่อนปุ่ม (audit H6)
+    private const string ProgramPath = "/pay/runs";
+    private ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(ProgramRoleService.ProgramAction action)
     {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
+    private async Task RunActionAsync(Func<long, Task> action, string successMessage,
+        ProgramRoleService.ProgramAction right = ProgramRoleService.ProgramAction.Edit)
+    {
+        if (!await RequireRightAsync(right)) return;
         _busy = true;
         try
         {
@@ -661,6 +711,7 @@ else
     // has its own DI scope + DbContext and is driven by CancellationToken.None.
     private async Task CalculateAsync()
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         try
         {
             // Phase B: if the last pre-flight found blocking errors or unapproved
@@ -794,6 +845,17 @@ else
         _calcPoll = null;
     }
 
+    private long? _excludeTargetId;
+    private string? _excludeReason;
+
+    private Task SetExclusionAsync(long payrollEmployeeId, bool excluded, string? reason) => RunActionAsync(
+        async uid =>
+        {
+            await WorkflowService.SetEmployeeExclusionAsync(RunId, payrollEmployeeId, excluded, reason, uid);
+            _excludeTargetId = null;
+        },
+        excluded ? "กันพนักงานออกจากรอบแล้ว — ยอดสุทธิของรอบไม่รวมคนนี้" : "เอาพนักงานกลับเข้ารอบแล้ว");
+
     private Task SubmitForReviewAsync() => RunActionAsync(
         async uid => await WorkflowService.SubmitForReviewAsync(RunId, uid),
         L.Translate("SubmittedForReviewSuccess"));
@@ -822,11 +884,13 @@ else
             L.Translate("ConfirmCancelRunTitle"), L.Translate("ConfirmCancelRunMessage"), yesText: L.Translate("CancelRunButton"), cancelText: L.Translate("BackButton"));
         if (confirmed != true) return;
 
-        await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), L.Translate("RunCancelledSuccess"));
+        await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), L.Translate("RunCancelledSuccess"),
+            ProgramRoleService.ProgramAction.Delete);
     }
 
     private async Task ReverseRunAsync()
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         _busy = true;
         try
         {
@@ -847,6 +911,7 @@ else
 
     private async Task CreateAdjustmentAsync()
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         _busy = true;
         try
         {

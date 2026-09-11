@@ -161,8 +161,11 @@ public class ProvidentFundRateChangeRequestService
                 .ToListAsync(ct);
             foreach (var old in existingActive)
             {
-                old.IsActive = false;
+                // ปิดของเดิมด้วยวันสิ้นสุด ไม่ใช่ IsActive=false ทันที — ไม่งั้นเดือนก่อนวันมีผลไม่มี election ให้ engine (audit M5)
+
                 old.EffectiveTo = request.RequestedEffectiveFrom.AddDays(-1);
+
+                if (request.RequestedEffectiveFrom <= DateOnly.FromDateTime(DateTime.Today)) old.IsActive = false;
             }
 
             context.Pay_ProvidentFundElections.Add(new Pay_ProvidentFundElection

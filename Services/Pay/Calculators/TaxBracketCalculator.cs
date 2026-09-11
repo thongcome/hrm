@@ -73,13 +73,17 @@ public static class TaxBracketCalculator
         decimal expenseDeductionCap,
         int remainingPeriodsIncludingThis,
         decimal ytdAccumulatedTax,
-        IReadOnlyList<Pay_TaxBracket> brackets)
+        IReadOnlyList<Pay_TaxBracket> brackets,
+        // ค่าลดหย่อนรายปีที่ได้เต็มไม่ว่าทำงานกี่เดือน (ลดหย่อนส่วนตัว 60,000 + รายการที่พนักงานแจ้ง)
+        // นับครั้งเดียว ไม่ใช่ "ต่อเดือน × เดือนที่เหลือ" ซึ่งทำให้คนเข้ากลางปีได้ลดหย่อนแค่ครึ่ง (audit M1)
+        decimal annualFixedDeduction = 0m)
     {
         if (remainingPeriodsIncludingThis <= 0) remainingPeriodsIncludingThis = 1;
 
         var projectedAnnualIncome = ytdAccumulatedIncome + thisPeriodIncome * remainingPeriodsIncludingThis;
         var expenseDeduction = Math.Min(Math.Max(0m, projectedAnnualIncome) * expenseDeductionRate, expenseDeductionCap);
-        var projectedAnnualDeduction = ytdAccumulatedDeduction + thisPeriodFlatDeduction * remainingPeriodsIncludingThis + expenseDeduction;
+        var projectedAnnualDeduction = ytdAccumulatedDeduction + thisPeriodFlatDeduction * remainingPeriodsIncludingThis
+                                       + annualFixedDeduction + expenseDeduction;
         var taxableIncome = Math.Max(0m, projectedAnnualIncome - projectedAnnualDeduction);
 
         var annualCalculation = CalculateProgressiveTax(taxableIncome, brackets);
@@ -105,12 +109,13 @@ public static class TaxBracketCalculator
         int remainingPeriodsAfterThis,
         decimal expenseDeductionRate,
         decimal expenseDeductionCap,
-        IReadOnlyList<Pay_TaxBracket> brackets)
+        IReadOnlyList<Pay_TaxBracket> brackets,
+        decimal annualFixedDeduction = 0m)
     {
         if (remainingPeriodsAfterThis < 0) remainingPeriodsAfterThis = 0;
 
         var baseIncome = ytdIncomeIncludingThisPeriod + regularMonthlyIncome * remainingPeriodsAfterThis;
-        var baseDeduction = ytdDeductionIncludingThisPeriod + regularMonthlyFlatDeduction * remainingPeriodsAfterThis;
+        var baseDeduction = ytdDeductionIncludingThisPeriod + regularMonthlyFlatDeduction * remainingPeriodsAfterThis + annualFixedDeduction;
 
         TaxCalculationResult TaxOn(decimal income)
         {

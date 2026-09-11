@@ -12,6 +12,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject JsonLocalizationService L
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
 
 <PageTitle>@L.Translate("PayrollEmployeeDetailHeaderPageTitle")</PageTitle>
@@ -144,6 +145,8 @@ else
             _employee = null;
             return;
         }
+        // PDPA: รายละเอียดเงินเดือนรายบุคคล — บันทึกการเปิดดู (audit M15)
+        await AuditLogger.LogAccessAsync("Pay_PayrollEmployee", EmployeeId.ToString(), isSensitive: true, note: "view employee pay detail");
 
         _lineItems = await context.Pay_PayrollLineItems
             .Include(li => li.Pay_PayItemType)
