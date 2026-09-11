@@ -53,6 +53,38 @@ public class GLExportService
             .Where(e => e.PayrollRunId == runId && !e.IsExcluded)
             .SumAsync(e => e.NetPay, ct);
 
+        // บัญชีของรายการที่ไม่ได้อยู่บนสลิป (audit M10): ฝั่งนายจ้าง + เงินเดือนค้างจ่าย อ่านจาก Pay_GLAccountMapping
+        var mappings = await context.Pay_GLAccountMappings
+            .Where(m => m.CompanyId == run.CompanyId && m.IsActive)
+            .ToDictionaryAsync(m => m.MappingKey, ct);
+        string Account(string key, bool debit)
+        {
+            var code = mappings.TryGetValue(key, out var m) ? (debit ? m.DebitAccountCode : m.CreditAccountCode) : null;
+            return string.IsNullOrWhiteSpace(code) ? $"UNMAPPED-{key}{(debit ? "" : "-PAYABLE")}" : code!;
+        }
+        var netPayableAccount = mappings.TryGetValue(GLMappingKeys.NetPayable, out var np) && !string.IsNullOrWhiteSpace(np.CreditAccountCode)
+            ? np.CreditAccountCode! : NetPayableAccountCode;
+
+        // ฝั่งนายจ้าง: เดบิตค่าใช้จ่าย เครดิตเจ้าหนี้ — ยอดจากแถวพนักงาน (ไม่ใช่รายการรับ-จ่าย)
+        var employer = await context.Pay_PayrollEmployees
+            .Where(e => e.PayrollRunId == runId && !e.IsExcluded)
+            .GroupBy(e => 1)
+            .Select(g => new
+            {
+                Sso = g.Sum(e => e.SocialSecurityCompanyAmount),
+                Pf = g.Sum(e => e.ProvidentFundCompanyAmount),
+                Insurance = g.Sum(e => e.InsuranceCompanyAmount),
+                WelfareFund = g.Sum(e => e.WelfareFundCompanyAmount),
+            })
+            .FirstOrDefaultAsync(ct);
+        var employerLines = new (string Key, string Label, decimal Amount)[]
+        {
+            (GLMappingKeys.EmployerSso, "ประกันสังคมส่วนนายจ้าง", employer?.Sso ?? 0m),
+            (GLMappingKeys.EmployerProvidentFund, "เงินสมทบกองทุนสำรองเลี้ยงชีพ", employer?.Pf ?? 0m),
+            (GLMappingKeys.EmployerInsurance, "เบี้ยประกันกลุ่มส่วนบริษัท", employer?.Insurance ?? 0m),
+            (GLMappingKeys.EmployerWelfareFund, "กองทุนสงเคราะห์ลูกจ้างส่วนนายจ้าง", employer?.WelfareFund ?? 0m),
+        }.Where(x => x.Amount != 0m).ToList();
+
         var csv = new StringBuilder();
         csv.AppendLine("GLAccountCode,Debit,Credit,Description");
         decimal totalDebit = 0, totalCredit = 0;
@@ -62,8 +94,15 @@ public class GLExportService
             totalDebit += g.Debit;
             totalCredit += g.Credit;
         }
-        csv.AppendLine($"{NetPayableAccountCode},0.00,{totalNetPay:0.00},\"เงินเดือนค้างจ่าย งวด {run.PayrollPeriod}\"");
+        csv.AppendLine($"{netPayableAccount},0.00,{totalNetPay:0.00},\"เงินเดือนค้างจ่าย งวด {run.PayrollPeriod}\"");
         totalCredit += totalNetPay;
+        foreach (var (key, label, amount) in employerLines)
+        {
+            csv.AppendLine($"{Account(key, true)},{amount:0.00},0.00,\"{label} งวด {run.PayrollPeriod}\"");
+            csv.AppendLine($"{Account(key, false)},0.00,{amount:0.00},\"{label} (ค้างนำส่ง) งวด {run.PayrollPeriod}\"");
+            totalDebit += amount;
+            totalCredit += amount;
+        }
 
         var fileBytes = Encoding.UTF8.GetBytes(csv.ToString());
         var fileName = $"gl_{runId}_{DateTime.Now:yyyyMMddHHmmss}.csv";
@@ -95,11 +134,24 @@ public class GLExportService
         context.Pay_GLExportEntries.Add(new Pay_GLExportEntry
         {
             GLExportBatchId = batch.Id,
-            GLAccountCode = NetPayableAccountCode,
+            GLAccountCode = netPayableAccount,
             DebitAmount = 0,
             CreditAmount = totalNetPay,
             Description = $"เงินเดือนค้างจ่าย งวด {run.PayrollPeriod}",
         });
+        foreach (var (key, label, amount) in employerLines)
+        {
+            context.Pay_GLExportEntries.Add(new Pay_GLExportEntry
+            {
+                GLExportBatchId = batch.Id, GLAccountCode = Account(key, true), DebitAmount = amount, CreditAmount = 0,
+                Description = $"{label} งวด {run.PayrollPeriod}",
+            });
+            context.Pay_GLExportEntries.Add(new Pay_GLExportEntry
+            {
+                GLExportBatchId = batch.Id, GLAccountCode = Account(key, false), DebitAmount = 0, CreditAmount = amount,
+                Description = $"{label} (ค้างนำส่ง) งวด {run.PayrollPeriod}",
+            });
+        }
         await context.SaveChangesAsync(ct);
 
         return batch.Id;

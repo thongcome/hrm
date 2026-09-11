@@ -37,5 +37,17 @@ public class OvertimeEarningsCalculator
             .ToListAsync(ct);
     }
 
+    // ทั้งบริษัทในงวดเดียว หนึ่ง query แล้วแยกตามรหัสพนักงาน (audit M14) — เดิมยิงรายคน 7,000 ครั้งต่อรอบ
+    public async Task<Dictionary<string, List<HrwOt>>> GetOvertimeForPeriodByEmployeeAsync(string companyId, DateOnly periodStart, DateOnly periodEnd, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var start = periodStart.ToDateTime(TimeOnly.MinValue);
+        var end = periodEnd.ToDateTime(TimeOnly.MaxValue);
+        var rows = await context.HrwOts
+            .Where(x => x.companyid == companyId && x.EmpNo != null && x.DateWork != null && x.DateWork >= start && x.DateWork <= end)
+            .ToListAsync(ct);
+        return rows.GroupBy(x => x.EmpNo!).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
     public static decimal SumAmount(IEnumerable<HrwOt> otRecords) => otRecords.Sum(x => x.OtAmt ?? 0m);
 }

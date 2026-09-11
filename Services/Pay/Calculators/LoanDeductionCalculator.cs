@@ -34,6 +34,27 @@ public class LoanDeductionCalculator
             .ToListAsync(ct);
     }
 
+    // ทั้งบริษัทในงวดเดียว สอง query แล้วแยกตามเลขสมาชิก (audit M14)
+    public async Task<Dictionary<string, List<Kptempreceivedet>>> GetLoanDeductionsForPeriodByMemberAsync(string companyId, string recvPeriod, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var headers = await context.Kptempreceives
+            .Where(h => h.companyid == companyId && h.RecvPeriod == recvPeriod && h.MemberNo != null)
+            .Select(h => new { h.KpslipNo, h.MemberNo })
+            .ToListAsync(ct);
+        if (headers.Count == 0) return new Dictionary<string, List<Kptempreceivedet>>();
+
+        var slipNos = headers.Select(h => h.KpslipNo).Distinct().ToList();
+        var details = await context.Kptempreceivedets
+            .Where(d => d.companyid == companyId && slipNos.Contains(d.KpslipNo))
+            .ToListAsync(ct);
+        var memberBySlip = headers.GroupBy(h => h.KpslipNo).ToDictionary(g => g.Key, g => g.First().MemberNo!);
+        return details
+            .Where(d => memberBySlip.ContainsKey(d.KpslipNo))
+            .GroupBy(d => memberBySlip[d.KpslipNo])
+            .ToDictionary(g => g.Key, g => g.ToList());
+    }
+
     public static decimal SumAmount(IEnumerable<Kptempreceivedet> details) => details.Sum(x => x.ItemPayment ?? 0m);
 
     // Pay_EmployeeLoan installments (the new HR-proxy company-loan pathway —

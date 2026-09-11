@@ -1,0 +1,136 @@
+@page "/pay/admin/gl-account-mapping"
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>บัญชี GL ของรายการฝั่งนายจ้าง</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">บัญชี GL ของรายการฝั่งนายจ้างและเงินเดือนค้างจ่าย</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        รายการรับ-จ่ายของพนักงานตั้งบัญชีที่ "รายการรับ-จ่าย (Pay Element)" — หน้านี้ตั้งบัญชีของรายการที่ไม่ได้อยู่บนสลิปพนักงาน:
+        ประกันสังคม/กองทุน/ประกันกลุ่ม/กองทุนสงเคราะห์ส่วนนายจ้าง (เดบิตค่าใช้จ่าย เครดิตเจ้าหนี้) และเงินเดือนค้างจ่าย (เครดิต)
+        ช่องที่ว่างจะออกในไฟล์บัญชีเป็น UNMAPPED-… ให้ฝ่ายบัญชีเห็นว่ายังไม่ได้ตั้ง
+    </MudText>
+    @if (_rights is { CanEdit: false })
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3">
+        <HeaderContent>
+            <MudTh>รายการ</MudTh>
+            <MudTh>รหัส</MudTh>
+            <MudTh>บัญชีเดบิต (ค่าใช้จ่าย)</MudTh>
+            <MudTh>บัญชีเครดิต (เจ้าหนี้/ค้างจ่าย)</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @if (_editing is not null && _editing.Id == context.Id)
+            {
+                <MudTd>@context.DisplayName</MudTd>
+                <MudTd>@context.MappingKey</MudTd>
+                <MudTd>
+                    @if (context.MappingKey != GLMappingKeys.NetPayable)
+                    {
+                        <MudTextField T="string" @bind-Value="_editing.DebitAccountCode" Margin="Margin.Dense" Variant="Variant.Outlined" />
+                    }
+                    else { <span class="mud-text-secondary">-</span> }
+                </MudTd>
+                <MudTd><MudTextField T="string" @bind-Value="_editing.CreditAccountCode" Margin="Margin.Dense" Variant="Variant.Outlined" /></MudTd>
+                <MudTd style="white-space:nowrap;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" Size="Size.Small" OnClick="SaveEditAsync" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _editing = null)" />
+                </MudTd>
+            }
+            else
+            {
+                <MudTd>@context.DisplayName</MudTd>
+                <MudTd><span class="mud-text-secondary">@context.MappingKey</span></MudTd>
+                <MudTd>@(context.MappingKey == GLMappingKeys.NetPayable ? "-" : (context.DebitAccountCode ?? "ยังไม่ตั้ง"))</MudTd>
+                <MudTd>@(context.CreditAccountCode ?? "ยังไม่ตั้ง")</MudTd>
+                <MudTd>
+                    @if (_rights?.CanEdit == true)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => BeginEdit(context))" />
+                    }
+                </MudTd>
+            }
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/pay/admin/gl-account-mapping";
+
+    private string? _companyId;
+    private long _actorUserId;
+    private ProgramRoleService.ProgramRights? _rights;
+    private List<Pay_GLAccountMapping> _rows = new();
+    private Pay_GLAccountMapping? _editing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    // ทุกรหัสต้องมีแถวเสมอ — เพิ่มที่ขาด (add-missing) ตอนเปิดหน้า ไม่ต้องให้ใครจำว่าต้องสร้าง
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_companyId)) return;
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var existing = await ctx.Pay_GLAccountMappings.Where(m => m.CompanyId == _companyId).ToListAsync();
+        var missing = GLMappingKeys.All.Where(k => existing.All(e => e.MappingKey != k.Key)).ToList();
+        if (missing.Count > 0)
+        {
+            foreach (var (key, label) in missing)
+                ctx.Pay_GLAccountMappings.Add(new Pay_GLAccountMapping { CompanyId = _companyId, MappingKey = key, DisplayName = label, IsActive = true });
+            await ctx.SaveChangesAsync();
+            existing = await ctx.Pay_GLAccountMappings.Where(m => m.CompanyId == _companyId).ToListAsync();
+        }
+        var order = GLMappingKeys.All.Select((k, i) => (k.Key, i)).ToDictionary(x => x.Key, x => x.i);
+        _rows = existing.OrderBy(m => order.GetValueOrDefault(m.MappingKey, 99)).ToList();
+    }
+
+    private void BeginEdit(Pay_GLAccountMapping m) => _editing = new Pay_GLAccountMapping
+    {
+        Id = m.Id, CompanyId = m.CompanyId, MappingKey = m.MappingKey, DisplayName = m.DisplayName,
+        DebitAccountCode = m.DebitAccountCode, CreditAccountCode = m.CreditAccountCode, IsActive = m.IsActive,
+    };
+
+    private async Task SaveEditAsync()
+    {
+        if (_editing is null) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied) { Snackbar.Add(denied, Severity.Error); return; }
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var row = await ctx.Pay_GLAccountMappings.FirstOrDefaultAsync(m => m.Id == _editing.Id);
+        if (row is null) return;
+        row.DebitAccountCode = string.IsNullOrWhiteSpace(_editing.DebitAccountCode) ? null : _editing.DebitAccountCode.Trim();
+        row.CreditAccountCode = string.IsNullOrWhiteSpace(_editing.CreditAccountCode) ? null : _editing.CreditAccountCode.Trim();
+        row.ModifiedByUserId = _actorUserId;
+        row.ModifiedDate = DateTime.Now;
+        await ctx.SaveChangesAsync();
+        _editing = null;
+        Snackbar.Add("บันทึกแล้ว — มีผลกับไฟล์บัญชีที่สร้างหลังจากนี้", Severity.Success);
+        await LoadAsync();
+    }
+}

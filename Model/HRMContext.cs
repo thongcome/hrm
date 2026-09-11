@@ -373,6 +373,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_BankFileExportLine> Pay_BankFileExportLines { get; set; }
     public virtual DbSet<Pay_GLExportBatch> Pay_GLExportBatches { get; set; }
     public virtual DbSet<Pay_GLExportEntry> Pay_GLExportEntries { get; set; }
+    public virtual DbSet<Pay_GLAccountMapping> Pay_GLAccountMappings { get; set; }
     public virtual DbSet<Pay_AdhocPayItem> Pay_AdhocPayItems { get; set; }
 
     public virtual DbSet<Pay_PositionSalaryHistory> Pay_PositionSalaryHistories { get; set; }

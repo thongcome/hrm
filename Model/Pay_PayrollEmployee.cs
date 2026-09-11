@@ -55,6 +55,9 @@ public class Pay_PayrollEmployee
 
     [Column(TypeName = "decimal(15,2)")]
     public decimal SocialSecurityAmount { get; set; }
+    // ประกันสังคมส่วนนายจ้าง (audit M10) — ไม่อยู่บนสลิป แต่ต้องลงบัญชีและนำส่ง
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal SocialSecurityCompanyAmount { get; set; }
     [Column(TypeName = "decimal(15,2)")]
     public decimal ProvidentFundEmployeeAmount { get; set; }
     [Column(TypeName = "decimal(15,2)")]

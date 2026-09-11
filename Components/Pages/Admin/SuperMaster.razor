@@ -150,6 +150,7 @@
             new Card("นโยบายหักสาย/ขาด และอัตราต่อวัน", "ตัวหารวันต่อเดือน วิธีคิดสัดส่วน วิธีนับวันรายวัน", Icons.Material.Filled.Rule, "/pay/admin/attendance-deduction"),
             new Card("รายการรับ-จ่าย (Pay Element)", "ธงเสียภาษี ฐานประกันสังคม ฐานกองทุน", Icons.Material.Filled.ListAlt, "/pay/admin/pay-item-types"),
             new Card("กองทุนสำรองเลี้ยงชีพ", "อัตราสะสม/สมทบ vesting", Icons.Material.Filled.Savings, "/pay/admin/provident-fund-policy"),
+            new Card("บัญชี GL ฝั่งนายจ้าง", "บัญชีของประกันสังคม/กองทุน/ประกันส่วนนายจ้าง และเงินเดือนค้างจ่าย", Icons.Material.Filled.AccountBalance, "/pay/admin/gl-account-mapping"),
         }),
         new("ระบบ", new[]
         {
@@ -163,7 +164,7 @@
     private List<Sys_ProtectedSetting> _rows = new();
     private Sys_ProtectedSetting? _editing;
     private Sys_ProtectedSetting _new = new() { Area = "Payroll" };
-    private readonly Func<Sys_ProtectedSetting, object> _groupBy = r => r.Area;
+    private readonly TableGroupDefinition<Sys_ProtectedSetting> _groupBy = new() { GroupName = "ระบบ", Indentation = false, Expandable = false, Selector = r => r.Area };
 
     protected override async Task OnInitializedAsync()
     {

@@ -63,17 +63,19 @@ public static class Por1DataService
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();
         var nonTaxableByPayEmployee = await GetNonTaxableByPayEmployeeAsync(context, payEmployeeIds, ct);
 
+        // หนึ่งแถวต่อคนต่อเดือน (audit M4) — งวดที่มีทั้งรอบปกติและรอบโบนัสรวมยอดเป็นบรรทัดเดียวตามแบบ ภ.ง.ด.1
         var lines = payEmployees
-            .Select(pe =>
+            .GroupBy(pe => pe.HremployeeId)
+            .Select(g =>
             {
-                var nonTaxable = nonTaxableByPayEmployee.TryGetValue(pe.Id, out var t) ? t : 0m;
+                var pe = g.First();
                 return new Por1LineItem(
-                    pe.HremployeeId,
+                    g.Key,
                     pe.EmpNo ?? pe.Hremployee.EmpNo,
                     $"{pe.Hremployee.EmpName} {pe.Hremployee.EmpSurname}",
                     pe.Hremployee.IdCard,
-                    pe.TaxableIncome,   // persisted per period (audit M3) — gross − non-taxable adhoc still over-counted late/absence and welfare
-                    pe.TaxAmount);
+                    g.Sum(x => x.TaxableIncome),   // persisted per period (audit M3)
+                    g.Sum(x => x.TaxAmount));
             })
             .OrderBy(l => l.EmpNo)
             .ToList();

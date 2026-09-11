@@ -31,4 +31,16 @@ public class HrucfsecurityRateProvider : ISocialSecurityRateProvider
 
         return (config.PercenSecurity ?? 0m, config.SecurityMoney ?? 0m);
     }
+
+    public async Task<(decimal EmployeeRatePercent, decimal EmployerRatePercent, decimal WageCap)> GetCurrentRatesAsync(string companyId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var config = await context.Hrucfsecuritys
+            .Where(x => x.companyid == companyId && x.SecurityCode == CurrentEmployeeSecurityCode)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException(
+                $"No Hrucfsecurity rate configured for companyid='{companyId}', SecurityCode='{CurrentEmployeeSecurityCode}'.");
+        var employee = config.PercenSecurity ?? 0m;
+        return (employee, config.EmployerPercenSecurity ?? employee, config.SecurityMoney ?? 0m);
+    }
 }

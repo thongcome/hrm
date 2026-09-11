@@ -11,6 +11,9 @@ using Microsoft.EntityFrameworkCore;
 // calculation, approval, or payment. Idempotent: re-running detection for
 // the same run replaces its previous anomaly rows rather than accumulating
 // duplicates, so "คำนวณใหม่" always reflects the latest data.
+//
+// (audit M14, 11 ก.ย. 2569) ทุกอย่างที่ต้องอ่านจากฐานข้อมูลถูกโหลดครั้งเดียวต่อรอบก่อนวนลูป
+// เดิมยิง 3–5 query ต่อพนักงาน = 20,000–35,000 query ต่อรอบสำหรับบริษัท 7,000 คน
 public class PayrollAnomalyDetectionService
 {
     private readonly IDbContextFactory<HRMContext> _dbFactory;
@@ -25,17 +28,17 @@ public class PayrollAnomalyDetectionService
         _dbFactory = dbFactory;
     }
 
+    private sealed record HistoryRow(long Id, long HremployeeId, DateOnly PeriodStart, decimal NetPay);
+
     // compareAsOfPeriodStart lets HR pin the "จากงวดก่อน" comparison baseline
     // to a specific period, overriding the automatic default. Automatic mode
     // (null) restricts history to periods strictly before this run's own
     // PeriodStart — NOT simply "every other run this employee has". Without
     // that restriction, a run entered out of chronological order (e.g.
     // backfilling an early period after later ones already exist) would pull
-    // *future* periods into its "previous period" comparison, since the old
-    // query only excluded the current run by Id and then took the last item
-    // after sorting everything else by PeriodStart. When HR picks an explicit
-    // baseline period, history is capped at (and includes) that period's
-    // PeriodStart instead, so the comparison uses exactly the period they chose.
+    // *future* periods into its "previous period" comparison. When HR picks an
+    // explicit baseline period, history is capped at (and includes) that
+    // period's PeriodStart instead, so the comparison uses exactly the period they chose.
     public async Task<int> DetectAnomaliesAsync(long payrollRunId, DateOnly? compareAsOfPeriodStart = null, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
@@ -54,7 +57,64 @@ public class PayrollAnomalyDetectionService
         var periodStart = run.PeriodStart.ToDateTime(TimeOnly.MinValue);
         var periodEnd = run.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
         var newRows = new List<Pay_PayrollAnomaly>();
+        var employeeIds = employees.Select(e => e.HremployeeId).Distinct().ToList();
 
+        // ── โหลดครั้งเดียว ───────────────────────────────────────────────────
+        // ประวัติงวดก่อนของทุกคนในรอบ (เรียงตามงวด) — ตัดที่ baseline ที่ HR เลือก หรือก่อนงวดนี้
+        var historyQuery = context.Pay_PayrollEmployees
+            .Where(pe => employeeIds.Contains(pe.HremployeeId)
+                && pe.PayrollRunId != payrollRunId
+                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled);
+        historyQuery = compareAsOfPeriodStart is DateOnly cutoff
+            ? historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart <= cutoff)
+            : historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart < run.PeriodStart);
+        var historyByEmployee = (await historyQuery
+                .Select(pe => new HistoryRow(pe.Id, pe.HremployeeId, pe.Pay_PayrollRun.PeriodStart, pe.NetPay))
+                .ToListAsync(ct))
+            .GroupBy(h => h.HremployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(h => h.PeriodStart).ToList());
+
+        // พนักงานใหม่: ใครเริ่ม onboarding แล้วบ้าง
+        var newEmployeeIds = employeeIds.Where(id => !historyByEmployee.ContainsKey(id)).ToList();
+        var withOnboarding = newEmployeeIds.Count == 0
+            ? new HashSet<long>()
+            : (await context.Hrd_LifecycleTaskInstances
+                .Where(t => newEmployeeIds.Contains(t.HremployeeId) && t.Direction == LifecycleTaskDirection.Onboarding)
+                .Select(t => t.HremployeeId).Distinct().ToListAsync(ct)).ToHashSet();
+
+        // คำสั่งปรับเงินเดือนในงวดนี้ (ใช้อธิบายยอดกระโดด)
+        var salaryChangeByEmployee = (await context.Pay_PositionSalaryHistories
+                .Where(h => employeeIds.Contains(h.HremployeeId) && h.ChangedDate >= periodStart && h.ChangedDate <= periodEnd)
+                .Select(h => new { h.HremployeeId, h.ChangedDate, h.OrderNo })
+                .ToListAsync(ct))
+            .GroupBy(h => h.HremployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(h => h.ChangedDate).First());
+
+        // รายการหักมาตรฐาน: ประเภทที่ปรากฏใน 3 งวดก่อนของแต่ละคน และประเภทที่มีในงวดนี้
+        var lastThreeIdsByEmployee = historyByEmployee.ToDictionary(kv => kv.Key, kv => kv.Value.TakeLast(3).Select(h => h.Id).ToList());
+        var priorRowIds = lastThreeIdsByEmployee.Values.SelectMany(x => x).ToList();
+        var priorTypeRows = priorRowIds.Count == 0
+            ? new List<(long PayrollEmployeeId, int PayItemTypeId)>()
+            : (await context.Pay_PayrollLineItems
+                .Where(li => priorRowIds.Contains(li.PayrollEmployeeId) && ExpectedDeductionTypeIds.Contains(li.PayItemTypeId))
+                .Select(li => new { li.PayrollEmployeeId, li.PayItemTypeId })
+                .Distinct().ToListAsync(ct))
+              .Select(x => (x.PayrollEmployeeId, x.PayItemTypeId)).ToList();
+        var priorTypesByRow = priorTypeRows.GroupBy(x => x.PayrollEmployeeId).ToDictionary(g => g.Key, g => g.Select(x => x.PayItemTypeId).ToHashSet());
+
+        var thisRunRowIds = employees.Select(e => e.Id).ToList();
+        var thisTypesByRow = (await context.Pay_PayrollLineItems
+                .Where(li => thisRunRowIds.Contains(li.PayrollEmployeeId))
+                .Select(li => new { li.PayrollEmployeeId, li.PayItemTypeId })
+                .Distinct().ToListAsync(ct))
+            .GroupBy(x => x.PayrollEmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.PayItemTypeId).ToHashSet());
+
+        var typeNames = await context.Pay_PayItemTypes
+            .Where(t => ExpectedDeductionTypeIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.NameTh, ct);
+
+        // ── ตรวจรายคน (ไม่มี query ในลูปแล้ว) ───────────────────────────────
         foreach (var emp in employees)
         {
             if (emp.NetPay <= 0)
@@ -70,29 +130,18 @@ public class PayrollAnomalyDetectionService
                 });
             }
 
-            var historyQuery = context.Pay_PayrollEmployees
-                .Include(pe => pe.Pay_PayrollRun)
-                .Where(pe => pe.HremployeeId == emp.HremployeeId
-                    && pe.PayrollRunId != payrollRunId
-                    && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled);
-
-            historyQuery = compareAsOfPeriodStart is DateOnly cutoff
-                ? historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart <= cutoff)
-                : historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart < run.PeriodStart);
-
-            var history = await historyQuery
-                .OrderBy(pe => pe.Pay_PayrollRun.PeriodStart)
-                .ToListAsync(ct);
-
-            if (history.Count == 0)
+            if (!historyByEmployee.TryGetValue(emp.HremployeeId, out var history) || history.Count == 0)
             {
-                await CheckNewEmployeeAsync(context, emp, run, periodStart, newRows, ct);
+                CheckNewEmployee(emp, run, periodStart, withOnboarding.Contains(emp.HremployeeId), newRows);
+                continue;
             }
-            else
-            {
-                await CheckNetPaySpikeAsync(context, emp, history, run, periodStart, periodEnd, newRows, ct);
-                await CheckMissingStandardDeductionAsync(context, emp, history, newRows, ct);
-            }
+
+            salaryChangeByEmployee.TryGetValue(emp.HremployeeId, out var salaryChange);
+            CheckNetPaySpike(emp, history, run, periodStart, periodEnd,
+                salaryChange is null ? null : (salaryChange.ChangedDate, salaryChange.OrderNo), newRows);
+
+            var lastThree = lastThreeIdsByEmployee[emp.HremployeeId];
+            CheckMissingStandardDeduction(emp, lastThree, priorTypesByRow, thisTypesByRow.GetValueOrDefault(emp.Id), typeNames, newRows);
         }
 
         await CheckPeriodTotalAsync(context, run, employees, compareAsOfPeriodStart, newRows, ct);
@@ -104,11 +153,9 @@ public class PayrollAnomalyDetectionService
 
     // (ก) พนักงานใหม่ — งวดนี้เป็นรายการเงินเดือนงวดแรก ตรวจสอบว่า onboarding
     // เริ่มไปหรือยัง และวันเริ่มงานสอดคล้องกับการที่เพิ่งมีเงินเดือนงวดแรกหรือไม่
-    private static async Task CheckNewEmployeeAsync(HRMContext context, Pay_PayrollEmployee emp, Pay_PayrollRun run,
-        DateTime periodStart, List<Pay_PayrollAnomaly> newRows, CancellationToken ct)
+    private static void CheckNewEmployee(Pay_PayrollEmployee emp, Pay_PayrollRun run, DateTime periodStart, bool hasOnboarding,
+        List<Pay_PayrollAnomaly> newRows)
     {
-        var hasOnboarding = await context.Hrd_LifecycleTaskInstances
-            .AnyAsync(t => t.HremployeeId == emp.HremployeeId && t.Direction == LifecycleTaskDirection.Onboarding, ct);
         if (!hasOnboarding)
         {
             newRows.Add(new Pay_PayrollAnomaly
@@ -137,9 +184,9 @@ public class PayrollAnomalyDetectionService
 
     // (ข) สุทธิเปลี่ยนแปลงผิดปกติจากงวดก่อน — ตรวจด้วย ML.NET spike detector
     // แล้วเช็คว่ามีคำอธิบาย (ปรับตำแหน่ง/พ้นทดลองงาน) รองรับหรือไม่ ก่อนตั้งระดับ
-    private static async Task CheckNetPaySpikeAsync(HRMContext context, Pay_PayrollEmployee emp,
-        List<Pay_PayrollEmployee> history, Pay_PayrollRun run, DateTime periodStart, DateTime periodEnd,
-        List<Pay_PayrollAnomaly> newRows, CancellationToken ct)
+    private static void CheckNetPaySpike(Pay_PayrollEmployee emp, List<HistoryRow> history, Pay_PayrollRun run,
+        DateTime periodStart, DateTime periodEnd, (DateTime ChangedDate, string? OrderNo)? salaryChange,
+        List<Pay_PayrollAnomaly> newRows)
     {
         var series = history.Select(h => (float)h.NetPay).ToList();
         series.Add((float)emp.NetPay);
@@ -155,15 +202,10 @@ public class PayrollAnomalyDetectionService
         var description = $"เงินสุทธิของ {emp.EmpNo} เปลี่ยนแปลง {pctText} จากงวดก่อน ({prevNet:N2} → {emp.NetPay:N2} บาท)";
         var severity = PayrollAnomalySeverity.Warning;
 
-        var salaryChange = await context.Pay_PositionSalaryHistories
-            .Where(h => h.HremployeeId == emp.HremployeeId && h.ChangedDate >= periodStart && h.ChangedDate <= periodEnd)
-            .OrderByDescending(h => h.ChangedDate)
-            .FirstOrDefaultAsync(ct);
-
-        if (salaryChange is not null)
+        if (salaryChange is { } sc)
         {
             severity = PayrollAnomalySeverity.Info;
-            description += $" — สอดคล้องกับการปรับตำแหน่ง/เงินเดือน (คำสั่งเลขที่ {salaryChange.OrderNo ?? "-"} วันที่ {salaryChange.ChangedDate:dd/MM/yyyy})";
+            description += $" — สอดคล้องกับการปรับตำแหน่ง/เงินเดือน (คำสั่งเลขที่ {sc.OrderNo ?? "-"} วันที่ {sc.ChangedDate:dd/MM/yyyy})";
         }
         else if (emp.Hremployee?.ProbationConfirmedDate is DateTime pcd && pcd >= periodStart && pcd <= periodEnd)
         {
@@ -184,36 +226,28 @@ public class PayrollAnomalyDetectionService
     }
 
     // (ง) ขาดรายการหักมาตรฐาน — เทียบกับ 3 งวดก่อนหน้า ถ้ารายการหักที่เคย
-    // ปรากฏส่วนใหญ่ (≥2/3) หายไปในงวดนี้ ให้แจ้งเตือน
-    private static async Task CheckMissingStandardDeductionAsync(HRMContext context, Pay_PayrollEmployee emp,
-        List<Pay_PayrollEmployee> history, List<Pay_PayrollAnomaly> newRows, CancellationToken ct)
+    // ปรากฏส่วนใหญ่ (≥ ครึ่ง) หายไปในงวดนี้ ให้แจ้งเตือน
+    private static void CheckMissingStandardDeduction(Pay_PayrollEmployee emp, List<long> lastThreeIds,
+        Dictionary<long, HashSet<int>> priorTypesByRow, HashSet<int>? thisPeriodTypeIds,
+        Dictionary<int, string> typeNames, List<Pay_PayrollAnomaly> newRows)
     {
-        var lastThreeIds = history.TakeLast(3).Select(h => h.Id).ToList();
         if (lastThreeIds.Count == 0) return;
 
-        var priorDeductionTypeCounts = await context.Pay_PayrollLineItems
-            .Where(li => lastThreeIds.Contains(li.PayrollEmployeeId) && ExpectedDeductionTypeIds.Contains(li.PayItemTypeId))
-            .GroupBy(li => li.PayItemTypeId)
-            .Select(g => new { PayItemTypeId = g.Key, Count = g.Select(li => li.PayrollEmployeeId).Distinct().Count() })
-            .ToListAsync(ct);
-
-        var thisPeriodTypeIds = await context.Pay_PayrollLineItems
-            .Where(li => li.PayrollEmployeeId == emp.Id)
-            .Select(li => li.PayItemTypeId)
-            .ToListAsync(ct);
+        var priorDeductionTypeCounts = lastThreeIds
+            .SelectMany(id => priorTypesByRow.GetValueOrDefault(id) ?? new HashSet<int>())
+            .GroupBy(t => t)
+            .ToDictionary(g => g.Key, g => g.Count());
 
         var majorityThreshold = (lastThreeIds.Count + 1) / 2; // ceil(n/2)
+        var present = thisPeriodTypeIds ?? new HashSet<int>();
         var missingTypeIds = priorDeductionTypeCounts
-            .Where(x => x.Count >= majorityThreshold && !thisPeriodTypeIds.Contains(x.PayItemTypeId))
-            .Select(x => x.PayItemTypeId)
+            .Where(x => x.Value >= majorityThreshold && !present.Contains(x.Key))
+            .Select(x => x.Key)
             .ToList();
 
         if (missingTypeIds.Count == 0) return;
 
-        var missingNames = await context.Pay_PayItemTypes
-            .Where(t => missingTypeIds.Contains(t.Id))
-            .Select(t => t.NameTh)
-            .ToListAsync(ct);
+        var missingNames = missingTypeIds.Select(id => typeNames.GetValueOrDefault(id, $"#{id}"));
 
         newRows.Add(new Pay_PayrollAnomaly
         {

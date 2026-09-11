@@ -43,6 +43,10 @@ public partial class Hrucfsecurity
     [Column("PERCENMG_SECURITY", TypeName = "decimal(3,2)")]
     public decimal? PercenmgSecurity { get; set; }
 
+    // อัตราประกันสังคมส่วนนายจ้าง (%) — NULL = ใช้อัตราเดียวกับลูกจ้าง (audit M10, 11 ก.ย. 2569)
+    [Column(TypeName = "decimal(18, 2)")]
+    public decimal? EmployerPercenSecurity { get; set; }
+
 
     // add new
     //[Column("AreaCode")]
