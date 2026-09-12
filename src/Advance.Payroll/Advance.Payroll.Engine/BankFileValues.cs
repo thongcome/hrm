@@ -1,5 +1,6 @@
 namespace Advance.Payroll.Engine;
 
+using Advance.Payroll.Core;
 using Advance.Payroll.Domain;
 using Advance.Payroll.Data;
 

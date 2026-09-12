@@ -2,15 +2,10 @@
 
   <!--
     Phase 0 status (see EXTRACTION-PLAN.md "Engine compile status" for the authoritative,
-    file-by-file list): PayrollCalculationService, PayrollAnomalyDetectionService,
-    PayDateService and HrucfsecurityRateProvider are FULLY adapted to Contracts +
-    PayrollDbContext and expected to compile clean. The remaining files (BankFileExportService,
-    GLExportService, Por1DataService, WithholdingCertificateDataService,
-    PayslipGenerationService, EFilingExportService, PayrollWorkflowService,
-    PayrollPreflightService, plus small helpers) are ported with namespaces fixed and
-    TODO(seam) comments at every point that used to read Hremployee/other-module tables
-    directly, but are NOT required to compile yet per the task brief — getting 100% of
-    this project green is explicitly deferred past Phase 0.
+    file-by-file list): all 12 required files are wired through Advance.Payroll.Contracts.
+    Only 3 real open seams remain, all explicitly flagged (onboarding status, registered
+    address, the emp_overtime_requests preflight check) — none of them are compile errors,
+    they're missing DATA (empty/null fallbacks), see EXTRACTION-PLAN.md section 6.
   -->
 
   <PropertyGroup>
@@ -21,15 +16,16 @@
     <AssemblyName>Advance.Payroll.Engine</AssemblyName>
   </PropertyGroup>
 
-  <!-- Phase 0 status: this project does NOT compile clean yet (see header comment above
-       and EXTRACTION-PLAN.md "Engine compile status") — several files still reference
-       HRM-only types (Hremployee, Kptempreceivedet, HrwOt, Hrd_LifecycleTaskInstance) at
-       points marked TODO(seam) that a later pass wires through Advance.Payroll.Contracts.
-       The task brief explicitly does not require 100% compile in Phase 0; a full build
-       is exercised again once every seam below is closed. -->
+  <!-- PrivateFileStorage.cs needs IWebHostEnvironment — a plain class library has no
+       implicit ASP.NET Core framework reference the way HRM.csproj's Sdk.Web does. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.TimeSeries" Version="5.0.0" />
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>
 

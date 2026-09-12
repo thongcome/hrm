@@ -1,6 +1,7 @@
 namespace Advance.Payroll.Engine;
 
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Hosting;
 
 // Stores generated payroll documents (payslip PDFs, bank/GL export CSVs)
 // under App_Data, outside wwwroot, so they can never be reached as a static

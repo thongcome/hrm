@@ -194,9 +194,33 @@ HumanOk case specifically:
 
 ## 5. Engine compile status (per file, all 12 in the task's required list + extras)
 
-Build attempted via `dotnet build -p:UseAppHost=false` in `Advance.Payroll.Engine/`; see §8 for
-the actual run's outcome (this environment's builds run 5-20 min each; timing noted where it
-matters).
+`dotnet build -p:UseAppHost=false` in `Advance.Payroll.Engine/` was run repeatedly this
+session (this machine had heavy concurrent build load from other agents at the time, so each
+run took anywhere from ~5 seconds to 20+ minutes) and, after 4 rounds of fixes, **the final
+run confirmed: Build succeeded, 0 errors, 16 warnings, Time Elapsed 00:00:05.07**. None of
+the 6 real compile errors found across those rounds were logic/seam bugs — every one was a
+missing `.csproj` package/`FrameworkReference` or a missing `using` directive on an otherwise-
+correct line:
+- `Microsoft.ML` package was missing (`PayrollSpikeDetector.cs`'s `MLContext`/`ML.Data`).
+- `Microsoft.ML.TimeSeries` package was missing (`PayrollSpikeDetector.cs`'s `DetectIidSpike`
+  extension method specifically — a separate package from base `Microsoft.ML`).
+- `PrivateFileStorage.cs`'s `IWebHostEnvironment` needed both a
+  `<FrameworkReference Include="Microsoft.AspNetCore.App" />` (a plain class library has no
+  implicit ASP.NET Core reference the way `HRM.csproj`'s `Sdk.Web` does) AND a
+  `using Microsoft.AspNetCore.Hosting;` directive — the framework reference alone isn't
+  enough without the namespace import.
+- `BankFileValues.cs` and `BankFileExportService.cs` were missing `using Advance.Payroll.Core;`
+  (needed for `Core.BankFileTemplate`, referenced by short name).
+- `PayrollWorkflowService.cs` was missing `using Microsoft.Extensions.Configuration;` (needed
+  for the `IConfiguration.GetValue<T>()` extension method — the type itself was already
+  fully-qualified in the constructor parameter, but extension-method resolution still needs
+  the namespace in scope).
+
+All fixes applied directly to the `.csproj`/source files already committed in this worktree —
+this is the actual, verified, current state, not a projection. The manual per-file seam audit
+below was correct — no file
+in the required-12 list had a leftover reference to an HRM-only type once the seam interfaces
+were wired in.
 
 | File | Seam status |
 |---|---|
@@ -295,7 +319,7 @@ than glossed over:
 | `Advance.Payroll.Domain` | **Build succeeded, 0 warnings, 0 errors.** Only PackageReference: `Microsoft.EntityFrameworkCore` (for the `[Index(...)]` attribute on 3 entities — no provider, no DbContext). |
 | `Advance.Payroll.Contracts` | **Build succeeded, 0 warnings, 0 errors.** Zero PackageReferences. |
 | `Advance.Payroll.Data` | **Build succeeded** (16 NU1903 advisory warnings, 0 errors — `System.Security.Cryptography.Xml` transitive vulnerability from `Microsoft.EntityFrameworkCore.SqlServer`/`Tools`; this is the SAME warning HRM.csproj's own restore already carries with the identical package versions, not something this extraction introduced). |
-| `Advance.Payroll.Engine` | See the per-file table in §5 for what's wired vs. what has an open `TODO(seam)`. A `dotnet build` was kicked off for this project; if this document is being read before that background run's result lands in this session, re-run `dotnet build -p:UseAppHost=false` in `src/Advance.Payroll/Advance.Payroll.Engine/` to get the current line/column-level diagnostic list — the 3 open seams in §6 are believed to be the only remaining compile blockers based on a full manual read of every file, but a compiler run is the actual proof, not this sentence. |
+| `Advance.Payroll.Engine` | **Build succeeded, 16 warnings (all NU1903 advisory, same as Data), 0 errors** — confirmed by an actual `dotnet build -p:UseAppHost=false` run in this session (final run: "Time Elapsed 00:00:05.07"). See §5 for the 6 packaging/using fixes it took to get there and the per-file seam-wiring table. The 3 open items in §6 (onboarding status, registered address, `emp_overtime_requests`) are NOT compile errors — they're intentionally-empty/null data fallbacks at points the code still compiles and runs correctly, just without that one piece of information until a seam is added. |
 | `Advance.Payroll.Reports` | Trivially builds (near-empty by design, see its README.md). |
 | `Advance.Payroll.Blazor` | Not built standalone — a Razor Class Library with MudBlazor markup has no host to resolve services from; the `.csproj`'s own header comment explains why proving this compiles/renders needs a host project, out of scope here. |
 

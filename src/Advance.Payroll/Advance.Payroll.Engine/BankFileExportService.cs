@@ -2,6 +2,7 @@ namespace Advance.Payroll.Engine;
 
 using System.Text;
 using Advance.Payroll.Contracts;
+using Advance.Payroll.Core;
 using Advance.Payroll.Domain;
 using Advance.Payroll.Data;
 using Microsoft.EntityFrameworkCore;
