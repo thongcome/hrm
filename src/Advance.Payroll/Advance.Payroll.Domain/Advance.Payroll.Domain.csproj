@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Field-for-field copies of HRM's Model/Pay_*.cs (45 files) + Model/Hrucfsecurity.cs — same
+    table/column mapping (Table/Column/StringLength/Index attributes preserved) so
+    Advance.Payroll.Data's PayrollDbContext maps to the SAME physical tables HRM already has.
+
+    One deliberate change from the HRM originals: every `public virtual Hremployee Hremployee`
+    navigation property is commented out (search TODO(seam) in this folder) because
+    Advance.Payroll does not own the Hremployee entity — see EXTRACTION-PLAN.md's pay_employee
+    sync design. The scalar `HremployeeId` FK column is untouched on every entity that had one.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Payroll.Domain</RootNamespace>
+    <AssemblyName>Advance.Payroll.Domain</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only for the [Index(...)] attribute (Pay_PayrollEmployee, Pay_Payslip, Pay_PayslipSettings)
+         and [DatabaseGenerated] annotations — no DbContext, no provider, here. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

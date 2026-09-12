@@ -1,0 +1,136 @@
+@page "/pay/runs"
+@using Advance.Payroll.Contracts
+@using Advance.Payroll.Data
+@using Advance.Payroll.Domain
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<PayrollDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@* Ported from HRM Components/Pages/Pay/PayrollRunList.razor as the ONE proof-of-pattern
+   page for Phase 0 (see Advance.Payroll.Blazor.csproj header comment and
+   EXTRACTION-PLAN.md "Blazor page porting"). Three things were stripped, all of them
+   host-shell concerns per plan section 3.2 (Advance.Host), not Payroll's own logic:
+     - [Authorize(Policy = "Menu:PAY_RUNS")] — HRM's AD.CRUDManage/menu-claim authorization;
+       a standalone host will have its own equivalent, wired at the host project level.
+     - JsonLocalizationService (L.Translate(...)) — replaced with plain literals below;
+       Advance.Host would carry its own localization service the same way.
+     - AuthenticationStateProvider's "payroll_company" claim — replaced with a
+       CompanyId parameter the host page/route supplies (host owns how the current
+       user's company is resolved: HRM via claims, Lite via tenant).
+   Everything else (the query shape, the pending-adhoc-items warning, status colors) is
+   unchanged, adapted only to PayrollDbContext + IEmployeeSource instead of HRMContext. *@
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Payroll Runs</MudText>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="GoToCreate">
+            New Run
+        </MudButton>
+    </MudStack>
+
+    <MudTable Items="_runs" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Company</MudTh>
+            <MudTh>Period</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Pay Date</MudTh>
+            <MudTh>Employees</MudTh>
+            <MudTh>Net Total</MudTh>
+            <MudTh>Pending Ad-hoc</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.CompanyId</MudTd>
+            <MudTd>@context.PayrollPeriod@(context.TermNo > 1 || (context.PeriodEnd.Day < 28) ? $" term {context.TermNo}" : "")</MudTd>
+            <MudTd>@context.RunType</MudTd>
+            <MudTd><MudChip T="string" Color="@StatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip></MudTd>
+            <MudTd>@context.PayDate.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd>@_employeeCounts.GetValueOrDefault(context.Id, 0)</MudTd>
+            <MudTd>@_netTotals.GetValueOrDefault(context.Id, 0m).ToString("N2")</MudTd>
+            <MudTd>
+                @{
+                    var pendingCount = _pendingAdhocCounts.GetValueOrDefault(context.PayrollPeriod, 0);
+                }
+                @if (pendingCount > 0)
+                {
+                    <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">
+                        @pendingCount pending
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => GoToDetail(context.Id))">Open</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No payroll runs yet.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    // เดิม: resolved from the "payroll_company" claim — host page supplies it instead (see header comment).
+    [Parameter] public string CompanyId { get; set; } = "";
+
+    [Inject] private IEmployeeSource EmployeeSource { get; set; } = null!;
+
+    private List<Pay_PayrollRun> _runs = new();
+    private Dictionary<long, int> _employeeCounts = new();
+    private Dictionary<long, decimal> _netTotals = new();
+    private Dictionary<string, int> _pendingAdhocCounts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+
+        _runs = await context.Pay_PayrollRuns
+            .Where(r => r.CompanyId == CompanyId)
+            .OrderByDescending(r => r.PayrollPeriod)
+            .ThenByDescending(r => r.Id)
+            .ToListAsync();
+
+        var runIds = _runs.Select(r => r.Id).ToList();
+        var grouped = await context.Pay_PayrollEmployees
+            .Where(e => runIds.Contains(e.PayrollRunId))
+            .GroupBy(e => e.PayrollRunId)
+            .Select(g => new { RunId = g.Key, Count = g.Count(), Total = g.Sum(e => e.NetPay) })
+            .ToListAsync();
+
+        _employeeCounts = grouped.ToDictionary(g => g.RunId, g => g.Count);
+        _netTotals = grouped.ToDictionary(g => g.RunId, g => g.Total);
+
+        // เดิม: .GroupBy(a => new { a.Hremployee.companyid, a.TargetPeriod }) — Pay_AdhocPayItem no
+        // longer has an Hremployee navigation, so this scopes to HremployeeIds already known to
+        // belong to this company (from eligible-employee lookups across the runs above) instead.
+        var companyEmployeeIds = (await EmployeeSource.GetEligibleEmployeesAsync(
+                CompanyId, DateOnly.FromDateTime(DateTime.Today.AddYears(-5)), DateOnly.FromDateTime(DateTime.Today.AddYears(1))))
+            .Select(e => e.HremployeeId).ToHashSet();
+        var adhocGrouped = await context.Pay_AdhocPayItems
+            .Where(a => (a.Status == PayAdhocItemStatus.Pending || a.Status == PayAdhocItemStatus.Approved)
+                        && companyEmployeeIds.Contains(a.HremployeeId))
+            .GroupBy(a => a.TargetPeriod)
+            .Select(g => new { Period = g.Key, Count = g.Count() })
+            .ToListAsync();
+        _pendingAdhocCounts = adhocGrouped.ToDictionary(g => g.Period, g => g.Count);
+
+        _loading = false;
+    }
+
+    private static Color StatusColor(PayrollRunStatus status) => status switch
+    {
+        PayrollRunStatus.Draft => Color.Default,
+        PayrollRunStatus.Calculated => Color.Info,
+        PayrollRunStatus.Reviewed => Color.Warning,
+        PayrollRunStatus.Approved => Color.Tertiary,
+        PayrollRunStatus.Posted => Color.Secondary,
+        PayrollRunStatus.Paid => Color.Success,
+        PayrollRunStatus.Cancelled => Color.Error,
+        _ => Color.Default,
+    };
+
+    private void GoToCreate() => Navigation.NavigateTo("/pay/runs/create");
+    private void GoToDetail(long id) => Navigation.NavigateTo($"/pay/runs/{id}");
+}

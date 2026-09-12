@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Proof-of-purity project (Phase 0 of docs/Plan_Split_Payroll_Workflow_v1.1.md):
+    every calculator here is a pure function over plain POCOs/records — NO EF Core
+    reference, NO database access, NO dependency on Advance.Payroll.Domain's
+    EF-mapped entities. That absence of a PackageReference to
+    Microsoft.EntityFrameworkCore.* is the proof, not a comment claiming it.
+
+    The POCOs in Pocos/ are intentionally NOT the EF entities from
+    Advance.Payroll.Domain — they are trimmed plain classes/records carrying only
+    the property lists these calculators actually read (see EXTRACTION-PLAN.md
+    "Core POCO shapes"). Advance.Payroll.Engine adapts the real EF entities to
+    these shapes at the call site (or, being in the same solution, could map
+    property-by-property — no implicit conversion is provided on purpose, to keep
+    this project's compile graph honest).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Payroll.Core</RootNamespace>
+    <AssemblyName>Advance.Payroll.Core</AssemblyName>
+  </PropertyGroup>
+
+</Project>

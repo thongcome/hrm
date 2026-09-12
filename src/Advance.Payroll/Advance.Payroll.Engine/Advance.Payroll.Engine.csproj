@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 0 status (see EXTRACTION-PLAN.md "Engine compile status" for the authoritative,
+    file-by-file list): all 12 required files are wired through Advance.Payroll.Contracts.
+    Only 3 real open seams remain, all explicitly flagged (onboarding status, registered
+    address, the emp_overtime_requests preflight check) — none of them are compile errors,
+    they're missing DATA (empty/null fallbacks), see EXTRACTION-PLAN.md section 6.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Payroll.Engine</RootNamespace>
+    <AssemblyName>Advance.Payroll.Engine</AssemblyName>
+  </PropertyGroup>
+
+  <!-- PrivateFileStorage.cs needs IWebHostEnvironment — a plain class library has no
+       implicit ASP.NET Core framework reference the way HRM.csproj's Sdk.Web does. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.TimeSeries" Version="5.0.0" />
+    <PackageReference Include="QuestPDF" Version="2026.7.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Advance.Payroll.Core\Advance.Payroll.Core.csproj" />
+    <ProjectReference Include="..\Advance.Payroll.Domain\Advance.Payroll.Domain.csproj" />
+    <ProjectReference Include="..\Advance.Payroll.Data\Advance.Payroll.Data.csproj" />
+    <ProjectReference Include="..\Advance.Payroll.Contracts\Advance.Payroll.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
