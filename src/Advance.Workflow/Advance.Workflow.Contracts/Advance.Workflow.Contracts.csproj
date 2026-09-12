@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 0 scaffold (see ../EXTRACTION-PLAN.md). No ProjectReference to HRM —
+    this project only declares the seam interfaces every other Advance.Workflow
+    project (and eventually HRM itself) codes against.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Workflow.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- IWorkflowEngine's return types (job_master, job_user_list, ...) are the
+         Domain entities themselves — the whole point of the engine's public
+         surface is to hand back real workflow rows, not DTBOs, so Contracts
+         depends on Domain (POCOs only, no risk of a reference cycle). -->
+    <ProjectReference Include="..\Advance.Workflow.Domain\Advance.Workflow.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

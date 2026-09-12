@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 0 scaffold (see ../EXTRACTION-PLAN.md). Pure entity classes copied
+    field-for-field from HRM's Model/wf_*.cs and Model/job_*.cs — same table
+    names, same column mappings, so this ships against the exact same schema
+    HRM already has (no new migration needed when used inside HRM).
+
+    Deliberately has ZERO ProjectReference — these are POCOs. The only
+    non-BCL dependency is the [Index(...)] attribute EF Core annotations
+    package provides (job_user_list carries one, copied verbatim).
+
+    Three navigation properties to HRM's own sc_user identity table (on
+    wf_adhoc_user, wf_custom_user, job_user_list) were deliberately dropped
+    when copying — see the TODO(seam) comment on each. The scalar FK column
+    (`userid`) is unchanged; only the EF navigation to an entity that lives
+    outside this project was removed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Workflow.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

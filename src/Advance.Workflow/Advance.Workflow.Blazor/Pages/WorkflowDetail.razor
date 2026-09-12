@@ -1,0 +1,156 @@
+@page "/workflow/detail/{Id:long}"
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IWorkflowEngine Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* ============================================================================
+   Heavily trimmed port of HRM's Components/Pages/Wf/WorkflowDetail.razor
+   (978 lines — by far the biggest of the 28 Wf pages). This proves the RCL
+   pattern for a single-job detail page but is NOT a full port; cut on
+   purpose (see ../../EXTRACTION-PLAN.md):
+     - No dynamic document embedding (<DynamicComponent> keyed off
+       wf_sub_workflow_master.controller/action — the mechanism that shows
+       the ORIGINATING module's own form inline). That needs a host-side
+       component registry HRM already has (Components/Shared/
+       WorkflowDocumentSlot.razor) which is HRM's own concern, not the
+       engine's.
+     - No file attachment upload/download (doc_center + PrivateFileStorage —
+       both HRM-specific storage/DI, out of scope for Advance.Workflow itself).
+     - No "start a new job" picker (WfWorkflowAdmin-adjacent UI, not core to
+       proving the detail-page RCL pattern).
+   What IS kept: job header, the full per-level route (GetRouteAsync — the
+   engine's own "who approves what, in what order" view), and the three
+   action buttons (approve/sendback/decline) via IWorkflowEngine.ActAsync.
+   ============================================================================ *@
+
+<PageTitle>งาน #@Id</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_job is null)
+{
+    <MudAlert Severity="Severity.Error">ไม่พบงานนี้</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5">@(_job.subject ?? _job.wname)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Workflow: @_job.wname · ผู้ขอ: @(_job.reqName ?? _job.createusername)</MudText>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+        }
+
+        <MudChip T="string" Class="mt-2" Color="@(_job.isJobClosed == true ? Color.Default : Color.Info)">
+            @(_job.isJobClosed == true ? $"ปิดแล้ว ({_job.status})" : $"อยู่ที่ระดับ {_job.lastLevel}/{_job.maxlevel} — {_job.status}")
+        </MudChip>
+
+        @if (_job.isJobClosed != true && _myPendingRow is not null)
+        {
+            <MudStack Row="true" Spacing="2" Class="mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => ActAsync("approve"))">อนุมัติ</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => ActAsync("sendback"))">ส่งกลับ</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => ActAsync("decline"))">ไม่อนุมัติ</MudButton>
+            </MudStack>
+        }
+        else if (_job.isJobClosed != true)
+        {
+            <MudText Typo="Typo.body2" Class="mt-3" Color="Color.Secondary">งานนี้ไม่ได้อยู่ในมือคุณตอนนี้</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">เส้นทางอนุมัติ</MudText>
+        <MudTimeline TimelinePosition="TimelinePosition.Start">
+            @foreach (var step in _route)
+            {
+                <MudTimelineItem Color="@(step.IsDone ? Color.Success : step.IsCurrent ? Color.Primary : Color.Default)">
+                    <MudText Typo="Typo.subtitle2">
+                        ขั้นที่ @step.Level: @step.Name @(step.IsTop ? "(ขั้นสุดท้าย)" : "")
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        @(step.Approvers.Count > 0 ? string.Join(", ", step.Approvers.Select(a => a.Name)) : "(ยังไม่มีผู้อนุมัติ)")
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@step.Source</MudText>
+                    @if (!string.IsNullOrWhiteSpace(step.Happened))
+                    {
+                        <MudText Typo="Typo.caption">@step.Happened</MudText>
+                    }
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private job_master? _job;
+    private job_user_list? _myPendingRow;
+    private List<WorkflowService.RouteStep> _route = new();
+    private bool _loading = true;
+    private string? _error;
+    private string? _info;
+    private long _actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_job?.jobmasterid != Id) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _job = await Engine.GetJobDetailAsync(Id);
+            _myPendingRow = _job?.job_user_lists.FirstOrDefault(a =>
+                a.userid == _actorUserId && a.isLast == true && a.wlevel == (_job.lastLevel ?? 0)
+                && string.Equals(a.jobstatus, "PENDING", StringComparison.OrdinalIgnoreCase));
+            // TODO(seam): GetRouteAsync lives on Advance.Workflow.Engine.WorkflowService
+            // (the concrete class), not on IWorkflowEngine — it wasn't included in
+            // the interface's Phase 0 surface (see IWorkflowEngine.cs's own note on
+            // what was deliberately left off). A real host wires this page against
+            // the concrete WorkflowService for this one call, or the interface
+            // grows a GetRouteAsync member before cutover — flagged in
+            // EXTRACTION-PLAN.md as a decision the real author should make.
+            _route = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ActAsync(string actionKind)
+    {
+        if (_myPendingRow is null) return;
+        _error = null;
+        try
+        {
+            await Engine.ActAsync(Id, _myPendingRow.jobapproverid, _actorUserId, actionKind, comment: null);
+            _info = "ดำเนินการเรียบร้อย";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ดำเนินการไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

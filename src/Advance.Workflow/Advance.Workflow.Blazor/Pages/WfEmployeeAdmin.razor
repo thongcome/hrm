@@ -1,0 +1,164 @@
+@page "/wf/employees"
+@using Advance.Workflow.Org
+@using Advance.Workflow.Org.Entities
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<WorkflowOrgDbContext> DbFactory
+@attribute [Authorize]
+
+@* ============================================================================
+   Ported from HRM's Components/Pages/Wf/WfEmployeeAdmin.razor — the admin
+   CRUD for wf_employee (Workflow.Org's own people registry, see
+   ../../Advance.Workflow.Org/README.md). The original uses HRM's shared
+   <CrudScaffold> component (Components/Shared/CrudScaffold.razor) for the
+   list/view/edit shell — that component is HRM-specific plumbing, not part
+   of this extraction, so this port is a plain MudTable + MudForm instead.
+   Functionally equivalent (search, list, create/edit), just not sharing
+   HRM's generic scaffold. AD.CRUDManage-style permission gating
+   (menu_edit claim check in the original) is also NOT ported — this page
+   is reachable to anyone [Authorize]'d for Phase 0; a real host adds
+   whatever permission layer it uses (see EXTRACTION-PLAN.md's menu/route
+   section).
+   ============================================================================ *@
+
+<PageTitle>จัดการพนักงาน (Workflow)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">จัดการพนักงาน สำหรับ Workflow (wf_employee)</MudText>
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6">
+            <MudTextField T="string" @bind-Value="_search" Label="ค้นหา (รหัสพนักงาน / ชื่อ)" Immediate="true" DebounceInterval="300" />
+        </MudItem>
+        <MudItem xs="12" sm="6" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartCreate">เพิ่มพนักงาน</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_filtered" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>รหัสพนักงาน</MudTh>
+            <MudTh>ชื่อ-นามสกุล</MudTh>
+            <MudTh>อีเมล</MudTh>
+            <MudTh>หน่วยงาน</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.empid</MudTd>
+            <MudTd>@context.firstname_th @context.lastname_th</MudTd>
+            <MudTd>@context.email</MudTd>
+            <MudTd>@context.orgcode</MudTd>
+            <MudTd>@(context.isactive == true ? "ทำงานอยู่" : "ไม่ทำงาน")</MudTd>
+            <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">แก้ไข</MudButton></MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีพนักงานในทะเบียนของ Workflow</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">@(_editing.id == 0 ? "เพิ่มพนักงาน" : "แก้ไขพนักงาน")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.empid" Label="รหัสพนักงาน" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.firstname_th" Label="ชื่อ (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.lastname_th" Label="นามสกุล (ไทย)" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.cardid" Label="เลขบัตรประชาชน" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_editing.sexid" Label="เพศ" Required="true">
+                    <MudSelectItem T="string" Value="@("M")">ชาย</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("F")">หญิง</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.email" Label="อีเมล" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_editing.orgcode" Label="รหัสหน่วยงาน" /></MudItem>
+            <MudItem xs="12" sm="4"><MudCheckBox T="bool?" @bind-Value="_editing.isactive" Label="ทำงานอยู่" /></MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+        }
+        <MudStack Row="true" Spacing="2" Class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">บันทึก</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private List<wf_employee> _all = new();
+    private string? _search;
+    private bool _loading;
+    private string? _error;
+    private wf_employee? _editing;
+
+    private IEnumerable<wf_employee> _filtered => string.IsNullOrWhiteSpace(_search)
+        ? _all
+        : _all.Where(e => (e.empid?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (e.firstname_th?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (e.lastname_th?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _all = await db.wf_employees.OrderBy(e => e.empid).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void StartCreate() => _editing = new wf_employee { sexid = "M" };
+    private void StartEdit(wf_employee row) => _editing = new wf_employee
+    {
+        id = row.id, empid = row.empid, firstname_th = row.firstname_th, lastname_th = row.lastname_th,
+        cardid = row.cardid, sexid = row.sexid, email = row.email, orgcode = row.orgcode, isactive = row.isactive,
+    };
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null) return;
+        _error = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (_editing.id == 0)
+            {
+                // wf_employee.id is NOT an IDENTITY column (see the Org project's
+                // own README) — a real host needs the same NextIdAsync-style
+                // helper HRM's EntitySearchHelper provides; not ported here.
+                var maxId = await db.wf_employees.Select(e => (long?)e.id).MaxAsync() ?? 0;
+                _editing.id = maxId + 1;
+                db.wf_employees.Add(_editing);
+            }
+            else
+            {
+                var existing = await db.wf_employees.FirstOrDefaultAsync(e => e.id == _editing.id)
+                    ?? throw new InvalidOperationException("ไม่พบรายการนี้ในระบบแล้ว");
+                existing.empid = _editing.empid;
+                existing.firstname_th = _editing.firstname_th;
+                existing.lastname_th = _editing.lastname_th;
+                existing.cardid = _editing.cardid;
+                existing.sexid = _editing.sexid;
+                existing.email = _editing.email;
+                existing.orgcode = _editing.orgcode;
+                existing.isactive = _editing.isactive;
+            }
+            await db.SaveChangesAsync();
+            _editing = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "บันทึกไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

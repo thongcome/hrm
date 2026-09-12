@@ -1,0 +1,121 @@
+@page "/wf/my-inbox"
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IWorkflowEngine Engine
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@attribute [Authorize]
+
+@* ============================================================================
+   Ported from HRM's Components/Pages/Wf/WfMyInbox.razor (288 lines). Trimmed
+   for Phase 0 — see ../../EXTRACTION-PLAN.md's "Blazor pages" section for
+   exactly what was cut:
+     - WfActionButtons (HRM's shared Components/Shared component, itself
+       wired to WorkflowButtonService + WorkflowEngineService.ActAsync
+       directly) is NOT ported here; buttons below call IWorkflowEngine.ActAsync
+       inline instead. Porting WfActionButtons faithfully is one of the
+       remaining 24 pages' worth of follow-up work, not attempted in Phase 0.
+     - The "เริ่มงานใหม่" (start job, workflow admin only) panel and the
+       ค้างมา/age chip (GetJobAgesAsync) are KEPT — they only need
+       IWorkflowEngine, no other seam.
+   ============================================================================ *@
+
+<PageTitle>งานรออนุมัติของฉัน</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">งานรออนุมัติของฉัน</MudText>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_info))
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-3">@_info</MudAlert>
+    }
+
+    <MudTable Items="_inbox" Dense="true" Hover="true" Class="mt-3" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Job #</MudTh>
+            <MudTh>เรื่อง</MudTh>
+            <MudTh>ผู้ขอ</MudTh>
+            <MudTh>Workflow</MudTh>
+            <MudTh>ระดับ</MudTh>
+            <MudTh>วันที่ยื่น</MudTh>
+            <MudTh>ค้างมา</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.jobmasterid</MudTd>
+            <MudTd>@context.jobmaster.subject</MudTd>
+            <MudTd>@(string.IsNullOrWhiteSpace(context.jobmaster.reqName) ? (context.jobmaster.empid ?? "-") : context.jobmaster.reqName)</MudTd>
+            <MudTd>@context.jobmaster.wname</MudTd>
+            <MudTd>@context.wlevel / @context.jobmaster.maxlevel</MudTd>
+            <MudTd>@context.jobmaster.createdate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>
+                @if (_ages.TryGetValue(context.jobmasterid, out var age))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@(age.IsOverdue ? Color.Error : Color.Default)">
+                        @age.DaysWaiting วัน@(age.IsOverdue ? $" (เกิน {age.ExpireDays} วัน)" : "")
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
+                               OnClick="@(() => ActAsync(context, "approve"))">อนุมัติ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                               OnClick="@(() => ActAsync(context, "sendback"))">ส่งกลับ</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Nav.NavigateTo($"/workflow/detail/{context.jobmasterid}"))">ดูรายละเอียด</MudButton>
+                </MudStack>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีงานรออนุมัติ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<job_user_list> _inbox = new();
+    private Dictionary<long, JobAgeInfo> _ages = new();
+    private bool _loading;
+    private string? _error;
+    private string? _info;
+    private long _actorUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.Parse(state.User.FindFirst("sc_userid")?.Value ?? "0");
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        try
+        {
+            _inbox = await Engine.GetMyInboxAsync(_actorUserId);
+            _ages = await Engine.GetJobAgesAsync(_inbox.Select(i => i.jobmaster));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ActAsync(job_user_list row, string actionKind)
+    {
+        _error = null;
+        try
+        {
+            await Engine.ActAsync(row.jobmasterid, row.jobapproverid, _actorUserId, actionKind, comment: null);
+            _info = "ดำเนินการเรียบร้อย";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = "ดำเนินการไม่สำเร็จ: " + ex.Message;
+        }
+    }
+}

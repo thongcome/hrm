@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    Phase 0 scaffold (see ../EXTRACTION-PLAN.md). A Razor Class Library (RCL)
+    holding 4 representative pages ported from Components/Pages/Wf/ — not all
+    28. Proves the RCL pattern (MudBlazor references, page routing, DI on
+    IWorkflowEngine/IWorkflowUserDirectory instead of concrete HRM services)
+    so the remaining pages can follow the same recipe later.
+
+    A host app (HRM today, a standalone Advance.Workflow.Web later) adds a
+    ProjectReference/PackageReference to this RCL and its razor pages become
+    reachable at their @page routes automatically — no host-side routing code
+    needed, same as any other RCL.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Workflow.Blazor</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="MudBlazor" Version="8.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Advance.Workflow.Contracts\Advance.Workflow.Contracts.csproj" />
+    <ProjectReference Include="..\Advance.Workflow.Domain\Advance.Workflow.Domain.csproj" />
+    <!-- Only WfEmployeeAdmin.razor (the Workflow.Org admin page) needs this —
+         every other page here talks to IWorkflowEngine only. -->
+    <ProjectReference Include="..\Advance.Workflow.Org\Advance.Workflow.Org.csproj" />
+    <!-- Only WorkflowDetail.razor needs this, for WorkflowService.RouteStep
+         (GetRouteAsync isn't on IWorkflowEngine yet — see that page's own
+         TODO(seam) comment and EXTRACTION-PLAN.md). Every other page here
+         talks to IWorkflowEngine only; a real cutover should either promote
+         GetRouteAsync onto the interface or keep this one direct reference. -->
+    <ProjectReference Include="..\Advance.Workflow.Engine\Advance.Workflow.Engine.csproj" />
+  </ItemGroup>
+
+</Project>
