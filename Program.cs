@@ -178,6 +178,10 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 // original JSP system enforced in solar.SecurityBean and HRM had lost. Bound
 // here so IdentityOptions.Lockout below and PasswordPolicyService read the
 // same numbers instead of each hardcoding their own.
+builder.Services.Configure<HRM.Services.Security.SecurityAlertOptions>(
+    builder.Configuration.GetSection(HRM.Services.Security.SecurityAlertOptions.SectionName));
+builder.Services.AddSingleton<HRM.Services.Security.SecurityAlertCounter>();
+builder.Services.AddSingleton<HRM.Services.Security.SecurityAlertService>();
 builder.Services.Configure<HRM.Services.Security.PasswordPolicyOptions>(
     builder.Configuration.GetSection(HRM.Services.Security.PasswordPolicyOptions.SectionName));
 builder.Services.AddSingleton<HRM.Services.Security.PasswordPolicyService>();
@@ -749,6 +753,8 @@ app.UseAuthorization();
 // change can't reach any page, endpoint or file download. See
 // Middleware/ForcePasswordChangeMiddleware for why it redirects, not 403s.
 app.UseMiddleware<HRM.Middleware.ForcePasswordChangeMiddleware>();
+// บังคับ 2FA ผู้ดูแลระบบเมื่อ SecurityAlerts:RequireMfaForAdmin = true (ปิดเป็นค่าเริ่มต้น) — ดู Middleware/RequireMfaMiddleware
+app.UseMiddleware<HRM.Middleware.RequireMfaMiddleware>();
 
 app.UseRateLimiter();
 app.UseAntiforgery();

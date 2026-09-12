@@ -28,8 +28,12 @@ public static class LoginEndpoints
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
             LdapAuthService ldapAuth,
-            HRM.Services.Security.PasswordPolicyService policy) =>
+            HRM.Services.Security.PasswordPolicyService policy,
+            HRM.Services.Security.SecurityAlertService alerts) =>
         {
+            var clientIp = httpContext.Connection.RemoteIpAddress?.ToString();
+            var requiresTwoFactor = false;
+            var failureAlerted = false;
             var form = await httpContext.Request.ReadFormAsync();
             var username = form["username"].ToString();
             var password = form["password"].ToString();
@@ -86,7 +90,11 @@ public static class LoginEndpoints
                     }
                     else
                     {
-                        passwordOk = (await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true)).Succeeded;
+                        // PasswordSignInAsync (ไม่ใช่ CheckPasswordSignInAsync) เพื่อให้ 2FA ของ Identity ทำงาน: ถ้าผู้ใช้เปิด
+                        // แอปยืนยันตัวตนไว้ จะได้ RequiresTwoFactor + cookie ชั่วคราว แล้วไปกรอกรหัสที่ /Account/LoginWith2fa
+                        var signIn = await signInManager.PasswordSignInAsync(appUser, password, isPersistent: false, lockoutOnFailure: true);
+                        passwordOk = signIn.Succeeded || signIn.RequiresTwoFactor;
+                        requiresTwoFactor = signIn.RequiresTwoFactor;
                     }
 
                     if (!passwordOk)
@@ -118,6 +126,8 @@ public static class LoginEndpoints
                             Note = "login-failed",
                         });
                         await context.SaveChangesAsync();
+                        await alerts.OnLoginFailedAsync(username, clientIp, isNowLockedOut);
+                        failureAlerted = true;
 
                         // That last attempt may be the one that tripped the
                         // lockout — say so rather than letting them find out
@@ -128,7 +138,9 @@ public static class LoginEndpoints
 
                     if (passwordOk)
                     {
-                        await signInManager.SignInAsync(appUser, isPersistent: false);
+                        // ผู้ใช้รหัสผ่านในระบบถูก sign-in โดย PasswordSignInAsync แล้ว — ออก cookie ซ้ำเฉพาะทาง AD (LDAP)
+                        if (scUser.AuthProvider == "AD")
+                            await signInManager.SignInAsync(appUser, isPersistent: false);
 
                         // Successful sign-in clears the counter on both sides
                         // (the JSP system's clearInvalidCount(), which ran at
@@ -156,11 +168,15 @@ public static class LoginEndpoints
                         });
                         await context.SaveChangesAsync();
 
+                        if (requiresTwoFactor)
+                            return Results.LocalRedirect($"/Account/LoginWith2fa?ReturnUrl={Uri.EscapeDataString(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl)}&RememberMe=false");
                         return Results.LocalRedirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
                     }
                 }
             }
 
+            if (!failureAlerted)
+                await alerts.OnLoginFailedAsync(username, clientIp, lockedOut: false);   // บัญชีไม่มี/ปิดใช้ ก็นับต่อ IP
             var errorRedirect = "/login?error=1";
             if (!string.IsNullOrEmpty(returnUrl))
                 errorRedirect += $"&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
