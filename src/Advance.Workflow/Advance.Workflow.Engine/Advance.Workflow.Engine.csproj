@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 0 scaffold (see ../EXTRACTION-PLAN.md). This is the big one: copies
+    of Services/Workflow/WorkflowService.cs and WorkflowEngineService.cs,
+    adjusted to run against WorkflowDbContext (this project's own DbContext,
+    scoped to just the wf_*/job_* tables from Advance.Workflow.Domain) instead
+    of HRM's HRMContext, and against Advance.Workflow.Contracts's
+    IWorkflowUserDirectory/IWorkflowNotifier instead of reading HRM's
+    sc_user/Hremployee/com_organization/EmailSender directly.
+
+    NOT byte-identical to HRM's engine yet — see the TODO(seam) comments and
+    ../EXTRACTION-PLAN.md's "what had to be trimmed" section for exactly
+    which approver-resolution strategies are stubbed pending the real
+    author's judgment.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Workflow.Engine</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
+    <PackageReference Include="Serilog" Version="4.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Advance.Workflow.Domain\Advance.Workflow.Domain.csproj" />
+    <ProjectReference Include="..\Advance.Workflow.Contracts\Advance.Workflow.Contracts.csproj" />
+    <!-- Deliberately NO reference to Advance.Workflow.Org here. Engine talks
+         to IOrgDirectorySource/IWorkflowUserDirectory (Contracts) only — the
+         plan's rule "engine อ่านผู้อนุมัติจาก Workflow.Org เท่านั้น (ทางเดียว ไม่มี if
+         ว่าอยู่ใน HumanOk หรือไม่)" is satisfied by DI, not by a project reference:
+         Advance.Workflow.Org implements these interfaces against its own
+         wf_org_type/wf_employee tables for a standalone deployment; HRM
+         implements the SAME interfaces against Hremployee/com_organization
+         when embedded. Engine never knows or cares which one is wired up. -->
+  </ItemGroup>
+
+</Project>
