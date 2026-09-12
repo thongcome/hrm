@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.Host.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Plain class-library SDK (not Sdk.Web) — this project ships DI/pipeline
+         EXTENSION METHODS for a consuming Advance.Payroll.Web /
+         Advance.Workflow.Web host, it is not a runnable web app itself. The
+         FrameworkReference below is what a class library needs to see
+         IServiceCollection/IApplicationBuilder/ASP.NET Core Identity types
+         without pulling in the full Sdk.Web build pipeline (static web
+         assets, etc.) that a real entry-point project needs. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Advance.Host.Domain\Advance.Host.Domain.csproj" />
+    <ProjectReference Include="..\Advance.Host.Data\Advance.Host.Data.csproj" />
+    <ProjectReference Include="..\Advance.Host.Excel\Advance.Host.Excel.csproj" />
+  </ItemGroup>
+
+</Project>
