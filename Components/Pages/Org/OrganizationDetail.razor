@@ -57,8 +57,9 @@ else
         <MudText Typo="Typo.h5">ข้อมูลสังกัด</MudText>
         <MudSimpleTable Dense="true" Class="mt-3">
             <tbody>
-                <tr><td>ประเภทสังกัด</td><td>@_sectionTypeName</td><td>รหัสสังกัด</td><td>@_org.code</td></tr>
-                <tr><td>ชื่อสังกัด</td><td>@_org.name (@_org.abbr)</td><td>Name (English)</td><td>@_org.name_en (@_org.abbr_en)</td></tr>
+                <tr><td>ประเภทสังกัด</td><td>@OrNa(_sectionTypeName)</td><td>รหัสสังกัด</td><td>@OrNa(_org.code)</td></tr>
+                <tr><td>ชื่อสังกัด</td><td>@_org.name@(string.IsNullOrWhiteSpace(_org.abbr) ? "" : $" ({_org.abbr})")</td><td>Name (English)</td><td>@OrNa(_org.name_en)@(string.IsNullOrWhiteSpace(_org.abbr_en) ? "" : $" ({_org.abbr_en})")</td></tr>
+                <tr><td>บริษัท</td><td colspan="3">@OrNa(_companyName)</td></tr>
                 <tr>
                     <td>อยู่ภายใต้สังกัด</td>
                     <td colspan="3">
@@ -72,8 +73,8 @@ else
                         }
                     </td>
                 </tr>
-                <tr><td>รหัสสังกัด (การเงิน)</td><td>@_org.CostCenterCode</td><td>รหัสเต็ม</td><td>@_org.orgcodefull</td></tr>
-                <tr><td>ลักษณะของหน่วยงาน</td><td>@_subSectionTypeName</td><td>สังกัดสูงสุด</td><td>@(_org.istop ? "ใช่" : "ไม่ใช่")</td></tr>
+                <tr><td>รหัสสังกัด (การเงิน)</td><td>@OrNa(_org.CostCenterCode)</td><td>รหัสเต็ม</td><td>@OrNa(_org.orgcodefull)</td></tr>
+                <tr><td>ลักษณะของหน่วยงาน</td><td>@OrNa(_subSectionTypeName)</td><td>สังกัดสูงสุด</td><td>@(_org.istop ? "ใช่" : "ไม่ใช่")</td></tr>
                 <tr><td>นับอัตรากำลัง</td><td>@(_org.isManPowerCount ? "ใช่" : "ไม่ใช่")</td><td>สถานะ</td><td>@(_org.isActive ? "ใช้งาน" : "ไม่ใช้งาน")</td></tr>
                 <tr><td>วันที่เริ่มต้นสังกัด</td><td>@(_org.startdate?.ToString("dd/MM/yyyy") ?? "-")</td><td>วันที่ยกเลิกสังกัด</td><td>@(_org.enddate?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
                 <tr>
@@ -106,7 +107,7 @@ else
                         }
                     </td>
                 </tr>
-                <tr><td>หมายเหตุ</td><td colspan="3">@_org.remark</td></tr>
+                <tr><td>หมายเหตุ</td><td colspan="3">@OrNa(_org.remark)</td></tr>
                 <tr>
                     <td>พนักงานในหน่วยงานนี้</td>
                     <td><MudLink Href="@($"/org/organizations/{Id}/employees")">@_directEmployeeCount คน</MudLink></td>
@@ -290,6 +291,9 @@ else
     private HashSet<long> _expanded = new();
     private int _directEmployeeCount;
     private int _subtreeEmployeeCount;
+    private string? _companyName;
+
+    private static string OrNa(string? value) => string.IsNullOrWhiteSpace(value) ? "N/A" : value;
 
     // Per-org slice of OrgChangeHistory.razor's data — same queries filtered
     // to this org's id, so "รอมีผล"/"ประวัติที่มีผลแล้ว" read identically
@@ -348,6 +352,15 @@ else
         {
             var sst = await context.Com_SubSectionTypes.FirstOrDefaultAsync(t => t.Id == _org.SubSectionTypeId);
             _subSectionTypeName = sst?.Name;
+        }
+        if (_org.companyid is not null)
+        {
+            var company = await context.com_companies.FirstOrDefaultAsync(c => c.id == _org.companyid);
+            _companyName = company?.name;
+        }
+        else
+        {
+            _companyName = null;
         }
 
         // Real headcount (Hremployee.OrganizationId — see [[feedback_build_on_users_existing_db_design]]

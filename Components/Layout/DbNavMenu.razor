@@ -19,37 +19,45 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject JsonLocalizationService L
 @inject LanguageState LangState
+@inject ThemeService ThemeSvc
+@inject ThemeState ThemeSt
 @implements IDisposable
 
 @if (_isAuthenticated)
 {
-    <MudNavMenu>
-        @foreach (var node in _tree)
-        {
-            @if (node.Children.Count > 0)
+    <!-- data-menu-style picks which of the 3 spacing/grouping treatments in
+         DbNavMenu.razor.css applies — a live switcher (MainLayout's "รูปแบบเมนู"
+         menu), not a single hardcoded fix, per CEO preference (13 ก.ย. 2569)
+         for offering style variants rather than picking one. -->
+    <div data-menu-style="@ThemeSvc.MenuStyleId">
+        <MudNavMenu>
+            @foreach (var node in _tree)
             {
-                @* Group row: rendered as a MudNavGroup. If the row also has a
-                   url it is ignored — a row with children is always a group. *@
-                @if (node.Children.Any(IsLeafVisible))
+                @if (node.Children.Count > 0)
                 {
-                    <!-- hrm-nav-toplevel (CEO, 12 ก.ย. 2569: "เมนูหลักต้องเห็นชัด") —
-                         bolds + colors every top-level row so the drawer reads as
-                         two tiers at a glance instead of one flat list; see
-                         DbNavMenu.razor.css. Sub-items inside a group stay plain. -->
-                    <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false" Class="hrm-nav-toplevel">
-                        @foreach (var child in node.Children.Where(IsLeafVisible))
-                        {
-                            <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
-                        }
-                    </MudNavGroup>
+                    @* Group row: rendered as a MudNavGroup. If the row also has a
+                       url it is ignored — a row with children is always a group. *@
+                    @if (node.Children.Any(IsLeafVisible))
+                    {
+                        <!-- hrm-nav-toplevel (CEO, 12 ก.ย. 2569: "เมนูหลักต้องเห็นชัด") —
+                             bolds + colors every top-level row so the drawer reads as
+                             two tiers at a glance instead of one flat list; see
+                             DbNavMenu.razor.css. Sub-items inside a group stay plain. -->
+                        <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false" Class="hrm-nav-toplevel">
+                            @foreach (var child in node.Children.Where(IsLeafVisible))
+                            {
+                                <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
+                            }
+                        </MudNavGroup>
+                    }
+                }
+                else if (IsLeafVisible(node))
+                {
+                    <MudNavLink Href="@node.Row.url" Icon="@ResolveIcon(node.Row.icon)" Class="hrm-nav-toplevel">@DisplayName(node.Row)</MudNavLink>
                 }
             }
-            else if (IsLeafVisible(node))
-            {
-                <MudNavLink Href="@node.Row.url" Icon="@ResolveIcon(node.Row.icon)" Class="hrm-nav-toplevel">@DisplayName(node.Row)</MudNavLink>
-            }
-        }
-    </MudNavMenu>
+        </MudNavMenu>
+    </div>
 }
 
 @code {
@@ -68,6 +76,10 @@
         // Live language switch (th <-> en) only needs a re-render, not a
         // re-query — DisplayName() picks the right column at render time.
         LangState.OnLanguageChangedAsync += HandleLanguageChangedAsync;
+
+        // Same reasoning for menu-style: only the data-menu-style attribute
+        // needs to change, no re-query of sc_menu.
+        ThemeSt.OnThemeChangedAsync += HandleLanguageChangedAsync;
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
@@ -198,5 +210,6 @@
     public void Dispose()
     {
         LangState.OnLanguageChangedAsync -= HandleLanguageChangedAsync;
+        ThemeSt.OnThemeChangedAsync -= HandleLanguageChangedAsync;
     }
 }

@@ -153,6 +153,52 @@ public static class ThemeCatalog
             Typography = SharedTypography,
             LayoutProperties = SharedLayout,
         }),
+
+        // Added on request (13 ก.ย. 2569) after feedback that the other four
+        // themes all use the same silhouette — a solid dark AppBar block up
+        // top. This one keeps the same brand orange but lightens the AppBar
+        // itself (cream, not navy/blue/green/purple) so the shell reads as
+        // airy rather than heavy — a genuine alternative, not just a new hue
+        // in the same dark-bar template. Existing four are untouched.
+        new("sand", "ทราย (โทนสว่าง)", new MudTheme
+        {
+            PaletteLight = new PaletteLight
+            {
+                Primary = "#D9612E",
+                PrimaryDarken = "#B84D22",
+                Secondary = "#8B7355",
+                Background = "#FBF6EE",
+                Surface = "#FFFDF9",
+                AppbarBackground = "#F6E9D8",
+                AppbarText = "#3A2C1E",
+                DrawerBackground = "#FFFDF9",
+                DrawerText = "#3A2C1E",
+                TextPrimary = "#2B2420",
+                TextSecondary = "#6B5F52",
+                ActionDefault = "#9C8F80",
+                Divider = "#EFE6D8",
+                LinesDefault = "#EFE6D8",
+            },
+            PaletteDark = new PaletteDark
+            {
+                Primary = "#FF8B5C",
+                PrimaryDarken = "#D9612E",
+                Secondary = "#C2A98A",
+                Background = "#1F1810",
+                Surface = "#2A2118",
+                AppbarBackground = "#170F09",
+                AppbarText = "#F2E9DC",
+                DrawerBackground = "#2A2118",
+                DrawerText = "#F2E9DC",
+                TextPrimary = "#F2E9DC",
+                TextSecondary = "#C2B39F",
+                ActionDefault = "#A6957E",
+                Divider = "#3A2E20",
+                LinesDefault = "#3A2E20",
+            },
+            Typography = SharedTypography,
+            LayoutProperties = SharedLayout,
+        }),
     ];
 
     public static ThemeOption GetById(string? id) =>

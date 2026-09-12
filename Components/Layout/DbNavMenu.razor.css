@@ -25,3 +25,122 @@
     border-left-color: var(--mud-palette-primary);
     background-color: var(--mud-palette-primary-hover);
 }
+
+/* ============================================================
+   Menu-style variants (CEO, 13 ก.ย. 2569): every row had 0px
+   margin, 0px border, 0px indent, and a near-invisible 6% hover
+   tint, so nothing separated one link from the next or a group
+   from its children ("เป็นพืด" / "ลอย"). Previewed as a 3-way
+   mockup first, then shipped as a live switcher (MainLayout's
+   "รูปแบบเมนู" menu, ThemeService.MenuStyleId) instead of one
+   forced choice. Picked via [data-menu-style] on the wrapping
+   div in DbNavMenu.razor.
+
+   IMPORTANT: never put padding/border/margin on .mud-navgroup-collapse
+   or .mud-collapse-wrapper themselves — those are MudBlazor's own
+   height-animation elements (grid-template-rows 0fr -> 1fr) and
+   adding box-model properties directly to them breaks the expand
+   animation (confirmed: group reported aria-expanded=true while
+   staying visually collapsed). Always style .mud-navgroup-collapse
+   .mud-navmenu (the actual content, one level inside) instead.
+   ============================================================ */
+
+/* ---- A: เส้นกรอบซ้าย — closest to the original, adds spacing + a
+   left rail so children read as "inside" their group. ---- */
+[data-menu-style="a"] ::deep .mud-nav-link {
+    margin-bottom: 2px;
+    border-radius: 6px;
+}
+
+[data-menu-style="a"] ::deep .mud-nav-group {
+    margin-bottom: 6px;
+}
+
+[data-menu-style="a"] ::deep .mud-navgroup-collapse .mud-navmenu {
+    margin-left: 14px;
+    margin-top: 2px;
+    border-left: 2px solid var(--mud-palette-lines-default);
+    padding-left: 6px;
+}
+
+[data-menu-style="a"] ::deep .mud-navgroup-collapse .mud-nav-link {
+    padding-left: 10px;
+    font-size: 13.5px;
+}
+
+[data-menu-style="a"] ::deep .mud-nav-link:hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+[data-menu-style="a"] ::deep .mud-nav-link.mud-nav-link-active {
+    background-color: var(--mud-palette-primary-hover);
+    border-left: 3px solid var(--mud-palette-primary);
+    font-weight: 600;
+}
+
+/* ---- B: กล่องแยกกลุ่ม — each group becomes its own tinted card,
+   the clearest visual boundary of the three. ---- */
+[data-menu-style="b"] ::deep .mud-nav-group {
+    background-color: rgba(var(--mud-palette-primary-rgb), 0.05);
+    border: 1px solid rgba(var(--mud-palette-primary-rgb), 0.14);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    padding: 3px;
+}
+
+[data-menu-style="b"] ::deep .mud-nav-link {
+    margin-bottom: 2px;
+    border-radius: 6px;
+}
+
+[data-menu-style="b"] ::deep .mud-navgroup-collapse .mud-nav-link {
+    padding-left: 34px;
+    font-size: 13.5px;
+}
+
+[data-menu-style="b"] ::deep .mud-nav-link:hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+[data-menu-style="b"] ::deep .mud-nav-link.mud-nav-link-active {
+    background-color: var(--mud-palette-surface);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+    font-weight: 600;
+}
+
+/* ---- C: เส้นคั่นบาง + จุดนำ — thinnest touch: a hairline under each
+   top-level item (group or standalone link, both carry
+   .hrm-nav-toplevel) and a small dot marker on nested children
+   instead of a border/box. ---- */
+[data-menu-style="c"] ::deep .hrm-nav-toplevel {
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+[data-menu-style="c"] ::deep .mud-navgroup-collapse .mud-nav-link {
+    padding-left: 30px;
+    position: relative;
+    font-size: 13.5px;
+}
+
+[data-menu-style="c"] ::deep .mud-navgroup-collapse .mud-nav-link::before {
+    content: "";
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: rgba(var(--mud-palette-primary-rgb), 0.45);
+    transform: translateY(-50%);
+}
+
+[data-menu-style="c"] ::deep .mud-navgroup-collapse .mud-nav-link.mud-nav-link-active::before {
+    background-color: var(--mud-palette-primary);
+}
+
+[data-menu-style="c"] ::deep .mud-nav-link.mud-nav-link-active {
+    font-weight: 600;
+    color: var(--mud-palette-primary);
+}

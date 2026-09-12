@@ -16,12 +16,26 @@ public class ThemeService
 {
     public const string ThemeCookieName = "hrm_theme";
     public const string DarkModeCookieName = "hrm_dark_mode";
+    public const string MenuStyleCookieName = "hrm_menu_style";
+
+    // "a" (เส้นกรอบซ้าย), "b" (กล่องแยกกลุ่ม), "c" (เส้นคั่นบาง + จุดนำ) — three
+    // answers to the same CEO complaint (13 ก.ย. 2569: menu reads as one
+    // undifferentiated block, "ลอย"/"เป็นพืด") previewed as a mockup first,
+    // then shipped as a live switcher (like the color theme picker) instead
+    // of picking one and forcing everyone to it. See DbNavMenu.razor.css.
+    public static readonly (string Id, string Label)[] MenuStyles =
+    [
+        ("a", "เส้นกรอบซ้าย"),
+        ("b", "กล่องแยกกลุ่ม"),
+        ("c", "เส้นคั่นบาง"),
+    ];
 
     private readonly ThemeState _state;
     private readonly IJSRuntime _js;
 
     public string CurrentThemeId { get; private set; } = ThemeCatalog.Options[0].Id;
     public bool IsDarkMode { get; private set; }
+    public string MenuStyleId { get; private set; } = MenuStyles[0].Id;
 
     public ThemeCatalog.ThemeOption CurrentTheme => ThemeCatalog.GetById(CurrentThemeId);
 
@@ -35,6 +49,9 @@ public class ThemeService
 
         var darkCookie = httpContextAccessor.HttpContext?.Request.Cookies[DarkModeCookieName];
         IsDarkMode = darkCookie == "1";
+
+        var menuStyleCookie = httpContextAccessor.HttpContext?.Request.Cookies[MenuStyleCookieName];
+        MenuStyleId = MenuStyles.Any(m => m.Id == menuStyleCookie) ? menuStyleCookie! : MenuStyles[0].Id;
     }
 
     public async Task SetThemeAsync(string themeId)
@@ -48,6 +65,13 @@ public class ThemeService
     {
         IsDarkMode = value;
         await _js.InvokeVoidAsync("setLanguageCookie", DarkModeCookieName, value ? "1" : "0");
+        await _state.NotifyAsync();
+    }
+
+    public async Task SetMenuStyleAsync(string menuStyleId)
+    {
+        MenuStyleId = MenuStyles.Any(m => m.Id == menuStyleId) ? menuStyleId : MenuStyles[0].Id;
+        await _js.InvokeVoidAsync("setLanguageCookie", MenuStyleCookieName, MenuStyleId);
         await _state.NotifyAsync();
     }
 }

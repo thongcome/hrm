@@ -95,6 +95,18 @@ else
                     <MudRadio T="bool" Value="false" Color="Color.Default">ไม่ใช่สูงสุด</MudRadio>
                 </MudRadioGroup>
             </MudItem>
+            @if (_isTop)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="long?" @bind-Value="_orgCompanyId" Label="บริษัท" Required="true"
+                        HelperText="สังกัดสูงสุดต้องระบุว่าเป็นผังขององค์กรของบริษัทไหน (รองรับหลายบริษัทที่ตั้งค่าไว้ในระบบ)">
+                        @foreach (var c in _companies)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)c.id)">@c.name (@c.code)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
 
             <MudItem xs="12" sm="6">
                 <MudText Typo="Typo.body2" Class="mb-1">ประเภทหน่วยงาน</MudText>
@@ -148,6 +160,8 @@ else
     private List<com_organize_layer> _layers = new();
     private string? _layerCode;
     private string? _error;
+    private long? _orgCompanyId;
+    private List<com_company> _companies = new();
 
     private string _code = "";
     private string _name = "";
@@ -192,6 +206,7 @@ else
         _sectionTypes = await context.Com_SectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.LevelNo).ToListAsync();
         _subSectionTypes = await context.Com_SubSectionTypes.Where(t => t.CompanyId == _companyId && t.IsActive).OrderBy(t => t.Name).ToListAsync();
         _layers = await context.com_organize_layers.Where(l => l.isActive).OrderBy(l => l.layer).ThenBy(l => l.name).ToListAsync();
+        _companies = await context.com_companies.Where(c => c.isActive == true).OrderBy(c => c.name).ToListAsync();
 
         _code = org.code ?? "";
         _name = org.name ?? "";
@@ -203,6 +218,7 @@ else
         _isManPowerCount = org.isManPowerCount;
         _isCompany = org.isCompany;
         _isBranch = org.isBranch;
+        _orgCompanyId = org.companyid;
         _sectionTypeId = _sectionTypes.FirstOrDefault(t => t.Code == org.SectionTypeCode)?.Id;
         _subSectionTypeId = org.SubSectionTypeId;
         _layerCode = org.layer_code;
@@ -262,6 +278,11 @@ else
             _error = "กรุณาเลือกสังกัดที่อยู่ภายใต้ หรือติ๊กว่าเป็นสังกัดสูงสุด";
             return;
         }
+        if (_isTop && _orgCompanyId is null)
+        {
+            _error = "สังกัดสูงสุดต้องระบุบริษัท";
+            return;
+        }
 
         var newParentCode = _isTop ? null : _selectedParent?.code;
         var newCostCenterCode = _selectedCostCenter?.Code;
@@ -306,6 +327,7 @@ else
             existing.startdate = _startDate;
             existing.enddate = _endDate;
             existing.remark = _remark;
+            existing.companyid = _isTop ? _orgCompanyId : existing.companyid;
 
             // Concurrency guard: tell EF this UPDATE should only succeed if
             // the row's RowVersion still matches what THIS form loaded (not
