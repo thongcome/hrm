@@ -1,0 +1,35 @@
+@* Adapted from HRM's Components/Account/Shared/AccountLayout.razor. The
+   original hardcoded "@layout HRM.Components.Layout.MainLayout" at the top
+   of this file — a compile-time reference to HRM's own app shell, which a
+   package meant for three different host apps cannot carry. Replaced with
+   a runtime <LayoutView> pointed at HostLayout.LayoutType (set once by the
+   host app at startup) — see Shared/HostLayout.cs for why and how. *@
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+
+<LayoutView Layout="@Advance.SecurityCore.Web.Components.Account.Shared.HostLayout.LayoutType">
+    @if (HttpContext is null)
+    {
+        <p>Loading...</p>
+    }
+    else
+    {
+        @Body
+    }
+</LayoutView>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (HttpContext is null)
+        {
+            // If this code runs, we're currently rendering in interactive mode, so there is no HttpContext.
+            // The identity pages need to set cookies, so they require an HttpContext. To achieve this we
+            // must transition back from interactive mode to a server-rendered page.
+            NavigationManager.Refresh(forceReload: true);
+        }
+    }
+}

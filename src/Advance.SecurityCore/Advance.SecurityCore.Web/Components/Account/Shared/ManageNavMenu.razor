@@ -1,0 +1,45 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using Advance.SecurityCore.Domain
+
+@inject SignInManager<ApplicationUser> SignInManager
+
+<ul class="nav nav-pills flex-column">
+ @*    <li class="nav-item">
+        <NavLink class="nav-link" href="Account/Manage" Match="NavLinkMatch.All">Profile</NavLink>
+    </li> *@
+    @* "/scusers/editshort" is an HRM-specific admin route (not part of this
+       package) that happened to be hardcoded here in HRM's own copy of this
+       file — left as-is (compiles fine, it's just markup) but a host other
+       than HRM should point this at its own equivalent profile-edit page or
+       remove the link. *@
+    <li class="nav-item">
+        <NavLink class="nav-link" href="/scusers/editshort">Profile</NavLink>
+    </li>
+    <li class="nav-item">
+        <NavLink class="nav-link" href="Account/Manage/Email">Email</NavLink>
+    </li>
+    <li class="nav-item">
+        <NavLink class="nav-link" href="Account/Manage/ChangePassword">Password</NavLink>
+    </li>
+    @if (hasExternalLogins)
+    {
+        <li class="nav-item">
+            <NavLink class="nav-link" href="Account/Manage/ExternalLogins">External logins</NavLink>
+        </li>
+    }
+@*     <li class="nav-item">
+        <NavLink class="nav-link" href="Account/Manage/TwoFactorAuthentication">Two-factor authentication</NavLink>
+    </li>
+    <li class="nav-item">
+        <NavLink class="nav-link" href="Account/Manage/PersonalData">Personal data</NavLink>
+    </li> *@
+</ul>
+
+@code {
+    private bool hasExternalLogins;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
+    }
+}

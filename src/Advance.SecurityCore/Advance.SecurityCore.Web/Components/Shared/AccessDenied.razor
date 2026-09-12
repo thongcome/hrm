@@ -1,0 +1,46 @@
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Advance.SecurityCore.Services
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject SecurityAlertService Alerts
+
+@*
+    Copied from HRM's Components/Shared/AccessDenied.razor. Shown when an
+    authenticated user's role does not carry the "menu" claim a page's
+    [Authorize(Policy = "Menu:XXX")] policy requires.
+
+    Depends on MudBlazor (MudContainer/MudAlert/MudButton/MudText/Icons) —
+    this ties Advance.SecurityCore.Web to MudBlazor as a UI framework choice,
+    same as HRM. A standalone Payroll/Workflow product not using MudBlazor
+    would need its own version of this page; see EXTRACTION-PLAN.md.
+*@
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.Lock" Variant="Variant.Outlined">
+        <MudText Typo="Typo.subtitle1"><b>This page is not enabled for your role.</b></MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            You are signed in, but this menu is not part of your role's granted
+            rights. If you need it, ask an administrator to grant your role
+            this menu.
+        </MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">@Nav.Uri</MudText>
+    </MudAlert>
+    <MudStack Row="true" Spacing="2" Class="mt-4">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   OnClick="@(() => Nav.NavigateTo("/"))">Back to home</MudButton>
+    </MudStack>
+</MudContainer>
+
+@code {
+    // Counts access-denied hits per user — over threshold in SecurityAlerts
+    // notifies an administrator (someone repeatedly hitting pages they have
+    // no rights to).
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive) return;   // count only a real circuit, not prerender
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var uid = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var id) ? id : (long?)null;
+        await Alerts.OnAccessDeniedAsync(state.User.Identity?.Name, uid, Nav.Uri);
+    }
+}
