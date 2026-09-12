@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Advance.SecurityCore.Services</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Middleware classes (ForcePasswordChangeMiddleware / RequireMfaMiddleware)
+         need ASP.NET Core's hosting abstractions (RequestDelegate, HttpContext) —
+         a plain net10.0 TFM without the Web SDK does not carry those, so this
+         project needs FrameworkReference the same way a class-library that uses
+         ASP.NET Core types normally does. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.Extensions.Caching.Memory / Microsoft.Extensions.Options are
+         already part of the shared framework via the FrameworkReference above
+         (NU1510) — explicit PackageReferences removed. -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Advance.SecurityCore.Domain\Advance.SecurityCore.Domain.csproj" />
+    <ProjectReference Include="..\Advance.SecurityCore.Data\Advance.SecurityCore.Data.csproj" />
+  </ItemGroup>
+
+</Project>
