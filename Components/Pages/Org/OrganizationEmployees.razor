@@ -1,0 +1,111 @@
+@page "/org/organizations/{Id:long}/employees"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject JsonLocalizationService L
+@attribute [Authorize(Policy = "Menu:ORG_ADMIN")]
+
+@* Linked from OrganizationDetail.razor (the View page at /org/organizations/{Id})
+   instead of listing employees inline there — a subtree can carry 1,000+ rows
+   (CEO, 12 ก.ย. 2569: "เอาไปทำเป็นลิงก์ เปิดอีกหน้า ใช้งานง่ายกว่าบนโมบาย").
+   Bootstrap only, no MudBlazor — see [[feedback_view_pages_bootstrap_not_mudblazor]]. *@
+
+<PageTitle>@L.Translate("TotalEmployeesHeading") — @(_orgName ?? L.Translate("OrgDetailPageTitle"))</PageTitle>
+
+<div class="container-fluid py-3" style="max-width:800px;">
+    @if (_notFound)
+    {
+        <div class="alert alert-warning">@L.Translate("OrgNotFoundError")</div>
+        return;
+    }
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <a href="/org/organizations/@Id" class="btn btn-sm btn-outline-secondary">&larr;</a>
+        <h5 class="mb-0">@_orgName</h5>
+    </div>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link @(!_includeSubtree ? "active" : "")" href="/org/organizations/@Id/employees">
+                @L.Translate("DirectEmployeesHeading") (@_directEmployees.Count)
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(_includeSubtree ? "active" : "")" href="/org/organizations/@Id/employees?includeSubtree=true">
+                @L.Translate("TotalEmployeesHeading") (@_subtreeEmployees.Count)
+            </a>
+        </li>
+    </ul>
+
+    @{
+        var list = _includeSubtree ? _subtreeEmployees : _directEmployees;
+    }
+    @if (list.Count == 0)
+    {
+        <div class="text-muted small">@L.Translate("NoEmployeesMessage")</div>
+    }
+    else
+    {
+        <ul class="list-group">
+            @foreach (var emp in list)
+            {
+                <li class="list-group-item">
+                    <a href="/employee/personnel-profile/@emp.Id">@emp.EmpNo — @emp.Name</a>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    [SupplyParameterFromQuery] public bool IncludeSubtree { get; set; }
+
+    private bool _includeSubtree;
+    private bool _notFound;
+    private string? _orgName;
+
+    private sealed record EmpLite(long Id, string EmpNo, string Name);
+    private List<EmpLite> _directEmployees = new();
+    private List<EmpLite> _subtreeEmployees = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _includeSubtree = IncludeSubtree;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var item = await context.com_organizations.FirstOrDefaultAsync(o => o.id == Id);
+        if (item is null) { _notFound = true; return; }
+        _notFound = false;
+        _orgName = item.name;
+
+        // Same subtree-walk + Hremployee.OrganizationId source as
+        // OrganizationDetail.razor's link counts.
+        var allOrgs = await context.com_organizations.ToListAsync();
+        var subtreeOrgIds = new HashSet<long> { item.id };
+        var frontier = new List<string> { item.code! };
+        while (frontier.Count > 0)
+        {
+            var next = allOrgs.Where(o => o.parent_code is not null && frontier.Contains(o.parent_code)).ToList();
+            if (next.Count == 0) break;
+            foreach (var n in next) subtreeOrgIds.Add(n.id);
+            frontier = next.Select(o => o.code!).Where(c => c is not null).ToList();
+        }
+
+        var employeesInSubtree = await context.Hremployee
+            .Where(e => e.IsActive == true && e.OrganizationId != null && subtreeOrgIds.Contains(e.OrganizationId.Value))
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.OrganizationId })
+            .ToListAsync();
+
+        _directEmployees = employeesInSubtree
+            .Where(e => e.OrganizationId == item.id)
+            .OrderBy(e => e.EmpNo)
+            .Select(e => new EmpLite(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim()))
+            .ToList();
+        _subtreeEmployees = employeesInSubtree
+            .OrderBy(e => e.EmpNo)
+            .Select(e => new EmpLite(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim()))
+            .ToList();
+    }
+}

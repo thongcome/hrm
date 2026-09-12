@@ -32,7 +32,11 @@
                    url it is ignored — a row with children is always a group. *@
                 @if (node.Children.Any(IsLeafVisible))
                 {
-                    <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false">
+                    <!-- hrm-nav-toplevel (CEO, 12 ก.ย. 2569: "เมนูหลักต้องเห็นชัด") —
+                         bolds + colors every top-level row so the drawer reads as
+                         two tiers at a glance instead of one flat list; see
+                         DbNavMenu.razor.css. Sub-items inside a group stay plain. -->
+                    <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false" Class="hrm-nav-toplevel">
                         @foreach (var child in node.Children.Where(IsLeafVisible))
                         {
                             <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
@@ -42,7 +46,7 @@
             }
             else if (IsLeafVisible(node))
             {
-                <MudNavLink Href="@node.Row.url" Icon="@ResolveIcon(node.Row.icon)">@DisplayName(node.Row)</MudNavLink>
+                <MudNavLink Href="@node.Row.url" Icon="@ResolveIcon(node.Row.icon)" Class="hrm-nav-toplevel">@DisplayName(node.Row)</MudNavLink>
             }
         }
     </MudNavMenu>

@@ -107,6 +107,12 @@ else
                     </td>
                 </tr>
                 <tr><td>หมายเหตุ</td><td colspan="3">@_org.remark</td></tr>
+                <tr>
+                    <td>พนักงานในหน่วยงานนี้</td>
+                    <td><MudLink Href="@($"/org/organizations/{Id}/employees")">@_directEmployeeCount คน</MudLink></td>
+                    <td>พนักงานทั้งหมด (รวมหน่วยงานย่อย)</td>
+                    <td><MudLink Href="@($"/org/organizations/{Id}/employees?includeSubtree=true")">@_subtreeEmployeeCount คน</MudLink></td>
+                </tr>
             </tbody>
         </MudSimpleTable>
 
@@ -282,6 +288,8 @@ else
     private bool _showTree;
     private List<com_organization> _allOrgs = new();
     private HashSet<long> _expanded = new();
+    private int _directEmployeeCount;
+    private int _subtreeEmployeeCount;
 
     // Per-org slice of OrgChangeHistory.razor's data — same queries filtered
     // to this org's id, so "รอมีผล"/"ประวัติที่มีผลแล้ว" read identically
@@ -341,6 +349,21 @@ else
             var sst = await context.Com_SubSectionTypes.FirstOrDefaultAsync(t => t.Id == _org.SubSectionTypeId);
             _subSectionTypeName = sst?.Name;
         }
+
+        // Real headcount (Hremployee.OrganizationId — see [[feedback_build_on_users_existing_db_design]]
+        // on why this is a separate concern from Pos_PositionSlot's establishment/vacancy tracking
+        // on /org/headcount) — direct vs. this org's whole subtree.
+        var subtreeOrgIds = new HashSet<long> { _org.id };
+        var frontier = new List<string> { _org.code! };
+        while (frontier.Count > 0)
+        {
+            var next = _allOrgs.Where(o => o.parent_code is not null && frontier.Contains(o.parent_code)).ToList();
+            if (next.Count == 0) break;
+            foreach (var n in next) subtreeOrgIds.Add(n.id);
+            frontier = next.Select(o => o.code!).Where(c => c is not null).ToList();
+        }
+        _directEmployeeCount = await context.Hremployee.CountAsync(e => e.IsActive == true && e.OrganizationId == _org.id);
+        _subtreeEmployeeCount = await context.Hremployee.CountAsync(e => e.IsActive == true && e.OrganizationId != null && subtreeOrgIds.Contains(e.OrganizationId.Value));
 
         _expanded.Add(_org.id);
     }

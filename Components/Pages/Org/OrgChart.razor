@@ -187,6 +187,13 @@
 
 @code {
     private bool _loading = true;
+    // Deep-link support (CEO, 12 ก.ย. 2569: "tree ไม่เห็นยาก...ส่งค่า node
+    // เริ่มต้นไป") — OrgChartNodeBuilder.BuildAsync already accepts a
+    // rootOrgCode, it just was never wired to the query string before.
+    // /org/chart?rootOrgCode=XXX starts the chart at that unit's subtree
+    // instead of the whole company.
+    [SupplyParameterFromQuery] public string? RootOrgCode { get; set; }
+
     private string? _companyId;
     private List<OrgChartNodeBuilder.ChartNode> _nodes = new();
     private bool _jsInitialized;
@@ -200,7 +207,7 @@
         if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        _nodes = await OrgChartNodeBuilder.BuildAsync(context, _companyId, rootOrgCode: null);
+        _nodes = await OrgChartNodeBuilder.BuildAsync(context, _companyId, rootOrgCode: RootOrgCode);
 
         var employeeCount = _nodes.Count(n => !n.IsVacant);
         if (employeeCount > 0)
