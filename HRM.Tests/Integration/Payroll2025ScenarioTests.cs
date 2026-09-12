@@ -730,9 +730,9 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
                 var text = Encoding.UTF8.GetString(pnd1.Content);
                 var fileLines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
                 Expect("EFILE", "ภ.ง.ด.1 ต.ค. จำนวนบรรทัด = จำนวนคนที่มีภาษี", fileLines.Length == por1Oct.Lines.Count && pnd1.RowCount == por1Oct.Lines.Count, $"{fileLines.Length}/{por1Oct.Lines.Count}");
-                Expect("EFILE", "ภ.ง.ด.1 ต.ค. ทุกบรรทัดมี 10 ช่อง คั่นด้วย |", fileLines.All(l => l.Split('|').Length == 10), "");
-                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ ภาษีในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[8], CultureInfo.InvariantCulture)), por1Oct.TotalTaxWithheld, 0.005m);
-                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ เงินได้ในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[7], CultureInfo.InvariantCulture)), por1Oct.TotalTaxableIncome, 0.005m);
+                Expect("EFILE", "ภ.ง.ด.1 ต.ค. ทุกบรรทัดมี 12 ช่อง คั่นด้วย |", fileLines.All(l => l.Split('|').Length == EFilingFormats.Pnd1ColumnCount), "");
+                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ ภาษีในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[10], CultureInfo.InvariantCulture)), por1Oct.TotalTaxWithheld, 0.005m);
+                Near("EFILE", "ภ.ง.ด.1 ต.ค. Σ เงินได้ในไฟล์ = ภ.ง.ด.1", fileLines.Sum(l => decimal.Parse(l.Split('|')[9], CultureInfo.InvariantCulture)), por1Oct.TotalTaxableIncome, 0.005m);
                 Expect("EFILE", "ภ.ง.ด.1 ต.ค. เลขบัตรครบ 13 หลักทุกคน (ไม่มีคำเตือน)", pnd1.Warnings.Count == 0, string.Join("; ", pnd1.Warnings));
                 Expect("EFILE", "ภ.ง.ด.1 ต.ค. วันที่จ่ายเป็น พ.ศ. 2568", fileLines.All(l => l.Split('|')[6].EndsWith("2568")), fileLines.FirstOrDefault()?.Split('|')[6] ?? "");
             }
@@ -755,8 +755,8 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             if (pnd1k is not null && annual is not null)
             {
                 var fileLines = Encoding.UTF8.GetString(pnd1k.Content).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-                Expect("EFILE", "ภ.ง.ด.1ก ทุกบรรทัดมี 9 ช่อง", fileLines.All(l => l.Split('|').Length == 9), "");
-                Near("EFILE", "ภ.ง.ด.1ก Σ ภาษีในไฟล์ = ภ.ง.ด.1ก", fileLines.Sum(l => decimal.Parse(l.Split('|')[7], CultureInfo.InvariantCulture)), annual.TotalTaxWithheld, 0.005m);
+                Expect("EFILE", "ภ.ง.ด.1ก ทุกบรรทัดมี 15 ช่อง (12 + ที่อยู่ 3)", fileLines.All(l => l.Split('|').Length == EFilingFormats.Pnd1KorColumnCount), "");
+                Near("EFILE", "ภ.ง.ด.1ก Σ ภาษีในไฟล์ = ภ.ง.ด.1ก", fileLines.Sum(l => decimal.Parse(l.Split('|')[10], CultureInfo.InvariantCulture)), annual.TotalTaxWithheld, 0.005m);
             }
         }
 

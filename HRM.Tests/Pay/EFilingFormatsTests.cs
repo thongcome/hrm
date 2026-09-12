@@ -7,34 +7,40 @@ namespace HRM.Tests.Pay;
 public class EFilingFormatsTests
 {
     [Fact]
-    public void Pnd1_line_has_ten_pipe_fields_with_buddhist_date_and_two_decimals()
+    public void Pnd1_line_has_twelve_pipe_fields_in_rd_prep_slot_order()
     {
         var line = EFilingFormats.Pnd1Line(3, "1234567890123", "นาย", "สมชาย", "ตั้งใจ", new DateOnly(2025, 1, 28), 30000m, 95.83m);
         var f = line.Split('|');
-        Assert.Equal(10, f.Length);
-        Assert.Equal("1", f[0]);                 // ประเภทเงินได้ 40(1)
-        Assert.Equal("3", f[1]);
-        Assert.Equal("1234567890123", f[2]);
+        Assert.Equal(EFilingFormats.Pnd1ColumnCount, f.Length);
+        Assert.Equal("3", f[0]);                 // ลำดับ
+        Assert.Equal("1234567890123", f[1]);     // เลขประจำตัวผู้เสียภาษี
+        Assert.Equal("", f[2]);                  // เลขประจำตัวที่ 2 (ว่าง)
+        Assert.Equal("นาย", f[3]);
         Assert.Equal("28012568", f[6]);          // ddMMyyyy พ.ศ.
-        Assert.Equal("30000.00", f[7]);
-        Assert.Equal("95.83", f[8]);
-        Assert.Equal("1", f[9]);                 // หัก ณ ที่จ่าย
+        Assert.Equal("1", f[7]);                 // ประเภทเงินได้ 40(1)
+        Assert.Equal("", f[8]);                  // อัตราภาษี (ว่าง)
+        Assert.Equal("30000.00", f[9]);
+        Assert.Equal("95.83", f[10]);
+        Assert.Equal("1", f[11]);                // หัก ณ ที่จ่าย
     }
 
     [Fact]
     public void Pnd1_line_never_contains_a_stray_pipe_from_names()
     {
         var line = EFilingFormats.Pnd1Line(1, "1234567890123", "นาง", "สม|หญิง", "ขยัน\n", new DateOnly(2025, 6, 30), 1m, 0m);
-        Assert.Equal(10, line.Split('|').Length);
+        Assert.Equal(EFilingFormats.Pnd1ColumnCount, line.Split('|').Length);
     }
 
     [Fact]
-    public void Pnd1kor_line_has_nine_fields_and_no_date()
+    public void Pnd1kor_line_has_fifteen_fields_with_year_end_date_and_address()
     {
-        var f = EFilingFormats.Pnd1KorLine(1, "1234567890123", "นาย", "ก", "ข", 360000m, 1140m).Split('|');
-        Assert.Equal(9, f.Length);
-        Assert.Equal("360000.00", f[6]);
-        Assert.Equal("1140.00", f[7]);
+        var f = EFilingFormats.Pnd1KorLine(1, "1234567890123", "นาย", "ก", "ข", 2025, 360000m, 1140m, "99/1", "บางนา", "บางนา").Split('|');
+        Assert.Equal(EFilingFormats.Pnd1KorColumnCount, f.Length);
+        Assert.Equal("31122568", f[6]);          // วันที่จ่าย = สิ้นปีภาษี (พ.ศ.)
+        Assert.Equal("360000.00", f[9]);
+        Assert.Equal("1140.00", f[10]);
+        Assert.Equal("99/1", f[12]);
+        Assert.Equal("บางนา", f[14]);
     }
 
     [Fact]
@@ -42,7 +48,7 @@ public class EFilingFormatsTests
     {
         var h = EFilingFormats.Sso110Header("1234567890", "000000", new DateOnly(2025, 2, 14), new DateOnly(2025, 1, 1),
             "บริษัท ทดสอบ จำกัด", 5m, 9, 123456.78m, 12345.68m, 6172.84m, 6172.84m);
-        var d = EFilingFormats.Sso110Detail("1234567890123", "003", "สมชาย", "ตั้งใจ", 15000m, 750m);
+        var d = EFilingFormats.Sso110Detail("1234567890123", EFilingFormats.PrefixBySex("M").SsoCode, "สมชาย", "ตั้งใจ", 15000m, 750m);
         Assert.Equal(135, h.Length);
         Assert.Equal(135, d.Length);
         Assert.StartsWith("1" + "1234567890" + "000000" + "140268" + "0168", h);   // วันที่ชำระ 14/02/2568, งวด 01/2568

@@ -9,7 +9,7 @@ public class BankFileTemplateTests
     private static readonly Dictionary<string, object?> Line = new()
     {
         ["Seq"] = 7, ["EmpNo"] = "E001", ["Name"] = "สมชาย ตั้งใจ", ["BankCode"] = "004", ["BranchCode"] = "0001",
-        ["AccountNo"] = "1234567890", ["Amount"] = 27645.83m, ["AmountCents"] = BankFileTemplate.Cents(27645.83m),
+        ["NameCsv"] = "สมชาย ตั้งใจ", ["AccountNo"] = "1234567890", ["Amount"] = 27645.83m, ["AmountCents"] = BankFileTemplate.Cents(27645.83m),
         ["PayDate"] = new DateOnly(2025, 1, 28), ["PayDateBE"] = BankFileTemplate.BuddhistEra(new DateOnly(2025, 1, 28)),
     };
 

@@ -31,6 +31,7 @@
     // นับการถูกปฏิเสธสิทธิ์ต่อผู้ใช้ — เกินเกณฑ์ใน SecurityAlerts → แจ้งผู้ดูแล (คนหนึ่งไล่เปิดหน้าที่ตัวเองไม่มีสิทธิ์หลายหน้าติดกัน)
     protected override async Task OnInitializedAsync()
     {
+        if (!RendererInfo.IsInteractive) return;   // นับเฉพาะตอน circuit จริง ไม่นับรอบ prerender ซ้ำ
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var uid = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var id) ? id : (long?)null;
         await Alerts.OnAccessDeniedAsync(state.User.Identity?.Name, uid, Nav.Uri);

@@ -181,6 +181,9 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.Configure<HRM.Services.Security.SecurityAlertOptions>(
     builder.Configuration.GetSection(HRM.Services.Security.SecurityAlertOptions.SectionName));
 builder.Services.AddSingleton<HRM.Services.Security.SecurityAlertCounter>();
+// รหัสคำนำหน้าชื่อในไฟล์ สปส.1-10 (สปส. ไม่เผยแพร่ตาราง — ค่าเริ่มต้น 003 นาย / 004 นางสาว ปรับได้เมื่อยืนยันแล้ว)
+HRM.Services.Pay.EFilingFormats.SsoPrefixCodeMale = builder.Configuration["EFiling:SsoPrefixCodeMale"] ?? HRM.Services.Pay.EFilingFormats.SsoPrefixCodeMale;
+HRM.Services.Pay.EFilingFormats.SsoPrefixCodeFemale = builder.Configuration["EFiling:SsoPrefixCodeFemale"] ?? HRM.Services.Pay.EFilingFormats.SsoPrefixCodeFemale;
 builder.Services.AddSingleton<HRM.Services.Security.SecurityAlertService>();
 builder.Services.Configure<HRM.Services.Security.PasswordPolicyOptions>(
     builder.Configuration.GetSection(HRM.Services.Security.PasswordPolicyOptions.SectionName));

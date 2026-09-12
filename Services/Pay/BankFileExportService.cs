@@ -66,7 +66,7 @@ public class BankFileExportService
             {
                 var delta = e.NetPay - paidByEmp.GetValueOrDefault(e.HremployeeId);
                 if (delta > 0m) lines.Add((e, delta));
-                else if (delta < 0m) recoveries.Add((e.HremployeeId, e.EmpNo ?? "?", paidByEmp[e.HremployeeId], e.NetPay));
+                else if (delta < 0m) recoveries.Add((e.HremployeeId, e.EmpNo ?? "?", paidByEmp.GetValueOrDefault(e.HremployeeId), e.NetPay));
             }
             // คนที่โอนไปแล้วแต่ไม่อยู่ในรอบปรับปรุง (ถูกกันออก) = ต้องเรียกคืนทั้งก้อน
             var inAdjustment = employees.Select(e => e.HremployeeId).ToHashSet();
@@ -77,6 +77,13 @@ public class BankFileExportService
                 throw new InvalidOperationException($"รอบปรับปรุงนี้ยอดสุทธิทุกคนเท่ากับรอบ #{paidOriginal.Id} ที่โอนไปแล้ว — ไม่มีส่วนต่างต้องโอน");
 
             await CreateRecoveryItemsAsync(context, run, paidOriginal, recoveries, actorUserId, ct);
+            if (lines.Count == 0)
+            {
+                // ไม่มีใครต้องรับเงินเพิ่ม — บันทึกรายการหักคืนไว้แล้ว แต่ไม่สร้างไฟล์เปล่าให้ส่งธนาคาร
+                await context.SaveChangesAsync(ct);
+                throw new InvalidOperationException(
+                    $"รอบปรับปรุงนี้ไม่มีใครต้องรับเงินเพิ่ม จึงไม่สร้างไฟล์ธนาคาร — สร้างรายการหักคืนเงินที่โอนเกินให้ {recoveries.Count} คนในงวดถัดไปไว้แล้ว (รอ HR อนุมัติที่หน้ารายการเฉพาะกิจ)");
+            }
             remark = $"ส่วนต่างจากรอบ #{paidOriginal.Id}: โอนเพิ่ม {lines.Count} คน {lines.Sum(l => l.Amount):N2} บาท"
                      + (recoveries.Count > 0
                          ? $" · เรียกคืน {recoveries.Count} คน {recoveries.Sum(r => r.PaidBefore - r.NewNet):N2} บาท ({string.Join(", ", recoveries.Take(5).Select(r => r.EmpNo))}{(recoveries.Count > 5 ? " …" : "")}) — สร้างรายการหักคืนงวดถัดไปไว้แล้ว รอ HR อนุมัติ"
@@ -155,7 +162,7 @@ public class BankFileExportService
         var deductType = await context.Pay_PayItemTypes.FirstOrDefaultAsync(t => t.Code == "ADHOC_DEDUCT", ct)
             ?? throw new InvalidOperationException("ไม่พบรายการรับ-จ่ายรหัส ADHOC_DEDUCT สำหรับสร้างรายการหักคืน");
         var nextPeriod = run.PeriodStart.AddMonths(1).ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
-        var marker = $"BANKDELTA:{run.Id}";
+        var marker = $"BANKDELTA:{run.Id}:";   // ต้องมี ':' ปิดท้าย ไม่งั้นรอบ 1 จับของรอบ 12/100 ด้วย
         var existing = (await context.Pay_AdhocPayItems
                 .Where(a => a.Remark != null && a.Remark.StartsWith(marker) && a.Status != PayAdhocItemStatus.Cancelled && a.Status != PayAdhocItemStatus.Rejected)
                 .Select(a => a.HremployeeId).ToListAsync(ct)).ToHashSet();
@@ -170,7 +177,7 @@ public class BankFileExportService
                 Amount = r.PaidBefore - r.NewNet,
                 IsTaxable = false,
                 Reason = $"เรียกคืนเงินที่โอนเกินจากรอบ #{original.Id} งวด {original.PayrollPeriod}: โอนไปแล้ว {r.PaidBefore:N2} ยอดใหม่ตามรอบปรับปรุง #{run.Id} = {r.NewNet:N2}",
-                Remark = $"{marker}:{r.HremployeeId}",
+                Remark = $"{marker}{r.HremployeeId}",
                 Status = PayAdhocItemStatus.Pending,
                 RequestedByUserId = actorUserId,
             });

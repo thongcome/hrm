@@ -105,7 +105,8 @@ public static class Por1DataService
             .Include(pe => pe.Hremployee)
             .Where(pe => pe.CompanyId == companyId
                 && pe.Pay_PayrollRun.PeriodStart.Year == taxYear
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved)
+                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
+                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
             .ToListAsync(ct);
 
         if (payEmployees.Count == 0) return null;

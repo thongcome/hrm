@@ -14,7 +14,7 @@ using System.Text.RegularExpressions;
 public static class BankFileTemplate
 {
     public const string GenericCsvHeader = "EmpNo,Name,BankCode,BankBranchCode,BankAccountNo,Amount";
-    public const string GenericCsvLine = "{EmpNo},\"{Name}\",{BankCode},{BranchCode},{AccountNo},{Amount:0.00}";
+    public const string GenericCsvLine = "{EmpNo},\"{NameCsv}\",{BankCode},{BranchCode},{AccountNo},{Amount:0.00}";
 
     private static readonly Regex Token = new(@"\{(?<name>[A-Za-z][A-Za-z0-9]*)(?::(?<fmt>[^,}]*))?(?:,(?<width>-?\d+))?(?:,(?<pad>.))?\}", RegexOptions.Compiled);
 

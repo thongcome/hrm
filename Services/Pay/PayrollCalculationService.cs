@@ -285,7 +285,7 @@ public class PayrollCalculationService
 
         // รอบเสริม: เฉพาะคนที่มีรายการเฉพาะกิจของงวดนี้ (ไม่สร้างแถวศูนย์ให้ทั้งบริษัท)
         // และดึงแถวรอบปกติของงวดเดียวกันไว้เป็นฐานประมาณการภาษี
-        var regularRowsThisPeriod = new Dictionary<long, Pay_PayrollEmployee>();
+        var regularRowsThisPeriod = new Dictionary<long, (decimal Gross, decimal FlatDeduction, int Terms)>();
         if (supplementary)
         {
             var withItems = (await context.Pay_AdhocPayItems
@@ -303,15 +303,14 @@ public class PayrollCalculationService
                                  && pe.Pay_PayrollRun.RunType != PayrollRunType.Bonus
                                  && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
                                  && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
-                    .Select(pe => new { pe.HremployeeId, pe.GrossEarnings, pe.TaxDeductionAmount })
+                    .Select(pe => new { pe.HremployeeId, pe.GrossEarnings, pe.TaxDeductionAmount, pe.Pay_PayrollRun.TermNo })
                     .ToListAsync(ct))
                 .GroupBy(pe => pe.HremployeeId)
-                .ToDictionary(g => g.Key, g => new Pay_PayrollEmployee
-                {
-                    HremployeeId = g.Key,
-                    GrossEarnings = g.Sum(x => x.GrossEarnings),
-                    TaxDeductionAmount = g.Sum(x => x.TaxDeductionAmount),
-                });
+                .ToDictionary(g => g.Key, g => (
+                    Gross: g.Sum(x => x.GrossEarnings),
+                    FlatDeduction: g.Sum(x => x.TaxDeductionAmount),
+                    // งวดที่มีเงินจริงในเดือนนี้ (บริษัท 2 งวด: ถ้าอนุมัติแล้วทั้งสองงวด Σ คือทั้งเดือน ห้ามคูณ 2 ซ้ำ)
+                    Terms: Math.Max(1, g.Select(x => x.TermNo).Distinct().Count())));
         }
 
         // Phase B: employees HR placed on hold for THIS run (data not ready, dispute,
@@ -455,6 +454,10 @@ public class PayrollCalculationService
             var schedule = PayScheduleResolver.Resolve(emp.id,
                 isDailyWage ? PayScheduleGroup.DailyWage : PayScheduleGroup.MonthlySalaried,
                 run.PeriodStart, paySchedules, payScheduleOverrides);
+            // บริษัทผสม (เช่น รายเดือนจ่ายเดือนละงวด รายวันจ่าย 2 งวด): คนที่ปฏิทินเป็นเดือนละงวดรับเต็มเดือนในงวดที่ 1
+            // และต้องไม่ถูกจ่ายซ้ำในงวดที่ 2 ของเดือนเดียวกัน
+            if (run.TermNo >= 2 && schedule.PeriodsPerMonth == 1 && !supplementary)
+                continue;   // progressDone ถูกนับไว้ต้นลูปแล้ว
             decimal baseSalary;
             if (supplementary)
             {
@@ -729,10 +732,12 @@ public class PayrollCalculationService
             {
                 // ภาษีโบนัสแบบส่วนต่าง: ฐานประมาณการทั้งปี = สะสม (รวมงวดนี้แล้ว) + เงินเดือนงวดนี้ × เดือนที่เหลือ
                 regularRowsThisPeriod.TryGetValue(emp.id, out var regularRow);
-                // เงินเดือนของรอบปกติงวดเดียวกันแปลงเป็นรายเดือนก่อน (งวดครึ่งเดือน × 2) และเดือนที่เหลือมาจากปฏิทินจ่าย
+                // เงินเดือนของรอบปกติงวดเดียวกันแปลงเป็นรายเดือนก่อน: Σ งวดที่อนุมัติแล้ว × (งวด/เดือน ÷ งวดที่มีแล้ว)
+                // งวดเดียวของบริษัท 2 งวด → × 2; ครบสองงวดแล้ว → × 1; บริษัทเดือนละงวด → × 1 เหมือนเดิม
+                var monthlyFactor = (decimal)schedule.PeriodsPerMonth / Math.Max(1, regularRow.Terms);
                 (monthlyTax, annualCalc) = TaxBracketCalculator.CalculateBonusWithholding(
                     ytdIncome, ytdDeduction, ytdTax,
-                    (regularRow?.GrossEarnings ?? 0m) * schedule.PeriodsPerMonth, (regularRow?.TaxDeductionAmount ?? 0m) * schedule.PeriodsPerMonth,
+                    regularRow.Gross * monthlyFactor, regularRow.FlatDeduction * monthlyFactor,
                     taxableGrossThisPeriod, schedule.RemainingMonthsAfterThis,
                     expenseDeductionRate, expenseDeductionCap, taxBrackets,
                     annualFixedDeduction: personalAllowancePerYear + electedAnnualDeduction);

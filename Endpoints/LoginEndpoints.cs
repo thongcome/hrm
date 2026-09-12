@@ -93,8 +93,19 @@ public static class LoginEndpoints
                         // PasswordSignInAsync (ไม่ใช่ CheckPasswordSignInAsync) เพื่อให้ 2FA ของ Identity ทำงาน: ถ้าผู้ใช้เปิด
                         // แอปยืนยันตัวตนไว้ จะได้ RequiresTwoFactor + cookie ชั่วคราว แล้วไปกรอกรหัสที่ /Account/LoginWith2fa
                         var signIn = await signInManager.PasswordSignInAsync(appUser, password, isPersistent: false, lockoutOnFailure: true);
-                        passwordOk = signIn.Succeeded || signIn.RequiresTwoFactor;
-                        requiresTwoFactor = signIn.RequiresTwoFactor;
+                        if (signIn.IsNotAllowed)
+                        {
+                            // บัญชีที่ Identity ยังไม่ให้ sign-in (เช่น EmailConfirmed = 0 กับ RequireConfirmedAccount) — เดิม login ทางนี้
+                            // ไม่เคยเช็คข้อนี้ จึงคงพฤติกรรมเดิม: ตรวจรหัสผ่านตรง ๆ แล้วออก cookie เอง (ไม่มี 2FA ในทางนี้)
+                            Serilog.Log.Warning("Login for {User} is NotAllowed by Identity (unconfirmed account) — falling back to direct sign-in", username);
+                            passwordOk = (await signInManager.CheckPasswordSignInAsync(appUser, password, lockoutOnFailure: true)).Succeeded;
+                            if (passwordOk) await signInManager.SignInAsync(appUser, isPersistent: false);
+                        }
+                        else
+                        {
+                            passwordOk = signIn.Succeeded || signIn.RequiresTwoFactor;
+                            requiresTwoFactor = signIn.RequiresTwoFactor;
+                        }
                     }
 
                     if (!passwordOk)
@@ -164,7 +175,7 @@ public static class LoginEndpoints
                             RecordId = scUser.userid.ToString(),
                             IsSensitiveDataAccess = false,
                             IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
-                            Note = "login",
+                            Note = requiresTwoFactor ? "login-2fa-pending" : "login",
                         });
                         await context.SaveChangesAsync();
 

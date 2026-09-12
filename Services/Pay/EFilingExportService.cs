@@ -46,6 +46,7 @@ public static class EFilingExportService
         var data = await Por1DataService.BuildAnnualAsync(context, companyId, taxYear, ct);
         if (data is null) return null;
         var people = await LoadPeopleAsync(context, data.Lines.Select(l => l.HremployeeId), ct);
+        var addresses = await LoadRegisteredAddressesAsync(context, data.Lines.Select(l => l.HremployeeId), ct);
         var warnings = new List<string>();
         var sb = new StringBuilder();
         var seq = 0;
@@ -55,7 +56,9 @@ public static class EFilingExportService
             var taxId = EFilingFormats.Digits(p?.IdCard);
             if (taxId.Length != 13) warnings.Add($"{l.EmpNo} เลขประจำตัวประชาชนไม่ครบ 13 หลัก ({p?.IdCard ?? "ว่าง"})");
             var (prefix, _) = EFilingFormats.PrefixBySex(p?.Sex);
-            sb.Append(EFilingFormats.Pnd1KorLine(++seq, taxId, prefix, p?.FirstName ?? l.EmployeeName, p?.LastName ?? "", l.TotalTaxableIncome, l.TotalTaxWithheld)).Append("\r\n");
+            addresses.TryGetValue(l.HremployeeId, out var addr);
+            sb.Append(EFilingFormats.Pnd1KorLine(++seq, taxId, prefix, p?.FirstName ?? l.EmployeeName, p?.LastName ?? "", taxYear, l.TotalTaxableIncome, l.TotalTaxWithheld,
+                addr.No, addr.SubDistrict, addr.District)).Append("\r\n");
         }
         return new TextFile($"PND1K_{companyId}_{taxYear}.txt", EFilingFormats.Utf8(sb.ToString()), seq, data.TotalTaxableIncome, data.TotalTaxWithheld, warnings);
     }
@@ -110,6 +113,20 @@ public static class EFilingExportService
         return new TextFile($"SSO110_{companyId}_{payrollPeriod}.txt", EFilingFormats.Tis620(text), perEmp.Count, totalWages, totalEmp + totalEr, warnings);
     }
 
+    // ที่อยู่ตามทะเบียนบ้าน (address_type_id = 1) — ช่องที่อยู่ของ ภ.ง.ด.1ก; ไม่มี = ว่าง
+    private static async Task<Dictionary<long, (string? No, string? SubDistrict, string? District)>> LoadRegisteredAddressesAsync(HRMContext context, IEnumerable<long> ids, CancellationToken ct)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return new();
+        var rows = await context.addresses.AsNoTracking()
+            .Where(a => list.Contains(a.hremployeeid) && a.address_type_id == 1 && a.isactive)
+            .OrderByDescending(a => a.moddate ?? a.createdate)
+            .Select(a => new { a.hremployeeid, a.no, a.moo, a.subdistrict, district = a.districtid })
+            .ToListAsync(ct);
+        return rows.GroupBy(a => a.hremployeeid)
+            .ToDictionary(g => g.Key, g => { var a = g.First(); return ((string?)(string.IsNullOrWhiteSpace(a.moo) ? a.no : $"{a.no} หมู่ {a.moo}"), (string?)a.subdistrict, (string?)a.district); });
+    }
+
     private static async Task<Dictionary<long, Person>> LoadPeopleAsync(HRMContext context, IEnumerable<long> ids, CancellationToken ct)
     {
         var list = ids.Distinct().ToList();
@@ -126,21 +143,32 @@ public static class EFilingFormats
 {
     static EFilingFormats() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-    // คำนำหน้าชื่อ: ทะเบียนพนักงานไม่มีช่องคำนำหน้า จึงอนุมานจากเพศ — รหัส 3 หลักของ สปส. (003 นาย, 004 นาง, 005 นางสาว)
-    // หญิงใช้ "นางสาว" เป็นค่าเริ่มต้น (สปส. รับได้ทั้งสองแบบ)
+    // คำนำหน้าชื่อ: ทะเบียนพนักงานไม่มีช่องคำนำหน้า จึงอนุมานจากเพศ (ชาย = นาย, หญิง = นางสาว)
+    // รหัส 3 หลักของ สปส. ไม่มีตารางเผยแพร่ — แหล่งทะเบียนราษฎร์ทั่วไปใช้ 003 นาย / 004 นางสาว / 005 นาง จึงตั้งเป็นค่าเริ่มต้น
+    // และให้แก้ได้ใน appsettings ส่วน "EFiling" (SsoPrefixCodeMale / SsoPrefixCodeFemale) เมื่อ สปส. ยืนยันรหัสจริงตอนยื่นครั้งแรก
+    public static string SsoPrefixCodeMale { get; set; } = "003";
+    public static string SsoPrefixCodeFemale { get; set; } = "004";
+
     public static (string Text, string SsoCode) PrefixBySex(string? sex)
-        => string.Equals(sex, "F", StringComparison.OrdinalIgnoreCase) ? ("นางสาว", "005") : ("นาย", "003");
+        => string.Equals(sex, "F", StringComparison.OrdinalIgnoreCase) ? ("นางสาว", SsoPrefixCodeFemale) : ("นาย", SsoPrefixCodeMale);
 
     public static string Digits(string? s) => new string((s ?? "").Where(char.IsDigit).ToArray());
 
-    // ภ.ง.ด.1 (RD Prep, คั่น |): ประเภทเงินได้ | ลำดับ | เลขประจำตัวผู้เสียภาษี | คำนำหน้า | ชื่อ | สกุล | วันที่จ่าย ddMMyyyy (พ.ศ.) | เงินได้ | ภาษี | เงื่อนไข
-    //   ประเภทเงินได้ 1 = เงินเดือน ค่าจ้าง ฯลฯ ตามมาตรา 40(1) · เงื่อนไข 1 = หัก ณ ที่จ่าย
+    // ภ.ง.ด.1 (โปรแกรมโอนย้ายข้อมูล RD Prep, คั่น |) — 12 ช่องเรียงตามช่องเป้าหมายของ RD Prep เพื่อให้จับคู่ตรง ๆ:
+    //   ลำดับ | เลขประจำตัวผู้เสียภาษี (13) | เลขประจำตัวที่ 2 (ว่าง) | คำนำหน้า | ชื่อ | สกุล | วันที่จ่าย ddMMyyyy (พ.ศ.)
+    //   | ประเภทเงินได้ (1 = เงินเดือน ค่าจ้าง ฯลฯ ม.40(1)) | อัตราภาษี (ว่าง = ตามขั้นบันได) | เงินได้ | ภาษีที่หัก | เงื่อนไข (1 = หัก ณ ที่จ่าย)
+    //   ใน RD Prep ตั้งรูปแบบวันที่ "ddmmyyyy" พ.ศ. รหัสเงินได้ 1–5 รหัสเงื่อนไข 1–3 (ตามลำดับ) — ตรวจกับ RD Prep ครั้งแรกที่ยื่น
+    public const int Pnd1ColumnCount = 12;
     public static string Pnd1Line(int seq, string taxId, string prefix, string firstName, string lastName, DateOnly payDate, decimal income, decimal tax)
-        => string.Join("|", "1", seq, taxId, Clean(prefix), Clean(firstName), Clean(lastName), ThaiDate(payDate), Money(income), Money(tax), "1");
+        => string.Join("|", seq, taxId, "", Clean(prefix), Clean(firstName), Clean(lastName), ThaiDate(payDate), "1", "", Money(income), Money(tax), "1");
 
-    // ภ.ง.ด.1ก (RD Prep): ประเภทเงินได้ | ลำดับ | เลขประจำตัวผู้เสียภาษี | คำนำหน้า | ชื่อ | สกุล | เงินได้ทั้งปี | ภาษีที่หักทั้งปี | เงื่อนไข
-    public static string Pnd1KorLine(int seq, string taxId, string prefix, string firstName, string lastName, decimal income, decimal tax)
-        => string.Join("|", "1", seq, taxId, Clean(prefix), Clean(firstName), Clean(lastName), Money(income), Money(tax), "1");
+    // ภ.ง.ด.1ก (ทั้งปี): 12 ช่องเดียวกับ ภ.ง.ด.1 (วันที่จ่าย = วันสิ้นปีภาษี เพราะแบบสรุปทั้งปี แต่ RD ยังต้องการช่องวันที่)
+    //   + ที่อยู่ 3 ช่องที่แบบปี 2567 ขึ้นไปต้องมี: เลขที่ | ตำบล/แขวง | อำเภอ/เขต (ว่างได้ถ้าทะเบียนไม่มี)
+    public const int Pnd1KorColumnCount = 15;
+    public static string Pnd1KorLine(int seq, string taxId, string prefix, string firstName, string lastName, int taxYear, decimal income, decimal tax,
+        string? addressNo = null, string? subDistrict = null, string? district = null)
+        => string.Join("|", seq, taxId, "", Clean(prefix), Clean(firstName), Clean(lastName), ThaiDate(new DateOnly(taxYear, 12, 31)), "1", "", Money(income), Money(tax), "1",
+            Clean(addressNo ?? ""), Clean(subDistrict ?? ""), Clean(district ?? ""));
 
     // สปส.1-10 ส่วนที่ 1 (135 ตัวอักษร): ประเภท(1)=1 · เลขที่บัญชีนายจ้าง(10) · ลำดับที่สาขา(6) · วันที่ชำระ ddMMyy พ.ศ.(6) · งวดค่าจ้าง MMyy พ.ศ.(4)
     //   · ชื่อสถานประกอบการ(45) · อัตราเงินสมทบ(4 เช่น 0500 = 5.00%) · จำนวนผู้ประกันตน(6) · ค่าจ้างรวม(15) · เงินสมทบรวม(14) · ส่วนลูกจ้าง(12) · ส่วนนายจ้าง(12)

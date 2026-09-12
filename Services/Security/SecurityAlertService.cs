@@ -28,19 +28,27 @@ public sealed class SecurityAlertOptions
 // ตัวนับล้วน ๆ ทดสอบได้: คืน true เมื่อครั้งนี้ทำให้ถึงเกณฑ์พอดี (แจ้งครั้งเดียวต่อกรอบเวลา ไม่แจ้งทุกครั้งที่เกิน)
 public sealed class SecurityAlertCounter(IMemoryCache cache)
 {
+    private readonly object _gate = new();   // IMemoryCache.GetOrCreate/TryGetValue+Set ไม่ atomic — สองคำขอพร้อมกันอาจนับตกหรือส่งอีเมลซ้ำ
+
     public int Hit(string key, TimeSpan window)
     {
-        var entry = cache.GetOrCreate(key, e => { e.AbsoluteExpirationRelativeToNow = window; return new Counter(); })!;
-        return Interlocked.Increment(ref entry.Value);
+        lock (_gate)
+        {
+            var entry = cache.GetOrCreate(key, e => { e.AbsoluteExpirationRelativeToNow = window; return new Counter(); })!;
+            return ++entry.Value;
+        }
     }
 
     public bool ReachedNow(string key, TimeSpan window, int threshold) => threshold > 0 && Hit(key, window) == threshold;
 
     public bool Throttled(string key, TimeSpan period)
     {
-        if (cache.TryGetValue(key, out _)) return true;
-        cache.Set(key, true, period);
-        return false;
+        lock (_gate)
+        {
+            if (cache.TryGetValue(key, out _)) return true;
+            cache.Set(key, true, period);
+            return false;
+        }
     }
 
     private sealed class Counter { public int Value; }

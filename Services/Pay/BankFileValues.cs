@@ -32,6 +32,7 @@ public static class BankFileValues
             ["Seq"] = seq,
             ["EmpNo"] = empNo ?? "",
             ["Name"] = $"{firstName} {lastName}".Trim(),
+            ["NameCsv"] = $"{firstName} {lastName}".Trim().Replace("\"", "\"\""),   // สำหรับใส่ในเครื่องหมายคำพูดของ CSV
             ["FirstName"] = firstName ?? "",
             ["LastName"] = lastName ?? "",
             ["BankCode"] = bankCode ?? "",
