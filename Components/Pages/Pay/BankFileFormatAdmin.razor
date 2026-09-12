@@ -111,6 +111,7 @@ else if (_rights?.CanCreate == true)
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => BeginNew(null))">เพิ่มแม่แบบ</MudButton>
         <MudButton Variant="Variant.Outlined" OnClick="@(() => BeginNew("csv"))">เริ่มจาก CSV กลาง</MudButton>
         <MudButton Variant="Variant.Outlined" OnClick="@(() => BeginNew("fixed"))">เริ่มจากตัวอย่างความยาวคงที่</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => BeginNew("kbank"))">เริ่มจาก KBank PCT (ยังไม่ยืนยัน)</MudButton>
     </MudStack>
 }
 
@@ -163,6 +164,16 @@ else if (_rights?.CanCreate == true)
             _edit.LineTemplate = "D{Seq:,6,0}{BankCode:,3,0}{BranchCode:,4,0}{AccountNo:,-15}{Name:,-50}{AmountCents:,13,0}{EmpNo:,-10}";
             _edit.TrailerTemplate = "T{RecordCount:,6,0}{TotalAmountCents:,15,0}";
             _edit.FileNamePattern = "PAYROLL_{Period}_{PayDate:yyyyMMdd}.txt";
+        }
+        else if (sample == "kbank")
+        {
+            // K-Cash Connect Plus, format PCT (Payroll) — layout จาก reverse-engineer โอเพนซอร์ส ไม่ใช่เอกสารทางการของธนาคาร
+            // ยืนยันกับ KBank ก่อนใช้จริง (ขอ spec จาก RM หรือเทียบกับไฟล์ที่ Excel Template ของธนาคารสร้างจริง) — 12 ก.ย. 2569
+            _edit.Code = "KBANK_PCT"; _edit.Name = "KBank PCT — Payroll (ยังไม่ยืนยัน)"; _edit.Encoding = "TIS620"; _edit.LineEnding = "LF";
+            _edit.HeaderTemplate = "HPCT{Blank:,16}000000{Blank:,14}{CompanyAccountNo:,10,0}{Blank:,1}{TotalAmountCents:,15,0}{Blank:,1}{Today:yyMMdd}{Blank:,25}{CompanyName:,-50}{PayDate:yyMMdd}{RecordCount:,18,0}N{Blank:,5}";
+            _edit.LineTemplate = "D{Seq:,6,0}{Blank:,14}{AccountNo:,10,0}{Blank:,1}{AmountCents:,15,0}{Blank:,1}{Today:yyMMdd}{Blank:,25}{Name:,-50}{PayDate:yyMMdd}{Blank:,352}";
+            _edit.FileNamePattern = "KBANK_PCT_{PayDate:yyyyMMdd}.txt";
+            _edit.Note = "จาก reverse-engineer โอเพนซอร์ส (MicroBenz/kbank-payroll.js) ไม่ใช่เอกสารทางการของ KBank — ต้องยืนยันกับธนาคารก่อนใช้จริง เช่น ขอ spec จาก RM หรือเทียบกับไฟล์ที่ KBank Excel Template สร้าง";
         }
         _previewText = null;
     }

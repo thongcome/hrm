@@ -24,6 +24,14 @@ public static class BankFileTemplate
         return Token.Replace(template, m =>
         {
             var name = m.Groups["name"].Value;
+            // {Blank:,N} หรือ {Blank:,N,ตัวเติม} — ช่องว่าง/ช่องเติมความยาวคงที่ ไม่ต้องมีในค่าที่ส่งมา
+            // ธนาคารหลายแห่ง (เช่น K-Cash Connect Plus) มีช่องว่างคั่นระหว่างข้อมูลยาวหลายสิบตัวอักษรในหนึ่งบรรทัด
+            if (string.Equals(name, "Blank", StringComparison.Ordinal) || string.Equals(name, "Filler", StringComparison.Ordinal))
+            {
+                var w = m.Groups["width"].Success ? Math.Abs(int.Parse(m.Groups["width"].Value, CultureInfo.InvariantCulture)) : 0;
+                var padChar = m.Groups["pad"].Success ? m.Groups["pad"].Value[0] : ' ';
+                return new string(padChar, w);
+            }
             if (!values.TryGetValue(name, out var v))
                 throw new InvalidOperationException($"แม่แบบไฟล์ธนาคารอ้างช่อง {{{name}}} ที่ไม่มี — ช่องที่ใช้ได้: {string.Join(", ", values.Keys)}");
             var fmt = m.Groups["fmt"].Success ? m.Groups["fmt"].Value : null;

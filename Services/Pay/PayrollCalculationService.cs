@@ -405,6 +405,9 @@ public class PayrollCalculationService
 
         var negativeCount = 0;
         var totalNet = 0m;
+        // นับเฉพาะแถวที่สร้างจริง — ปฏิทินผสม (บริษัทรายเดือนงวดเดียว + รายวัน 2 งวด) ข้ามพนักงานรายเดือนในงวดที่ 2
+        // กลางลูป (ดูจุด "continue" ด้านล่าง) ทำให้ eligibleEmployees.Count เดิมนับเกินจำนวนแถวที่บันทึกจริง
+        var processedCount = 0;
 
         // Progress reporting (Phase A): announce the total up front, then
         // report every ~1% of employees so the progress bar moves smoothly
@@ -804,6 +807,7 @@ public class PayrollCalculationService
             payEmp.Pay_PayrollLineItems = lineItems;
 
             context.Pay_PayrollEmployees.Add(payEmp);
+            processedCount++;
 
             context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
             {
@@ -892,7 +896,7 @@ public class PayrollCalculationService
             }
         }
 
-        return new PayrollRunCalculationSummary(eligibleEmployees.Count, negativeCount, totalNet);
+        return new PayrollRunCalculationSummary(processedCount, negativeCount, totalNet);
     }
 
     private static Pay_PayrollLineItem NewLine(Pay_PayItemType itemType, PayLineSourceType sourceType, decimal amount, int signFlag, int seq, string? sourceRefTable, long? sourceRefId, string? description = null)
