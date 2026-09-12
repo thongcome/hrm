@@ -72,6 +72,15 @@
     <Compile Remove="HRM.Tests\**\*.cs" />
     <Content Remove="HRM.Tests\**\*" />
     <None Remove="HRM.Tests\**\*" />
+    <!-- src\ holds the sibling projects being split out (Advance.Workflow, Advance.Payroll, etc.,
+         12 ก.ย. 2569) — also lives under this project's directory tree. Without this exclusion the
+         default SDK glob sweeps up their .cs files (source AND their own obj\ generated
+         AssemblyInfo.cs/etc.) as if they belonged to HRM.csproj, colliding with HRM's own generated
+         assembly attributes the moment any sibling project is actually built (CS0579 duplicate
+         attribute errors) — same class of gotcha as the HRM.Tests exclusion above, one directory over. -->
+    <Compile Remove="src\**\*.cs" />
+    <Content Remove="src\**\*" />
+    <None Remove="src\**\*" />
     <!-- dotnet watch: Serilog writes logs\ every few seconds; without this the
          watcher re-scans on every log line ("No managed code changes to apply"). -->
     <Watch Remove="logs\**" />
