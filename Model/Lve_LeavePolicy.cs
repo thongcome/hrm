@@ -52,5 +52,17 @@ public class Lve_LeavePolicy
     // Services/Shared/TenureHelper.cs and LeaveBalanceService.GetBalancesAsync.
     public int? MinServiceMonths { get; set; }
 
+    // Leave-type policies sharing the same (CompanyId, QuotaGroupCode) draw
+    // from ONE combined quota pool instead of each having its own separate
+    // entitlement — e.g. "ลากิจ" + "ลาป่วยเกินสิทธิ" sharing a single 6-day/year
+    // bucket (CEO request, 12 ก.ย. 2569). Null (the default) = this policy's
+    // entitlement is its own, exactly today's behavior. Policies in the same
+    // group are expected to carry matching EntitlementDaysPerYear/CarryOver*/
+    // MinServiceMonths config (LeaveBalanceService uses the first policy in
+    // the group as the source of truth if they ever drift) — the admin page
+    // is where HR sets this, per company.
+    [StringLength(30)]
+    public string? QuotaGroupCode { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

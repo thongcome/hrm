@@ -18,6 +18,7 @@
     <MudText Typo="Typo.h5">สิทธิการลาต่อปี (Leave Policy)</MudText>
     <MudText Typo="Typo.body2" Class="mt-1">
         กำหนดจำนวนวันลาต่อปีของแต่ละประเภท — ใช้คำนวณ "ยอดคงเหลือ" ที่หน้ายื่นคำขอลา ค่าเริ่มต้นตั้งไว้ตามขั้นต่ำ พ.ร.บ.คุ้มครองแรงงาน ปรับได้ตามนโยบายบริษัท
+        ถ้าต้องการให้ประเภทลาหลายแบบใช้โควต้าร่วมกัน (เช่น ลากิจ + ลาป่วยเกินสิทธิ ใช้วันรวมกัน 6 วัน/ปี) ใส่รหัสกลุ่มเดียวกันในช่อง "กลุ่มโควต้าร่วม" ของทุกประเภทที่ต้องการให้ใช้ร่วมกัน
     </MudText>
 
     @if (string.IsNullOrEmpty(_companyId))
@@ -69,6 +70,7 @@
             <MudTh>จ่ายเงิน</MudTh>
             <MudTh>ทบวันลาไปปีถัดไป</MudTh>
             <MudTh>อายุงานขั้นต่ำ (เดือน)</MudTh>
+            <MudTh>กลุ่มโควต้าร่วม</MudTh>
             <MudTh>สถานะ</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -144,6 +146,22 @@
                     @(context.MinServiceMonths?.ToString() ?? "ไม่มี")
                 }
             </MudTd>
+            <MudTd>
+                @if (_editingId == context.Id)
+                {
+                    <MudTextField T="string" @bind-Value="_editQuotaGroupCode" Placeholder="เช่น PERSONAL_POOL" Style="width:160px" Immediate="true" />
+                }
+                else if (!string.IsNullOrWhiteSpace(context.QuotaGroupCode))
+                {
+                    <MudTooltip Text="@GroupMemberNames(context)">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.QuotaGroupCode</MudChip>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText>
+                }
+            </MudTd>
             <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
             <MudTd>
                 @if (_editingId == context.Id)
@@ -186,6 +204,7 @@
     private decimal? _editMaxCarryOverDays;
     private int? _editCarryOverExpiryMonths;
     private int? _editMinServiceMonths;
+    private string? _editQuotaGroupCode;
 
     private List<Lve_LeaveType> _missingTypes = new();
     private string? _countryCode;
@@ -323,7 +342,22 @@
         _editMaxCarryOverDays = policy.MaxCarryOverDays;
         _editCarryOverExpiryMonths = policy.CarryOverExpiryMonths;
         _editMinServiceMonths = policy.MinServiceMonths;
+        _editQuotaGroupCode = policy.QuotaGroupCode;
         _error = null;
+    }
+
+    // Other leave types already sharing this policy's group — shown as a
+    // tooltip so HR can see what a group code actually groups without
+    // needing to scan the whole table.
+    private string GroupMemberNames(Lve_LeavePolicy policy)
+    {
+        var others = _policies
+            .Where(p => p.Id != policy.Id && p.QuotaGroupCode == policy.QuotaGroupCode)
+            .Select(p => p.Lve_LeaveType.NameTh)
+            .ToList();
+        return others.Count == 0
+            ? "ยังไม่มีประเภทอื่นในกลุ่มนี้"
+            : $"ใช้โควต้าร่วมกับ: {string.Join(", ", others)}";
     }
 
     private void CancelEdit()
@@ -355,7 +389,23 @@
         existing.MaxCarryOverDays = _editCarryOverMode == LeaveCarryOverMode.Capped ? _editMaxCarryOverDays : null;
         existing.CarryOverExpiryMonths = _editCarryOverMode != LeaveCarryOverMode.None ? _editCarryOverExpiryMonths : null;
         existing.MinServiceMonths = _editMinServiceMonths;
+        existing.QuotaGroupCode = string.IsNullOrWhiteSpace(_editQuotaGroupCode) ? null : _editQuotaGroupCode.Trim();
         await context.SaveChangesAsync();
+
+        // Config-consistency hint, not a hard block (HR may be mid-way
+        // setting up a new group) — LeaveBalanceService uses the FIRST
+        // policy in a group as the source of truth, so a mismatch here means
+        // some group members' own Entitlement/CarryOver numbers are ignored.
+        if (!string.IsNullOrEmpty(existing.QuotaGroupCode))
+        {
+            var groupMates = await context.Lve_LeavePolicies
+                .Where(p => p.CompanyId == _companyId && p.QuotaGroupCode == existing.QuotaGroupCode && p.Id != existing.Id)
+                .ToListAsync();
+            if (groupMates.Any(p => p.EntitlementDaysPerYear != existing.EntitlementDaysPerYear || p.CarryOverMode != existing.CarryOverMode || p.MinServiceMonths != existing.MinServiceMonths))
+            {
+                Snackbar.Add("คำเตือน: ค่าสิทธิ/การทบวันลา/อายุงานขั้นต่ำ ไม่ตรงกับประเภทอื่นในกลุ่มโควต้าเดียวกัน — ระบบจะใช้ค่าของรายการที่ตั้งไว้ก่อนสุดในกลุ่มเป็นหลัก", Severity.Warning);
+            }
+        }
 
         Snackbar.Add("บันทึกสิทธิการลาเรียบร้อย", Severity.Success);
         _editingId = null;

@@ -29,20 +29,34 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
         var targetYear = year ?? DateTime.Today.Year;
         var monthsOfService = TenureHelper.MonthsOfService(workDate, DateOnly.FromDateTime(DateTime.Today));
 
+        // Policies sharing a non-null QuotaGroupCode draw from ONE shared pool
+        // (CEO request, 12 ก.ย. 2569) — each policy without a group is its own
+        // singleton group, identical to the pre-group behavior.
+        var groups = policies.GroupBy(p => p.QuotaGroupCode ?? $"__leavetype_{p.LeaveTypeId}");
+
         var rows = new List<LeaveBalanceRow>();
-        foreach (var policy in policies)
+        foreach (var group in groups)
         {
+            // Grouped policies are expected to carry matching Entitlement/
+            // CarryOver*/MinServiceMonths config (one pool viewed from
+            // different leave-type angles) — the first policy is the source
+            // of truth if they ever drift.
+            var representative = group.First();
+            var leaveTypeIdsInGroup = group.Select(p => p.LeaveTypeId).ToList();
+
             // Not yet eligible for this leave type at all — MinServiceMonths
             // gates the whole entitlement (and any carry-over) to zero, not
             // just a partial reduction. Null MinServiceMonths (the default)
             // never gates anything, matching prior behavior exactly.
-            var isEligible = policy.MinServiceMonths is null || (monthsOfService ?? 0) >= policy.MinServiceMonths.Value;
+            var isEligible = representative.MinServiceMonths is null || (monthsOfService ?? 0) >= representative.MinServiceMonths.Value;
 
-            var entitlementThisYear = isEligible ? ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, targetYear) : 0m;
-            var usedThisYear = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveTypeId, targetYear, ct);
-            var carriedOver = isEligible ? await ComputeCarryOverAsync(context, hremployeeId, policy, workDate, targetYear, ct) : 0m;
+            var entitlementThisYear = isEligible ? ComputeYearEntitlement(representative.EntitlementDaysPerYear, workDate, targetYear) : 0m;
+            var usedThisYear = await SumUsedDaysAsync(context, hremployeeId, leaveTypeIdsInGroup, targetYear, ct);
+            var carriedOver = isEligible ? await ComputeCarryOverAsync(context, hremployeeId, representative, leaveTypeIdsInGroup, workDate, targetYear, ct) : 0m;
+            var remaining = entitlementThisYear + carriedOver - usedThisYear;
 
-            rows.Add(new LeaveBalanceRow(policy.LeaveTypeId, policy.Lve_LeaveType.Code, entitlementThisYear, carriedOver, usedThisYear, entitlementThisYear + carriedOver - usedThisYear));
+            foreach (var policy in group)
+                rows.Add(new LeaveBalanceRow(policy.LeaveTypeId, policy.Lve_LeaveType.Code, entitlementThisYear, carriedOver, usedThisYear, remaining));
         }
 
         return rows;
@@ -70,7 +84,10 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
     // Only looks at the immediately prior year's OWN entitlement/usage (never
     // layers in that year's own carry-over) — deliberately non-recursive, per
     // the design decision to not chain carry-over across multiple years.
-    private static async Task<decimal> ComputeCarryOverAsync(HRMContext context, long hremployeeId, Lve_LeavePolicy policy, DateTime? workDate, int targetYear, CancellationToken ct)
+    // leaveTypeIdsInGroup is every leave type sharing policy's QuotaGroupCode
+    // (a singleton list when the policy isn't grouped) — prior-year usage
+    // must be summed across the same set the current year's usage is.
+    private static async Task<decimal> ComputeCarryOverAsync(HRMContext context, long hremployeeId, Lve_LeavePolicy policy, List<int> leaveTypeIdsInGroup, DateTime? workDate, int targetYear, CancellationToken ct)
     {
         if (policy.CarryOverMode == LeaveCarryOverMode.None) return 0m;
 
@@ -87,7 +104,7 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
 
         var priorYear = targetYear - 1;
         var priorYearEntitlement = ComputeYearEntitlement(policy.EntitlementDaysPerYear, workDate, priorYear);
-        var priorYearUsed = await SumUsedDaysAsync(context, hremployeeId, policy.LeaveTypeId, priorYear, ct);
+        var priorYearUsed = await SumUsedDaysAsync(context, hremployeeId, leaveTypeIdsInGroup, priorYear, ct);
         var priorYearOwnRemaining = Math.Max(0m, priorYearEntitlement - priorYearUsed);
 
         return policy.CarryOverMode switch
@@ -98,13 +115,13 @@ public class LeaveBalanceService(IDbContextFactory<HRMContext> dbFactory)
         };
     }
 
-    private static async Task<decimal> SumUsedDaysAsync(HRMContext context, long hremployeeId, int leaveTypeId, int year, CancellationToken ct)
+    private static async Task<decimal> SumUsedDaysAsync(HRMContext context, long hremployeeId, List<int> leaveTypeIds, int year, CancellationToken ct)
     {
         return await (
             from r in context.Lve_LeaveRequests
             join j in context.job_masters on r.JobMasterId equals j.jobmasterid
             where r.HremployeeId == hremployeeId
-                  && r.LeaveTypeId == leaveTypeId
+                  && leaveTypeIds.Contains(r.LeaveTypeId)
                   && r.StartDate.Year == year
                   && j.status == "COMPLETED"
             select r.TotalDays
