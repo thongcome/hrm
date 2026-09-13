@@ -1,0 +1,112 @@
+@page "/pos/position-slots/{Id:long}"
+@using HRM.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<HRMContext> DbFactory
+@attribute [Authorize(Policy = "Menu:POS_ADMIN")]
+
+@* View page — CRUD skill rule 9. Plain Bootstrap, not MudBlazor (read-only page —
+   see [[feedback_view_pages_bootstrap_not_mudblazor]]). *@
+
+<PageTitle>เลขที่อัตรา — @(_slot?.PosCode ?? "")</PageTitle>
+
+<div class="container-fluid py-3" style="max-width:900px;">
+    @if (_notFound)
+    {
+        <div class="alert alert-warning">ไม่พบเลขที่อัตรานี้</div>
+        return;
+    }
+    @if (_slot is null)
+    {
+        <p>กำลังโหลด...</p>
+        return;
+    }
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <a href="@BackToListUrl" class="btn btn-sm btn-outline-secondary">&larr; กลับไปหน้ารายการ</a>
+        <h5 class="mb-0">เลขที่อัตรา @_slot.PosCode</h5>
+        <span class="badge @(_slot.IsActive ? "bg-success" : "bg-secondary")">@(_slot.IsActive ? "ใช้อยู่" : "ปิดใช้งาน")</span>
+        <a href="@($"/pos/position-slots/{Id}/edit")" class="btn btn-sm btn-primary ms-auto">แก้ไข</a>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-sm-4 col-6"><div class="text-muted small">เลขที่ตำแหน่ง</div><div>@Na(_slot.PosCode)</div></div>
+                <div class="col-sm-8 col-6"><div class="text-muted small">ชื่อตำแหน่ง</div><div>@Na(_slot.Name)</div></div>
+                <div class="col-sm-6 col-6"><div class="text-muted small">สังกัด</div>
+                    <div>@(_orgId is long oid ? new MarkupString($"<a href=\"/org/organizations/{oid}\">{Na(_orgName)}</a>") : (MarkupString)Na(_orgName))</div>
+                </div>
+                <div class="col-sm-6 col-6"><div class="text-muted small">ประเภทพนักงาน</div><div>@Na(_employeeTypeName)</div></div>
+                <div class="col-sm-6 col-6"><div class="text-muted small">วันที่ตำแหน่งมีผล</div><div>@(_slot.StartDate?.ToString("dd/MM/yyyy") ?? "N/A")</div></div>
+                <div class="col-sm-6 col-6"><div class="text-muted small">วันสิ้นสุดการใช้ตำแหน่ง</div><div>@(_slot.ExpireDate?.ToString("dd/MM/yyyy") ?? "N/A")</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">ระดับการศึกษาขั้นต่ำ</div><div>@Na(_slot.MinGraduate)</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">เลขที่จ่ายโดยตำแหน่ง</div><div>@Na(_slot.PaymentNo)</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">พนักงานในตำแหน่ง</div>
+                    <div>@(_slot.HremployeeId is long eid ? new MarkupString($"<a href=\"/employee/personnel-profile/{eid}\">{Na(_employeeName)}</a>") : (MarkupString)"ว่าง")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3" style="border-left:3px solid #0288d1;">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-sm-4 col-6"><div class="text-muted small">อัตราเงินเดือนเริ่มต้น</div><div>@(_slot.MinSalary?.ToString("N2") ?? "N/A")</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">อัตราเงินเดือน</div><div>@(_slot.NormalSalary?.ToString("N2") ?? "N/A")</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">อัตราเงินเดือนสูงสุด</div><div>@(_slot.MaxSalary?.ToString("N2") ?? "N/A")</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-sm-4 col-6"><div class="text-muted small">เงื่อนไขอัตรากำลัง</div><div>@(_slot.IsManpower ? "นับอัตรากำลัง" : "ไม่นับอัตรากำลัง")</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">เป็นหัวหน้า</div><div>@(_slot.IsBoss ? "ใช่" : "ไม่ใช่")</div></div>
+                <div class="col-sm-4 col-6"><div class="text-muted small">สถานะตำแหน่ง</div><div>@(_slot.IsActive ? "ใช้อยู่" : "ปิดใช้งาน")</div></div>
+                <div class="col-12"><div class="text-muted small">หมายเหตุ</div><div>@Na(_slot.Remark)</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Pos_PositionSlot? _slot;
+    private bool _notFound;
+    private long? _orgId;
+    private string? _orgName;
+    private string? _employeeName;
+    private string? _employeeTypeName;
+
+    private static string Na(string? v) => string.IsNullOrWhiteSpace(v) ? "N/A" : v;
+
+    private string BackToListUrl => _orgId is long oid ? $"/pos/position-slots?orgId={oid}" : "/pos/position-slots";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _slot = await context.Pos_PositionSlots.FirstOrDefaultAsync(s => s.Id == Id);
+        if (_slot is null) { _notFound = true; return; }
+        _notFound = false;
+
+        _orgId = _slot.OrganizationId;
+        if (_slot.OrganizationId is long oid)
+        {
+            var org = await context.com_organizations.FirstOrDefaultAsync(o => o.id == oid);
+            _orgName = org is null ? null : $"{org.code} — {org.name}";
+        }
+        if (_slot.HremployeeId is long eid)
+        {
+            var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == eid);
+            _employeeName = emp is null ? null : $"{emp.EmpNo} — {emp.EmpName} {emp.EmpSurname}";
+        }
+        if (_slot.EmployeeTypeId is long etid)
+        {
+            var et = await context.Pos_EmployeeTypes.FirstOrDefaultAsync(t => t.Id == etid);
+            _employeeTypeName = et?.Name;
+        }
+    }
+}
