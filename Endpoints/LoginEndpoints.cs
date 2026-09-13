@@ -3,6 +3,7 @@ namespace HRM.Endpoints;
 using HRM.Data;
 using HRM.Models;
 using HRM.Services.Auth;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,7 @@ public static class LoginEndpoints
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
             LdapAuthService ldapAuth,
+            IAntiforgery antiforgery,
             HRM.Services.Security.PasswordPolicyService policy,
             HRM.Services.Security.SecurityAlertService alerts) =>
         {
@@ -35,6 +37,22 @@ public static class LoginEndpoints
             var requiresTwoFactor = false;
             var failureAlerted = false;
             var form = await httpContext.Request.ReadFormAsync();
+
+            // A04 (OWASP review): this endpoint reads the form manually, so
+            // app.UseAntiforgery() middleware never validates it on its own
+            // (that only happens automatically for Blazor EditForm posts) —
+            // without this, a cross-site page could POST here and force a
+            // victim's browser to sign in as an attacker-controlled account
+            // (login CSRF). IsRequestValidAsync (not ValidateRequestAsync)
+            // so a missing/bad token is a normal login failure, not a 400.
+            if (!await antiforgery.IsRequestValidAsync(httpContext))
+            {
+                var badTokenRedirect = "/login?error=1";
+                if (!string.IsNullOrEmpty(form["returnUrl"].ToString()))
+                    badTokenRedirect += $"&ReturnUrl={Uri.EscapeDataString(form["returnUrl"].ToString())}";
+                return Results.LocalRedirect(badTokenRedirect);
+            }
+
             var username = form["username"].ToString();
             var password = form["password"].ToString();
             var returnUrl = form["returnUrl"].ToString();

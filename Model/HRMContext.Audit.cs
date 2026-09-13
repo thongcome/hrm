@@ -112,7 +112,7 @@ public partial class HRMContext
             {
                 oldValues = new Dictionary<string, object?>();
                 foreach (var prop in entry.OriginalValues.Properties)
-                    oldValues[prop.Name] = entry.OriginalValues[prop];
+                    oldValues[prop.Name] = MaskIfSensitive(prop.Name, entry.OriginalValues[prop]);
             }
 
             Dictionary<string, object?>? newValues = null;
@@ -120,7 +120,7 @@ public partial class HRMContext
             {
                 newValues = new Dictionary<string, object?>();
                 foreach (var prop in entry.CurrentValues.Properties)
-                    newValues[prop.Name] = entry.CurrentValues[prop];
+                    newValues[prop.Name] = MaskIfSensitive(prop.Name, entry.CurrentValues[prop]);
             }
 
             list.Add(new PendingAudit(entry, action, oldValues, newValues));
@@ -143,6 +143,33 @@ public partial class HRMContext
                 IsSensitiveDataAccess = false,
             });
         }
+    }
+
+    // A09 (OWASP review, 2026-09-01): AuditLog serialized every Original/CurrentValue
+    // verbatim, so a password hash, national ID, or salary landed in plaintext inside
+    // the very log meant to prove PDPA-compliant access control — the audit trail
+    // itself was the leak. Name-based (not per-entity-type) so it protects every
+    // current and future model without needing a maintained denylist per table —
+    // this codebase has 340+ entity classes and inconsistent naming, so a substring
+    // match on the property name is the only approach that doesn't silently miss one.
+    // Deliberately broad: masking a non-sensitive field that happens to share a
+    // substring (e.g. a salary *band* on a position/grade table, not a person's
+    // actual pay) costs nothing — under-masking a real secret costs everything.
+    private static readonly string[] SensitivePropertyNameSubstrings =
+    [
+        "password", "pwd", "securitystamp", "idcard", "citizenid", "nationalid",
+        "passportno", "salary", "bankaccount", "accountno", "accountnumber",
+    ];
+
+    private static object? MaskIfSensitive(string propertyName, object? value)
+    {
+        if (value is null) return null;
+        foreach (var pattern in SensitivePropertyNameSubstrings)
+        {
+            if (propertyName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return "***MASKED***";
+        }
+        return value;
     }
 
     // Uses EF's own PK metadata rather than guessing property names — this

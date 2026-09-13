@@ -4,6 +4,7 @@ using HRM.Data;
 using HRM.Models;
 using HRM.Services;
 using HRM.Services.Shared;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -29,9 +30,15 @@ public static class ForgotPasswordEndpoints
             HttpContext httpContext,
             IDbContextFactory<HRMContext> dbFactory,
             UserManager<ApplicationUser> userManager,
-            EmailSender emailSender) =>
+            EmailSender emailSender,
+            IAntiforgery antiforgery) =>
         {
             var form = await httpContext.Request.ReadFormAsync();
+
+            // A04, same gap as /login-handler — see LoginEndpoints.cs's comment.
+            if (!await antiforgery.IsRequestValidAsync(httpContext))
+                return Results.LocalRedirect("/forgot-password");
+
             var username = form["username"].ToString();
 
             await using var context = await dbFactory.CreateDbContextAsync();
@@ -88,9 +95,15 @@ public static class ForgotPasswordEndpoints
             IDbContextFactory<HRMContext> dbFactory,
             IPasswordHasher<sc_user> passwordHasher,
             UserManager<ApplicationUser> userManager,
-            HRM.Services.Security.PasswordPolicyService policy) =>
+            HRM.Services.Security.PasswordPolicyService policy,
+            IAntiforgery antiforgery) =>
         {
             var form = await httpContext.Request.ReadFormAsync();
+
+            // A04, same gap as /login-handler — see LoginEndpoints.cs's comment.
+            if (!await antiforgery.IsRequestValidAsync(httpContext))
+                return Results.LocalRedirect("/forgot-password");
+
             var username = form["username"].ToString();
             var token = form["token"].ToString();
             var newPassword = form["newPassword"].ToString();

@@ -5,6 +5,7 @@ using HRM.Data;
 using HRM.Middleware;
 using HRM.Models;
 using HRM.Services.Security;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +29,8 @@ public static class PasswordPolicyEndpoints
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
             IPasswordHasher<sc_user> passwordHasher,
-            PasswordPolicyService policy) =>
+            PasswordPolicyService policy,
+            IAntiforgery antiforgery) =>
         {
             static IResult BackToForm(string error) =>
                 Results.LocalRedirect($"{ForcePasswordChangeMiddleware.ChangePath}?error={error}");
@@ -41,6 +43,10 @@ public static class PasswordPolicyEndpoints
             var scUserIdClaim = httpContext.User.FindFirstValue("sc_userid");
             if (!long.TryParse(scUserIdClaim, out var scUserId))
                 return Results.LocalRedirect("/login");
+
+            // A04, same gap as /login-handler — see LoginEndpoints.cs's comment.
+            if (!await antiforgery.IsRequestValidAsync(httpContext))
+                return BackToForm("invalid");
 
             var form = await httpContext.Request.ReadFormAsync();
             var currentPassword = form["currentPassword"].ToString();
