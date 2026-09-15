@@ -17,3 +17,13 @@ public enum CompanyContactType
     Technical = 2,        // ผู้ติดต่อเรื่องเทคนิค/ใช้งานระบบ
     DecisionMaker = 3,     // ผู้มีอำนาจตัดสินใจซื้อ/ต่อสัญญา
 }
+
+// ประเภทที่อยู่ของบริษัทลูกค้า — สำนักงานใหญ่/ที่อยู่ออกใบกำกับภาษี/ที่จัดส่ง/สาขา
+// อาจคนละที่กัน (ที่อยู่ HQ เดี่ยวใน com_company.address_HQ ไม่พอสำหรับกรณีนี้).
+public enum CompanyAddressType
+{
+    HeadOffice = 0,
+    Billing = 1,
+    Shipping = 2,
+    Branch = 3,
+}

@@ -105,4 +105,14 @@ public partial class com_company
     public int? PaymentTermsDays { get; set; }               // เทอมการชำระเงิน (วัน) เช่น 30
 
     public virtual ICollection<Com_CompanyContact> Contacts { get; set; } = new List<Com_CompanyContact>();
+
+    // ----- ทะเบียนลูกค้า (customer registry) — mirror จาก vd_* (ระบบผู้ขาย),
+    // ดู hrm_vd_vendor_tables memory + [[advance-customer-account]] -----
+    public virtual ICollection<Com_CustAddress> CustAddresses { get; set; } = new List<Com_CustAddress>();
+    public virtual ICollection<Com_CustFinancial> CustFinancials { get; set; } = new List<Com_CustFinancial>();
+    public virtual ICollection<Com_CustService> CustServices { get; set; } = new List<Com_CustService>();
+    public virtual ICollection<Com_CustDoc> CustDocs { get; set; } = new List<Com_CustDoc>();
+    public virtual ICollection<Com_CustCertificate> CustCertificates { get; set; } = new List<Com_CustCertificate>();
+    public virtual ICollection<Com_CustPortfolio> CustPortfolios { get; set; } = new List<Com_CustPortfolio>();
+    public virtual ICollection<Com_CustSigned> CustSigneds { get; set; } = new List<Com_CustSigned>();
 }

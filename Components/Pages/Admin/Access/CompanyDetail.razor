@@ -216,6 +216,256 @@
                     <MudText Typo="Typo.body2" Class="mt-2">@L.Translate("NoContactsYetMessage")</MudText>
                 }
             </MudTabPanel>
+
+            <MudTabPanel Text="ที่อยู่" Icon="@Icons.Material.Filled.LocationCity">
+                <MudGrid>
+                    <MudItem xs="12" sm="2">
+                        <MudSelect T="CompanyAddressType" @bind-Value="_newAddress.AddressType" Label="ประเภท">
+                            <MudSelectItem T="CompanyAddressType" Value="@CompanyAddressType.HeadOffice">สำนักงานใหญ่</MudSelectItem>
+                            <MudSelectItem T="CompanyAddressType" Value="@CompanyAddressType.Billing">ออกใบกำกับภาษี</MudSelectItem>
+                            <MudSelectItem T="CompanyAddressType" Value="@CompanyAddressType.Shipping">จัดส่ง</MudSelectItem>
+                            <MudSelectItem T="CompanyAddressType" Value="@CompanyAddressType.Branch">สาขา</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newAddress.AddressNo" Label="เลขที่/หมู่/ซอย/ถนน" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.Building" Label="อาคาร" MaxLength="200" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.SubDistrict" Label="ตำบล/แขวง" MaxLength="200" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.District" Label="อำเภอ/เขต" MaxLength="200" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.Province" Label="จังหวัด" MaxLength="200" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.ZipCode" Label="รหัสไปรษณีย์" MaxLength="20" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newAddress.Country" Label="ประเทศ" MaxLength="100" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_newAddress.IsPrimary" Label="ที่อยู่หลัก" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveAddressAsync">
+                        @(_editingAddressId is null ? "เพิ่มที่อยู่" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingAddressId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingAddressId = null; _newAddress = new(); })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_addresses" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ประเภท</MudTh><MudTh>ที่อยู่</MudTh><MudTh>จังหวัด</MudTh><MudTh>หลัก</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@AddressTypeLabel(context.AddressType)</MudTd>
+                        <MudTd>@context.AddressNo @context.Building</MudTd>
+                        <MudTd>@context.Province</MudTd>
+                        <MudTd>@(context.IsPrimary ? "✓" : "")</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditAddress(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_addresses, context, a => a.Id, (a,v) => a.IsActive = v, RefreshAddressesAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="งบการเงิน" Icon="@Icons.Material.Filled.AccountBalance">
+                <MudGrid>
+                    <MudItem xs="12" sm="2"><MudNumericField @bind-Value="_newFinancial.FiscalYear" Label="ปี (พ.ศ./ค.ศ.)" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudNumericField @bind-Value="_newFinancial.Income" Label="รายได้" Format="N2" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudNumericField @bind-Value="_newFinancial.Profit" Label="กำไร" Format="N2" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudNumericField @bind-Value="_newFinancial.Loss" Label="ขาดทุน" Format="N2" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudNumericField @bind-Value="_newFinancial.WorkingCapitalRatio" Label="Working Capital Ratio" Format="N4" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudTextField @bind-Value="_newFinancial.FileName" Label="ไฟล์งบการเงิน" MaxLength="500" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveFinancialAsync">
+                        @(_editingFinancialId is null ? "เพิ่มงบการเงิน" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingFinancialId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingFinancialId = null; _newFinancial = new(); })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_financials" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ปี</MudTh><MudTh>รายได้</MudTh><MudTh>กำไร</MudTh><MudTh>ขาดทุน</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.FiscalYear</MudTd>
+                        <MudTd>@context.Income?.ToString("N2")</MudTd>
+                        <MudTd>@context.Profit?.ToString("N2")</MudTd>
+                        <MudTd>@context.Loss?.ToString("N2")</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditFinancial(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_financials, context, f => f.Id, (f,v) => f.IsActive = v, RefreshFinancialsAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="หมวดธุรกิจ" Icon="@Icons.Material.Filled.Category">
+                <MudText Typo="Typo.body2" Class="mb-3">จัดหมวดธุรกิจ/อุตสาหกรรมของลูกค้า สูงสุด 4 ระดับ — ยังไม่มี master list ตายตัว กรอกเป็นข้อความอิสระไปก่อน</MudText>
+                <MudGrid>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newService.Level1Name" Label="ระดับ 1" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newService.Level2Name" Label="ระดับ 2" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newService.Level3Name" Label="ระดับ 3" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newService.Level4Name" Label="ระดับ 4" MaxLength="500" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_newService.Remark" Label="@L.Translate("ColRemark")" MaxLength="2000" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveServiceAsync">
+                        @(_editingServiceId is null ? "เพิ่มหมวด" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingServiceId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingServiceId = null; _newService = new(); })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_services" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>หมวด</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@string.Join(" / ", new[] { context.Level1Name, context.Level2Name, context.Level3Name, context.Level4Name }.Where(s => !string.IsNullOrWhiteSpace(s)))</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditService(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_services, context, s => s.Id, (s,v) => s.IsActive = v, RefreshServicesAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="เอกสาร" Icon="@Icons.Material.Filled.Description">
+                <MudGrid>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newDoc.DocType" Label="ประเภทเอกสาร" MaxLength="200" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newDoc.DocName" Label="ชื่อเอกสาร" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudDatePicker @bind-Date="_newDocDate" Label="วันที่เอกสาร" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudDatePicker @bind-Date="_newDocExpireDate" Label="วันหมดอายุ" /></MudItem>
+                    <MudItem xs="12" sm="2"><MudCheckBox T="bool" @bind-Value="_newDoc.IsMandatory" Label="เอกสารบังคับ" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_newDoc.Remark" Label="@L.Translate("ColRemark")" MaxLength="2000" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveDocAsync">
+                        @(_editingDocId is null ? "เพิ่มเอกสาร" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingDocId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingDocId = null; _newDoc = new(); _newDocDate = null; _newDocExpireDate = null; })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_docs" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ประเภท</MudTh><MudTh>ชื่อเอกสาร</MudTh><MudTh>หมดอายุ</MudTh><MudTh>บังคับ</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.DocType</MudTd>
+                        <MudTd>@context.DocName</MudTd>
+                        <MudTd>@context.DocExpireDate?.ToString("dd/MM/yyyy")</MudTd>
+                        <MudTd>@(context.IsMandatory ? "✓" : "")</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditDoc(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_docs, context, d => d.Id, (d,v) => d.IsActive = v, RefreshDocsAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ใบรับรอง" Icon="@Icons.Material.Filled.WorkspacePremium">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newCertificate.Name" Label="ชื่อใบรับรอง" Required="true" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCertificate.StandCode" Label="มาตรฐาน (เช่น ISO 9001)" MaxLength="100" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_newCertificate.IssueBy" Label="ออกโดย" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="1"><MudNumericField @bind-Value="_newCertificate.IssueYear" Label="ปีออก" /></MudItem>
+                    <MudItem xs="12" sm="1"><MudNumericField @bind-Value="_newCertificate.ExpireYear" Label="ปีหมดอายุ" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_newCertificate.Description" Label="@L.Translate("DescriptionLabel")" MaxLength="2000" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveCertificateAsync">
+                        @(_editingCertificateId is null ? "เพิ่มใบรับรอง" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingCertificateId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingCertificateId = null; _newCertificate = new(); })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_certificates" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ชื่อ</MudTh><MudTh>มาตรฐาน</MudTh><MudTh>ปีหมดอายุ</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@context.StandCode</MudTd>
+                        <MudTd>@context.ExpireYear</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditCertificate(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_certificates, context, c => c.Id, (c,v) => c.IsActive = v, RefreshCertificatesAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ผลงาน/โครงการ" Icon="@Icons.Material.Filled.Work">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newPortfolio.Name" Label="ชื่อโครงการ" Required="true" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newPortfolioStart" Label="วันที่เริ่ม" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_newPortfolioEnd" Label="วันที่สิ้นสุด" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_newPortfolio.Description" Label="@L.Translate("DescriptionLabel")" MaxLength="1000" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SavePortfolioAsync">
+                        @(_editingPortfolioId is null ? "เพิ่มผลงาน" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingPortfolioId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingPortfolioId = null; _newPortfolio = new(); _newPortfolioStart = null; _newPortfolioEnd = null; })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_portfolios" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ชื่อโครงการ</MudTh><MudTh>ช่วงเวลา</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@context.StartDate?.ToString("dd/MM/yyyy") - @context.EndDate?.ToString("dd/MM/yyyy")</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditPortfolio(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_portfolios, context, p => p.Id, (p,v) => p.IsActive = v, RefreshPortfoliosAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="ผู้มีอำนาจลงนาม" Icon="@Icons.Material.Filled.Draw">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newSigned.SignedName" Label="ชื่อผู้ลงนาม" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_newSigned.SignedPosition" Label="ตำแหน่ง" MaxLength="500" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudDatePicker @bind-Date="_newSignedDate" Label="วันที่ลงนาม" /></MudItem>
+                </MudGrid>
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="SaveSignedAsync">
+                        @(_editingSignedId is null ? "เพิ่มผู้ลงนาม" : L.Translate("SaveEditButton"))
+                    </MudButton>
+                    @if (_editingSignedId is not null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="@(() => { _editingSignedId = null; _newSigned = new(); _newSignedDate = null; })">@L.Translate("CancelButton")</MudButton>
+                    }
+                </MudStack>
+                <MudTable Items="_signeds" Dense="true" Hover="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>ชื่อ</MudTh><MudTh>ตำแหน่ง</MudTh><MudTh>วันที่ลงนาม</MudTh><MudTh>@L.Translate("ColStatus")</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.SignedName</MudTd>
+                        <MudTd>@context.SignedPosition</MudTd>
+                        <MudTd>@context.SignedDate?.ToString("dd/MM/yyyy")</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudChip></MudTd>
+                        <MudTd>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditSigned(context))">@L.Translate("EditButton")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(_signeds, context, s => s.Id, (s,v) => s.IsActive = v, RefreshSignedsAsync))">@(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudTabPanel>
         }
     </MudTabs>
 
@@ -317,6 +567,8 @@
             .Where(c => c.CompanyId == item.id)
             .OrderByDescending(c => c.IsPrimary).ThenBy(c => c.Name)
             .ToListAsync();
+
+        await LoadCustomerRegistryAsync(context, item.id);
 
         // Editing here surfaces contact names/phone/email — PDPA access log.
         await AuditLogger.LogAccessAsync("com_company", item.id.ToString(), isSensitive: true, note: "view company profile incl. contacts");
@@ -583,5 +835,352 @@
             .Where(c => c.CompanyId == companyId)
             .OrderByDescending(c => c.IsPrimary).ThenBy(c => c.Name)
             .ToListAsync();
+    }
+
+    // ----- ทะเบียนลูกค้า (customer registry) — mirror จาก vd_*, ดู
+    // hrm_vd_vendor_tables memory. ทุกตารางใช้ pattern เดียวกับ Contacts tab
+    // ข้างบน: ฟอร์มเพิ่ม/แก้ + ตารางรายการ + toggle active (soft delete) -----
+
+    private string AddressTypeLabel(CompanyAddressType type) => type switch
+    {
+        CompanyAddressType.Billing => "ออกใบกำกับภาษี",
+        CompanyAddressType.Shipping => "จัดส่ง",
+        CompanyAddressType.Branch => "สาขา",
+        _ => "สำนักงานใหญ่",
+    };
+
+    // Toggle เดียวใช้ร่วมกันทุกตาราง — ลด boilerplate ที่จะซ้ำ 7 รอบถ้าเขียนแยก
+    private async Task ToggleActiveAsync<T>(List<T> list, T item, Func<T, long> idSelector, Action<T, bool> setActive, Func<Task> refresh)
+        where T : class
+    {
+        if (Id is not long companyId) return;
+        var id = idSelector(item);
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var existing = await context.Set<T>().FirstOrDefaultAsync(BuildIdPredicate<T>(id));
+        if (existing is null) return;
+
+        var current = (bool)typeof(T).GetProperty("IsActive")!.GetValue(existing)!;
+        setActive(existing, !current);
+        await context.SaveChangesAsync();
+        await refresh();
+    }
+
+    private static System.Linq.Expressions.Expression<Func<T, bool>> BuildIdPredicate<T>(long id)
+    {
+        var param = System.Linq.Expressions.Expression.Parameter(typeof(T), "x");
+        var prop = System.Linq.Expressions.Expression.Property(param, "Id");
+        var constant = System.Linq.Expressions.Expression.Constant(id);
+        var equal = System.Linq.Expressions.Expression.Equal(prop, constant);
+        return System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(equal, param);
+    }
+
+    private async Task LoadCustomerRegistryAsync(HRMContext context, long companyId)
+    {
+        _addresses = await context.Com_CustAddresses.Where(a => a.CompanyId == companyId).OrderByDescending(a => a.IsPrimary).ToListAsync();
+        _financials = await context.Com_CustFinancials.Where(f => f.CompanyId == companyId).OrderByDescending(f => f.FiscalYear).ToListAsync();
+        _services = await context.Com_CustServices.Where(s => s.CompanyId == companyId).ToListAsync();
+        _docs = await context.Com_CustDocs.Where(d => d.CompanyId == companyId).OrderByDescending(d => d.DocExpireDate).ToListAsync();
+        _certificates = await context.Com_CustCertificates.Where(c => c.CompanyId == companyId).ToListAsync();
+        _portfolios = await context.Com_CustPortfolios.Where(p => p.CompanyId == companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+        _signeds = await context.Com_CustSigneds.Where(s => s.CompanyId == companyId).OrderByDescending(s => s.SignedDate).ToListAsync();
+    }
+
+    // --- Address ---
+    private List<Com_CustAddress> _addresses = new();
+    private Com_CustAddress _newAddress = new();
+    private long? _editingAddressId;
+
+    private async Task RefreshAddressesAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _addresses = await context.Com_CustAddresses.Where(a => a.CompanyId == companyId).OrderByDescending(a => a.IsPrimary).ToListAsync();
+    }
+
+    private void StartEditAddress(Com_CustAddress a)
+    {
+        _editingAddressId = a.Id;
+        _newAddress = new Com_CustAddress { AddressType = a.AddressType, AddressNo = a.AddressNo, Building = a.Building, Road = a.Road, SubDistrict = a.SubDistrict, District = a.District, Province = a.Province, Country = a.Country, ZipCode = a.ZipCode, IsPrimary = a.IsPrimary };
+    }
+
+    private async Task SaveAddressAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingAddressId is long editId)
+        {
+            var existing = await context.Com_CustAddresses.FirstOrDefaultAsync(a => a.Id == editId && a.CompanyId == companyId);
+            if (existing is null) return;
+            existing.AddressType = _newAddress.AddressType; existing.AddressNo = _newAddress.AddressNo; existing.Building = _newAddress.Building;
+            existing.Road = _newAddress.Road; existing.SubDistrict = _newAddress.SubDistrict; existing.District = _newAddress.District;
+            existing.Province = _newAddress.Province; existing.Country = _newAddress.Country; existing.ZipCode = _newAddress.ZipCode; existing.IsPrimary = _newAddress.IsPrimary;
+        }
+        else
+        {
+            _newAddress.CompanyId = companyId;
+            context.Com_CustAddresses.Add(_newAddress);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingAddressId = null; _newAddress = new();
+        await RefreshAddressesAsync();
+    }
+
+    // --- Financial ---
+    private List<Com_CustFinancial> _financials = new();
+    private Com_CustFinancial _newFinancial = new();
+    private long? _editingFinancialId;
+
+    private async Task RefreshFinancialsAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _financials = await context.Com_CustFinancials.Where(f => f.CompanyId == companyId).OrderByDescending(f => f.FiscalYear).ToListAsync();
+    }
+
+    private void StartEditFinancial(Com_CustFinancial f)
+    {
+        _editingFinancialId = f.Id;
+        _newFinancial = new Com_CustFinancial { FiscalYear = f.FiscalYear, Income = f.Income, Profit = f.Profit, Loss = f.Loss, WorkingCapitalRatio = f.WorkingCapitalRatio, FileName = f.FileName };
+    }
+
+    private async Task SaveFinancialAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingFinancialId is long editId)
+        {
+            var existing = await context.Com_CustFinancials.FirstOrDefaultAsync(f => f.Id == editId && f.CompanyId == companyId);
+            if (existing is null) return;
+            existing.FiscalYear = _newFinancial.FiscalYear; existing.Income = _newFinancial.Income; existing.Profit = _newFinancial.Profit;
+            existing.Loss = _newFinancial.Loss; existing.WorkingCapitalRatio = _newFinancial.WorkingCapitalRatio; existing.FileName = _newFinancial.FileName;
+        }
+        else
+        {
+            _newFinancial.CompanyId = companyId;
+            context.Com_CustFinancials.Add(_newFinancial);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingFinancialId = null; _newFinancial = new();
+        await RefreshFinancialsAsync();
+    }
+
+    // --- Service (industry classification) ---
+    private List<Com_CustService> _services = new();
+    private Com_CustService _newService = new();
+    private long? _editingServiceId;
+
+    private async Task RefreshServicesAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _services = await context.Com_CustServices.Where(s => s.CompanyId == companyId).ToListAsync();
+    }
+
+    private void StartEditService(Com_CustService s)
+    {
+        _editingServiceId = s.Id;
+        _newService = new Com_CustService { Level1Name = s.Level1Name, Level2Name = s.Level2Name, Level3Name = s.Level3Name, Level4Name = s.Level4Name, Remark = s.Remark };
+    }
+
+    private async Task SaveServiceAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingServiceId is long editId)
+        {
+            var existing = await context.Com_CustServices.FirstOrDefaultAsync(s => s.Id == editId && s.CompanyId == companyId);
+            if (existing is null) return;
+            existing.Level1Name = _newService.Level1Name; existing.Level2Name = _newService.Level2Name;
+            existing.Level3Name = _newService.Level3Name; existing.Level4Name = _newService.Level4Name; existing.Remark = _newService.Remark;
+        }
+        else
+        {
+            _newService.CompanyId = companyId;
+            context.Com_CustServices.Add(_newService);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingServiceId = null; _newService = new();
+        await RefreshServicesAsync();
+    }
+
+    // --- Doc ---
+    private List<Com_CustDoc> _docs = new();
+    private Com_CustDoc _newDoc = new();
+    private long? _editingDocId;
+    private DateTime? _newDocDate;
+    private DateTime? _newDocExpireDate;
+
+    private async Task RefreshDocsAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _docs = await context.Com_CustDocs.Where(d => d.CompanyId == companyId).OrderByDescending(d => d.DocExpireDate).ToListAsync();
+    }
+
+    private void StartEditDoc(Com_CustDoc d)
+    {
+        _editingDocId = d.Id;
+        _newDoc = new Com_CustDoc { DocType = d.DocType, DocName = d.DocName, IsMandatory = d.IsMandatory, Remark = d.Remark };
+        _newDocDate = d.DocDate?.ToDateTime(TimeOnly.MinValue);
+        _newDocExpireDate = d.DocExpireDate?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task SaveDocAsync()
+    {
+        if (Id is not long companyId) return;
+        _newDoc.DocDate = _newDocDate is DateTime dd ? DateOnly.FromDateTime(dd) : null;
+        _newDoc.DocExpireDate = _newDocExpireDate is DateTime ded ? DateOnly.FromDateTime(ded) : null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingDocId is long editId)
+        {
+            var existing = await context.Com_CustDocs.FirstOrDefaultAsync(d => d.Id == editId && d.CompanyId == companyId);
+            if (existing is null) return;
+            existing.DocType = _newDoc.DocType; existing.DocName = _newDoc.DocName; existing.DocDate = _newDoc.DocDate;
+            existing.DocExpireDate = _newDoc.DocExpireDate; existing.IsMandatory = _newDoc.IsMandatory; existing.Remark = _newDoc.Remark;
+        }
+        else
+        {
+            _newDoc.CompanyId = companyId;
+            context.Com_CustDocs.Add(_newDoc);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingDocId = null; _newDoc = new(); _newDocDate = null; _newDocExpireDate = null;
+        await RefreshDocsAsync();
+    }
+
+    // --- Certificate ---
+    private List<Com_CustCertificate> _certificates = new();
+    private Com_CustCertificate _newCertificate = new();
+    private long? _editingCertificateId;
+
+    private async Task RefreshCertificatesAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _certificates = await context.Com_CustCertificates.Where(c => c.CompanyId == companyId).ToListAsync();
+    }
+
+    private void StartEditCertificate(Com_CustCertificate c)
+    {
+        _editingCertificateId = c.Id;
+        _newCertificate = new Com_CustCertificate { Name = c.Name, StandCode = c.StandCode, IssueBy = c.IssueBy, IssueYear = c.IssueYear, ExpireYear = c.ExpireYear, Description = c.Description };
+    }
+
+    private async Task SaveCertificateAsync()
+    {
+        if (Id is not long companyId) return;
+        if (string.IsNullOrWhiteSpace(_newCertificate.Name)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingCertificateId is long editId)
+        {
+            var existing = await context.Com_CustCertificates.FirstOrDefaultAsync(c => c.Id == editId && c.CompanyId == companyId);
+            if (existing is null) return;
+            existing.Name = _newCertificate.Name; existing.StandCode = _newCertificate.StandCode; existing.IssueBy = _newCertificate.IssueBy;
+            existing.IssueYear = _newCertificate.IssueYear; existing.ExpireYear = _newCertificate.ExpireYear; existing.Description = _newCertificate.Description;
+        }
+        else
+        {
+            _newCertificate.CompanyId = companyId;
+            context.Com_CustCertificates.Add(_newCertificate);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingCertificateId = null; _newCertificate = new();
+        await RefreshCertificatesAsync();
+    }
+
+    // --- Portfolio ---
+    private List<Com_CustPortfolio> _portfolios = new();
+    private Com_CustPortfolio _newPortfolio = new();
+    private long? _editingPortfolioId;
+    private DateTime? _newPortfolioStart;
+    private DateTime? _newPortfolioEnd;
+
+    private async Task RefreshPortfoliosAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _portfolios = await context.Com_CustPortfolios.Where(p => p.CompanyId == companyId).OrderByDescending(p => p.StartDate).ToListAsync();
+    }
+
+    private void StartEditPortfolio(Com_CustPortfolio p)
+    {
+        _editingPortfolioId = p.Id;
+        _newPortfolio = new Com_CustPortfolio { Name = p.Name, Description = p.Description };
+        _newPortfolioStart = p.StartDate?.ToDateTime(TimeOnly.MinValue);
+        _newPortfolioEnd = p.EndDate?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task SavePortfolioAsync()
+    {
+        if (Id is not long companyId) return;
+        if (string.IsNullOrWhiteSpace(_newPortfolio.Name)) return;
+        _newPortfolio.StartDate = _newPortfolioStart is DateTime sd ? DateOnly.FromDateTime(sd) : null;
+        _newPortfolio.EndDate = _newPortfolioEnd is DateTime ed ? DateOnly.FromDateTime(ed) : null;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingPortfolioId is long editId)
+        {
+            var existing = await context.Com_CustPortfolios.FirstOrDefaultAsync(p => p.Id == editId && p.CompanyId == companyId);
+            if (existing is null) return;
+            existing.Name = _newPortfolio.Name; existing.StartDate = _newPortfolio.StartDate; existing.EndDate = _newPortfolio.EndDate; existing.Description = _newPortfolio.Description;
+        }
+        else
+        {
+            _newPortfolio.CompanyId = companyId;
+            context.Com_CustPortfolios.Add(_newPortfolio);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingPortfolioId = null; _newPortfolio = new(); _newPortfolioStart = null; _newPortfolioEnd = null;
+        await RefreshPortfoliosAsync();
+    }
+
+    // --- Signed ---
+    private List<Com_CustSigned> _signeds = new();
+    private Com_CustSigned _newSigned = new();
+    private long? _editingSignedId;
+    private DateTime? _newSignedDate;
+
+    private async Task RefreshSignedsAsync()
+    {
+        if (Id is not long companyId) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _signeds = await context.Com_CustSigneds.Where(s => s.CompanyId == companyId).OrderByDescending(s => s.SignedDate).ToListAsync();
+    }
+
+    private void StartEditSigned(Com_CustSigned s)
+    {
+        _editingSignedId = s.Id;
+        _newSigned = new Com_CustSigned { SignedName = s.SignedName, SignedPosition = s.SignedPosition };
+        _newSignedDate = s.SignedDate;
+    }
+
+    private async Task SaveSignedAsync()
+    {
+        if (Id is not long companyId) return;
+        _newSigned.SignedDate = _newSignedDate;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (_editingSignedId is long editId)
+        {
+            var existing = await context.Com_CustSigneds.FirstOrDefaultAsync(s => s.Id == editId && s.CompanyId == companyId);
+            if (existing is null) return;
+            existing.SignedName = _newSigned.SignedName; existing.SignedPosition = _newSigned.SignedPosition; existing.SignedDate = _newSigned.SignedDate;
+        }
+        else
+        {
+            _newSigned.CompanyId = companyId;
+            context.Com_CustSigneds.Add(_newSigned);
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add(L.Translate("SavedSuccessGeneric"), Severity.Success);
+        _editingSignedId = null; _newSigned = new(); _newSignedDate = null;
+        await RefreshSignedsAsync();
     }
 }

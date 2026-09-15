@@ -442,6 +442,20 @@ public partial class HRMContext : DbContext
 
     public virtual DbSet<Com_CompanyContact> Com_CompanyContacts { get; set; }
 
+    public virtual DbSet<Com_CustAddress> Com_CustAddresses { get; set; }
+
+    public virtual DbSet<Com_CustFinancial> Com_CustFinancials { get; set; }
+
+    public virtual DbSet<Com_CustService> Com_CustServices { get; set; }
+
+    public virtual DbSet<Com_CustDoc> Com_CustDocs { get; set; }
+
+    public virtual DbSet<Com_CustCertificate> Com_CustCertificates { get; set; }
+
+    public virtual DbSet<Com_CustPortfolio> Com_CustPortfolios { get; set; }
+
+    public virtual DbSet<Com_CustSigned> Com_CustSigneds { get; set; }
+
     public virtual DbSet<Pos_EmployeeType> Pos_EmployeeTypes { get; set; }
     public virtual DbSet<Pos_ExecType> Pos_ExecTypes { get; set; }
     public virtual DbSet<Pos_PositionSlot> Pos_PositionSlots { get; set; }
@@ -795,6 +809,62 @@ public partial class HRMContext : DbContext
         {
             entity.HasOne(e => e.Company)
                 .WithMany(c => c.Contacts)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustAddress>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustAddresses)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustFinancial>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustFinancials)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustService>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustServices)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustDoc>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustDocs)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustCertificate>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustCertificates)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustPortfolio>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustPortfolios)
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Com_CustSigned>(entity =>
+        {
+            entity.HasOne(e => e.Company)
+                .WithMany(c => c.CustSigneds)
                 .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
