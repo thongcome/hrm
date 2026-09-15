@@ -355,6 +355,7 @@ builder.Services.AddScoped<HRM.Services.Auth.ExternalIdentityProvisioningService
 // Model/sc_program_role.cs and Services/Security/ProgramRoleService.cs.
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<HRM.Services.Security.ProgramRoleService>();
+builder.Services.AddScoped<HRM.Services.Security.CompanySwitchService>();
 
 // Menu-based authorization: [Authorize(Policy = "Menu:XXX")] on a page is
 // resolved dynamically against sc_menu/sc_role_menu via the "menu" claims
@@ -787,6 +788,7 @@ app.MapPasswordPolicyEndpoints();
 app.MapExternalSsoEndpoints();
 app.MapForgotPasswordEndpoints();
 app.MapEssFileEndpoints();
+app.MapCompanySwitchEndpoints();
 app.MapExpenseFileEndpoints();
 app.MapLeaveFileEndpoints();
 app.MapWorkflowFileEndpoints();
@@ -953,6 +955,10 @@ if (app.Environment.IsDevelopment())
     // fixture (KB0001/Dev@12345) provisioned through the real
     // UserProvisioningService path — must land the 'กรรมการ' role.
     await HRM.Services.Dev.DevAuthSeeder.EnsureCommitteeAutoRoleFixtureAsync(app.Services);
+
+    // Multi-company switcher fixture (adhtest / Dev@12345, linked to the
+    // real ADHOLD employee ADH0001) — see DevAuthSeeder.EnsureAdHoldingFixtureAsync.
+    await HRM.Services.Dev.DevAuthSeeder.EnsureAdHoldingFixtureAsync(app.Services);
 }
 
 app.Run();

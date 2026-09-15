@@ -1,0 +1,79 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using HRM.Models
+@using HRM.Services.Security
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject CompanySwitchService SwitchService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+
+@* Only rendered once there is actually more than one company to switch to
+   (a holding company + subsidiary situation, e.g. ADHOLD/ADDIGITAL/ADMOVIE)
+   — same "don't clutter the UI for the common single-company case" rule
+   ThemeService.MenuStyles already follows. Posts a real form to
+   /switch-company-handler (not a Blazor click handler) because rewriting
+   the auth cookie needs a live HTTP response — see that endpoint's header
+   comment.
+
+   No antiforgery token on this form (unlike /login-handler and friends):
+   the auth cookie is issued with SameSite=Strict (Program.cs,
+   ConfigureApplicationCookie) — a cross-site page can never get this
+   cookie attached to ANY request it originates, GET or POST, so the CSRF
+   this would guard against is already closed at the cookie level. That
+   also sidesteps a real problem this form hit when it did carry a token:
+   CompanySwitcher lives inside MainLayout, a persistent circuit-lifetime
+   component that re-initializes on internal navigations with no live
+   HttpContext behind them — IAntiforgery.GetAndStoreTokens needs one, and
+   intermittently got null there, silently hiding the switcher (or, before
+   a defensive guard, crashing the circuit). The endpoint still re-checks
+   the permission server-side on every switch (IsSwitchAllowedAsync) and
+   audit-logs it — this form only decides what to submit, not what's
+   allowed. *@
+@if (_companies is { Count: > 1 })
+{
+    <form method="post" action="/switch-company-handler" class="d-flex align-items-center mr-2">
+        <input type="hidden" name="returnUrl" value="@(new Uri(Nav.Uri).PathAndQuery)" />
+        <select @ref="_selectElement" name="companyCode" class="form-select form-select-sm" style="width:auto;"
+            title="สลับบริษัท" @onchange="OnCompanyChangedAsync">
+            @foreach (var c in _companies)
+            {
+                <option value="@c.Code" selected="@(c.Code == _currentCode)">@c.Code — @c.Name</option>
+            }
+        </select>
+    </form>
+}
+
+@code {
+    private ElementReference _selectElement;
+    private List<CompanySwitchService.SwitchableCompany>? _companies;
+    private string? _currentCode;
+
+    // Blazor's own @onchange (server round-trip over the live SignalR
+    // circuit), not an inline onchange="..." HTML attribute — this app's
+    // CSP (script-src 'self', no unsafe-inline) silently blocks inline
+    // event-handler attributes the same way it blocks inline <script>
+    // tags, so the form never submitted with that simpler approach
+    // (confirmed live: selecting a company changed the <select>'s own
+    // value with no visible effect otherwise). @onchange fires this C#
+    // method over the circuit — CSP-exempt, since it's wired by
+    // _framework/blazor.web.js, itself loaded from 'self' — which then
+    // asks the browser (via a small external .js function, see
+    // wwwroot/js/language-cookie.js) to submit the real HTML form. The
+    // actual company switch still only happens via that real POST to
+    // /switch-company-handler, not this handler.
+    private async Task OnCompanyChangedAsync(ChangeEventArgs _)
+        => await JS.InvokeVoidAsync("submitElementForm", _selectElement);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated != true) return;
+
+        _currentCode = user.FindFirst("payroll_company")?.Value;
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _companies = await SwitchService.GetSwitchableCompaniesAsync(user, context);
+    }
+}

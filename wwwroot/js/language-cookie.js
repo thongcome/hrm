@@ -9,3 +9,14 @@ window.setLanguageCookie = (name, value) => {
     const oneYear = 365 * 24 * 60 * 60;
     document.cookie = `${name}=${value}; path=/; max-age=${oneYear}; samesite=lax`;
 };
+
+// Submits the <select>'s own <form> on change (CompanySwitcher.razor). An
+// inline onchange="this.form.submit()" HTML attribute would be simplest,
+// but this app's CSP (script-src 'self', no unsafe-inline) blocks inline
+// event-handler attributes exactly like it blocks inline <script> tags —
+// confirmed live: selecting a new company silently did nothing until this
+// moved to a real @onchange (Blazor's own event wiring, not an inline
+// attribute) calling out to this external, CSP-compliant function instead.
+window.submitElementForm = (selectElement) => {
+    selectElement.form?.submit();
+};

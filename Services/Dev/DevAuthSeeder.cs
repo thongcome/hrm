@@ -220,6 +220,90 @@ public static class DevAuthSeeder
             AdvdAdminLogin, result.Succeeded);
     }
 
+    // Fixture for the multi-company switcher (CompanySwitchService /
+    // /switch-company-handler, 15 ก.ย. 2569): links a login to a REAL,
+    // already-seeded ADHOLD employee (ADH0001 — one of the 20 real
+    // Hremployee rows under the AD Holding / AD.Digital / AD.Movie group
+    // used to cross-check that feature) rather than inventing another
+    // synthetic employee. Same "Admin role + known dev password via the
+    // real provisioning path" shape as EnsureAdvdDemoAdminAsync. Development
+    // only.
+    public const string AdHoldingAdminLogin = "adhtest";
+    private const string AdHoldingEmpNo = "ADH0001";
+
+    public static async Task EnsureAdHoldingFixtureAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<HRMContext>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DevAuthSeeder");
+        await using var ctx = await dbFactory.CreateDbContextAsync();
+
+        var emp = await ctx.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == AdHoldingEmpNo && e.companyid == "ADHOLD");
+        if (emp is null) { logger.LogWarning("AD Holding switcher fixture: employee {Emp} not found.", AdHoldingEmpNo); return; }
+
+        // sc_user.company_id has a real FK to com_company.id (can't be 0 or a
+        // non-existent id) — but no com_company row exists yet for the ADHOLD
+        // org node (it has a real com_organization row + 20 real Hremployee
+        // rows, just no com_company counterpart, unlike ADVD). Create the
+        // minimal master row so PayrollCompanyResolver's primary path
+        // (company_id -> com_company.code) resolves to "ADHOLD" directly,
+        // matching how EnsureAdvdDemoAdminAsync links to a real company row.
+        var adHoldCompany = await ctx.com_companies.FirstOrDefaultAsync(c => c.code == "ADHOLD");
+        if (adHoldCompany is null)
+        {
+            adHoldCompany = new com_company { code = "ADHOLD", name = "AD Holding (สำนักงานใหญ่กลุ่ม)", isActive = true, moddate = DateTime.Now, modby = "DevAuthSeeder" };
+            ctx.com_companies.Add(adHoldCompany);
+            await ctx.SaveChangesAsync();
+            logger.LogInformation("AD Holding switcher fixture: created com_company row for ADHOLD (id={Id}).", adHoldCompany.id);
+        }
+
+        var scUser = await ctx.sc_users.FirstOrDefaultAsync(u => u.loginname == AdHoldingAdminLogin);
+        if (scUser is null)
+        {
+            scUser = new sc_user
+            {
+                loginname = AdHoldingAdminLogin,
+                empid = AdHoldingEmpNo,
+                firstname = emp.EmpName ?? "ADHOLD",
+                lastname = emp.EmpSurname ?? "Test",
+                company_id = adHoldCompany.id,
+                isdisable = false,
+                iscancel = false,
+                isActivate = true,
+                isforcechanged = false,
+                moddate = DateTime.Now,
+                modby = "DevAuthSeeder",
+            };
+            ctx.sc_users.Add(scUser);
+            await ctx.SaveChangesAsync();
+            logger.LogInformation("AD Holding switcher fixture: created sc_user {Login} -> {Emp}.", AdHoldingAdminLogin, AdHoldingEmpNo);
+        }
+
+        var adminRole = await ctx.sc_roles.FirstOrDefaultAsync(r => r.name == "Admin" && r.isactive);
+        if (adminRole is not null)
+        {
+            var hasAdmin = await ctx.sc_user_roles.AnyAsync(ur => ur.userid == scUser.userid && ur.roleid == adminRole.roleid);
+            if (!hasAdmin)
+            {
+                ctx.sc_user_roles.Add(new sc_user_role
+                {
+                    userid = scUser.userid,
+                    roleid = adminRole.roleid,
+                    empid = AdHoldingEmpNo,
+                    isactive = true,
+                    modate = DateTime.Now,
+                    modby = "DevAuthSeeder",
+                });
+                await ctx.SaveChangesAsync();
+            }
+        }
+
+        var provisioning = scope.ServiceProvider.GetRequiredService<UserProvisioningService>();
+        var result = await provisioning.EnsureIdentityLinkedAsync(scUser, DevAdminPassword, "adhtest@hrm.local");
+        logger.LogInformation("AD Holding switcher fixture: login '{Login}' provisioned={Ok} (password = the dev admin password).",
+            AdHoldingAdminLogin, result.Succeeded);
+    }
+
     private static async Task ResetPasswordAsync(UserManager<ApplicationUser> userManager, string email, string password)
     {
         var user = await userManager.FindByEmailAsync(email);
