@@ -130,6 +130,25 @@
         color: var(--mud-palette-text-secondary, #999);
     }
 
+    /* Department-level skeleton card (OrgChartNodeBuilder Tier 1) — shown
+       before a unit is expanded; no person/avatar, just a headcount badge. */
+    .org-chart-card-org-body {
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .org-chart-card-headcount {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--mud-palette-text-primary, #212121);
+    }
+
+    .org-chart-card-headcount-label {
+        font-size: 0.65rem;
+        font-weight: 400;
+        color: var(--mud-palette-text-secondary, #777);
+    }
+
     .org-chart-clickable {
         cursor: pointer;
     }
@@ -638,6 +657,12 @@
         }
     }
 
+    // Same lazy-load split as OrgChart.razor (see OrgChartNodeBuilder's
+    // class comment) — loads only the org-unit skeleton up front; a unit's
+    // own employee/position cards are fetched via GetEmployeeCardsForOrgAsync
+    // the first time its node is expanded client-side.
+    private readonly HashSet<string> _loadedOrgCodes = new();
+
     private async Task LoadChartAsync(long? rootOrgId)
     {
         if (string.IsNullOrWhiteSpace(_companyId)) return;
@@ -647,18 +672,52 @@
 
         var rootOrgCode = rootOrgId is long id ? _allOrgsForTree.FirstOrDefault(o => o.id == id)?.code : null;
 
-        await using var context = await DbFactory.CreateDbContextAsync();
-        _chartNodes = await OrgChartNodeBuilder.BuildAsync(context, _companyId, rootOrgCode);
+        // Chart is about to be fully re-rendered below (OrgChartD3.render
+        // tears down and rebuilds), so any units expanded under the
+        // previous root no longer exist client-side either — clear so a
+        // re-expand after switching root actually re-fetches instead of
+        // silently returning "[]" from the already-loaded guard.
+        _loadedOrgCodes.Clear();
+        _chartEmployeeCount = 0;
 
-        _chartEmployeeCount = _chartNodes.Count(n => !n.IsVacant);
-        if (_chartEmployeeCount > 0)
-        {
-            await AuditLogger.LogAccessAsync("Hremployee", null, isSensitive: true,
-                note: $"org chart tab view (root org id={(object?)rootOrgId ?? "whole company"}) — {_chartEmployeeCount} employee photo(s)/name(s) shown across {_chartNodes.Count} position card(s)");
-        }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _chartNodes = await OrgChartNodeBuilder.BuildOrgSkeletonAsync(context, _companyId, rootOrgCode);
 
         _chartLoading = false;
         _chartNeedsRender = _chartNodes.Count > 0;
+    }
+
+    // Called from org-chart-d3.js's onExpandOrCollapse hook — see
+    // OrgChart.razor's method of the same name for the full rationale.
+    [JSInvokable]
+    public async Task<string> GetEmployeeCardsForOrgAsync(string orgCode)
+    {
+        if (string.IsNullOrWhiteSpace(_companyId) || !_loadedOrgCodes.Add(orgCode))
+            return "[]";
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var cards = await OrgChartNodeBuilder.BuildEmployeeCardsForOrgAsync(context, _companyId, orgCode);
+
+        var employeeCount = cards.Count(n => !n.IsVacant);
+        if (employeeCount > 0)
+        {
+            await AuditLogger.LogAccessAsync("Hremployee", null, isSensitive: true,
+                note: $"org chart tab expand — org {orgCode}: {employeeCount} employee photo(s)/name(s) shown across {cards.Count} position card(s)");
+
+            // The PDPA badge above the chart was computed once from the
+            // whole-tree load before this method existed — now that
+            // employee data only appears as units get expanded, flip it on
+            // the first expand that actually reveals anyone and re-render
+            // (this runs outside Blazor's normal render cycle, invoked
+            // directly from JS, so StateHasChanged must be called explicitly).
+            if (_chartEmployeeCount == 0)
+            {
+                _chartEmployeeCount = employeeCount;
+                StateHasChanged();
+            }
+        }
+
+        return JsonSerializer.Serialize(cards, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
     }
 
     private async Task OnRootOrgChangedAsync(long? newRootOrgId)

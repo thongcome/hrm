@@ -130,6 +130,25 @@
         color: var(--mud-palette-text-secondary, #999);
     }
 
+    /* Department-level skeleton card (OrgChartNodeBuilder Tier 1) — shown
+       before a unit is expanded; no person/avatar, just a headcount badge. */
+    .org-chart-card-org-body {
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .org-chart-card-headcount {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--mud-palette-text-primary, #212121);
+    }
+
+    .org-chart-card-headcount-label {
+        font-size: 0.65rem;
+        font-weight: 400;
+        color: var(--mud-palette-text-secondary, #777);
+    }
+
     .org-chart-clickable {
         cursor: pointer;
     }
@@ -149,7 +168,7 @@
         <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
     </MudStack>
     <MudText Typo="Typo.body2" Class="mt-1 mb-2">
-        1 การ์ด = 1 ตำแหน่ง/เลขที่อัตรา (รวมตำแหน่งว่าง) — ลากพื้นหลังเพื่อเลื่อนดู, scroll เพื่อซูม, กดปุ่มเล็กใต้การ์ดเพื่อย่อ/ขยายสายงานใต้หน่วยงานนั้น
+        เริ่มต้นแสดงเฉพาะหน่วยงาน (ตัวเลขในการ์ด = จำนวนคนในหน่วยงานนั้น) — กดปุ่มเล็กใต้การ์ดเพื่อขยายดูรายชื่อ/ตำแหน่งของหน่วยงานนั้น (โหลดเฉพาะตอนขยายเพื่อความเร็ว) — ลากพื้นหลังเพื่อเลื่อนดู, scroll เพื่อซูม
         คลิกที่ชื่อสังกัด (แถบหัวการ์ด) เพื่อไปหน้ารายละเอียดสังกัด, คลิกที่ชื่อพนักงานเพื่อไปหน้าประวัติพนักงาน —
         สีของแถบหัวการ์ดแสดงระดับชั้นหน่วยงาน — ผังนี้ขับเคลื่อนด้วยไลบรารี <a href="https://github.com/bumbeishvili/org-chart" target="_blank">d3-org-chart</a> (MIT license)
     </MudText>
@@ -200,23 +219,48 @@
     private DotNetObjectReference<OrgChart>? _dotNetRef;
     private bool _isFullscreen;
 
+    private readonly HashSet<string> _loadedOrgCodes = new();
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) { _loading = false; return; }
 
+        // Tier 1 only — org-unit skeleton (fast even at AutoX scale: 157
+        // units regardless of headcount). Employee/position cards for a
+        // given unit are fetched on demand via GetEmployeeCardsForOrgAsync
+        // when the user expands that unit's node client-side (see class
+        // comment on OrgChartNodeBuilder for why the old whole-tree
+        // BuildAsync call here made this page visibly lag on real data).
         await using var context = await DbFactory.CreateDbContextAsync();
-        _nodes = await OrgChartNodeBuilder.BuildAsync(context, _companyId, rootOrgCode: RootOrgCode);
+        _nodes = await OrgChartNodeBuilder.BuildOrgSkeletonAsync(context, _companyId, rootOrgCode: RootOrgCode);
 
-        var employeeCount = _nodes.Count(n => !n.IsVacant);
+        _loading = false;
+    }
+
+    // Called from org-chart-d3.js's onExpandOrCollapse hook the first time a
+    // given org unit's node is expanded — returns that unit's position/
+    // employee cards as JSON for the JS side to add into the live chart via
+    // chart.addNode(), instead of the server ever building or shipping
+    // cards for units nobody has looked at.
+    [JSInvokable]
+    public async Task<string> GetEmployeeCardsForOrgAsync(string orgCode)
+    {
+        if (string.IsNullOrWhiteSpace(_companyId) || !_loadedOrgCodes.Add(orgCode))
+            return "[]";
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var cards = await OrgChartNodeBuilder.BuildEmployeeCardsForOrgAsync(context, _companyId, orgCode);
+
+        var employeeCount = cards.Count(n => !n.IsVacant);
         if (employeeCount > 0)
         {
             await AuditLogger.LogAccessAsync("Hremployee", null, isSensitive: true,
-                note: $"org chart view — {employeeCount} employee photo(s)/name(s) shown across {_nodes.Count} position card(s)");
+                note: $"org chart expand — org {orgCode}: {employeeCount} employee photo(s)/name(s) shown across {cards.Count} position card(s)");
         }
 
-        _loading = false;
+        return JsonSerializer.Serialize(cards, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

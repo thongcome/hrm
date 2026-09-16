@@ -22,12 +22,20 @@ window.OrgChartD3 = {
     delegatedContainerId: null,
     fullscreenListener: null,
 
+    // Org units whose employee/position cards have already been fetched
+    // this render — guards against re-fetching on repeated expand/collapse
+    // toggles of the same node (server-side also no-ops via _loadedOrgCodes,
+    // but checking here first avoids a round-trip for the common case).
+    loadedOrgCodes: null,
+
     render: function (containerId, nodesJson, dotNetRef) {
         var nodes = JSON.parse(nodesJson);
         var container = document.getElementById(containerId);
         if (!container) return;
+        var self = this;
 
         this.dotNetRef = dotNetRef || null;
+        this.loadedOrgCodes = {};
 
         var levelColors = ['#1e2a44', '#2f89b0', '#7c8f3c', '#5b5b7c'];
 
@@ -40,9 +48,28 @@ window.OrgChartD3 = {
             .data(nodes)
             .nodeWidth(function () { return 170; })
             .nodeHeight(function () { return 92; })
+            .onExpandOrCollapse(function (node) {
+                self.onOrgNodeExpandOrCollapse(node);
+            })
             .nodeContent(function (d) {
                 var p = d.data;
                 var headerColor = levelColors[d.depth % levelColors.length];
+
+                // Department-level skeleton card (see OrgChartNodeBuilder —
+                // Tier 1) — no person, just the unit name + a headcount
+                // badge. Its own employee/position cards are fetched lazily
+                // the first time this card is expanded (onOrgNodeExpandOrCollapse
+                // below), never loaded up front for units nobody opened.
+                if (p.isOrgNode) {
+                    var headerAttrsOrg = p.orgId ? ' class="org-chart-card-header org-chart-clickable" data-org-id="' + p.orgId + '"' : ' class="org-chart-card-header"';
+                    return '' +
+                        '<div class="org-chart-card org-chart-card-org" style="width:170px;">' +
+                        '  <div' + headerAttrsOrg + ' style="background:' + headerColor + ';">' + escapeHtml(p.orgName || '') + '</div>' +
+                        '  <div class="org-chart-card-body org-chart-card-org-body">' +
+                        '    <div class="org-chart-card-headcount">' + p.headCount + ' <span class="org-chart-card-headcount-label">คน</span></div>' +
+                        '  </div>' +
+                        '</div>';
+                }
 
                 var avatarHtml;
                 if (p.photoUrl) {
@@ -82,6 +109,29 @@ window.OrgChartD3 = {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
         }
+    },
+
+    // Fires on every expand/collapse button click, for every node (org or
+    // person). `node` is a d3-hierarchy node — node.data is our ChartNode,
+    // node.children is truthy exactly when the click just expanded it (the
+    // library already flipped children/_children before calling this
+    // callback — see onButtonClick in d3-org-chart.js). Only org-level
+    // skeleton nodes ever need a lazy fetch; person/position cards have no
+    // children to lazily load. Fire-and-forget: addNode below re-renders
+    // incrementally as cards arrive, there's nothing the caller needs to
+    // await.
+    onOrgNodeExpandOrCollapse: function (node) {
+        var p = node.data;
+        if (!p.isOrgNode || !node.children || this.loadedOrgCodes[p.id] || !this.dotNetRef) return;
+        this.loadedOrgCodes[p.id] = true;
+
+        var self = this;
+        this.dotNetRef.invokeMethodAsync('GetEmployeeCardsForOrgAsync', p.id).then(function (json) {
+            var newNodes = JSON.parse(json);
+            newNodes.forEach(function (n) {
+                self.chart.addNode(n);
+            });
+        });
     },
 
     // Re-registering render() (e.g. switching the root org in the
