@@ -60,6 +60,25 @@ else
                 <tr><td>ประเภทสังกัด</td><td>@OrNa(_sectionTypeName)</td><td>รหัสสังกัด</td><td>@OrNa(_org.code)</td></tr>
                 <tr><td>ชื่อสังกัด</td><td>@_org.name@(string.IsNullOrWhiteSpace(_org.abbr) ? "" : $" ({_org.abbr})")</td><td>Name (English)</td><td>@OrNa(_org.name_en)@(string.IsNullOrWhiteSpace(_org.abbr_en) ? "" : $" ({_org.abbr_en})")</td></tr>
                 <tr><td>บริษัท</td><td colspan="3">@OrNa(_companyName)</td></tr>
+                @if (_org.isCompany)
+                {
+                    <tr><td>ประเภทนิติบุคคล</td><td>@OrNa(_org.BusinessTypeName)</td><td>จดทะเบียน VAT</td><td>@(_org.VatRegistered == true ? "ใช่" : "ไม่ใช่")</td></tr>
+                    <tr>
+                        <td>สโลแกน</td><td>@OrNa(_org.slogan)</td>
+                        <td>ลิงก์แผนที่</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(_org.MapUrl))
+                            {
+                                <MudLink Href="@_org.MapUrl" Target="_blank">เปิดแผนที่</MudLink>
+                            }
+                            else
+                            {
+                                <text>-</text>
+                            }
+                        </td>
+                    </tr>
+                    <tr><td>พันธกิจ</td><td colspan="3">@OrNa(_org.mission)</td></tr>
+                }
                 <tr>
                     <td>อยู่ภายใต้สังกัด</td>
                     <td colspan="3">

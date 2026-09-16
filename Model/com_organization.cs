@@ -179,6 +179,26 @@ public partial class com_organization
     [StringLength(50)]
     public string? abbr_en { get; set; }
 
+    // เฉพาะ node ที่ isCompany=true — บาง node (เช่นบริษัทลูกในกลุ่มที่ยังไม่มีแถว
+    // com_company ของตัวเอง อย่าง ADHOLD/ADDIGITAL/ADMOVIE) ไม่มีทางเชื่อม companyid
+    // ไปหา com_company ได้เลย (เห็นได้จาก OrgUnitEdit.razor: dropdown "บริษัท" ที่ผูกกับ
+    // com_company โชว์เฉพาะตอน istop=true เท่านั้น) จึงต้องมีชุดข้อมูลเดียวกับ
+    // com_company (BusinessTypeName/VatRegistered/mission/slogan/MapUrl) ซ้ำไว้ตรงนี้
+    // ให้ node ที่เป็นบริษัทจริงแต่ไม่มี com_company row กรอกได้ (CEO, 16 ก.ย. 2569).
+    [StringLength(100)]
+    public string? BusinessTypeName { get; set; }
+
+    public bool? VatRegistered { get; set; }
+
+    [StringLength(4000)]
+    public string? mission { get; set; }
+
+    [StringLength(1000)]
+    public string? slogan { get; set; }
+
+    [StringLength(1000)]
+    public string? MapUrl { get; set; }
+
     // Guards against two admins silently overwriting each other's edits —
     // this is the entity most frequently hand-edited in the Organization
     // module (OrgUnitEdit.razor) and previously had no concurrency

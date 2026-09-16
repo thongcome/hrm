@@ -117,6 +117,23 @@ else
             </MudItem>
             <MudItem xs="12" sm="6" />
 
+            @if (_isCompany)
+            {
+                @* node ที่เป็นบริษัทลูกในกลุ่มแต่ไม่ใช่ istop (เช่น ADHOLD/ADDIGITAL/
+                   ADMOVIE) ไม่มี dropdown "บริษัท" ด้านบนให้เชื่อมกับ com_company —
+                   ชุดข้อมูลนี้จึงเก็บตรงที่ node เอง (CEO, 16 ก.ย. 2569). *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">ข้อมูลบริษัท (สำหรับหน่วยงานที่เป็นบริษัท)</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_businessTypeName" Label="ประเภทนิติบุคคล" HelperText="เช่น บริษัทจำกัด, ห้างหุ้นส่วนจำกัด" MaxLength="100" /></MudItem>
+                <MudItem xs="12" sm="6" Class="d-flex align-center">
+                    <MudSwitch T="bool" @bind-Value="_vatRegistered" Color="Color.Primary" Label="จดทะเบียน VAT" />
+                </MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_slogan" Label="สโลแกน" MaxLength="500" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_mapUrl" Label="ลิงก์แผนที่" MaxLength="500" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_mission" Label="พันธกิจ (Mission)" Lines="2" MaxLength="2000" /></MudItem>
+            }
+
             <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่เริ่มต้นสังกัด" @bind-Date="_startDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
             <MudItem xs="12" sm="6"><MudDatePicker Label="วันที่ยกเลิกสังกัด" @bind-Date="_endDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" Lines="3" /></MudItem>
@@ -173,6 +190,11 @@ else
     private bool _isManPowerCount = true;
     private bool _isCompany;
     private bool _isBranch;
+    private string? _businessTypeName;
+    private bool _vatRegistered;
+    private string? _mission;
+    private string? _slogan;
+    private string? _mapUrl;
     private long? _sectionTypeId;
     private long? _subSectionTypeId;
     private DateTime? _startDate;
@@ -218,6 +240,11 @@ else
         _isManPowerCount = org.isManPowerCount;
         _isCompany = org.isCompany;
         _isBranch = org.isBranch;
+        _businessTypeName = org.BusinessTypeName;
+        _vatRegistered = org.VatRegistered ?? false;
+        _mission = org.mission;
+        _slogan = org.slogan;
+        _mapUrl = org.MapUrl;
         _orgCompanyId = org.companyid;
         _sectionTypeId = _sectionTypes.FirstOrDefault(t => t.Code == org.SectionTypeCode)?.Id;
         _subSectionTypeId = org.SubSectionTypeId;
@@ -320,6 +347,11 @@ else
             existing.isManPowerCount = _isManPowerCount;
             existing.isCompany = _isCompany;
             existing.isBranch = _isBranch;
+            existing.BusinessTypeName = _isCompany ? _businessTypeName : null;
+            existing.VatRegistered = _isCompany ? _vatRegistered : null;
+            existing.mission = _isCompany ? _mission : null;
+            existing.slogan = _isCompany ? _slogan : null;
+            existing.MapUrl = _isCompany ? _mapUrl : null;
             existing.SectionTypeCode = newSectionTypeCode;
             existing.SubSectionTypeId = _subSectionTypeId;
             existing.layer_code = _layerCode;
