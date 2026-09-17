@@ -527,7 +527,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             Note($"E004 ภาษี ก.ค. (เดือนแรก มีเงินได้เดิม 300,000 หักไว้ 5,000) = {byNo["E004"].TaxAmount:N2}");
     }
 
-    // ต.ค.: จ่ายแล้วพบ OT ตกหล่น 5,000 → กลับรายการ → รอบปรับปรุง
+    // ต.ค.: จ่ายแล้วพบ OT ตกหล่น 5,000 → รอบปรับปรุง (ไม่มีรอบกลับรายการอีกต่อไป — ปุ่ม/ฟังก์ชัน Reverse ถูกถอดออกทั้งหมด 17 ก.ย. 2569)
     private async Task ReverseAndAdjustOctoberAsync(IDbContextFactory<HRMContext> factory, PayrollWorkflowService wf, BankFileExportService bank, long octRunId, Dictionary<string, long> ids)
     {
         await using (var ctx = await factory.CreateDbContextAsync())
@@ -535,30 +535,6 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             ctx.HrwOts.Add(NewOt(Co, "E002", "OT2510B", new DateTime(Year, 10, 20), 5000m));
             ctx.Att_DailyAttendances.Add(new Att_DailyAttendance { HremployeeId = ids["E001"], CompanyId = Co, WorkDate = new DateOnly(Year, 10, 20), IsAbsent = true, WorkLocation = AttWorkLocation.Office });
             await ctx.SaveChangesAsync();
-        }
-        var rev = await wf.CreateReversalRunAsync(octRunId, Calc, "OT ของ E002 ตกหล่น 5,000 และ E001 ขาดงาน 20 ต.ค. ไม่ได้หัก");
-        _runs.Add(new RunLog { Id = rev, Period = $"{Year}10", Type = PayrollRunType.Reversal, Month = 10, Label = "รอบกลับรายการ ต.ค." });
-        try { await wf.CreateReversalRunAsync(octRunId, Calc, "ซ้ำ"); Fail("STATE", "กลับรายการซ้ำต้องถูกปฏิเสธ", "ผ่าน"); }
-        catch (InvalidOperationException ex) { Pass("STATE", "กลับรายการซ้ำถูกปฏิเสธ", ex.Message); }
-        try { await wf.CreateReversalRunAsync(rev, Calc, "ซ้อน"); Fail("STATE", "กลับรายการของรอบกลับรายการต้องถูกปฏิเสธ", "ผ่าน"); }
-        catch (Exception ex) { Pass("STATE", "กลับรายการซ้อนถูกปฏิเสธ", ex.GetType().Name); }
-        try { await wf.CalculateAsync(rev, Calc); Fail("STATE", "คำนวณรอบกลับรายการต้องถูกปฏิเสธ", "ผ่าน"); }
-        catch (Exception ex) { Pass("STATE", "คำนวณรอบกลับรายการถูกปฏิเสธ", ex.GetType().Name); }
-        try { await bank.ExportAsync(rev, Approver); Fail("STATE", "ไฟล์ธนาคารของรอบกลับรายการต้องถูกปฏิเสธ", "ผ่าน"); }
-        catch (InvalidOperationException ex) { Pass("STATE", "ไฟล์ธนาคารของรอบกลับรายการถูกปฏิเสธ", ex.Message); }
-
-        await wf.SubmitForReviewAsync(rev, Calc);
-        await wf.ApproveAsync(rev, Approver, "กลับรายการ");
-        await wf.PostAsync(rev, Approver);
-
-        await using (var ctx = await factory.CreateDbContextAsync())
-        {
-            var orig = await ctx.Pay_PayrollEmployees.AsNoTracking().Where(e => e.PayrollRunId == octRunId).ToListAsync();
-            var neg = await ctx.Pay_PayrollEmployees.AsNoTracking().Where(e => e.PayrollRunId == rev).ToListAsync();
-            Expect("REV", "รอบกลับรายการมีแถวเท่ารอบต้นทาง", neg.Count == orig.Count, $"{neg.Count}/{orig.Count}");
-            Near("REV", "Σ สุทธิ ต้นทาง + กลับรายการ = 0", orig.Sum(e => e.NetPay) + neg.Sum(e => e.NetPay), 0m, 0.001m);
-            Near("REV", "Σ ภาษี ต้นทาง + กลับรายการ = 0", orig.Sum(e => e.TaxAmount) + neg.Sum(e => e.TaxAmount), 0m, 0.001m);
-            Near("REV", "Σ ประกันสังคม ต้นทาง + กลับรายการ = 0", orig.Sum(e => e.SocialSecurityAmount) + neg.Sum(e => e.SocialSecurityAmount), 0m, 0.001m);
         }
 
         var adj = await wf.CreateAdjustmentRunAsync(octRunId, Calc);
@@ -1128,12 +1104,6 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         long adj;
         try
         {
-            var rev = await wf.CreateReversalRunAsync(mayRunId, Calc, "ทดสอบกันออกทั้งคนในรอบปรับปรุง");
-            _runs.Add(new RunLog { Id = rev, Period = $"{Year}05", Type = PayrollRunType.Reversal, Month = 5, Label = "PTEST3 รอบกลับรายการ พ.ค. งวด 1" });
-            await wf.SubmitForReviewAsync(rev, Calc);
-            await wf.ApproveAsync(rev, Approver, "กลับรายการ");
-            await wf.PostAsync(rev, Approver);
-
             adj = await wf.CreateAdjustmentRunAsync(mayRunId, Calc);
             _runs.Add(new RunLog { Id = adj, Period = $"{Year}05", Type = PayrollRunType.Adjustment, Month = 5, Label = "PTEST3 รอบปรับปรุง พ.ค. งวด 1 (กันออก D001)" });
             var s = await wf.CalculateAsync(adj, Calc);
@@ -1149,7 +1119,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         }
         catch (Exception ex)
         {
-            Fail("ADJEXCL", "เดินรอบกลับรายการ/ปรับปรุง พ.ค. ไม่ผ่าน", ex.GetBaseException().Message);
+            Fail("ADJEXCL", "เดินรอบปรับปรุง พ.ค. ไม่ผ่าน", ex.GetBaseException().Message);
             return;
         }
 

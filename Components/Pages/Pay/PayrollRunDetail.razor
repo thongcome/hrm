@@ -228,22 +228,6 @@ else
             {
                 <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">@L.Translate("CreateAdjustmentButton")</MudButton>
             }
-            @if (_allowed.Contains(PayrollAction.Reverse))
-            {
-                <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="@(() => _showReverse = !_showReverse)" Disabled="_busy">@L.Translate("ReverseRunButton")</MudButton>
-            }
-            @if (_showReverse && _allowed.Contains(PayrollAction.Reverse))
-            {
-                @* BA item #2: a Posted/Paid run is immutable (DB triggers refuse edits to its
-                   rows). The only correction path is a reversal run that negates every line. *@
-                <MudPaper Class="pa-3 mt-2" Outlined="true" Style="width:100%;">
-                    <MudText Typo="Typo.body2" Class="mb-2">@L.Translate("ReverseRunReasonPrompt")</MudText>
-                    <div class="d-flex align-center flex-wrap" style="gap:8px;">
-                        <MudTextField T="string" @bind-Value="_reverseReason" Label="เหตุผล" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:360px;" />
-                        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ReverseRunAsync" Disabled="@(_busy || string.IsNullOrWhiteSpace(_reverseReason))">ยืนยันกลับรายการ</MudButton>
-                    </div>
-                </MudPaper>
-            }
             @if (_canGenerateDocuments)
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GeneratePayslipsAsync" Disabled="_busy">@L.Translate("GeneratePayslipsButton")</MudButton>
@@ -508,10 +492,6 @@ else
     // A first-ever run with no baseline can flag 10k+ anomalies; rendering them all
     // freezes the browser. Show the worst N, the count tells HR the true size.
     private const int AnomalyDisplayCap = 50;
-
-    // #2 reversal of a Posted/Paid run
-    private bool _showReverse;
-    private string _reverseReason = "";
 
     // Phase B pre-flight / holds
     private PayrollPreflightService.Report? _preflight;
@@ -897,27 +877,6 @@ else
 
         await RunActionAsync(async uid => await WorkflowService.CancelAsync(RunId, uid, "Cancelled by user"), L.Translate("RunCancelledSuccess"),
             ProgramRoleService.ProgramAction.Delete);
-    }
-
-    private async Task ReverseRunAsync()
-    {
-        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
-        _busy = true;
-        try
-        {
-            var actorUserId = await GetCurrentUserIdAsync();
-            var newRunId = await WorkflowService.CreateReversalRunAsync(RunId, actorUserId, _reverseReason);
-            Snackbar.Add($"สร้างรอบกลับรายการ #{newRunId} แล้ว — รอบเดิม #{RunId} ไม่ถูกแก้", Severity.Success);
-            Navigation.NavigateTo($"/pay/runs/{newRunId}");
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _busy = false;
-        }
     }
 
     private async Task CreateAdjustmentAsync()

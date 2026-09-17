@@ -23,7 +23,6 @@ public class PayrollRunTypeGuardTests
 
         var postedReversal = new Pay_PayrollRun { RunType = PayrollRunType.Reversal, Status = PayrollRunStatus.Posted };
         var allowedPosted = PayrollWorkflowService.GetAllowedActions(postedReversal);
-        Assert.DoesNotContain(PayrollAction.Reverse, allowedPosted);
         Assert.DoesNotContain(PayrollAction.CreateAdjustment, allowedPosted);
         Assert.Contains(PayrollAction.MarkPaid, allowedPosted);
     }
