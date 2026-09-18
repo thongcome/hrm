@@ -33,15 +33,34 @@ public class SeveranceCalculatorTests
     }
 
     [Fact]
-    public void Daily_wage_rounds_away_from_zero_at_the_midpoint()
+    public void Amount_is_computed_from_the_exact_monthly_wage_not_a_pre_rounded_daily_rate()
     {
-        // 10000 / 30 = 333.333... -> 333.33. serviceDays=364 (30-day tier) —
-        // NOT AddDays(364), which lands on serviceDays=365 (the 90-day tier).
+        // 30 days' wage of a 10,000 salary is exactly 10,000 — the old code rounded the daily
+        // rate first (333.33 × 30 = 9,999.90). The displayed daily wage is still 333.33.
+        // serviceDays=364 (30-day tier) — NOT AddDays(364), which lands on 365 (the 90-day tier).
         var result = SeveranceCalculator.Calculate(HireDate, LastWorkDateForServiceDays(364), monthlyWage: 10000m);
 
         Assert.Equal(30, result.EntitledDays);
         Assert.Equal(333.33m, result.DailyWage);
-        Assert.Equal(Math.Round(333.33m * 30, 2, MidpointRounding.AwayFromZero), result.Amount);
+        Assert.Equal(10000m, result.Amount);
+    }
+
+    [Fact]
+    public void Daily_wage_employee_gets_daily_wage_times_entitled_days()
+    {
+        // audit H-11: ม.118 ลูกจ้างรายวัน = ค่าจ้างรายวันอัตราสุดท้าย × วัน — 4 ปี → 180 วัน × 500 = 90,000
+        var result = SeveranceCalculator.CalculateForDailyWage(HireDate, LastWorkDateForServiceDays(4 * 365), dailyWage: 500m);
+
+        Assert.Equal(180, result.EntitledDays);
+        Assert.Equal(500m, result.DailyWage);
+        Assert.Equal(90000m, result.Amount);
+    }
+
+    [Fact]
+    public void Twenty_years_gives_400_days()
+    {
+        var result = SeveranceCalculator.Calculate(HireDate, LastWorkDateForServiceDays(7300), monthlyWage: 30000m);
+        Assert.Equal(400000m, result.Amount);   // 30,000 ÷ 30 × 400
     }
 
     [Fact]

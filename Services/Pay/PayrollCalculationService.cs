@@ -61,25 +61,15 @@ public class PayrollCalculationService
         if (run.Status != PayrollRunStatus.Draft && run.Status != PayrollRunStatus.Calculated)
             throw new InvalidOperationException($"Cannot calculate a run in status {run.Status}. Only Draft or Calculated runs can be (re)calculated.");
 
-        // ── ชนิดของรอบกำหนดว่าคำนวณอะไร (audit C1/C2, 11 ก.ย. 2569) ─────────────────
-        //   Regular    = เงินเดือนเต็มงวด
-        //   Reversal   = ค่าลบของรอบต้นทาง สร้างสำเร็จรูปตอนกลับรายการ — ห้ามคำนวณใหม่เด็ดขาด
-        //   Adjustment = คำนวณงวดนั้นใหม่ทั้งงวดหลังกลับรายการรอบเดิมแล้ว (reverse → adjust)
-        //                ถ้ายังไม่กลับรายการ การคำนวณจะกลายเป็นจ่ายซ้ำ จึงต้องมี reversal ก่อน
-        //   Bonus      = "รอบเสริม" — จ่ายเฉพาะรายการเฉพาะกิจที่ HR อนุมัติไว้ให้งวดนี้ (โบนัส
-        //                คอมมิชชัน ฯลฯ) ไม่มีเงินเดือน/OT/สวัสดิการ/ประกันสังคม/กองทุน/เงินกู้
-        //                ภาษีคิดแบบส่วนต่าง (ภาษีทั้งปีรวมโบนัส − ภาษีทั้งปีไม่รวมโบนัส)
-        if (run.RunType == PayrollRunType.Reversal)
-            throw new InvalidOperationException("รอบกลับรายการคำนวณใหม่ไม่ได้ — ยอดเป็นค่าลบของรอบต้นทางเสมอ ถ้าต้องแก้ ให้ยกเลิกรอบนี้แล้วกลับรายการใหม่");
-        if (run.RunType == PayrollRunType.Adjustment)
-        {
-            var reversed = run.AdjustmentOfRunId is long origId && await context.Pay_PayrollRuns.AnyAsync(r =>
-                r.AdjustmentOfRunId == origId && r.RunType == PayrollRunType.Reversal
-                && r.Status != PayrollRunStatus.Cancelled, ct);
-            if (!reversed)
-                throw new InvalidOperationException(
-                    $"รอบปรับปรุงคำนวณได้ต่อเมื่อรอบต้นทาง #{run.AdjustmentOfRunId} ถูกกลับรายการแล้ว — ไม่งั้นพนักงานจะได้เงินงวดนี้สองครั้ง");
-        }
+        // ── ชนิดของรอบกำหนดว่าคำนวณอะไร ─────────────────────────────────────────────
+        //   Regular = เงินเดือนเต็มงวด
+        //   Bonus   = "รอบเสริม" — จ่ายเฉพาะรายการเฉพาะกิจที่ HR อนุมัติไว้ให้งวดนี้ (โบนัส
+        //             คอมมิชชัน ฯลฯ) ไม่มีเงินเดือน/OT/สวัสดิการ/ประกันสังคม/กองทุน/เงินกู้
+        //             ภาษีคิดแบบส่วนต่าง (ภาษีทั้งปีรวมโบนัส − ภาษีทั้งปีไม่รวมโบนัส)
+        // ไม่มีรอบกลับรายการ/รอบปรับปรุง (CEO, 17 ก.ย. 2569): งวดที่ปิดแล้วไม่ถูกเปิดหรือหักล้างทั้งงวด
+        // ถ้าข้อมูลของใครผิด แก้ด้วยเงินได้/เงินหักรายครั้ง (Pay_AdhocPayItem) ในงวดถัดไปเฉพาะคนนั้น
+        if (!PayrollRunTypes.IsSupported(run.RunType))
+            throw new InvalidOperationException(PayrollRunTypes.UnsupportedMessage);
         var supplementary = run.RunType == PayrollRunType.Bonus;
 
         // ลำดับงวดต้องถูก (audit H3): ภาษีสะสมของงวดนี้อ่านจากงวดก่อนหน้าที่ "อนุมัติแล้ว" เท่านั้น
@@ -88,7 +78,7 @@ public class PayrollCalculationService
         var yearStartForOrder = new DateOnly(run.PeriodStart.Year, 1, 1);
         var openEarlier = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == run.CompanyId && r.Id != run.Id
-                        && r.RunType != PayrollRunType.Reversal
+                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus)
                         && r.PeriodStart >= yearStartForOrder && r.PeriodStart < run.PeriodStart
                         && r.Status != PayrollRunStatus.Cancelled && r.Status < PayrollRunStatus.Approved)
             .Select(r => r.PayrollPeriod).Distinct().OrderBy(p => p).ToListAsync(ct);
@@ -98,20 +88,17 @@ public class PayrollCalculationService
         var approvedLater = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == run.CompanyId && r.Id != run.Id
                         && r.PeriodStart > run.PeriodStart && r.PeriodStart.Year == run.PeriodStart.Year
-                        && r.Status >= PayrollRunStatus.Approved && r.Status != PayrollRunStatus.Cancelled)
+                        && (r.Status == PayrollRunStatus.Approved || r.Status == PayrollRunStatus.Posted || r.Status == PayrollRunStatus.Paid))
             .Select(r => r.PayrollPeriod).Distinct().OrderBy(p => p).ToListAsync(ct);
-        // รอบปรับปรุง = แก้งวดเก่าที่กลับรายการแล้ว ยอมให้ทำแม้งวดหลังอนุมัติไปแล้ว (ยอดสะสมของงวดหลัง
-        // จะปรับตัวเองในรอบปกติถัดไป เพราะ YTD อ่านจากรอบที่อนุมัติทั้งหมด: ต้นทาง + กลับรายการ + ปรับปรุง)
         if (run.RunType == PayrollRunType.Regular && approvedLater.Count > 0)
             throw new InvalidOperationException(
-                $"งวด {string.Join(", ", approvedLater)} อนุมัติไปแล้วโดยใช้ยอดสะสมจากงวดนี้ — คำนวณงวดนี้ใหม่ไม่ได้ ถ้าต้องแก้ให้กลับรายการงวดหลังก่อน");
+                $"งวด {string.Join(", ", approvedLater)} อนุมัติไปแล้วโดยใช้ยอดสะสมจากงวดนี้ — คำนวณงวดนี้ใหม่ไม่ได้ ถ้าข้อมูลงวดนี้ผิด ให้บันทึกเงินได้/เงินหักรายครั้งในงวดที่ยังเปิดอยู่");
         if (supplementary)
         {
             // รอบโบนัสอาศัยเงินเดือนงวดเดียวกันเป็นฐานประมาณการทั้งปี จึงต้องมีรอบปกติที่อนุมัติแล้ว
-            var regularApproved = await context.Pay_PayrollRuns.AnyAsync(r =>
+            var regularApproved = await context.Pay_PayrollRuns.Where(PayrollRunFilters.RunIsFinal).AnyAsync(r =>
                 r.CompanyId == run.CompanyId && r.PayrollPeriod == run.PayrollPeriod
-                && r.RunType == PayrollRunType.Regular && r.Status >= PayrollRunStatus.Approved
-                && r.Status != PayrollRunStatus.Cancelled, ct);
+                && r.RunType == PayrollRunType.Regular, ct);
             if (!regularApproved)
                 throw new InvalidOperationException($"รอบโบนัสของงวด {run.PayrollPeriod} คำนวณได้หลังรอบปกติของงวดเดียวกันอนุมัติแล้ว");
         }
@@ -209,20 +196,21 @@ public class PayrollCalculationService
         // จากฐานเท่าไร แล้วคิดจากฐานทั้งเดือนหักส่วนที่หักไปแล้ว — ไม่ใช่หักเต็มเพดานทั้งสองงวด
         var monthStart = new DateOnly(run.PeriodStart.Year, run.PeriodStart.Month, 1);
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
-        // นับทุกชนิดรอบยกเว้นโบนัส: รอบกลับรายการ (ค่าลบ) ต้องหักล้างรอบต้นทาง ไม่งั้นรอบปรับปรุงของเดือนเดียวกันจะเห็นว่า
-        // "เดือนนี้หักครบ 750 แล้ว" แล้วหักประกันสังคมเป็น 0 (พบจากเทสทั้งปี 2568: รอบปรับปรุง ต.ค. ขาดประกันสังคมทุกคน)
+        // เฉพาะรอบปกติที่จ่ายจริง (ไม่นับโบนัส และไม่นับคนที่ถูกกันออก — เงินสมทบของคนนั้นไม่ได้ถูกหักจริง)
         var sameMonthRows = await context.Pay_PayrollEmployees
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(e => e.PayrollRunId != run.Id
                         && e.Pay_PayrollRun.CompanyId == run.CompanyId
-                        && e.Pay_PayrollRun.RunType != PayrollRunType.Bonus
-                        && e.Pay_PayrollRun.PeriodStart >= monthStart && e.Pay_PayrollRun.PeriodStart <= monthEnd
-                        && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
-                        && e.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                        && e.Pay_PayrollRun.RunType == PayrollRunType.Regular
+                        && e.Pay_PayrollRun.PeriodStart >= monthStart && e.Pay_PayrollRun.PeriodStart <= monthEnd)
             .Select(e => new { e.Id, e.HremployeeId, e.SocialSecurityAmount, e.SocialSecurityCompanyAmount })
             .ToListAsync(ct);
         var sameMonthSsoByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.SocialSecurityAmount));
         var sameMonthSsoCompanyByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.SocialSecurityCompanyAmount));
         var sameMonthIds = sameMonthRows.Select(r => r.Id).ToList();
+        // จ่ายเดือนละ 2 งวด (audit H-07): รายการ "รายเดือน" (เบี้ยเลี้ยงที่ไม่คิดตามสัดส่วน, เบี้ยประกันกลุ่ม, หักสหกรณ์)
+        // เข้าเฉพาะงวดแรกของเดือนที่พนักงานคนนั้นได้รับเงินจริง — คนที่มีแถวจ่ายแล้วในงวดก่อนของเดือนนี้ไม่ใส่ซ้ำ
+        var paidEarlierThisMonth = sameMonthRows.Select(r => r.HremployeeId).ToHashSet();
         var sameMonthSsoBaseByEmp = new Dictionary<long, decimal>();
         if (sameMonthIds.Count > 0)
         {
@@ -296,18 +284,30 @@ public class PayrollCalculationService
                     .Select(a => a.HremployeeId).Distinct().ToListAsync(ct)).ToHashSet();
             eligibleEmployees = eligibleEmployees.Where(e => withItems.Contains(e.id)).ToList();
 
-            // ฐานของรอบโบนัส = ยอดสุทธิของงวดนี้จากทุกรอบที่ไม่ใช่โบนัส (ปกติ + กลับรายการ + ปรับปรุง = ตัวเลขล่าสุดของงวด)
+            // ฐานของรอบโบนัส = รอบปกติของงวดนี้ที่จ่ายจริง
             regularRowsThisPeriod = (await context.Pay_PayrollEmployees
+                    .Where(PayrollRunFilters.RowWasPaid)
                     .Where(pe => pe.Pay_PayrollRun.CompanyId == run.CompanyId
                                  && pe.Pay_PayrollRun.PayrollPeriod == run.PayrollPeriod
-                                 && pe.Pay_PayrollRun.RunType != PayrollRunType.Bonus
-                                 && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
-                                 && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
-                    .Select(pe => new { pe.HremployeeId, pe.GrossEarnings, pe.TaxDeductionAmount, pe.Pay_PayrollRun.TermNo })
+                                 && pe.Pay_PayrollRun.RunType == PayrollRunType.Regular)
+                    // Recurring taxable income only (audit H-10): the bonus difference method projects the
+                    // regular month over the rest of the year, so it must not include non-taxable items
+                    // (GrossEarnings did) nor this period's one-off taxable ad-hoc earnings (commission etc.).
+                    .Select(pe => new
+                    {
+                        pe.HremployeeId,
+                        pe.TaxableIncome,
+                        OneOffTaxable = pe.Pay_PayrollLineItems
+                            .Where(li => li.SourceRefTable == "Pay_AdhocPayItem" && li.SignFlag > 0
+                                         && context.Pay_AdhocPayItems.Any(a => a.Id == li.SourceRefId && a.IsTaxable))
+                            .Sum(li => (decimal?)li.Amount) ?? 0m,
+                        pe.TaxDeductionAmount,
+                        pe.Pay_PayrollRun.TermNo,
+                    })
                     .ToListAsync(ct))
                 .GroupBy(pe => pe.HremployeeId)
                 .ToDictionary(g => g.Key, g => (
-                    Gross: g.Sum(x => x.GrossEarnings),
+                    Gross: g.Sum(x => x.TaxableIncome - x.OneOffTaxable),
                     FlatDeduction: g.Sum(x => x.TaxDeductionAmount),
                     // งวดที่มีเงินจริงในเดือนนี้ (บริษัท 2 งวด: ถ้าอนุมัติแล้วทั้งสองงวด Σ คือทั้งเดือน ห้ามคูณ 2 ซ้ำ)
                     Terms: Math.Max(1, g.Select(x => x.TermNo).Distinct().Count())));
@@ -425,7 +425,14 @@ public class PayrollCalculationService
 
             var joinDate = emp.WorkDate.HasValue ? DateOnly.FromDateTime(emp.WorkDate.Value) : (DateOnly?)null;
             var resignDate = emp.ResignDate.HasValue ? DateOnly.FromDateTime(emp.ResignDate.Value) : (DateOnly?)null;
-            var proration = ProrationCalculator.Calculate(run.PeriodStart, run.PeriodEnd, joinDate, resignDate, prorationDivisor);
+            // Daily-wage employees (DAILY_WAGE set, no monthly salary) are paid per
+            // day instead of a pro-rated monthly amount. Which days count is policy:
+            // calendar days in the period, or attended days once time clocks exist.
+            var isDailyWage = (emp.DailyWage ?? 0m) > 0m && (emp.SalaryAmt ?? 0m) <= 0m;
+            var schedule = PayScheduleResolver.Resolve(emp.id,
+                isDailyWage ? PayScheduleGroup.DailyWage : PayScheduleGroup.MonthlySalaried,
+                run.PeriodStart, paySchedules, payScheduleOverrides);
+            var proration = ProrationCalculator.Calculate(run.PeriodStart, run.PeriodEnd, joinDate, resignDate, prorationDivisor, schedule.MonthFraction);
 
             var payEmp = new Pay_PayrollEmployee
             {
@@ -450,13 +457,6 @@ public class PayrollCalculationService
 
             var empAttendance = attendanceByEmployee.TryGetValue(emp.id, out var attRows) ? attRows : null;
 
-            // Daily-wage employees (DAILY_WAGE set, no monthly salary) are paid per
-            // day instead of a pro-rated monthly amount. Which days count is policy:
-            // calendar days in the period, or attended days once time clocks exist.
-            var isDailyWage = (emp.DailyWage ?? 0m) > 0m && (emp.SalaryAmt ?? 0m) <= 0m;
-            var schedule = PayScheduleResolver.Resolve(emp.id,
-                isDailyWage ? PayScheduleGroup.DailyWage : PayScheduleGroup.MonthlySalaried,
-                run.PeriodStart, paySchedules, payScheduleOverrides);
             // บริษัทผสม (เช่น รายเดือนจ่ายเดือนละงวด รายวันจ่าย 2 งวด): คนที่ปฏิทินเป็นเดือนละงวดรับเต็มเดือนในงวดที่ 1
             // และต้องไม่ถูกจ่ายซ้ำในงวดที่ 2 ของเดือนเดียวกัน
             if (run.TermNo >= 2 && schedule.PeriodsPerMonth == 1 && !supplementary)
@@ -474,10 +474,16 @@ public class PayrollCalculationService
                 var useAttendance = dailyMode == PayDailyWageDaysMode.AttendanceDays && empAttendance is { Count: > 0 };
                 int paidDays;
                 string paidDaysNote;
+                var spanStartD = joinDate is DateOnly jd && jd > run.PeriodStart ? jd : run.PeriodStart;
+                var spanEndD = resignDate is DateOnly rd && rd < run.PeriodEnd ? rd : run.PeriodEnd;
+                // ม.56 (audit H-09): วันหยุดตามประเพณีจ่ายค่าจ้างให้ลูกจ้างรายวันด้วย — นับเฉพาะที่ตรงกับวันทำงานของบริษัท
+                // (วันหยุดที่ตรงวันหยุดประจำสัปดาห์มีวันหยุดชดเชยในรายการอยู่แล้ว จึงไม่นับซ้ำ)
+                var paidHolidays = spanEndD < spanStartD ? 0 : companyHolidays.Count(h => h >= spanStartD && h <= spanEndD
+                    && HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(h, h, new HashSet<DateOnly>(), companyWorkDaysMask) > 0);
                 if (useAttendance)
                 {
-                    paidDays = empAttendance!.Count(a => !a.IsAbsent);
-                    paidDaysNote = "วันที่มีการลงเวลา";
+                    paidDays = empAttendance!.Count(a => !a.IsAbsent) + paidHolidays;
+                    paidDaysNote = $"วันที่มีการลงเวลา + วันหยุดตามประเพณี {paidHolidays} วัน";
                 }
                 else if (dailyMode == PayDailyWageDaysMode.CalendarDays)
                 {
@@ -486,11 +492,13 @@ public class PayrollCalculationService
                 }
                 else
                 {
-                    var spanStart = joinDate is DateOnly j && j > run.PeriodStart ? j : run.PeriodStart;
-                    var spanEnd = resignDate is DateOnly r && r < run.PeriodEnd ? r : run.PeriodEnd;
-                    paidDays = spanEnd < spanStart ? 0
-                        : (int)HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(spanStart, spanEnd, companyHolidays, companyWorkDaysMask);
-                    paidDaysNote = "วันทำงานของบริษัทในงวด (ไม่นับวันหยุดประจำสัปดาห์และวันหยุดบริษัท)";
+                    // วันทำงานของบริษัท (รวมวันหยุดตามประเพณีที่ตรงวันทำงาน) − วันที่ขาดงาน (audit H-09: เดิมวันหยุดไม่ได้ค่าจ้าง
+                    // แต่วันขาดงานได้ค่าจ้าง ซึ่งกลับด้านกับกฎหมาย)
+                    var workdays = spanEndD < spanStartD ? 0
+                        : (int)HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(spanStartD, spanEndD, new HashSet<DateOnly>(), companyWorkDaysMask);
+                    var absentDays = empAttendance?.Count(a => a.IsAbsent) ?? 0;
+                    paidDays = Math.Max(0, workdays - absentDays);
+                    paidDaysNote = $"วันทำงานของบริษัทในงวด รวมวันหยุดตามประเพณี {paidHolidays} วัน{(absentDays > 0 ? $" หักขาดงาน {absentDays} วัน" : "")}";
                 }
                 baseSalary = Math.Round(emp.DailyWage!.Value * paidDays, 2, MidpointRounding.AwayFromZero);
                 lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
@@ -500,9 +508,14 @@ public class PayrollCalculationService
             {
                 // งวดครึ่งเดือน (ปฏิทินจ่าย 2 งวด/เดือน) จ่ายเงินเดือน × ส่วนของเดือน (½) — พบจากเทสทั้งปี 2568 ว่าเดิมจ่ายเต็มเดือนทั้งสองงวด
                 var termNote = schedule.MonthFraction != 1m ? $" × ส่วนของเดือน (งวดที่ {schedule.TermNo}/{schedule.PeriodsPerMonth}) {schedule.MonthFraction:0.##}" : "";
-                baseSalary = Math.Round((emp.SalaryAmt ?? 0m) * schedule.MonthFraction * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
+                // ExactFactor, not the 4-decimal display factor (audit L-02); the divisor shrinks with the
+                // period (30 × ½) so a half-month is not prorated twice (audit H-06).
+                baseSalary = Math.Round((emp.SalaryAmt ?? 0m) * schedule.MonthFraction * proration.ExactFactor, 2, MidpointRounding.AwayFromZero);
+                var divisorNote = prorationDivisor is int pd && proration.ActualWorkingDays < proration.WorkingDaysInPeriod
+                    ? (pd * schedule.MonthFraction).ToString("0.##")
+                    : proration.WorkingDaysInPeriod.ToString();
                 lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
-                    $"ฐานเงินเดือน {(emp.SalaryAmt ?? 0m):N2}{termNote} × สัดส่วนวันทำงาน {proration.ActualWorkingDays}/{(prorationDivisor is int pd && proration.ActualWorkingDays < proration.WorkingDaysInPeriod ? pd : proration.WorkingDaysInPeriod)} วัน ({proration.ProrationFactor:P2}) = {baseSalary:N2}"));
+                    $"ฐานเงินเดือน {(emp.SalaryAmt ?? 0m):N2}{termNote} × สัดส่วนวันทำงาน {proration.ActualWorkingDays}/{divisorNote} วัน ({proration.ProrationFactor:P2}) = {baseSalary:N2}"));
             }
 
             // Late / absence deductions from Att_DailyAttendance per policy. Monthly
@@ -569,6 +582,7 @@ public class PayrollCalculationService
             // pure Pick (company default / position / individual). Emitted as
             // earning lines sourced from Wel_BenefitType.
             decimal welfareAllowanceTotal = 0m, welfareTaxableAllowance = 0m, ssoWageBaseAllowance = 0m, pfWageBaseAllowance = 0m;
+            var takeMonthlyItems = !supplementary && !paidEarlierThisMonth.Contains(emp.id);
             if (!supplementary && monthlyAllowanceBenefits.Count > 0)
             {
                 long? empPos = empPosExecTypes.TryGetValue(emp.id, out var pv) ? pv : null;
@@ -582,9 +596,11 @@ public class PayrollCalculationService
                     // Pay Element flag: a pro-rated element is scaled by the same working-day
                     // factor as base salary (a mid-month joiner gets a partial allowance).
                     var prorateNote = "";
+                    // A flat (non-prorated) monthly allowance is paid once a month, not once per term.
+                    if (!itemType.IsProrated && !takeMonthlyItems) continue;
                     if (itemType.IsProrated && (proration.ProrationFactor != 1m || schedule.MonthFraction != 1m))
                     {
-                        amt = Math.Round(amt * schedule.MonthFraction * proration.ProrationFactor, 2, MidpointRounding.AwayFromZero);
+                        amt = Math.Round(amt * schedule.MonthFraction * proration.ExactFactor, 2, MidpointRounding.AwayFromZero);
                         prorateNote = $" × สัดส่วนวันทำงาน {proration.ProrationFactor:P2}{(schedule.MonthFraction != 1m ? $" × ส่วนของเดือน {schedule.MonthFraction:0.##}" : "")}";
                     }
                     lineItems.Add(NewLine(itemType, PayLineSourceType.Allowance, amt, 1, ++seq, "Wel_BenefitType", wb.Id,
@@ -630,8 +646,8 @@ public class PayrollCalculationService
                 lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, "Pay_ProvidentFundElection", election?.Id,
                     $"อัตราสะสมพนักงาน {pfEmployeeRate:0.##}% × ค่าจ้างฐานกองทุน {pfWageBase:N2} (เฉพาะรายการที่ตั้งธง \"ฐานกองทุน\" ในแค็ตตาล็อก) = {pf.EmployeeAmount:N2} (บริษัทสมทบ {pfCompanyRate:0.##}% = {pf.CompanyAmount:N2})"));
 
-            var empInsuranceEnrollments = supplementary
-                ? new List<Pay_EmployeeInsuranceEnrollment>()   // เบี้ยประกันหักในรอบปกติแล้ว
+            var empInsuranceEnrollments = !takeMonthlyItems
+                ? new List<Pay_EmployeeInsuranceEnrollment>()   // เบี้ยรายเดือน: หักแล้วในรอบปกติ/งวดก่อนของเดือนนี้
                 : insuranceEnrollments.Where(e => e.HremployeeId == emp.id).ToList();
             var insuranceEmployeeAmount = empInsuranceEnrollments.Sum(e => e.EmployeeAmount);
             var insuranceCompanyAmount = empInsuranceEnrollments.Sum(e => e.CompanyAmount);
@@ -655,7 +671,7 @@ public class PayrollCalculationService
             }
 
             var loanAmount = 0m;
-            if (!supplementary && !string.IsNullOrWhiteSpace(emp.RefMembno))
+            if (takeMonthlyItems && !string.IsNullOrWhiteSpace(emp.RefMembno))
             {
                 var loanDetails = loanByMember.GetValueOrDefault(emp.RefMembno!) ?? new List<Kptempreceivedet>();
                 loanAmount = LoanDeductionCalculator.SumAmount(loanDetails);
@@ -927,13 +943,13 @@ public class PayrollCalculationService
     private static async Task<Dictionary<long, List<YtdRow>>> LoadYtdRowsAsync(HRMContext context, Pay_PayrollRun run, CancellationToken ct)
     {
         var yearStart = new DateOnly(run.PeriodStart.Year, 1, 1);
+        // YTD = only money actually paid: final runs, excluded employees left out (audit C-05)
         var rows = await context.Pay_PayrollEmployees
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(e => e.CompanyId == run.CompanyId
                         && e.PayrollRunId != run.Id
                         && e.Pay_PayrollRun.PeriodStart >= yearStart
-                        && e.Pay_PayrollRun.PeriodStart <= run.PeriodStart
-                        && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
-                        && e.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                        && e.Pay_PayrollRun.PeriodStart <= run.PeriodStart)
             .Select(e => new { e.HremployeeId, e.Pay_PayrollRun.PeriodStart, e.TaxableIncome, e.SocialSecurityAmount, e.ProvidentFundEmployeeAmount, e.TaxAmount })
             .ToListAsync(ct);
         // ยอดสะสมใช้ "เงินได้พึงประเมิน" ของแต่ละงวด (TaxableIncome) ไม่ใช่รายรับรวม (GrossEarnings) — พบจากเทสทั้งปี 2568:

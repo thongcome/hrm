@@ -36,7 +36,7 @@ public class SocialSecurityContributionReport(IDbContextFactory<HRMContext> dbFa
         return await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == ctx.CompanyId && r.RunType == PayrollRunType.Regular)
             .OrderByDescending(r => r.PeriodStart)
-            .Select(r => new ReportParamOption(r.Id.ToString(), r.PayrollPeriod + (r.Status >= PayrollRunStatus.Posted ? " (บันทึกบัญชีแล้ว)" : "")))
+            .Select(r => new ReportParamOption(r.Id.ToString(), r.PayrollPeriod + (r.Status == PayrollRunStatus.Posted || r.Status == PayrollRunStatus.Paid ? " (บันทึกบัญชีแล้ว)" : "")))
             .ToListAsync(ct);
     }
 

@@ -23,7 +23,8 @@ public static class EFilingExportService
         if (data is null) return null;
         var people = await LoadPeopleAsync(context, data.Lines.Select(l => l.HremployeeId), ct);
         var payDate = await context.Pay_PayrollRuns
-            .Where(r => r.CompanyId == companyId && r.PayrollPeriod == payrollPeriod && r.Status >= PayrollRunStatus.Approved && r.Status != PayrollRunStatus.Cancelled)
+            .Where(PayrollRunFilters.RunIsFinal)
+            .Where(r => r.CompanyId == companyId && r.PayrollPeriod == payrollPeriod)
             .MaxAsync(r => (DateOnly?)r.PayDate, ct) ?? data.PeriodStart.AddMonths(1).AddDays(-1);
 
         var warnings = new List<string>();
@@ -67,9 +68,9 @@ public static class EFilingExportService
     public static async Task<TextFile?> BuildSso110Async(HRMContext context, string companyId, string payrollPeriod, CancellationToken ct = default)
     {
         var rows = await context.Pay_PayrollEmployees.AsNoTracking()
-            .Where(e => e.CompanyId == companyId && !e.IsExcluded
-                        && e.Pay_PayrollRun.PayrollPeriod == payrollPeriod
-                        && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved && e.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+            .Where(PayrollRunFilters.RowWasPaid)
+            .Where(e => e.CompanyId == companyId
+                        && e.Pay_PayrollRun.PayrollPeriod == payrollPeriod)
             .Select(e => new { e.HremployeeId, e.EmpNo, e.SocialSecurityAmount, e.SocialSecurityCompanyAmount, e.Pay_PayrollRun.PayDate, e.Pay_PayrollRun.PeriodStart })
             .ToListAsync(ct);
         if (rows.Count == 0) return null;

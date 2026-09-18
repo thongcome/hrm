@@ -1,4 +1,5 @@
 @page "/pay/runs/{RunId:long}"
+@using System.Globalization
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Pay
@@ -51,6 +52,10 @@ else
             <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@StatusLabel(_run.Status)</MudChip>
         </MudStack>
 
+        @if (!PayrollRunTypes.IsSupported(_run.RunType) && _run.Status != PayrollRunStatus.Cancelled)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@PayrollRunTypes.UnsupportedMessage — รอบนี้ทำอะไรไม่ได้นอกจากยกเลิก</MudAlert>
+        }
         @if (_run.Status == PayrollRunStatus.Cancelled)
         {
             <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@L.Translate("RunCancelledNotice")</MudAlert>
@@ -224,9 +229,18 @@ else
             {
                 <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="CancelAsync" Disabled="_busy">@L.Translate("CancelRunButton")</MudButton>
             }
-            @if (_allowed.Contains(PayrollAction.CreateAdjustment))
+            @if ((_run.Status == PayrollRunStatus.Posted || _run.Status == PayrollRunStatus.Paid) && PayrollRunTypes.IsSupported(_run.RunType))
             {
-                <MudButton Color="Color.Warning" Variant="Variant.Outlined" OnClick="CreateAdjustmentAsync" Disabled="_busy">@L.Translate("CreateAdjustmentButton")</MudButton>
+                @* A posted/paid run is final (DB triggers refuse edits to its rows) and is never
+                   re-opened or negated as a whole. When source data was wrong or arrived late
+                   (salary keyed wrong, OT submitted after close), the affected employees get a
+                   one-off earning/deduction in the next period — CEO, 17 ก.ย. 2569. *@
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" Style="width:100%;">
+                    รอบนี้ปิดแล้ว แก้ตัวเลขไม่ได้ — ถ้าพบว่าข้อมูลตั้งต้นของพนักงานคนใดผิดหรือส่งมาช้า ให้บันทึก
+                    <b>เงินได้/เงินหักรายครั้ง</b> ของพนักงานคนนั้นในงวดถัดไป
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="ml-2"
+                               Href="@($"/pay/adhoc/{NextPeriod(_run.PayrollPeriod)}")">บันทึกรายการงวด @NextPeriod(_run.PayrollPeriod)</MudButton>
+                </MudAlert>
             }
             @if (_canGenerateDocuments)
             {
@@ -435,7 +449,7 @@ else
                 <RowTemplate>
                     <MudTd>@context.GeneratedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
                     <MudTd>
-                        @(context.DeltaOfPayrollRunId is long dof ? $"ส่วนต่างจากรอบ #{dof}" : "เต็มงวด")
+                        @context.BankFormatCode
                         @if (!string.IsNullOrWhiteSpace(context.Remark))
                         {
                             <MudText Typo="Typo.caption" Class="d-block mud-text-secondary">@context.Remark</MudText>
@@ -443,9 +457,36 @@ else
                     </MudTd>
                     <MudTd>@context.TotalRecordCount</MudTd>
                     <MudTd>@context.TotalAmount.ToString("N2")</MudTd>
-                    <MudTd><MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank">@L.Translate("DownloadButton")</MudLink></MudTd>
+                    <MudTd>
+                        @if (context.Status == BankFileExportStatus.Voided)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">ยกเลิกแล้ว</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(context.Status == BankFileExportStatus.Generated ? Color.Default : Color.Info)">
+                                @(context.Status == BankFileExportStatus.Generated ? "ยังไม่ดาวน์โหลด" : context.Status == BankFileExportStatus.Downloaded ? "ดาวน์โหลดแล้ว" : "ส่งธนาคารแล้ว")
+                            </MudChip>
+                            <MudLink Href="@($"/pay/files/bank-export/{context.Id}")" Target="_blank" Class="ml-2">@L.Translate("DownloadButton")</MudLink>
+                            @if (context.Status != BankFileExportStatus.ConfirmedSent && _run?.Status != PayrollRunStatus.Paid && _rights?.CanEdit == true)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Class="ml-2" Disabled="_busy"
+                                           OnClick="@(() => { _voidBatchId = context.Id; _voidReason = null; })">ยกเลิกไฟล์</MudButton>
+                            }
+                        }
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
+            @if (_voidBatchId is long voidId)
+            {
+                <div class="d-flex align-center flex-wrap mt-2" style="gap:8px;">
+                    <MudTextField T="string" @bind-Value="_voidReason" Label="@($"เหตุผลที่ยกเลิกไฟล์ #{voidId} (เช่น ธนาคารปฏิเสธไฟล์)")" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:360px;" />
+                    <MudButton Color="Color.Error" Variant="Variant.Filled" Disabled="@(_busy || string.IsNullOrWhiteSpace(_voidReason))"
+                               OnClick="VoidBankFileAsync">ยืนยันยกเลิกไฟล์</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="@(() => _voidBatchId = null)">ไม่ยกเลิก</MudButton>
+                </div>
+            }
         </MudPaper>
     }
 
@@ -590,8 +631,8 @@ else
                 && (forBonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
                 && a.Status == PayAdhocItemStatus.Approved);
 
-        _canGenerateDocuments = _run.Status >= PayrollRunStatus.Approved && _run.Status != PayrollRunStatus.Cancelled;
-        _canGenerateGL = _run.Status >= PayrollRunStatus.Posted && _run.Status != PayrollRunStatus.Cancelled;
+        _canGenerateDocuments = _run.IsFinal();
+        _canGenerateGL = _run.IsFinal() && _run.Status != PayrollRunStatus.Approved;
 
         _payslipIdByEmployeeId = await context.Pay_Payslips
             .Where(p => employees.Select(e => e.Id).Contains(p.PayrollEmployeeId))
@@ -615,7 +656,8 @@ else
         // non-cancelled run for this company, regardless of RunType, newest
         // first. Excludes the current run itself.
         _pastRuns = await context.Pay_PayrollRuns
-            .Where(r => r.CompanyId == _run.CompanyId && r.Id != RunId && r.Status != PayrollRunStatus.Cancelled)
+            .Where(r => r.CompanyId == _run.CompanyId && r.Id != RunId && r.Status != PayrollRunStatus.Cancelled
+                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus))
             .OrderByDescending(r => r.PeriodStart)
             .ToListAsync();
     }
@@ -879,25 +921,9 @@ else
             ProgramRoleService.ProgramAction.Delete);
     }
 
-    private async Task CreateAdjustmentAsync()
-    {
-        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
-        _busy = true;
-        try
-        {
-            var actorUserId = await GetCurrentUserIdAsync();
-            var newRunId = await WorkflowService.CreateAdjustmentRunAsync(RunId, actorUserId);
-            Navigation.NavigateTo($"/pay/runs/{newRunId}");
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
+    // PayrollPeriod is Gregorian yyyyMM (same format /pay/adhoc/{Period} expects).
+    private static string NextPeriod(string period) =>
+        DateTime.ParseExact(period, "yyyyMM", CultureInfo.InvariantCulture).AddMonths(1).ToString("yyyyMM", CultureInfo.InvariantCulture);
 
     private async Task GeneratePayslipsAsync()
     {
@@ -921,6 +947,17 @@ else
     private Task GenerateBankFileAsync() => RunActionAsync(
         async uid => await BankFileExportService.ExportAsync(RunId, uid),
         L.Translate("BankFileGeneratedSuccess"));
+
+    private long? _voidBatchId;
+    private string? _voidReason;
+
+    private Task VoidBankFileAsync() => RunActionAsync(
+        async uid =>
+        {
+            await BankFileExportService.VoidAsync(_voidBatchId!.Value, _run!.CompanyId, uid, _voidReason ?? "");
+            _voidBatchId = null;
+        },
+        "ยกเลิกไฟล์ธนาคารแล้ว — สร้างไฟล์ใหม่ได้");
 
     private Task GenerateGLExportAsync() => RunActionAsync(
         async uid => await GLExportService.ExportAsync(RunId, uid),

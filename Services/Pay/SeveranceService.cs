@@ -49,13 +49,14 @@ public class SeveranceService
 
         if (emp.WorkDate is null)
             throw new InvalidOperationException("พนักงานคนนี้ไม่มีวันเริ่มงาน (WorkDate) ในระบบ ไม่สามารถคำนวณอายุงานได้");
-        if (emp.SalaryAmt is null || emp.SalaryAmt <= 0)
-            throw new InvalidOperationException("พนักงานคนนี้ไม่มีเงินเดือนฐาน (SalaryAmt) ในระบบ ไม่สามารถคำนวณค่าชดเชยได้");
-
-        return SeveranceCalculator.Calculate(
-            DateOnly.FromDateTime(emp.WorkDate.Value),
-            DateOnly.FromDateTime(emp.ResignDate.Value),
-            emp.SalaryAmt.Value);
+        var hire = DateOnly.FromDateTime(emp.WorkDate.Value);
+        var last = DateOnly.FromDateTime(emp.ResignDate.Value);
+        if (emp.SalaryAmt is decimal salary && salary > 0)
+            return SeveranceCalculator.Calculate(hire, last, salary);
+        // ลูกจ้างรายวัน (audit H-11): ค่าจ้างรายวันอัตราสุดท้าย × วันตามมาตรา 118
+        if (emp.DailyWage is decimal daily && daily > 0)
+            return SeveranceCalculator.CalculateForDailyWage(hire, last, daily);
+        throw new InvalidOperationException("พนักงานคนนี้ไม่มีเงินเดือนฐานหรือค่าจ้างรายวันในระบบ ไม่สามารถคำนวณค่าชดเชยได้");
     }
 
     public async Task<long> SubmitAsync(long hremployeeId, string targetPeriod, decimal amount, string reason, long actorUserId, CancellationToken ct = default)
@@ -63,7 +64,12 @@ public class SeveranceService
         // Re-validate server-side rather than trusting a cached dialog preview
         // — WorkDate/ResignDate/SalaryAmt could have changed between preview
         // and submit.
-        await PreviewAsync(hremployeeId, ct);
+        var statutory = await PreviewAsync(hremployeeId, ct);
+        // The amount is editable on screen (e.g. a more generous settlement) but may never be
+        // below the ม.118 minimum (audit M-15).
+        if (amount < statutory.Amount)
+            throw new InvalidOperationException(
+                $"ยอดค่าชดเชย {amount:N2} ต่ำกว่าที่กฎหมายกำหนด ({statutory.EntitledDays} วัน = {statutory.Amount:N2} บาท) — ห้ามจ่ายต่ำกว่านี้");
 
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
 

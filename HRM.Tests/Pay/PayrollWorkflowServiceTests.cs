@@ -24,9 +24,9 @@ public class PayrollWorkflowServiceTests
     [InlineData(PayrollRunStatus.Approved, PayrollAction.Calculate, false)]
     [InlineData(PayrollRunStatus.Approved, PayrollAction.Cancel, false)]
     [InlineData(PayrollRunStatus.Posted, PayrollAction.MarkPaid, true)]
-    [InlineData(PayrollRunStatus.Posted, PayrollAction.CreateAdjustment, true)]
-    [InlineData(PayrollRunStatus.Paid, PayrollAction.CreateAdjustment, true)]
+    [InlineData(PayrollRunStatus.Posted, PayrollAction.Cancel, false)]
     [InlineData(PayrollRunStatus.Paid, PayrollAction.MarkPaid, false)]
+    [InlineData(PayrollRunStatus.Paid, PayrollAction.Cancel, false)]
     [InlineData(PayrollRunStatus.Cancelled, PayrollAction.Calculate, false)]
     public void GetAllowedActions_matches_the_defined_state_machine(PayrollRunStatus status, PayrollAction action, bool expectedAllowed)
     {
@@ -37,12 +37,20 @@ public class PayrollWorkflowServiceTests
     [Fact]
     public void A_run_cannot_be_recalculated_or_edited_once_approved()
     {
-        // Approved+ statuses must never allow Calculate — this is the lock
-        // that forces a CreateAdjustmentRunAsync instead of mutating history.
+        // Approved+ statuses must never allow Calculate — history is never mutated.
         foreach (var lockedStatus in new[] { PayrollRunStatus.Approved, PayrollRunStatus.Posted, PayrollRunStatus.Paid })
         {
             var allowed = PayrollWorkflowService.GetAllowedActions(lockedStatus);
             Assert.DoesNotContain(PayrollAction.Calculate, allowed);
         }
+    }
+
+    [Fact]
+    public void A_paid_run_is_final()
+    {
+        // CEO, 17 ก.ย. 2569: no whole-period reversal/adjustment. A wrong payment is
+        // corrected per employee with a one-off earning/deduction in the next period.
+        Assert.Empty(PayrollWorkflowService.GetAllowedActions(PayrollRunStatus.Paid));
+        Assert.Equal(new[] { PayrollAction.MarkPaid }, PayrollWorkflowService.GetAllowedActions(PayrollRunStatus.Posted));
     }
 }

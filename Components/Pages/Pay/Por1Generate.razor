@@ -222,7 +222,8 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var runs = await context.Pay_PayrollRuns
-            .Where(r => r.CompanyId == _companyId && r.Status >= PayrollRunStatus.Approved)
+            .Where(PayrollRunFilters.RunIsFinal)
+            .Where(r => r.CompanyId == _companyId)
             .Select(r => new { r.PayrollPeriod, Year = r.PeriodStart.Year })
             .ToListAsync();
 

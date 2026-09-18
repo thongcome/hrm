@@ -27,9 +27,10 @@ public static class WithholdingCertificateDataService
 
         var payEmployees = await context.Pay_PayrollEmployees
             .Include(pe => pe.Pay_PayrollRun)
+            // 50 ทวิ = only pay actually made: no cancelled runs (C-04), no excluded rows (C-05)
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.HremployeeId == hremployeeId
-                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved)
+                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
             .ToListAsync(ct);
 
         if (payEmployees.Count == 0) return null;

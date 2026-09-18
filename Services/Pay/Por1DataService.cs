@@ -52,13 +52,11 @@ public static class Por1DataService
         var payEmployees = await context.Pay_PayrollEmployees
             .Include(pe => pe.Pay_PayrollRun)
             .Include(pe => pe.Hremployee)
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.CompanyId == companyId
-                && pe.Pay_PayrollRun.PayrollPeriod == payrollPeriod
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
-                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                && pe.Pay_PayrollRun.PayrollPeriod == payrollPeriod)
             .ToListAsync(ct);
-        // กรอง "มีภาษี" หลังรวมทุกรอบของงวดต่อคน ไม่ใช่ต่อแถว — แถวของรอบกลับรายการเป็นค่าลบ ถ้ากรองต่อแถวจะหลุด
-        // แล้วรอบต้นทาง + รอบปรับปรุงถูกนับซ้ำ (พบจากเทสทั้งปี 2568: ภ.ง.ด.1 ต.ค. เป็นสองเท่า)
+        // กรอง "มีภาษี" หลังรวมทุกรอบของงวดต่อคน ไม่ใช่ต่อแถว (audit M4)
         var withTax = payEmployees.GroupBy(pe => pe.HremployeeId).Where(g => g.Sum(x => x.TaxAmount) > 0).Select(g => g.Key).ToHashSet();
         payEmployees = payEmployees.Where(pe => withTax.Contains(pe.HremployeeId)).ToList();
 
@@ -103,10 +101,9 @@ public static class Por1DataService
         var payEmployees = await context.Pay_PayrollEmployees
             .Include(pe => pe.Pay_PayrollRun)
             .Include(pe => pe.Hremployee)
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.CompanyId == companyId
-                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
-                && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled)
+                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
             .ToListAsync(ct);
 
         if (payEmployees.Count == 0) return null;

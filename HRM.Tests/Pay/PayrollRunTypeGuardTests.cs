@@ -11,21 +11,24 @@ namespace HRM.Tests.Pay;
 // a bonus run withholds tax on the bonus alone, not "bonus × remaining months".
 public class PayrollRunTypeGuardTests
 {
+    // Reversal is obsolete on purpose: this test builds one to prove a leftover DB row
+    // (shared with HRM) can only be cancelled.
+#pragma warning disable CS0618
     [Fact]
-    public void Reversal_run_cannot_be_recalculated_reversed_or_adjusted()
+    public void Historical_reversal_run_cannot_be_recalculated_or_marked_paid_but_can_be_cancelled()
     {
         var reversal = new Pay_PayrollRun { RunType = PayrollRunType.Reversal, Status = PayrollRunStatus.Calculated };
         var allowed = PayrollWorkflowService.GetAllowedActions(reversal);
 
         Assert.DoesNotContain(PayrollAction.Calculate, allowed);
-        Assert.Contains(PayrollAction.SubmitForReview, allowed);
         Assert.Contains(PayrollAction.Cancel, allowed);
 
+        // A reversal pays nobody, so it is never "paid".
         var postedReversal = new Pay_PayrollRun { RunType = PayrollRunType.Reversal, Status = PayrollRunStatus.Posted };
-        var allowedPosted = PayrollWorkflowService.GetAllowedActions(postedReversal);
-        Assert.DoesNotContain(PayrollAction.CreateAdjustment, allowedPosted);
-        Assert.Contains(PayrollAction.MarkPaid, allowedPosted);
+        Assert.DoesNotContain(PayrollAction.MarkPaid, PayrollWorkflowService.GetAllowedActions(postedReversal));
+        Assert.Empty(PayrollWorkflowService.GetAllowedActions(postedReversal));
     }
+#pragma warning restore CS0618
 
     [Fact]
     public void Regular_run_keeps_the_status_only_action_set()

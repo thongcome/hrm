@@ -65,7 +65,9 @@
                     }
                     @if (context.Request.hrwOtId is not null)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Info">เข้า Payroll แล้ว (HRW_OT #@context.Request.hrwOtId)</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">@(context.Request.hrwOtId < 0
+    ? $"เข้า Payroll แล้ว (เงินได้รายครั้ง #{-context.Request.hrwOtId})"
+    : $"เข้า Payroll แล้ว (HRW_OT #{context.Request.hrwOtId})")</MudChip>
                     }
                 </MudStack>
             </MudTd>
@@ -301,6 +303,54 @@
                 ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
             if (request.hrwOtId is not null)
                 throw new InvalidOperationException("คำขอนี้ถูกสร้างรายการจ่ายไปแล้ว");
+            // Server-side approval check (audit H-08) — the hidden button alone is not a control.
+            var jobStatus = request.jobmasterid is long jobId
+                ? await context.job_masters.Where(j => j.jobmasterid == jobId).Select(j => j.status).FirstOrDefaultAsync()
+                : null;
+            if (jobStatus != "COMPLETED")
+                throw new InvalidOperationException("คำขอ OT นี้ยังไม่ได้รับอนุมัติครบ — ส่งเข้า payroll ไม่ได้");
+
+            var amount = (request.workhour ?? 0) * (request.ot_rate ?? 0);
+            var companyId = request.companyid ?? "";
+            var otPeriod = request.starttime.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+            var periodClosed = await context.Pay_PayrollRuns
+                .Where(HRM.Services.Pay.PayrollRunFilters.RunIsFinal)
+                .AnyAsync(r => r.CompanyId == companyId && r.PayrollPeriod == otPeriod && r.RunType == PayrollRunType.Regular);
+            if (periodClosed)
+            {
+                // The OT day's period is already closed, so a dated HRW_OT row would never be paid.
+                // Per the correction rule (CEO, 17 ก.ย. 2569) it becomes a one-off OT earning in the
+                // next period, pending HR approval at /pay/adhoc.
+                var otType = await context.Pay_PayItemTypes.FirstAsync(t => t.Code == "OT");
+                var nextPeriod = new DateTime(request.starttime.Year, request.starttime.Month, 1).AddMonths(1)
+                    .ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+                var empId = request.hremployeeid
+                    ?? await context.Hremployee.Where(e => e.EmpNo == request.empid && e.companyid == companyId).Select(e => (long?)e.id).FirstOrDefaultAsync()
+                    ?? throw new InvalidOperationException("ไม่พบพนักงานของคำขอนี้");
+                var uid = long.TryParse((await AuthProvider.GetAuthenticationStateAsync()).User.FindFirst("sc_userid")?.Value, out var u) ? u : 0;
+                var item = new Pay_AdhocPayItem
+                {
+                    HremployeeId = empId,
+                    PayItemTypeId = otType.Id,
+                    TargetPeriod = nextPeriod,
+                    TargetRunType = PayrollRunType.Regular,
+                    Amount = amount,
+                    IsTaxable = true,
+                    Reason = $"OT วันที่ {request.starttime:dd/MM/yyyy} (คำขอ OT{request.id:D8}) ส่งหลังปิดงวด {otPeriod}",
+                    Status = PayAdhocItemStatus.Pending,
+                    RequestedByUserId = uid,
+                    RequestedDate = DateTime.Now,
+                };
+                context.Pay_AdhocPayItems.Add(item);
+                // Marks the request as handed to payroll so it can't be pushed twice
+                // (hrwOtId has no FK to a real HRW_OT row here; -item id records where it went).
+                await context.SaveChangesAsync();
+                request.hrwOtId = -item.Id;
+                await context.SaveChangesAsync();
+                _info = $"งวด {otPeriod} ปิดแล้ว — สร้างเป็นเงินได้ OT รายครั้งในงวด {nextPeriod} (รออนุมัติที่หน้าเงินได้/เงินหักรายครั้ง)";
+                await RefreshAsync();
+                return;
+            }
 
             var hrwOt = new HrwOt
             {
@@ -313,7 +363,7 @@
                 // rate entered on the request. A production version should
                 // pull the employee's actual wage rate instead of trusting
                 // a rate typed on the request form.
-                OtAmt = (request.workhour ?? 0) * (request.ot_rate ?? 0),
+                OtAmt = amount,
                 OtDocno = $"OT{request.id:D8}",
                 Remark = request.objective,
             };

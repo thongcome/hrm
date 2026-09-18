@@ -66,7 +66,8 @@ public static class PayrollDashboardService
     public static async Task<LatestRunSnapshot?> GetLatestRunSnapshotAsync(HRMContext ctx, string companyId, CancellationToken ct = default)
     {
         var run = await ctx.Pay_PayrollRuns
-            .Where(r => r.CompanyId == companyId && r.Status >= PayrollRunStatus.Approved)
+            .Where(PayrollRunFilters.RunIsFinal)
+            .Where(r => r.CompanyId == companyId)
             .OrderByDescending(r => r.PayrollPeriod)
             .FirstOrDefaultAsync(ct);
         if (run is null) return null;
@@ -106,8 +107,8 @@ public static class PayrollDashboardService
     public static async Task<YtdSummary> GetYtdSummaryAsync(HRMContext ctx, string companyId, DateOnly fyStart, DateOnly fyEnd, CancellationToken ct = default)
     {
         var query = ctx.Pay_PayrollEmployees
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.Pay_PayrollRun.CompanyId == companyId
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
                 && pe.Pay_PayrollRun.PeriodStart >= fyStart
                 && pe.Pay_PayrollRun.PeriodStart <= fyEnd);
 
@@ -130,8 +131,8 @@ public static class PayrollDashboardService
     public static async Task<List<CostCenterRow>> GetCostCenterBreakdownAsync(HRMContext ctx, string companyId, DateOnly fyStart, DateOnly fyEnd, CancellationToken ct = default)
     {
         var rows = await ctx.Pay_PayrollEmployees
+            .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.Pay_PayrollRun.CompanyId == companyId
-                && pe.Pay_PayrollRun.Status >= PayrollRunStatus.Approved
                 && pe.Pay_PayrollRun.PeriodStart >= fyStart
                 && pe.Pay_PayrollRun.PeriodStart <= fyEnd)
             .GroupBy(pe => pe.CostCenterCode)

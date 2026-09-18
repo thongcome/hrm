@@ -27,7 +27,9 @@ public class PayslipGenerationService
         var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId, ct)
             ?? throw new InvalidOperationException($"Pay_PayrollRun {runId} not found.");
 
-        if (run.Status < PayrollRunStatus.Approved || run.Status == PayrollRunStatus.Cancelled)
+        if (!PayrollRunTypes.IsSupported(run.RunType))
+            throw new InvalidOperationException(PayrollRunTypes.UnsupportedMessage);
+        if (!run.IsFinal())
             throw new InvalidOperationException("สร้างสลิปได้เฉพาะรอบที่อนุมัติแล้ว (Approved ขึ้นไป) เท่านั้น");
 
         var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == run.CompanyId, ct)

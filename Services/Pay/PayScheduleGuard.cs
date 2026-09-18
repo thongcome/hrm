@@ -13,7 +13,7 @@ public static class PayScheduleGuard
     // งวดที่อนุมัติแล้ว (Approved ขึ้นไป ไม่นับยกเลิก) ของบริษัท — วันเริ่มงวดล่าสุด
     public static async Task<DateOnly?> LastApprovedPeriodStartAsync(HRMContext db, string companyId, CancellationToken ct = default)
         => await db.Pay_PayrollRuns
-            .Where(r => r.CompanyId == companyId && r.Status >= PayrollRunStatus.Approved && r.Status != PayrollRunStatus.Cancelled)
+            .Where(PayrollRunFilters.RunIsFinal).Where(r => r.CompanyId == companyId)
             .OrderByDescending(r => r.PeriodStart)
             .Select(r => (DateOnly?)r.PeriodStart)
             .FirstOrDefaultAsync(ct);
@@ -22,7 +22,7 @@ public static class PayScheduleGuard
     public static async Task<HashSet<long>> LockedScheduleIdsAsync(HRMContext db, string companyId, IEnumerable<Pay_PaySchedule> schedules, CancellationToken ct = default)
     {
         var approvedStarts = await db.Pay_PayrollRuns
-            .Where(r => r.CompanyId == companyId && r.Status >= PayrollRunStatus.Approved && r.Status != PayrollRunStatus.Cancelled)
+            .Where(PayrollRunFilters.RunIsFinal).Where(r => r.CompanyId == companyId)
             .Select(r => r.PeriodStart)
             .Distinct()
             .ToListAsync(ct);
@@ -35,7 +35,7 @@ public static class PayScheduleGuard
     // วันสิ้นสุดของแถวที่ล็อกแล้ว ห้ามย้อนก่อนวันเริ่มงวดอนุมัติล่าสุดที่อยู่ภายใต้แถวนั้น
     public static async Task<DateOnly?> MinEffectiveToAsync(HRMContext db, string companyId, Pay_PaySchedule s, CancellationToken ct = default)
         => await db.Pay_PayrollRuns
-            .Where(r => r.CompanyId == companyId && r.Status >= PayrollRunStatus.Approved && r.Status != PayrollRunStatus.Cancelled
+            .Where(PayrollRunFilters.RunIsFinal).Where(r => r.CompanyId == companyId
                         && r.PeriodStart >= s.EffectiveFrom && (s.EffectiveTo == null || r.PeriodStart <= s.EffectiveTo))
             .OrderByDescending(r => r.PeriodStart)
             .Select(r => (DateOnly?)r.PeriodStart)

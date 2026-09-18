@@ -14,10 +14,13 @@ public enum PayrollRunStatus
 public enum PayrollRunType
 {
     Regular = 0,
-    Adjustment = 1,
     Bonus = 2,
-    // รอบกลับรายการ (negation ของรอบที่ post แล้ว) — แยกจาก Adjustment เพื่อให้ห้าม "คำนวณใหม่"
-    // และไม่ชนกับ unique index (CompanyId, PayrollPeriod, RunType) ของรอบปรับปรุง
+    // Adjustment (1) และ Reversal (3) ไม่ใช่ชนิดรอบของระบบนี้อีกต่อไป (CEO, 17 ก.ย. 2569) — การแก้ไข
+    // ใช้เงินได้/เงินหักรายครั้งในงวดถัดไปแทน ค่าเดิมยังคงไว้เพราะมีแถวในฐานข้อมูล (ใช้ร่วมกับ HRM) ที่ยัง
+    // map มาถึงค่านี้อยู่ — ห้ามสร้างหรือประมวลผลรอบชนิดนี้อีก ดู Services/Pay/PayrollRunTypes
+    [Obsolete("ไม่ใช่ชนิดรอบของระบบนี้อีกต่อไป — ใช้เงินได้/เงินหักรายครั้งในงวดถัดไปแทน")]
+    Adjustment = 1,
+    [Obsolete("ไม่ใช่ชนิดรอบของระบบนี้อีกต่อไป — ใช้เงินได้/เงินหักรายครั้งในงวดถัดไปแทน")]
     Reversal = 3
 }
 
@@ -56,7 +59,9 @@ public enum BankFileExportStatus
 {
     Generated = 0,
     Downloaded = 1,
-    ConfirmedSent = 2
+    ConfirmedSent = 2,
+    // audit H-18: ยกเลิกไฟล์ธนาคาร — เลขค่านี้เป็น int ในคอลัมน์เดิม ไม่ต้อง migration
+    Voided = 9
 }
 
 public enum PayAdhocItemStatus

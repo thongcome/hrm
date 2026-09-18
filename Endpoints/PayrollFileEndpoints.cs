@@ -38,17 +38,20 @@ public static class PayrollFileEndpoints
         });
 
         group.MapGet("/bank-export/{batchId:long}", async (
-            long batchId, HttpContext httpContext, IDbContextFactory<HRMContext> dbFactory, PrivateFileStorage storage) =>
+            long batchId, HttpContext httpContext, BankFileExportService bankFiles, PrivateFileStorage storage, IAuditLogger auditLogger) =>
         {
-            await using var context = await dbFactory.CreateDbContextAsync();
-            var batch = await context.Pay_BankFileExportBatches
-                .Include(b => b.Pay_PayrollRun)
-                .FirstOrDefaultAsync(b => b.Id == batchId);
+            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
+            if (string.IsNullOrEmpty(companyId) || !long.TryParse(httpContext.User.FindFirst("sc_userid")?.Value, out var userId))
+                return Results.Forbid();
+
+            // Company-scoped lookup; a voided file is never served again (audit H-18). The first
+            // download marks the batch Downloaded and is written to the payroll audit trail.
+            var batch = await bankFiles.MarkDownloadedAsync(batchId, companyId, userId);
             if (batch is null) return Results.NotFound();
 
-            var companyId = httpContext.User.FindFirst("payroll_company")?.Value;
-            if (batch.Pay_PayrollRun.CompanyId != companyId)
-                return Results.Forbid();
+            // The file carries every employee's bank account number (PDPA) — log the access.
+            await auditLogger.LogAccessAsync("Pay_BankFileExportBatch", batchId.ToString(), isSensitive: true,
+                note: $"bank transfer file download, run {batch.PayrollRunId}");
 
             var bytes = await storage.ReadAsync(batch.FilePath);
             return Results.File(bytes, "text/csv", $"bankfile_{batchId}.csv");

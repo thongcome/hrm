@@ -9,12 +9,28 @@ public static class SeveranceCalculator
 {
     public record SeveranceResult(int ContinuousServiceDays, string TierDescription, int EntitledDays, decimal DailyWage, decimal Amount);
 
+    // Monthly-salaried: daily wage = last monthly wage ÷ 30.
     public static SeveranceResult Calculate(DateOnly hireDate, DateOnly lastWorkDate, decimal monthlyWage)
+    {
+        if (monthlyWage <= 0)
+            throw new ArgumentException("monthlyWage must be positive");
+        // Amount from the exact monthly figure (monthly × days ÷ 30), not a pre-rounded daily rate.
+        return Build(hireDate, lastWorkDate, Math.Round(monthlyWage / 30m, 2, MidpointRounding.AwayFromZero),
+            days => monthlyWage * days / 30m);
+    }
+
+    // Daily-wage employees (audit H-11): ม.118 — the last daily wage × entitled days.
+    public static SeveranceResult CalculateForDailyWage(DateOnly hireDate, DateOnly lastWorkDate, decimal dailyWage)
+    {
+        if (dailyWage <= 0)
+            throw new ArgumentException("dailyWage must be positive");
+        return Build(hireDate, lastWorkDate, dailyWage, days => dailyWage * days);
+    }
+
+    private static SeveranceResult Build(DateOnly hireDate, DateOnly lastWorkDate, decimal dailyWage, Func<int, decimal> amountFor)
     {
         if (lastWorkDate < hireDate)
             throw new ArgumentException("lastWorkDate must not be before hireDate");
-        if (monthlyWage <= 0)
-            throw new ArgumentException("monthlyWage must be positive");
 
         var serviceDays = lastWorkDate.DayNumber - hireDate.DayNumber + 1;
 
@@ -31,9 +47,7 @@ public static class SeveranceCalculator
             _ => (400, "ทำงานครบ 20 ปีขึ้นไป — ค่าชดเชย 400 วัน"),
         };
 
-        var dailyWage = Math.Round(monthlyWage / 30m, 2, MidpointRounding.AwayFromZero);
-        var amount = Math.Round(dailyWage * entitledDays, 2, MidpointRounding.AwayFromZero);
-
+        var amount = Math.Round(amountFor(entitledDays), 2, MidpointRounding.AwayFromZero);
         return new SeveranceResult(serviceDays, tierDescription, entitledDays, dailyWage, amount);
     }
 }

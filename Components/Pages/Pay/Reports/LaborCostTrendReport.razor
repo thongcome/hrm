@@ -86,7 +86,8 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var grouped = await context.Pay_PayrollEmployees
-            .Where(e => e.Pay_PayrollRun.CompanyId == _companyId && e.Pay_PayrollRun.Status >= PayrollRunStatus.Approved)
+            .Where(HRM.Services.Pay.PayrollRunFilters.RowWasPaid)
+            .Where(e => e.Pay_PayrollRun.CompanyId == _companyId)
             .GroupBy(e => e.Pay_PayrollRun.PayrollPeriod)
             .Select(g => new
             {

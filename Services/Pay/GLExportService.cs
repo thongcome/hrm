@@ -29,8 +29,16 @@ public class GLExportService
         var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId, ct)
             ?? throw new InvalidOperationException($"Pay_PayrollRun {runId} not found.");
 
-        if (run.Status < PayrollRunStatus.Posted || run.Status == PayrollRunStatus.Cancelled)
+        if (!PayrollRunTypes.IsSupported(run.RunType))
+            throw new InvalidOperationException(PayrollRunTypes.UnsupportedMessage);
+        if (run.Status != PayrollRunStatus.Posted && run.Status != PayrollRunStatus.Paid)
             throw new InvalidOperationException("สร้างไฟล์บัญชี (GL) ได้เฉพาะรอบที่บันทึกบัญชีแล้ว (Posted ขึ้นไป) เท่านั้น");
+        // One journal per run (audit H-18): the run's figures are immutable once posted, so a
+        // second file can only mean the same journal being imported twice.
+        var existing = await context.Pay_GLExportBatches.Where(b => b.PayrollRunId == runId)
+            .Select(b => (long?)b.Id).FirstOrDefaultAsync(ct);
+        if (existing is long existingId)
+            throw new InvalidOperationException($"รอบนี้มีไฟล์บัญชี (GL) แล้ว (#{existingId}) — ดาวน์โหลดไฟล์เดิมจากตารางด้านล่าง");
 
         var lineItems = await context.Pay_PayrollLineItems
             .Include(li => li.Pay_PayItemType)

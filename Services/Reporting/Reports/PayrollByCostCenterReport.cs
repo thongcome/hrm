@@ -43,7 +43,7 @@ public class PayrollByCostCenterReport(IDbContextFactory<HRMContext> dbFactory)
             ?? throw new InvalidOperationException("ไม่พบงวดเงินเดือนนี้");
 
         var lines = await context.Pay_PayrollEmployees
-            .Where(e => e.PayrollRunId == runId)
+            .Where(e => e.PayrollRunId == runId && !e.IsExcluded)   // excluded = not paid (audit C-05)
             .Select(e => new { e.CostCenterCode, e.GrossEarnings, e.TaxAmount, e.NetPay })
             .ToListAsync(ct);
 

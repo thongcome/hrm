@@ -23,7 +23,7 @@ public class PayrollWorkflowService
     {
         _dbFactory = dbFactory;
         _calculationService = calculationService;
-        _requireSeparateApprover = configuration?.GetValue<bool?>("Payroll:RequireSeparateApprover") ?? true;
+        _requireSeparateApprover = PayrollSeparationOfDuties.IsRequired(configuration);
     }
 
     // Single source of truth for "what buttons should be enabled" — shared by
@@ -34,26 +34,26 @@ public class PayrollWorkflowService
         PayrollRunStatus.Calculated => new HashSet<PayrollAction> { PayrollAction.Calculate, PayrollAction.SubmitForReview, PayrollAction.Cancel },
         PayrollRunStatus.Reviewed => new HashSet<PayrollAction> { PayrollAction.Approve, PayrollAction.Cancel },
         PayrollRunStatus.Approved => new HashSet<PayrollAction> { PayrollAction.Post },
-        PayrollRunStatus.Posted => new HashSet<PayrollAction> { PayrollAction.MarkPaid, PayrollAction.CreateAdjustment },
-        PayrollRunStatus.Paid => new HashSet<PayrollAction> { PayrollAction.CreateAdjustment },
+        PayrollRunStatus.Posted => new HashSet<PayrollAction> { PayrollAction.MarkPaid },
+        // Paid is final. A wrong payment is corrected per employee with a one-off
+        // earning/deduction in the next period (/pay/adhoc), never by reopening this run.
+        PayrollRunStatus.Paid => new HashSet<PayrollAction>(),
         PayrollRunStatus.Cancelled => new HashSet<PayrollAction>(),
         _ => new HashSet<PayrollAction>(),
     };
 
-    // ชนิดของรอบตัดสิทธิ์เพิ่มจากสถานะ (11 ก.ย. 2569, audit C2/M12):
-    //   รอบกลับรายการ (Reversal) ที่เคยมีอยู่จากของเดิม (ก่อน 17 ก.ย. 2569 ที่ปิดความสามารถ
-    //   สร้างรอบใหม่ทั้งหมด — CEO: ความเสี่ยงกดผิดสูงกว่าประโยชน์ที่ได้) ยังต้องแสดงผลได้ถูกต้อง
-    //   จึงคง RunType.Reversal ไว้ในข้อมูล/enum แต่ห้าม "คำนวณใหม่" (จะกลายเป็นบวกแล้วจ่ายซ้ำ)
-    //   และห้ามสร้างรอบปรับปรุงจากมัน
+    // Only Regular/Bonus runs are workable (CEO, 17 ก.ย. 2569: no more whole-period
+    // reversal/adjustment — see PayrollRunTypes). A row of any other type (Adjustment/
+    // Reversal — historical data only, kept because the enum/DB rows still exist) can
+    // at most be cancelled — never calculated, approved, posted or paid.
     public static IReadOnlySet<PayrollAction> GetAllowedActions(Pay_PayrollRun run)
     {
-        var allowed = new HashSet<PayrollAction>(GetAllowedActions(run.Status));
-        if (run.RunType == PayrollRunType.Reversal)
-        {
-            allowed.Remove(PayrollAction.Calculate);
-            allowed.Remove(PayrollAction.CreateAdjustment);
-        }
-        return allowed;
+        var allowed = GetAllowedActions(run.Status);
+        if (PayrollRunTypes.IsSupported(run.RunType))
+            return allowed;
+        return allowed.Contains(PayrollAction.Cancel)
+            ? new HashSet<PayrollAction> { PayrollAction.Cancel }
+            : new HashSet<PayrollAction>();
     }
 
     public Task<PayrollRunCalculationSummary> CalculateAsync(long runId, long actorUserId, CancellationToken ct = default)
@@ -81,9 +81,7 @@ public class PayrollWorkflowService
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Approve);
         await EnsureReadyForReviewAsync(context, run, ct);
-        if (_requireSeparateApprover && (run.ReviewedByUserId == actorUserId || run.CalculatedByUserId == actorUserId))
-            throw new InvalidOperationException(
-                "ผู้อนุมัติต้องเป็นคนละคนกับผู้คำนวณ/ผู้ส่งตรวจ (แยกหน้าที่) — ให้ผู้มีสิทธิ์อีกคนเป็นผู้อนุมัติ");
+        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การอนุมัติ", _requireSeparateApprover);
 
         var hasUnresolvedNegativePay = await context.Pay_PayrollEmployees
             .AnyAsync(e => e.PayrollRunId == runId && e.IsNegativeNetPayFlag && !e.IsExcluded, ct);
@@ -105,6 +103,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Post);
+        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การบันทึกบัญชี (Post)", _requireSeparateApprover);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Posted;
@@ -120,6 +119,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.MarkPaid);
+        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การยืนยันว่าจ่ายเงินแล้ว", _requireSeparateApprover);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Paid;
@@ -137,7 +137,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         if (run.Status >= PayrollRunStatus.Approved)
-            throw new InvalidOperationException("รอบที่อนุมัติแล้วแก้รายชื่อไม่ได้ — ใช้การกลับรายการ/รอบปรับปรุง");
+            throw new InvalidOperationException("รอบที่อนุมัติแล้วแก้รายชื่อไม่ได้ — ถ้าต้องแก้ ให้บันทึกเงินได้/เงินหักรายครั้งในงวดถัดไป");
         if (excluded && string.IsNullOrWhiteSpace(reason))
             throw new InvalidOperationException("กรุณาระบุเหตุผลที่กันพนักงานออกจากรอบ");
 
@@ -205,45 +205,6 @@ public class PayrollWorkflowService
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);
-    }
-
-    // Creates a brand-new Draft run linked back to the original instead of
-    // mutating an already-Posted/Paid run in place — the only path to change
-    // numbers once a run is locked.
-    public async Task<long> CreateAdjustmentRunAsync(long originalRunId, long actorUserId, CancellationToken ct = default)
-    {
-        await using var context = await _dbFactory.CreateDbContextAsync(ct);
-        var original = await LoadRunOrThrowAsync(context, originalRunId, ct);
-        EnsureAllowed(original, PayrollAction.CreateAdjustment);
-
-        var adjustment = new Pay_PayrollRun
-        {
-            CompanyId = original.CompanyId,
-            PayrollPeriod = original.PayrollPeriod,
-            PeriodStart = original.PeriodStart,
-            PeriodEnd = original.PeriodEnd,
-            PayDate = original.PayDate,
-            TermNo = original.TermNo,
-            RunType = PayrollRunType.Adjustment,
-            Status = PayrollRunStatus.Draft,
-            AdjustmentOfRunId = original.Id,
-            CreatedByUserId = actorUserId,
-        };
-
-        context.Pay_PayrollRuns.Add(adjustment);
-        await context.SaveChangesAsync(ct);
-
-        context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
-        {
-            PayrollRunId = adjustment.Id,
-            EventType = PayAuditEventType.StatusTransition,
-            ToStatus = PayrollRunStatus.Draft,
-            ActorUserId = actorUserId,
-            Comment = $"Adjustment run created from run #{original.Id}",
-        });
-        await context.SaveChangesAsync(ct);
-
-        return adjustment.Id;
     }
 
     private static void EnsureAllowed(Pay_PayrollRun run, PayrollAction action)

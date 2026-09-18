@@ -31,4 +31,24 @@ public class ProrationDivisorTests
         var r = ProrationCalculator.Calculate(Jul1, Jul31, joinDate: new DateOnly(2026, 7, 16), resignDate: null);
         Assert.Equal(Math.Round(16m / 31m, 4), r.ProrationFactor);
     }
+
+    [Fact]
+    public void Half_month_period_is_not_prorated_twice()
+    {
+        // audit H-06: เงินเดือน 30,000 จ่ายครึ่งเดือน เข้างาน 6 ม.ค. รอบ 1–15 ม.ค. = ทำงาน 10 วัน → 30,000 ÷ 30 × 10 = 10,000
+        // (เดิม: 30,000 × ½ × 10/30 = 4,999.50)
+        var r = ProrationCalculator.Calculate(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 15),
+            joinDate: new DateOnly(2026, 1, 6), resignDate: null, daysPerMonthDivisor: 30, monthFraction: 0.5m);
+        Assert.Equal(10, r.ActualWorkingDays);
+        Assert.Equal(10000m, Math.Round(30000m * 0.5m * r.ExactFactor, 2, MidpointRounding.AwayFromZero));
+    }
+
+    [Fact]
+    public void Money_uses_the_exact_factor_not_the_rounded_display_factor()
+    {
+        // audit L-02: 30,000 × 10/30 = 10,000 — not 30,000 × 0.3333 = 9,999
+        var r = ProrationCalculator.Calculate(Jul1, Jul31, joinDate: new DateOnly(2026, 7, 22), resignDate: null, daysPerMonthDivisor: 30);
+        Assert.Equal(0.3333m, r.ProrationFactor);
+        Assert.Equal(10000m, Math.Round(30000m * r.ExactFactor, 2, MidpointRounding.AwayFromZero));
+    }
 }

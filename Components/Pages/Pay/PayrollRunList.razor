@@ -83,6 +83,8 @@
 
         _runs = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == companyId)
+            // Only Regular/Bonus exist in this product (see PayrollRunTypes).
+            .Where(r => r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus)
             .OrderByDescending(r => r.PayrollPeriod)
             .ThenByDescending(r => r.Id)
             .ToListAsync();

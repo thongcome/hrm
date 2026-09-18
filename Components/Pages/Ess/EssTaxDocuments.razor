@@ -75,9 +75,8 @@
         {
             var empId = _employee.id;
             _years = (await context.Pay_PayrollEmployees
-                    .Where(e => e.HremployeeId == empId && !e.IsExcluded
-                                && (e.Pay_PayrollRun.Status == PayrollRunStatus.Posted || e.Pay_PayrollRun.Status == PayrollRunStatus.Paid
-                                    || e.Pay_PayrollRun.Status == PayrollRunStatus.Approved))
+                    .Where(HRM.Services.Pay.PayrollRunFilters.RowWasPaid)
+                    .Where(e => e.HremployeeId == empId)
                     .Select(e => new { Year = e.Pay_PayrollRun.PeriodStart.Year, e.GrossEarnings, e.TaxAmount })
                     .ToListAsync())
                 .GroupBy(x => x.Year)
