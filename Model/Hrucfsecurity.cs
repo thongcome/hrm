@@ -47,6 +47,10 @@ public partial class Hrucfsecurity
     [Column(TypeName = "decimal(18, 2)")]
     public decimal? EmployerPercenSecurity { get; set; }
 
+    // วันที่อัตรา/เพดานนี้เริ่มมีผล (audit H-03): ใช้แถวที่มีผลล่าสุดที่ไม่เกินวันเริ่มงวดเงินเดือน
+    // NULL = ใช้ได้ตลอด (แถวเดิมก่อนมีคอลัมน์นี้) — แถวที่มีวันที่จะชนะแถว NULL เสมอเมื่อถึงวันนั้น
+    public DateOnly? EffectiveFrom { get; set; }
+
 
     // add new
     //[Column("AreaCode")]

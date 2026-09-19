@@ -49,8 +49,7 @@ public class SocialSecurityContributionReport(IDbContextFactory<HRMContext> dbFa
         var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId && r.CompanyId == ctx.CompanyId, ct)
             ?? throw new InvalidOperationException("ไม่พบงวดเงินเดือนนี้");
 
-        var rate = await context.Hrucfsecuritys
-            .Where(x => x.companyid == run.CompanyId && x.SecurityCode == HrucfsecurityRateProvider.CurrentEmployeeSecurityCode)
+        var rate = await HrucfsecurityRateProvider.InForce(context.Hrucfsecuritys, run.CompanyId, run.PeriodStart)
             .Select(x => new { x.PercenSecurity, x.PercenmgSecurity })
             .FirstOrDefaultAsync(ct);
         var employeeRate = (rate?.PercenSecurity ?? 5m) / 100m;

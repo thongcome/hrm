@@ -75,8 +75,7 @@ public static class EFilingExportService
             .ToListAsync(ct);
         if (rows.Count == 0) return null;
 
-        var rate = await context.Hrucfsecuritys.AsNoTracking()
-            .Where(x => x.companyid == companyId && x.SecurityCode == HrucfsecurityRateProvider.CurrentEmployeeSecurityCode)
+        var rate = await HrucfsecurityRateProvider.InForce(context.Hrucfsecuritys.AsNoTracking(), companyId, rows.Min(r => r.PeriodStart))
             .Select(x => new { x.PercenSecurity, x.SecurityMoney }).FirstOrDefaultAsync(ct);
         var ratePercent = rate?.PercenSecurity ?? 5m;
         var cap = rate?.SecurityMoney ?? 15000m;

@@ -255,7 +255,7 @@ public class PayrollCalculationService
                             || (a.Status == PaySalaryAdvanceStatus.Deducted && a.ConsumedByPayrollRunId == run.Id)))
             .ToListAsync(ct);
 
-        var (ssoRate, ssoEmployerRate, ssoCap) = await _socialSecurityRateProvider.GetCurrentRatesAsync(run.CompanyId, ct);
+        var (ssoRate, ssoEmployerRate, ssoCap) = await _socialSecurityRateProvider.GetCurrentRatesAsync(run.CompanyId, run.PeriodStart, ct);
 
         // (audit M14) โหลดครั้งเดียวต่อรอบ แทนการยิงฐานข้อมูลรายคน: OT, เงินกู้สหกรณ์, ยอดสะสมทั้งปี
         var otByEmpNo = await _overtimeCalculator.GetOvertimeForPeriodByEmployeeAsync(run.CompanyId, run.PeriodStart, run.PeriodEnd, ct);
