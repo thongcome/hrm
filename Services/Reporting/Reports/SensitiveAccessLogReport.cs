@@ -23,6 +23,19 @@ public class SensitiveAccessLogReport(IDbContextFactory<HRMContext> dbFactory) :
             DefaultValue: new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).ToString("yyyy-MM-dd")),
         new ReportParameter("to", "ถึงวันที่", ReportParamType.Date, Required: true,
             DefaultValue: DateTime.Today.ToString("yyyy-MM-dd")),
+        new ReportParameter("actor", "ผู้กระทำ (ชื่อ หรือ รหัสผู้ใช้)", ReportParamType.Text,
+            HelperText: "พิมพ์บางส่วนของชื่อ หรือเลขรหัสผู้ใช้ — เว้นว่าง = ทุกคน"),
+        new ReportParameter("entity", "ประเภทข้อมูล", ReportParamType.Text,
+            HelperText: "พิมพ์บางส่วนของชื่อ entity เช่น Hremployee — เว้นว่าง = ทุกประเภท"),
+        new ReportParameter("action", "การกระทำ", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกการกระทำ", Options: new[]
+            {
+                new ReportParamOption("", "ทั้งหมด"),
+                new ReportParamOption(nameof(AuditActionType.View), ActionLabel(AuditActionType.View)),
+                new ReportParamOption(nameof(AuditActionType.Create), ActionLabel(AuditActionType.Create)),
+                new ReportParamOption(nameof(AuditActionType.Update), ActionLabel(AuditActionType.Update)),
+                new ReportParamOption(nameof(AuditActionType.Delete), ActionLabel(AuditActionType.Delete)),
+            }),
     };
 
     private static string ActionLabel(AuditActionType a) => a switch
@@ -43,8 +56,22 @@ public class SensitiveAccessLogReport(IDbContextFactory<HRMContext> dbFactory) :
 
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var logs = await context.AuditLogs
-            .Where(l => l.IsSensitiveDataAccess && l.EventDate >= from && l.EventDate <= to)
+        var query = context.AuditLogs
+            .Where(l => l.IsSensitiveDataAccess && l.EventDate >= from && l.EventDate <= to);
+        var actorText = ReportCriteria.Arg(args, "actor");
+        if (actorText is not null)
+        {
+            var actorId = long.TryParse(actorText, out var aid) ? (long?)aid : null;
+            query = query.Where(l => (l.ActorName != null && l.ActorName.Contains(actorText))
+                                     || (actorId != null && l.ActorUserId == actorId));
+        }
+        var entityText = ReportCriteria.Arg(args, "entity");
+        if (entityText is not null)
+            query = query.Where(l => l.EntityType.Contains(entityText));
+        if (Enum.TryParse<AuditActionType>(ReportCriteria.Arg(args, "action"), out var actionFilter))
+            query = query.Where(l => l.Action == actionFilter);
+
+        var logs = await query
             .OrderByDescending(l => l.EventDate)
             .Take(MaxRows)
             .Select(l => new { l.EventDate, l.ActorName, l.ActorUserId, l.Action, l.EntityType, l.RecordId, l.IpAddress })
@@ -72,6 +99,10 @@ public class SensitiveAccessLogReport(IDbContextFactory<HRMContext> dbFactory) :
                 new ReportColumn("ip", "IP"),
             },
             rows, Totals: null,
-            Subtitle: $"ช่วง {from:dd/MM/yyyy} - {to:dd/MM/yyyy} · พบ {rows.Count} รายการ{(rows.Count >= MaxRows ? $" (แสดงสูงสุด {MaxRows})" : "")}");
+            Subtitle: $"ช่วง {from:dd/MM/yyyy} - {to:dd/MM/yyyy}"
+                + (actorText is null ? "" : $" · ผู้กระทำ \"{actorText}\"")
+                + (entityText is null ? "" : $" · ประเภทข้อมูล \"{entityText}\"")
+                + (Enum.TryParse<AuditActionType>(ReportCriteria.Arg(args, "action"), out var act) ? $" · {ActionLabel(act)}" : "")
+                + $" · พบ {rows.Count} รายการ{(rows.Count >= MaxRows ? $" (แสดงสูงสุด {MaxRows})" : "")}");
     }
 }

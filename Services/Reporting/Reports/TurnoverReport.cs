@@ -17,15 +17,17 @@ public class TurnoverReport(IDbContextFactory<HRMContext> dbFactory) : IReportDe
     {
         new ReportParameter("year", "ปี (ค.ศ.)", ReportParamType.Year, Required: true,
             DefaultValue: DateTime.Now.Year.ToString(), HelperText: "เช่น 2026"),
-    };
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
         var year = ParseYear(args);
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var resigns = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate != null
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var resigns = await query
+            .Where(e => e.ResignDate != null
                 && e.ResignDate!.Value.Year == year)
             .Select(e => e.ResignDate!.Value.Month)
             .ToListAsync(ct);
@@ -42,10 +44,12 @@ public class TurnoverReport(IDbContextFactory<HRMContext> dbFactory) : IReportDe
         }
         var totals = new Dictionary<string, object?> { ["month"] = "รวมทั้งปี", ["count"] = resigns.Count };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             $"อัตราการลาออกรายเดือน — ปี {year}",
             new[] { new ReportColumn("month", "เดือน"), new ReportColumn("count", "จำนวนลาออก (คน)", ReportColumnType.Number) },
-            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId}");
+            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId}" + (crit is null ? "" : " · " + crit));
     }
 
     internal static int ParseYear(IReadOnlyDictionary<string, string?> args)

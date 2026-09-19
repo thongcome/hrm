@@ -12,14 +12,15 @@ public class HeadcountByPositionReport(IDbContextFactory<HRMContext> dbFactory) 
     public string Category => "กำลังพล (Headcount)";
     public string Name => "จำนวนพนักงานตามตำแหน่ง";
     public string? Description => "นับพนักงานที่ยังทำงานอยู่ แยกตามตำแหน่ง (POS)";
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard(statusDefault: ReportCriteria.StatusWorking);
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
             .Select(e => e.PosCode)
             .ToListAsync(ct);
 
@@ -43,6 +44,7 @@ public class HeadcountByPositionReport(IDbContextFactory<HRMContext> dbFactory) 
         }).ToList();
 
         var totals = new Dictionary<string, object?> { ["name"] = "รวมทั้งหมด", ["count"] = grouped.Sum(g => g.Count) };
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
 
         return new ReportResult(
             "จำนวนพนักงานตามตำแหน่ง",
@@ -52,6 +54,6 @@ public class HeadcountByPositionReport(IDbContextFactory<HRMContext> dbFactory) 
                 new ReportColumn("name", "ตำแหน่ง"),
                 new ReportColumn("count", "จำนวน (คน)", ReportColumnType.Number),
             },
-            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

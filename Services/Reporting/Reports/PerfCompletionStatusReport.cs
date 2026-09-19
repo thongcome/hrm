@@ -19,12 +19,23 @@ public class PerfCompletionStatusReport(IDbContextFactory<HRMContext> dbFactory)
     {
         new ReportParameter("period", "รอบการประเมิน", ReportParamType.Period, Required: true,
             HelperText: "เลือกรอบที่ต้องการดูสถานะการประเมิน"),
-    };
+        new ReportParameter("evaltype", "ประเภทแบบประเมิน", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกประเภท"),
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<IReadOnlyList<ReportParamOption>> GetOptionsAsync(string parameterKey, ReportContext ctx, CancellationToken ct = default)
     {
-        if (parameterKey != "period") return Array.Empty<ReportParamOption>();
         await using var context = await dbFactory.CreateDbContextAsync(ct);
+        if (parameterKey == "evaltype")
+        {
+            var types = await context.Perf_EvaluationTypes
+                .Where(t => t.CompanyId == ctx.CompanyId)
+                .OrderBy(t => t.Code)
+                .Select(t => new ReportParamOption(t.Id.ToString(), t.Code + " — " + t.Name))
+                .ToListAsync(ct);
+            return new[] { new ReportParamOption("", "ทั้งหมด") }.Concat(types).ToList();
+        }
+        if (parameterKey != "period") return await ReportCriteria.OptionsAsync(context, parameterKey, ctx, ct);
         return await context.Perf_EvaluationPeriods
             .Where(p => p.CompanyId == ctx.CompanyId)
             .OrderByDescending(p => p.StartDate)
@@ -52,8 +63,19 @@ public class PerfCompletionStatusReport(IDbContextFactory<HRMContext> dbFactory)
         var period = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(p => p.Id == periodId, ct)
             ?? throw new InvalidOperationException("ไม่พบรอบการประเมินนี้");
 
-        var statuses = await context.Perf_EvaluationInstances
-            .Where(i => i.EvaluationPeriodId == periodId)
+        var instances = context.Perf_EvaluationInstances.Where(i => i.EvaluationPeriodId == periodId);
+        if (long.TryParse(ReportCriteria.Arg(args, "evaltype"), out var evalTypeId))
+            instances = instances.Where(i => i.EvaluationTypeId == evalTypeId);
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null)
+        {
+            var emps = await ReportCriteria.ApplyEmployeeAsync(context,
+                context.Hremployee.Where(e => e.companyid == ctx.CompanyId), args, ct);
+            var empIds = emps.Select(e => e.id);
+            instances = instances.Where(i => empIds.Contains(i.HremployeeId));
+        }
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
+        var statuses = await instances
             .Select(i => i.Status)
             .ToListAsync(ct);
         var total = statuses.Count;
@@ -88,6 +110,7 @@ public class PerfCompletionStatusReport(IDbContextFactory<HRMContext> dbFactory)
                 new ReportColumn("pct", "สัดส่วน", ReportColumnType.Percent),
             },
             rows, totals,
-            Subtitle: $"แบบประเมินทั้งหมด {total} รายการ · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"แบบประเมินทั้งหมด {total} รายการ · ณ {DateTime.Now:dd/MM/yyyy}"
+                + (crit is null ? "" : $" · {crit}"));
     }
 }

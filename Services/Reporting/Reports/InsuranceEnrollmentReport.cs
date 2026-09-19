@@ -13,7 +13,7 @@ public class InsuranceEnrollmentReport(IDbContextFactory<HRMContext> dbFactory) 
     public string Name => "จำนวนผู้เข้าร่วมประกันกลุ่มตามแผน";
     public string? Description => "จำนวนพนักงานที่มีสิทธิ์ประกันกลุ่ม (สถานะใช้งาน) แยกตามแผนประกัน";
 
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard();
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
@@ -26,8 +26,21 @@ public class InsuranceEnrollmentReport(IDbContextFactory<HRMContext> dbFactory) 
         var planName = plans.ToDictionary(p => p.Id, p => p.PlanName);
         var planIds = plans.Select(p => p.Id).ToList();
 
-        var enrollments = await context.Pay_EmployeeInsuranceEnrollments
-            .Where(e => e.IsActive && planIds.Contains(e.PlanId))
+        var enrollQuery = context.Pay_EmployeeInsuranceEnrollments
+            .Where(e => e.IsActive && planIds.Contains(e.PlanId));
+
+        // Dept / employment-type narrow through the enrolled employee. Only joined when
+        // a criterion is actually chosen, so the default output is exactly as before.
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null
+            || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null)
+        {
+            var empQuery = context.Hremployee.Where(x => x.companyid == ctx.CompanyId);
+            empQuery = await ReportCriteria.ApplyEmployeeAsync(context, empQuery, args, ct);
+            var empIds = empQuery.Select(x => x.id);
+            enrollQuery = enrollQuery.Where(e => empIds.Contains(e.HremployeeId));
+        }
+
+        var enrollments = await enrollQuery
             .Select(e => e.PlanId)
             .ToListAsync(ct);
 
@@ -43,6 +56,8 @@ public class InsuranceEnrollmentReport(IDbContextFactory<HRMContext> dbFactory) 
 
         var totals = new Dictionary<string, object?> { ["plan"] = "รวมทั้งหมด", ["count"] = enrollments.Count };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             "จำนวนผู้เข้าร่วมประกันกลุ่มตามแผน",
             new[]
@@ -51,6 +66,6 @@ public class InsuranceEnrollmentReport(IDbContextFactory<HRMContext> dbFactory) 
                 new ReportColumn("count", "จำนวนผู้เข้าร่วม (คน)", ReportColumnType.Number),
             },
             rows, totals,
-            Subtitle: $"บริษัท {ctx.CompanyId} · เฉพาะสถานะใช้งาน · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"บริษัท {ctx.CompanyId} · เฉพาะสถานะใช้งาน · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

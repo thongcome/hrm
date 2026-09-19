@@ -13,7 +13,30 @@ public class RecruitmentPipelineReport(IDbContextFactory<HRMContext> dbFactory) 
     public string Name => "สถานะคำขออัตรากำลัง (Requisition Pipeline)";
     public string? Description => "จำนวนคำขออัตรากำลังและจำนวนอัตราที่เปิด แยกตามสถานะ";
 
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => new[]
+    {
+        new ReportParameter("from", "ยื่นคำขอตั้งแต่วันที่", ReportParamType.Date,
+            HelperText: "เว้นว่าง = ไม่จำกัดวันที่"),
+        new ReportParameter("to", "ถึงวันที่", ReportParamType.Date),
+        new ReportParameter("reqstatus", "สถานะคำขอ", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกสถานะ", Options: new[]
+            {
+                new ReportParamOption("", "ทั้งหมด"),
+                new ReportParamOption(((int)RequisitionStatus.Draft).ToString(), "ร่าง"),
+                new ReportParamOption(((int)RequisitionStatus.PendingApproval).ToString(), "รออนุมัติ"),
+                new ReportParamOption(((int)RequisitionStatus.Approved).ToString(), "อนุมัติแล้ว"),
+                new ReportParamOption(((int)RequisitionStatus.Filled).ToString(), "ได้คนแล้ว"),
+                new ReportParamOption(((int)RequisitionStatus.Rejected).ToString(), "ไม่อนุมัติ"),
+                new ReportParamOption(((int)RequisitionStatus.Cancelled).ToString(), "ยกเลิก"),
+            }),
+        new ReportParameter("reqtype", "ประเภทคำขอ", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกประเภท", Options: new[]
+            {
+                new ReportParamOption("", "ทั้งหมด"),
+                new ReportParamOption(((int)RequisitionType.Replacement).ToString(), "ทดแทน"),
+                new ReportParamOption(((int)RequisitionType.NewHeadcount).ToString(), "เพิ่มอัตราใหม่"),
+            }),
+    }.Concat(ReportCriteria.Standard(empType: false)).ToList();
 
     private static string StatusLabel(RequisitionStatus s) => s switch
     {
@@ -30,8 +53,42 @@ public class RecruitmentPipelineReport(IDbContextFactory<HRMContext> dbFactory) 
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var reqs = await context.Rec_Requisitions
-            .Where(r => r.CompanyId == ctx.CompanyId)
+        var query = context.Rec_Requisitions.Where(r => r.CompanyId == ctx.CompanyId);
+        if (DateTime.TryParse(ReportCriteria.Arg(args, "from"), out var from))
+            query = query.Where(r => r.RequestedDate >= from.Date);
+        if (DateTime.TryParse(ReportCriteria.Arg(args, "to"), out var to))
+        {
+            var toEnd = to.Date.AddDays(1);
+            query = query.Where(r => r.RequestedDate < toEnd);
+        }
+        if (int.TryParse(ReportCriteria.Arg(args, "reqstatus"), out var statusFilter))
+        {
+            var st = (RequisitionStatus)statusFilter;
+            query = query.Where(r => r.Status == st);
+        }
+        if (int.TryParse(ReportCriteria.Arg(args, "reqtype"), out var typeFilter))
+        {
+            var rt = (RequisitionType)typeFilter;
+            query = query.Where(r => r.RequisitionType == rt);
+        }
+        // หน่วยงาน: the requisition points at one org unit (OrganizationId =
+        // com_organization.id); a chosen unit includes every unit below it.
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is { } dept)
+        {
+            var prefix = await context.com_organizations
+                .Where(o => o.code == dept).Select(o => o.orgcodefull).FirstOrDefaultAsync(ct);
+            var orgIds = string.IsNullOrWhiteSpace(prefix)
+                ? context.com_organizations.Where(_ => false).Select(o => o.id)
+                : context.com_organizations.Where(o => o.orgcodefull != null && o.orgcodefull.StartsWith(prefix)).Select(o => o.id);
+            query = query.Where(r => orgIds.Contains(r.OrganizationId));
+        }
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+        var extra = new List<string>();
+        if (ReportCriteria.Arg(args, "from") is not null || ReportCriteria.Arg(args, "to") is not null)
+            extra.Add($"ยื่นคำขอ {ReportCriteria.Arg(args, "from") ?? "…"} ถึง {ReportCriteria.Arg(args, "to") ?? "…"}");
+        if (crit is not null) extra.Add(crit);
+
+        var reqs = await query
             .Select(r => new { r.Status, r.OpeningsCount })
             .ToListAsync(ct);
 
@@ -68,6 +125,7 @@ public class RecruitmentPipelineReport(IDbContextFactory<HRMContext> dbFactory) 
                 new ReportColumn("openings", "จำนวนอัตราที่เปิด", ReportColumnType.Number),
             },
             rows, totals,
-            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}"
+                + (extra.Count == 0 ? "" : " · " + string.Join(" · ", extra)));
     }
 }

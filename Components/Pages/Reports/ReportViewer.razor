@@ -5,9 +5,12 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
+@using HRM.Models
+@using Microsoft.EntityFrameworkCore
 @inject ReportRegistry Registry
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
+@inject IDbContextFactory<HRMContext> DbFactory
 @attribute [Authorize(Policy = "Menu:REPORT_CENTER")]
 
 <PageTitle>@(_report?.Name ?? "รายงาน")</PageTitle>
@@ -156,17 +159,25 @@ else if (_result is not null)
         _companyId = state.User.FindFirstValue("payroll_company") ?? "";
         long.TryParse(state.User.FindFirstValue("sc_userid"), out _userId);
 
-        // preload dynamic option lists for select-style params
-        if (_report is IReportDynamicOptions dyn)
+        // preload dynamic option lists for select-style params: the report's own
+        // (IReportDynamicOptions) first, then the shared dept/emptype criteria
+        var optCtx = new ReportContext(_companyId, _userId);
+        foreach (var p in _report.Parameters.Where(p =>
+            p.Type is ReportParamType.Select or ReportParamType.Period or ReportParamType.Organization
+            && (p.Options is null || p.Options.Count == 0)))
         {
-            var ctx = new ReportContext(_companyId, _userId);
-            foreach (var p in _report.Parameters.Where(p =>
-                p.Type is ReportParamType.Select or ReportParamType.Period or ReportParamType.Organization
-                && (p.Options is null || p.Options.Count == 0)))
+            try
             {
-                try { _dynamicOptions[p.Key] = await dyn.GetOptionsAsync(p.Key, ctx); }
-                catch { _dynamicOptions[p.Key] = Array.Empty<ReportParamOption>(); }
+                IReadOnlyList<ReportParamOption> opts = _report is IReportDynamicOptions dyn
+                    ? await dyn.GetOptionsAsync(p.Key, optCtx) : Array.Empty<ReportParamOption>();
+                if (opts.Count == 0)
+                {
+                    await using var db = await DbFactory.CreateDbContextAsync();
+                    opts = await ReportCriteria.OptionsAsync(db, p.Key, optCtx);
+                }
+                _dynamicOptions[p.Key] = opts;
             }
+            catch { _dynamicOptions[p.Key] = Array.Empty<ReportParamOption>(); }
         }
     }
 

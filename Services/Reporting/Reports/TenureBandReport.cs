@@ -13,7 +13,7 @@ public class TenureBandReport(IDbContextFactory<HRMContext> dbFactory) : IReport
     public string Category => "กำลังพล (Headcount)";
     public string Name => "จำนวนพนักงานตามอายุงาน";
     public string? Description => "นับพนักงานที่ยังทำงานอยู่ แยกตามอายุงาน (ปี)";
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard(statusDefault: ReportCriteria.StatusWorking);
 
     private static readonly string[] BandOrder =
     {
@@ -24,8 +24,9 @@ public class TenureBandReport(IDbContextFactory<HRMContext> dbFactory) : IReport
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
             .Select(e => e.WorkDate)
             .ToListAsync(ct);
 
@@ -72,6 +73,8 @@ public class TenureBandReport(IDbContextFactory<HRMContext> dbFactory) : IReport
             ["percent"] = 100m,
         };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             "จำนวนพนักงานตามอายุงาน",
             new[]
@@ -81,6 +84,6 @@ public class TenureBandReport(IDbContextFactory<HRMContext> dbFactory) : IReport
                 new ReportColumn("percent", "สัดส่วน", ReportColumnType.Percent),
             },
             rows, totals,
-            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

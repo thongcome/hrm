@@ -27,7 +27,7 @@ public class WorkAnniversaryReport(IDbContextFactory<HRMContext> dbFactory) : IR
             Options: Enumerable.Range(1, 12)
                 .Select(i => new ReportParamOption(i.ToString(), ThaiMonths[i - 1]))
                 .ToList()),
-    };
+    }.Concat(ReportCriteria.Standard(statusDefault: ReportCriteria.StatusWorking)).ToList();
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
@@ -39,8 +39,10 @@ public class WorkAnniversaryReport(IDbContextFactory<HRMContext> dbFactory) : IR
 
         var today = DateTime.Today;
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null && e.WorkDate != null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
+            .Where(e => e.WorkDate != null)
             .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname, e.DeptgrpCode, e.WorkDate })
             .ToListAsync(ct);
 
@@ -50,6 +52,8 @@ public class WorkAnniversaryReport(IDbContextFactory<HRMContext> dbFactory) : IR
             .ToList();
 
         var monthName = ThaiMonths[month - 1];
+
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
 
         var rows = ordered.Select(e =>
         {
@@ -80,6 +84,6 @@ public class WorkAnniversaryReport(IDbContextFactory<HRMContext> dbFactory) : IR
                 new ReportColumn("years", "อายุงาน (ปี)", ReportColumnType.Number),
             },
             rows, totals,
-            Subtitle: $"เดือน{monthName} · {ordered.Count} คน · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"เดือน{monthName} · {ordered.Count} คน · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

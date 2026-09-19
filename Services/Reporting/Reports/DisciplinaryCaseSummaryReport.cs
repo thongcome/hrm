@@ -16,7 +16,16 @@ public class DisciplinaryCaseSummaryReport(IDbContextFactory<HRMContext> dbFacto
     public IReadOnlyList<ReportParameter> Parameters => new[]
     {
         new ReportParameter("year", "ปี (ค.ศ.)", ReportParamType.Year, Required: true, DefaultValue: DateTime.Today.Year.ToString()),
-    };
+        new ReportParameter("actiontype", "ประเภทการลงโทษ", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกประเภท", Options: new[]
+            {
+                new ReportParamOption("", "ทั้งหมด"),
+                new ReportParamOption(((int)DisciplinaryActionType.VerbalWarning).ToString(), TypeLabel(DisciplinaryActionType.VerbalWarning)),
+                new ReportParamOption(((int)DisciplinaryActionType.WrittenWarning).ToString(), TypeLabel(DisciplinaryActionType.WrittenWarning)),
+                new ReportParamOption(((int)DisciplinaryActionType.Suspension).ToString(), TypeLabel(DisciplinaryActionType.Suspension)),
+                new ReportParamOption(((int)DisciplinaryActionType.Termination).ToString(), TypeLabel(DisciplinaryActionType.Termination)),
+            }),
+    }.Concat(ReportCriteria.Standard(statusDefault: ReportCriteria.StatusAll)).ToList();
 
     private static string TypeLabel(DisciplinaryActionType t) => t switch
     {
@@ -33,8 +42,30 @@ public class DisciplinaryCaseSummaryReport(IDbContextFactory<HRMContext> dbFacto
 
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var cases = await context.Hr_DisciplinaryCases
-            .Where(c => c.CompanyId == ctx.CompanyId && c.CreatedDate.Year == year)
+        var query = context.Hr_DisciplinaryCases
+            .Where(c => c.CompanyId == ctx.CompanyId && c.CreatedDate.Year == year);
+        if (int.TryParse(ReportCriteria.Arg(args, "actiontype"), out var typeFilter))
+        {
+            var at = (DisciplinaryActionType)typeFilter;
+            query = query.Where(c => c.ActionType == at);
+        }
+        // employee criteria apply to the person the case is about (HremployeeId);
+        // "all" status (the default) adds no filter, so default output is unchanged
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null
+            || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null
+            || (ReportCriteria.Arg(args, ReportCriteria.StatusKey) is { } st && st != ReportCriteria.StatusAll))
+        {
+            var emps = await ReportCriteria.ApplyEmployeeAsync(context,
+                context.Hremployee.Where(e => e.companyid == ctx.CompanyId), args, ct);
+            var empIds = emps.Select(e => e.id);
+            query = query.Where(c => empIds.Contains(c.HremployeeId));
+        }
+        // "ทั้งหมด" status is the default, not a criterion worth printing
+        var descArgs = args.Where(kv => !(kv.Key == ReportCriteria.StatusKey && kv.Value == ReportCriteria.StatusAll))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, descArgs, ct);
+
+        var cases = await query
             .Select(c => c.ActionType)
             .ToListAsync(ct);
 
@@ -58,6 +89,6 @@ public class DisciplinaryCaseSummaryReport(IDbContextFactory<HRMContext> dbFacto
                 new ReportColumn("count", "จำนวน (กรณี)", ReportColumnType.Number),
             },
             rows, totals,
-            Subtitle: $"บริษัท {ctx.CompanyId}");
+            Subtitle: $"บริษัท {ctx.CompanyId}" + (crit is null ? "" : $" · {crit}"));
     }
 }

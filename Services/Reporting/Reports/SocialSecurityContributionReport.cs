@@ -24,10 +24,10 @@ public class SocialSecurityContributionReport(IDbContextFactory<HRMContext> dbFa
     public string Name => "รายงานเงินสมทบประกันสังคม (สปส.1-10)";
     public string? Description => "รายชื่อผู้ประกันตน ค่าจ้างที่นำส่ง เงินสมทบผู้ประกันตนและนายจ้าง ของงวดที่เลือก";
 
-    public IReadOnlyList<ReportParameter> Parameters => new[]
+    public IReadOnlyList<ReportParameter> Parameters => new ReportParameter[]
     {
         new ReportParameter("run", "งวดเงินเดือน", ReportParamType.Select, Required: true),
-    };
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<IReadOnlyList<ReportParamOption>> GetOptionsAsync(string parameterKey, ReportContext ctx, CancellationToken ct = default)
     {
@@ -57,8 +57,16 @@ public class SocialSecurityContributionReport(IDbContextFactory<HRMContext> dbFa
 
         var settings = await context.Pay_PayslipSettings.FirstOrDefaultAsync(s => s.CompanyId == run.CompanyId, ct);
 
-        var lines = await context.Pay_PayrollEmployees
-            .Where(e => e.PayrollRunId == runId && !e.IsExcluded && e.SocialSecurityAmount > 0)
+        var lineQ = context.Pay_PayrollEmployees
+            .Where(e => e.PayrollRunId == runId && !e.IsExcluded && e.SocialSecurityAmount > 0);
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null)
+        {
+            var empIds = (await ReportCriteria.ApplyEmployeeAsync(context,
+                context.Hremployee.Where(x => x.companyid == ctx.CompanyId), args, ct)).Select(x => x.id);
+            lineQ = lineQ.Where(e => empIds.Contains(e.HremployeeId));
+        }
+        var criteria = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+        var lines = await lineQ
             .Select(e => new
             {
                 e.EmpNo,
@@ -113,6 +121,6 @@ public class SocialSecurityContributionReport(IDbContextFactory<HRMContext> dbFa
                 new ReportColumn("total", "รวมนำส่ง", ReportColumnType.Money),
             },
             rows, Totals: totals,
-            Subtitle: $"นายจ้าง {employer_} · เลขประจำตัวผู้เสียภาษี {settings?.CompanyTaxId ?? "-"} · ค่าจ้างเดือน {run.PeriodStart:MM/yyyy} · อัตราผู้ประกันตน {employeeRate:P2} นายจ้าง {employerRate:P2}");
+            Subtitle: $"นายจ้าง {employer_} · เลขประจำตัวผู้เสียภาษี {settings?.CompanyTaxId ?? "-"} · ค่าจ้างเดือน {run.PeriodStart:MM/yyyy} · อัตราผู้ประกันตน {employeeRate:P2} นายจ้าง {employerRate:P2}" + (criteria is null ? "" : " · " + criteria));
     }
 }

@@ -15,10 +15,10 @@ public class PayrollStatutorySummaryReport(IDbContextFactory<HRMContext> dbFacto
     public string Name => "สรุปยอดตามกฎหมาย (SSO/PF/ภาษี)";
     public string? Description => "รวมประกันสังคม กองทุนสำรองเลี้ยงชีพ ภาษี เงินได้และเงินสุทธิ ของงวดที่เลือก";
 
-    public IReadOnlyList<ReportParameter> Parameters => new[]
+    public IReadOnlyList<ReportParameter> Parameters => new ReportParameter[]
     {
         new ReportParameter("run", "งวดเงินเดือน", ReportParamType.Select, Required: true),
-    };
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<IReadOnlyList<ReportParamOption>> GetOptionsAsync(string parameterKey, ReportContext ctx, CancellationToken ct = default)
     {
@@ -40,8 +40,16 @@ public class PayrollStatutorySummaryReport(IDbContextFactory<HRMContext> dbFacto
         var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId && r.CompanyId == ctx.CompanyId, ct)
             ?? throw new InvalidOperationException("ไม่พบงวดเงินเดือนนี้");
 
-        var lines = await context.Pay_PayrollEmployees
-            .Where(e => e.PayrollRunId == runId && !e.IsExcluded)   // excluded = not paid (audit C-05)
+        var lineQ = context.Pay_PayrollEmployees
+            .Where(e => e.PayrollRunId == runId && !e.IsExcluded);   // excluded = not paid (audit C-05)
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null)
+        {
+            var empIds = (await ReportCriteria.ApplyEmployeeAsync(context,
+                context.Hremployee.Where(x => x.companyid == ctx.CompanyId), args, ct)).Select(x => x.id);
+            lineQ = lineQ.Where(e => empIds.Contains(e.HremployeeId));
+        }
+        var criteria = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+        var lines = await lineQ
             .Select(e => new
             {
                 e.GrossEarnings, e.NetPay, e.TaxAmount,
@@ -74,6 +82,6 @@ public class PayrollStatutorySummaryReport(IDbContextFactory<HRMContext> dbFacto
                 new ReportColumn("amount", "ยอดรวม (บาท)", ReportColumnType.Money),
             },
             rows, Totals: null,
-            Subtitle: $"งวด {run.PeriodStart:dd/MM/yyyy} - {run.PeriodEnd:dd/MM/yyyy} · บริษัท {ctx.CompanyId}");
+            Subtitle: $"งวด {run.PeriodStart:dd/MM/yyyy} - {run.PeriodEnd:dd/MM/yyyy} · บริษัท {ctx.CompanyId}" + (criteria is null ? "" : " · " + criteria));
     }
 }

@@ -13,14 +13,15 @@ public class HeadcountByEmploymentTypeReport(IDbContextFactory<HRMContext> dbFac
     public string Category => "กำลังพล (Headcount)";
     public string Name => "จำนวนพนักงานตามประเภทการจ้าง";
     public string? Description => "นับพนักงานที่ยังทำงานอยู่ แยกตามประเภทการจ้าง (EMPTYPE)";
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard(empType: false, statusDefault: ReportCriteria.StatusWorking);
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
             .Select(e => e.EmptypeCode)
             .ToListAsync(ct);
 
@@ -45,6 +46,7 @@ public class HeadcountByEmploymentTypeReport(IDbContextFactory<HRMContext> dbFac
         }).ToList();
 
         var totals = new Dictionary<string, object?> { ["name"] = "รวมทั้งหมด", ["count"] = grouped.Sum(g => g.Count) };
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
 
         return new ReportResult(
             "จำนวนพนักงานตามประเภทการจ้าง",
@@ -54,6 +56,6 @@ public class HeadcountByEmploymentTypeReport(IDbContextFactory<HRMContext> dbFac
                 new ReportColumn("name", "ประเภทการจ้าง"),
                 new ReportColumn("count", "จำนวน (คน)", ReportColumnType.Number),
             },
-            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

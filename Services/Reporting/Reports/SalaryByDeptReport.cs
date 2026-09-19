@@ -13,14 +13,16 @@ public class SalaryByDeptReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
     public string Category => "เงินเดือน / GL (Payroll)";
     public string Name => "สรุปเงินเดือนตามหน่วยงาน";
     public string? Description => "ค่าเฉลี่ย/ต่ำสุด/สูงสุด/รวม เงินเดือน แยกตามหน่วยงาน (เฉพาะที่มีข้อมูลเงินเดือน)";
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard(statusDefault: ReportCriteria.StatusWorking);
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null && e.SalaryAmt != null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
+            .Where(e => e.SalaryAmt != null)
             .Select(e => new { e.DeptgrpCode, e.SalaryAmt })
             .ToListAsync(ct);
 
@@ -65,6 +67,8 @@ public class SalaryByDeptReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
             ["avg"] = totalCount == 0 ? 0m : Math.Round(totalSum / totalCount, 2),
         };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             "สรุปเงินเดือนตามหน่วยงาน",
             new[]
@@ -77,6 +81,6 @@ public class SalaryByDeptReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
                 new ReportColumn("min", "ต่ำสุด", ReportColumnType.Money),
                 new ReportColumn("max", "สูงสุด", ReportColumnType.Money),
             },
-            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            rows, totals, Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

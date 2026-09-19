@@ -12,14 +12,15 @@ public class HeadcountByGenderReport(IDbContextFactory<HRMContext> dbFactory) : 
     public string Category => "กำลังพล (Headcount)";
     public string Name => "จำนวนพนักงานตามเพศ";
     public string? Description => "นับพนักงานที่ยังทำงานอยู่ แยกตามเพศ";
-    public IReadOnlyList<ReportParameter> Parameters => Array.Empty<ReportParameter>();
+    public IReadOnlyList<ReportParameter> Parameters => ReportCriteria.Standard(statusDefault: ReportCriteria.StatusWorking);
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null)
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
             .Select(e => e.Sex)
             .ToListAsync(ct);
 
@@ -52,6 +53,8 @@ public class HeadcountByGenderReport(IDbContextFactory<HRMContext> dbFactory) : 
             ["percent"] = 100m,
         };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             "จำนวนพนักงานตามเพศ",
             new[]
@@ -61,6 +64,6 @@ public class HeadcountByGenderReport(IDbContextFactory<HRMContext> dbFactory) : 
                 new ReportColumn("percent", "สัดส่วน", ReportColumnType.Percent),
             },
             rows, totals,
-            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"บริษัท {ctx.CompanyId} · ณ {DateTime.Now:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

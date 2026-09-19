@@ -17,7 +17,7 @@ public class ProbationDueReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
     {
         new ReportParameter("days", "ภายในกี่วันข้างหน้า", ReportParamType.Number,
             DefaultValue: "30", HelperText: "ค่าเริ่มต้น 30 วัน"),
-    };
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<ReportResult> RunAsync(IReadOnlyDictionary<string, string?> args, ReportContext ctx, CancellationToken ct = default)
     {
@@ -30,8 +30,10 @@ public class ProbationDueReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
         var today = DateTime.Today;
         var until = today.AddDays(days);
 
-        var emps = await context.Hremployee
-            .Where(e => e.companyid == ctx.CompanyId && e.ResignDate == null
+        var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
+        query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
+        var emps = await query
+            .Where(e => e.ResignDate == null
                 && e.ProbationEndDate != null && e.ProbationConfirmedDate == null
                 && e.ProbationEndDate >= today && e.ProbationEndDate <= until)
             .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname, e.DeptgrpCode, e.ProbationEndDate })
@@ -49,6 +51,8 @@ public class ProbationDueReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
 
         var totals = new Dictionary<string, object?> { ["empno"] = "รวม", ["name"] = $"{ordered.Count} คน" };
 
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
         return new ReportResult(
             "พนักงานที่ครบกำหนดทดลองงาน",
             new[]
@@ -59,6 +63,6 @@ public class ProbationDueReport(IDbContextFactory<HRMContext> dbFactory) : IRepo
                 new ReportColumn("probationEnd", "วันครบทดลองงาน", ReportColumnType.Date),
             },
             rows, totals,
-            Subtitle: $"ครบกำหนดภายใน {days} วัน · {today:dd/MM/yyyy} – {until:dd/MM/yyyy}");
+            Subtitle: $"ครบกำหนดภายใน {days} วัน · {today:dd/MM/yyyy} – {until:dd/MM/yyyy}" + (crit is null ? "" : " · " + crit));
     }
 }

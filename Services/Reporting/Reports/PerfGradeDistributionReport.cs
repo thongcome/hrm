@@ -19,12 +19,23 @@ public class PerfGradeDistributionReport(IDbContextFactory<HRMContext> dbFactory
     {
         new ReportParameter("period", "รอบการประเมิน", ReportParamType.Period, Required: true,
             HelperText: "เลือกรอบที่ต้องการดูการกระจายเกรด"),
-    };
+        new ReportParameter("evaltype", "ประเภทแบบประเมิน", ReportParamType.Select,
+            HelperText: "เว้นว่าง = ทุกประเภท"),
+    }.Concat(ReportCriteria.Standard()).ToList();
 
     public async Task<IReadOnlyList<ReportParamOption>> GetOptionsAsync(string parameterKey, ReportContext ctx, CancellationToken ct = default)
     {
-        if (parameterKey != "period") return Array.Empty<ReportParamOption>();
         await using var context = await dbFactory.CreateDbContextAsync(ct);
+        if (parameterKey == "evaltype")
+        {
+            var types = await context.Perf_EvaluationTypes
+                .Where(t => t.CompanyId == ctx.CompanyId)
+                .OrderBy(t => t.Code)
+                .Select(t => new ReportParamOption(t.Id.ToString(), t.Code + " — " + t.Name))
+                .ToListAsync(ct);
+            return new[] { new ReportParamOption("", "ทั้งหมด") }.Concat(types).ToList();
+        }
+        if (parameterKey != "period") return await ReportCriteria.OptionsAsync(context, parameterKey, ctx, ct);
         return await context.Perf_EvaluationPeriods
             .Where(p => p.CompanyId == ctx.CompanyId)
             .OrderByDescending(p => p.StartDate)
@@ -42,8 +53,20 @@ public class PerfGradeDistributionReport(IDbContextFactory<HRMContext> dbFactory
         var period = await context.Perf_EvaluationPeriods.FirstOrDefaultAsync(p => p.Id == periodId, ct)
             ?? throw new InvalidOperationException("ไม่พบรอบการประเมินนี้");
 
-        var graded = await context.Perf_EvaluationInstances
-            .Where(i => i.EvaluationPeriodId == periodId && i.FinalGrade != null)
+        var instances = context.Perf_EvaluationInstances
+            .Where(i => i.EvaluationPeriodId == periodId && i.FinalGrade != null);
+        if (long.TryParse(ReportCriteria.Arg(args, "evaltype"), out var evalTypeId))
+            instances = instances.Where(i => i.EvaluationTypeId == evalTypeId);
+        if (ReportCriteria.Arg(args, ReportCriteria.DeptKey) is not null || ReportCriteria.Arg(args, ReportCriteria.EmpTypeKey) is not null)
+        {
+            var emps = await ReportCriteria.ApplyEmployeeAsync(context,
+                context.Hremployee.Where(e => e.companyid == ctx.CompanyId), args, ct);
+            var empIds = emps.Select(e => e.id);
+            instances = instances.Where(i => empIds.Contains(i.HremployeeId));
+        }
+        var crit = await ReportCriteria.DescribeAsync(context, ctx.CompanyId, args, ct);
+
+        var graded = await instances
             .Select(i => i.FinalGrade!)
             .ToListAsync(ct);
         var total = graded.Count;
@@ -82,6 +105,7 @@ public class PerfGradeDistributionReport(IDbContextFactory<HRMContext> dbFactory
                 new ReportColumn("variance", "ผลต่าง"),
             },
             rows, totals,
-            Subtitle: $"ผู้ได้รับเกรดทั้งหมด {total} คน · ณ {DateTime.Now:dd/MM/yyyy}");
+            Subtitle: $"ผู้ได้รับเกรดทั้งหมด {total} คน · ณ {DateTime.Now:dd/MM/yyyy}"
+                + (crit is null ? "" : $" · {crit}"));
     }
 }
