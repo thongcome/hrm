@@ -314,7 +314,7 @@
         _currentOrgLabel = null;
     }
 
-    private const int MaxEmpNoLength = 6; // Hremployee.EmpNo StringLength(6)
+    private const int MaxEmpNoLength = 50; // Hremployee.EmpNo StringLength(50)
 
     private async Task SaveEmployeeAsync()
     {
@@ -514,13 +514,25 @@
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var actor = state.User.Identity?.Name ?? "admin";
 
+        // The account belongs to the employee's own company (com_company.code = Hremployee.companyid),
+        // never a fixed id — otherwise staff of any other company log in and see the wrong company.
+        var accountCompanyId = await context.com_companies
+            .Where(c => c.code == _userAccountEmployee.companyid)
+            .Select(c => (long?)c.id)
+            .FirstOrDefaultAsync();
+        if (accountCompanyId is null)
+        {
+            _userAccountError = $"ไม่พบบริษัทรหัส {_userAccountEmployee.companyid} ในทะเบียนบริษัท — สร้างบัญชีผู้ใช้ไม่ได้";
+            return;
+        }
+
         var newUser = new sc_user
         {
             loginname = _userAccountEmployee.EmpNo,
             empid = _userAccountEmployee.EmpNo,
             firstname = _userAccountEmployee.EmpName ?? _userAccountEmployee.EmpNo,
             lastname = _userAccountEmployee.EmpSurname ?? string.Empty,
-            company_id = 1,
+            company_id = accountCompanyId.Value,
             isforcechanged = true,
             isActivate = true,
             isdisable = false,
