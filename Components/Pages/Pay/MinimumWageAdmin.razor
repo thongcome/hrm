@@ -1,0 +1,167 @@
+@page "/pay/admin/minimum-wage"
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ค่าจ้างขั้นต่ำ</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">ค่าจ้างขั้นต่ำรายวัน (Minimum Wage)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ตั้งค่าตามประกาศคณะกรรมการค่าจ้าง — เมื่อมีประกาศใหม่ให้ <b>เพิ่มแถวใหม่พร้อมวันที่เริ่มมีผล</b> อย่าแก้แถวเดิม
+        ระบบใช้แถวที่มีผลอยู่ ณ วันเริ่มงวดเงินเดือน แถวของจังหวัดที่ตรงกับ "จังหวัดที่ตั้งสถานประกอบการ" (ตั้งที่หน้าตั้งค่าสลิป/บริษัท) ชนะแถว "ทุกจังหวัด"
+        และหน้าตรวจก่อนคำนวณจะแจ้งเป็นข้อผิดพลาดถ้าพนักงานได้ต่ำกว่า (ลูกจ้างรายเดือนเทียบด้วยเงินเดือน ÷ 30)
+    </MudText>
+    <MudAlert Severity="Severity.Warning" Class="mt-3">
+        ตารางนี้ว่างอยู่ = ระบบ <b>ไม่ตรวจ</b> ค่าจ้างขั้นต่ำ ระบบไม่ได้ใส่อัตราให้ ต้องกรอกจากประกาศทางการเอง
+    </MudAlert>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudTable Items="_rows" Dense="true" Hover="true" RowsPerPage="50">
+        <HeaderContent>
+            <MudTh>จังหวัด</MudTh>
+            <MudTh>ค่าจ้างขั้นต่ำ (บาท/วัน)</MudTh>
+            <MudTh>เริ่มมีผล</MudTh>
+            <MudTh>หมายเหตุ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@(string.IsNullOrWhiteSpace(context.ProvinceName) ? "ทุกจังหวัด" : context.ProvinceName)</MudTd>
+            <MudTd>@context.DailyAmount.ToString("N2")</MudTd>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.Note</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                @if (context.IsActive && _rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(context.Id))">ปิดใช้งาน</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล — ยังไม่มีการตรวจค่าจ้างขั้นต่ำ</MudText>
+        </NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" /></PagerContent>
+    </MudTable>
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มอัตราใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_province" Label="จังหวัด (ว่าง = ทุกจังหวัด)" MaxLength="100" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_daily" Label="ค่าจ้างขั้นต่ำ (บาท/วัน)" Format="N2" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="เริ่มมีผลวันที่" @bind-Date="_effectiveFrom" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ / อ้างอิงประกาศ" MaxLength="500" /></MudItem>
+            <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">+ เพิ่มอัตรา</MudButton></MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    }
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/pay/admin/minimum-wage";
+    private ProgramRoleService.ProgramRights? _rights;
+    private long _actorUserId;
+
+    private List<Pay_MinimumWage> _rows = new();
+    private string? _province;
+    private decimal _daily;
+    private DateTime? _effectiveFrom;
+    private string? _note;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _rows = await context.Pay_MinimumWages.AsNoTracking()
+            .OrderByDescending(m => m.EffectiveFrom).ThenBy(m => m.ProvinceName).ToListAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always).
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { _error = denied; return; }
+        if (_daily <= 0m) { _error = "กรุณาระบุค่าจ้างขั้นต่ำมากกว่า 0"; return; }
+        if (_effectiveFrom is null) { _error = "กรุณาระบุวันที่เริ่มมีผล"; return; }
+
+        var province = string.IsNullOrWhiteSpace(_province) ? null : _province.Trim();
+        var from = DateOnly.FromDateTime(_effectiveFrom.Value);
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var duplicate = await context.Pay_MinimumWages
+            .AnyAsync(m => m.IsActive && m.ProvinceName == province && m.EffectiveFrom == from);
+        if (duplicate)
+        {
+            _error = "มีอัตราของจังหวัดนี้ที่เริ่มมีผลวันเดียวกันอยู่แล้ว — ปิดใช้งานแถวเดิมก่อนถ้าต้องการแก้";
+            return;
+        }
+
+        context.Pay_MinimumWages.Add(new Pay_MinimumWage
+        {
+            ProvinceName = province,
+            DailyAmount = _daily,
+            EffectiveFrom = from,
+            Note = _note,
+            EnteredByUserId = _actorUserId,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มอัตราค่าจ้างขั้นต่ำเรียบร้อย", Severity.Success);
+        _province = null; _daily = 0; _effectiveFrom = null; _note = null;
+        await LoadAsync();
+    }
+
+    private async Task DeactivateAsync(long id)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { _error = denied; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Pay_MinimumWages.FirstOrDefaultAsync(m => m.Id == id);
+        if (row is null) return;
+        row.IsActive = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ปิดใช้งานเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

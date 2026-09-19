@@ -41,6 +41,10 @@ public class Pay_PayslipSettings
     [StringLength(500)]
     public string? CompanyAddress { get; set; }
 
+    // จังหวัดที่ตั้งสถานประกอบการ — ใช้เลือกอัตราค่าจ้างขั้นต่ำ (Pay_MinimumWage) ค่าจ้างขั้นต่ำกำหนดตามที่ทำงาน ไม่ใช่ที่อยู่พนักงาน
+    [StringLength(100)]
+    public string? WorkProvince { get; set; }
+
     // ประกันสังคม (ไฟล์ สปส.1-10 สำหรับ e-Service, 12 ก.ย. 2569): เลขที่บัญชีนายจ้าง 10 หลัก + ลำดับที่สาขา 6 หลัก (สำนักงานใหญ่ = 000000)
     [StringLength(50)]
     public string? SsoEmployerAccountNo { get; set; }

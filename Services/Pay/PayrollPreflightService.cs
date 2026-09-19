@@ -103,11 +103,21 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
                     break;
             }
         }
+        // ค่าจ้างขั้นต่ำ: ตารางว่าง = ไม่ตรวจ (ต้องมีคนตั้งค่าที่ /pay/admin/minimum-wage) — ห้ามจ่ายต่ำกว่าที่กฎหมายกำหนด
+        var minimumWageRows = await ctx.Pay_MinimumWages.AsNoTracking().Where(m => m.IsActive).ToListAsync(ct);
+        var workProvince = await ctx.Pay_PayslipSettings.AsNoTracking()
+            .Where(s => s.CompanyId == run.CompanyId).Select(s => s.WorkProvince).FirstOrDefaultAsync(ct);
+        var dailyMinimum = MinimumWageRule.DailyMinimum(minimumWageRows, workProvince, run.PeriodStart);
+
         foreach (var e in eligible.Where(e => !heldIds.Contains(e.id)))
         {
             var name = $"{e.EmpName} {e.EmpSurname}".Trim();
             if ((e.SalaryAmt ?? 0m) <= 0m && (e.DailyWage ?? 0m) <= 0m)
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "NO_SALARY", "ไม่มีเงินเดือนฐานและไม่มีค่าจ้างรายวัน — คำนวณได้ 0 บาท"));
+            else if (MinimumWageRule.IsBelow(e.SalaryAmt, e.DailyWage, dailyMinimum))
+                issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "BELOW_MIN_WAGE",
+                    $"ค่าจ้างต่ำกว่าค่าจ้างขั้นต่ำ — ได้ {MinimumWageRule.DailyEquivalent(e.SalaryAmt, e.DailyWage):N2} บาท/วัน ขั้นต่ำ {dailyMinimum:N2} บาท/วัน" +
+                    (string.IsNullOrWhiteSpace(workProvince) ? "" : $" (จังหวัด{workProvince})")));
             if (string.IsNullOrWhiteSpace(e.SalexpAccid))
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_BANK_ACCOUNT", "ไม่มีเลขบัญชีธนาคาร — คำนวณได้ แต่ต้องเติมก่อนทำไฟล์โอนเงิน"));
             else if (string.IsNullOrWhiteSpace(e.SalexpBank))
