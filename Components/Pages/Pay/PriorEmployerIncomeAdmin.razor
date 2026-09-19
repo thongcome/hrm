@@ -67,7 +67,13 @@
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@(context.PriorEmployerName ?? "-")</MudTd>
+                <MudTd>
+                    @(context.PriorEmployerName ?? "-")
+                    @if (context.IsSameEmployer)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-1">ยอดยกมา</MudChip>
+                    }
+                </MudTd>
                 <MudTd>@context.IncomeAmount.ToString("N2")</MudTd>
                 <MudTd>@context.DeductionAmount.ToString("N2")</MudTd>
                 <MudTd>@context.TaxWithheldAmount.ToString("N2")</MudTd>
@@ -90,6 +96,16 @@
         <MudDivider Class="my-4" />
         <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มข้อมูลเงินได้จากนายจ้างเดิม</MudText>
 
+        <MudSwitch T="bool" @bind-Value="_newIsSameEmployer" Color="Color.Primary" Class="mb-2"
+                   Label="ยอดยกมาของบริษัทนี้เอง (เริ่มใช้ระบบกลางปี)" />
+        @if (_newIsSameEmployer)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                กรอกเงินได้/ภาษี/ประกันสังคม/กองทุนที่บริษัทนี้จ่ายและหักไปแล้วตั้งแต่ ม.ค. จนถึงก่อนเดือนที่เริ่มใช้ระบบนี้ —
+                ใช้ได้กับพนักงานทุกคนไม่ว่าเข้างานเมื่อไหร่ ยอดนี้จะรวมในการคำนวณภาษีสะสม และรวมในหนังสือรับรอง 50 ทวิ / ภ.ง.ด.1ก ประจำปี
+                (ไม่รวมใน ภ.ง.ด.1 รายเดือน เพราะเดือนเหล่านั้นยื่นไปแล้วในระบบเดิม)
+            </MudAlert>
+        }
         @if (_workDate is null)
         {
             <MudAlert Severity="Severity.Warning" Class="mb-3">
@@ -98,7 +114,7 @@
                 @L.Translate("PriorIncomeNoWorkDateSuffix")
             </MudAlert>
         }
-        else if (_workDate.Value.Year < _selectedYear)
+        else if (_workDate.Value.Year < _selectedYear && !_newIsSameEmployer)
         {
             <MudAlert Severity="Severity.Warning" Class="mb-3">
                 @string.Format(L.Translate("PriorIncomeFullYearTemplate"), _workDate.Value.ToString("dd/MM/yyyy"), _selectedYear)
@@ -116,12 +132,20 @@
                 @string.Format(L.Translate("PriorIncomeStartDateInfoTemplate"), _workDate.Value.ToString("dd/MM/yyyy"), _selectedYear)
             </MudText>
             <MudGrid>
-                <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_newEmployerName" Label="ชื่อนายจ้างเดิม" /></MudItem>
+                @if (!_newIsSameEmployer)
+                {
+                    <MudItem xs="12" sm="6"><MudTextField T="string" @bind-Value="_newEmployerName" Label="ชื่อนายจ้างเดิม" /></MudItem>
+                }
                 <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newIncome" Label="เงินได้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
                 <MudItem xs="12" sm="6">
                     <MudNumericField T="decimal" @bind-Value="_newDeduction" Label="ค่าลดหย่อนที่หักไปแล้ว (บาท, ถ้าทราบ)" Format="N2" Min="0" />
                 </MudItem>
                 <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newTaxWithheld" Label="ภาษีที่หักไว้สะสม (บาท)" Format="N2" Min="0" /></MudItem>
+                @if (_newIsSameEmployer)
+                {
+                    <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newSso" Label="ประกันสังคมที่หักไปแล้วสะสม (บาท)" Format="N2" Min="0" /></MudItem>
+                    <MudItem xs="12" sm="6"><MudNumericField T="decimal" @bind-Value="_newPf" Label="กองทุนสำรองเลี้ยงชีพที่หักไปแล้วสะสม (บาท)" Format="N2" Min="0" /></MudItem>
+                }
                 <MudItem xs="12"><MudTextField T="string" @bind-Value="_newNote" Label="หมายเหตุ" Lines="2" /></MudItem>
                 <MudItem xs="12">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddRecordAsync">+ เพิ่มข้อมูล</MudButton>
@@ -140,6 +164,9 @@
     private DateTime? _workDate;
 
     private string? _newEmployerName;
+    private bool _newIsSameEmployer;
+    private decimal _newSso;
+    private decimal _newPf;
     private decimal _newIncome;
     private decimal _newDeduction;
     private decimal _newTaxWithheld;
@@ -248,7 +275,7 @@
             _error = L.Translate("PriorIncomeNoWorkDateError");
             return;
         }
-        if (workDate.Value.Year < _selectedYear)
+        if (workDate.Value.Year < _selectedYear && !_newIsSameEmployer)
         {
             _error = string.Format(L.Translate("PriorIncomeFullYearTemplate"), workDate.Value.ToString("dd/MM/yyyy"), _selectedYear);
             return;
@@ -260,10 +287,13 @@
         }
 
         var duplicate = await context.Pay_EmployeePriorEmployerIncomes
-            .AnyAsync(p => p.HremployeeId == _selectedEmployee.id && p.TaxYear == _selectedYear && p.IsActive);
+            .AnyAsync(p => p.HremployeeId == _selectedEmployee.id && p.TaxYear == _selectedYear && p.IsActive
+                           && p.IsSameEmployer == _newIsSameEmployer);
         if (duplicate)
         {
-            _error = $"มีข้อมูลเงินได้จากนายจ้างเดิมของพนักงานคนนี้สำหรับปี {_selectedYear} อยู่แล้ว — ปิดใช้งานรายการเดิมก่อนถ้าต้องการแก้ไข";
+            _error = _newIsSameEmployer
+                ? $"มียอดยกมาของบริษัทนี้ของพนักงานคนนี้สำหรับปี {_selectedYear} อยู่แล้ว — ปิดใช้งานรายการเดิมก่อนถ้าต้องการแก้ไข"
+                : $"มีข้อมูลเงินได้จากนายจ้างเดิมของพนักงานคนนี้สำหรับปี {_selectedYear} อยู่แล้ว — ปิดใช้งานรายการเดิมก่อนถ้าต้องการแก้ไข";
             return;
         }
 
@@ -271,10 +301,13 @@
         {
             HremployeeId = _selectedEmployee.id,
             TaxYear = _selectedYear,
-            PriorEmployerName = _newEmployerName,
+            PriorEmployerName = _newIsSameEmployer ? "ยอดยกมา (บริษัทนี้เอง ก่อนเริ่มใช้ระบบ)" : _newEmployerName,
+            IsSameEmployer = _newIsSameEmployer,
             IncomeAmount = _newIncome,
             DeductionAmount = _newDeduction,
             TaxWithheldAmount = _newTaxWithheld,
+            SocialSecurityAmount = _newIsSameEmployer ? _newSso : 0m,
+            ProvidentFundAmount = _newIsSameEmployer ? _newPf : 0m,
             Note = _newNote,
             EnteredByUserId = _actorUserId,
         });
@@ -286,6 +319,9 @@
         _newIncome = 0;
         _newDeduction = 0;
         _newTaxWithheld = 0;
+        _newSso = 0;
+        _newPf = 0;
+        _newIsSameEmployer = false;
         _newNote = null;
         await LoadAsync();
     }

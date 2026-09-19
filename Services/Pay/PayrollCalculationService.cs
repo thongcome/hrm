@@ -738,7 +738,8 @@ public class PayrollCalculationService
             // (รอบเสริมทั้งสองเป็น 0 อยู่แล้ว เพราะ SSO/PF ไม่คิดในรอบเสริม และลดหย่อนรายปีถูกใช้ผ่านฐานรอบปกติ)
             var annualFixedDeduction = supplementary ? 0m : personalAllowancePerYear + electedAnnualDeduction;
 
-            var priorEmployerIncome = priorEmployerIncomes.FirstOrDefault(p => p.HremployeeId == emp.id);
+            // หนึ่งคนมีได้หลายแถวต่อปี (นายจ้างเดิม + ยอดยกมาของบริษัทนี้) — ต้องรวมทั้งหมด ห้ามเลือกแค่แถวเดียว
+            var priorEmployerIncome = CombinePriorIncome(priorEmployerIncomes.Where(p => p.HremployeeId == emp.id).ToList());
             var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = FoldYtd(ytdByEmployee.GetValueOrDefault(emp.id), run.PeriodStart, includeSamePeriod: supplementary, priorEmployerIncome);
 
             // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 500,000 บาท/ปี (audit M2) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
@@ -977,6 +978,21 @@ public class PayrollCalculationService
     // Pay_EmployeePriorEmployerIncome, entered once from the certificate the
     // employee brings in) into this company's own YTD accumulators, so the
     // withholding projection reflects the employee's TRUE annual income.
+    public static Pay_EmployeePriorEmployerIncome? CombinePriorIncome(IReadOnlyList<Pay_EmployeePriorEmployerIncome> rows)
+    {
+        if (rows.Count == 0) return null;
+        if (rows.Count == 1) return rows[0];
+        return new Pay_EmployeePriorEmployerIncome
+        {
+            HremployeeId = rows[0].HremployeeId,
+            TaxYear = rows[0].TaxYear,
+            PriorEmployerName = string.Join(" + ", rows.Select(r => r.PriorEmployerName ?? "-")),
+            IncomeAmount = rows.Sum(r => r.IncomeAmount),
+            DeductionAmount = rows.Sum(r => r.DeductionAmount),
+            TaxWithheldAmount = rows.Sum(r => r.TaxWithheldAmount),
+        };
+    }
+
     public static (decimal YtdIncome, decimal YtdDeduction, decimal YtdTax) FoldPriorEmployerIncome(
         decimal ytdIncome, decimal ytdDeduction, decimal ytdTax, Pay_EmployeePriorEmployerIncome? prior)
         => prior is null

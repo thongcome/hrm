@@ -45,6 +45,15 @@ public static class WithholdingCertificateDataService
         var totalSsf = payEmployees.Sum(pe => pe.SocialSecurityAmount);
         var totalPf = payEmployees.Sum(pe => pe.ProvidentFundEmployeeAmount);
 
+        // ยอดยกมาของบริษัทนี้เองก่อนเริ่มใช้ระบบกลางปี ต้องอยู่ในหนังสือรับรองของบริษัทนี้ (นายจ้างเดิมไม่รวม)
+        var opening = await context.Pay_EmployeePriorEmployerIncomes
+            .Where(p => p.HremployeeId == hremployeeId && p.TaxYear == taxYear && p.IsActive && p.IsSameEmployer)
+            .ToListAsync(ct);
+        totalTaxableIncome += opening.Sum(p => p.IncomeAmount);
+        totalTaxWithheld += opening.Sum(p => p.TaxWithheldAmount);
+        totalSsf += opening.Sum(p => p.SocialSecurityAmount);
+        totalPf += opening.Sum(p => p.ProvidentFundAmount);
+
         var regAddr = await context.addresses
             .Where(a => a.hremployeeid == hremployeeId && a.address_type_id == 1 && a.isactive)
             .OrderByDescending(a => a.moddate ?? a.createdate)

@@ -41,6 +41,19 @@ public class Pay_EmployeePriorEmployerIncome
     [Column(TypeName = "decimal(15,2)")]
     public decimal TaxWithheldAmount { get; set; }
 
+    // ยอดยกมา (opening balance): true = เป็นเงินที่ "บริษัทนี้เอง" จ่ายและหักภาษีไปแล้วก่อนเริ่มใช้ระบบกลางปี
+    // (ขึ้นระบบใหม่เดือนกลางปี) — ต่างจากนายจ้างเดิม เพราะเป็นเงินที่บริษัทนี้ต้องรับผิดชอบในเอกสารของตัวเอง:
+    // จึงต้องรวมใน 50 ทวิ และ ภ.ง.ด.1ก ประจำปี (ไม่รวมใน ภ.ง.ด.1 รายเดือน เพราะยื่นไปแล้วในระบบเดิม)
+    // false = นายจ้างเดิมของพนักงาน — ใช้คำนวณภาษีอย่างเดียว ไม่เข้าเอกสารของบริษัทนี้
+    public bool IsSameEmployer { get; set; }
+
+    // ประกันสังคม/กองทุนสำรองเลี้ยงชีพที่หักไปแล้วสะสม — ใช้แสดงใน 50 ทวิ เมื่อ IsSameEmployer = true
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal SocialSecurityAmount { get; set; }
+
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal ProvidentFundAmount { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     [StringLength(500)]

@@ -111,19 +111,28 @@ public static class Por1DataService
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();
         var nonTaxableByPayEmployee = await GetNonTaxableByPayEmployeeAsync(context, payEmployeeIds, ct);
 
+        // ยอดยกมาของบริษัทนี้เองก่อนเริ่มใช้ระบบกลางปี — ภ.ง.ด.1ก เป็นแบบสรุปทั้งปีของบริษัทนี้ จึงต้องรวมด้วย
+        // (ภ.ง.ด.1 รายเดือนไม่รวม เพราะเดือนเหล่านั้นยื่นไปแล้วในระบบเดิม)
+        var opening = (await context.Pay_EmployeePriorEmployerIncomes
+                .Where(p => p.TaxYear == taxYear && p.IsActive && p.IsSameEmployer && p.Hremployee.companyid == companyId)
+                .ToListAsync(ct))
+            .GroupBy(p => p.HremployeeId)
+            .ToDictionary(g => g.Key, g => (Income: g.Sum(p => p.IncomeAmount), Tax: g.Sum(p => p.TaxWithheldAmount)));
+
         var lines = payEmployees
             .GroupBy(pe => pe.HremployeeId)
             .Select(g =>
             {
                 var first = g.First();
-                var taxableTotal = g.Sum(pe => pe.TaxableIncome);   // persisted per period (audit M3)
+                var open = opening.GetValueOrDefault(g.Key);
+                var taxableTotal = g.Sum(pe => pe.TaxableIncome) + open.Income;   // persisted per period (audit M3)
                 return new Por1KorLineItem(
                     g.Key,
                     first.EmpNo ?? first.Hremployee.EmpNo,
                     $"{first.Hremployee.EmpName} {first.Hremployee.EmpSurname}",
                     first.Hremployee.IdCard,
                     taxableTotal,
-                    g.Sum(pe => pe.TaxAmount));
+                    g.Sum(pe => pe.TaxAmount) + open.Tax);
             })
             .OrderBy(l => l.EmpNo)
             .ToList();
