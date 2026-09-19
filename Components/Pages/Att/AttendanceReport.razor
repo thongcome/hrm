@@ -49,7 +49,7 @@
         <MudAlert Severity="Severity.Success" Class="mt-2">@string.Format(L.Translate("RecalcSuccessTemplate"), _lastResultCount)</MudAlert>
     }
 
-    <MudTable Items="_rows" Dense="true" Class="mt-3">
+    <MudTable RowsPerPage="50" Items="_rows" Dense="true" Class="mt-3">
         <HeaderContent>
             <MudTh>@L.Translate("EmpNoLabel")</MudTh>
             <MudTh>@L.Translate("ColName")</MudTh>
@@ -81,6 +81,7 @@
             </MudTd>
             <MudTd>@(context.WorkLocation == AttWorkLocation.Wfh ? L.Translate("LocationWfh") : context.WorkLocation == AttWorkLocation.Mixed ? L.Translate("LocationMixed") : L.Translate("LocationOffice"))</MudTd>
         </RowTemplate>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" /></PagerContent>
     </MudTable>
 
     @if (_settings?.AllowWfh == true)

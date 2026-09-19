@@ -23,7 +23,8 @@ namespace HRM.Services.Pay;
 // Uses the SAME eligibility predicate as the engine so the two never disagree.
 public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
 {
-    public enum Severity { Error, Warning }
+    // Info = left out on purpose (e.g. an employee type not paid by payroll) — shown, never blocking.
+    public enum Severity { Error, Warning, Info }
 
     public record Issue(long HremployeeId, string EmpNo, string Name, Severity Severity, string Code, string Message);
     public record PendingItem(string Kind, long? HremployeeId, string EmpNo, string Name, string Detail);
@@ -64,14 +65,44 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var holdsRaw = await ctx.Pay_PayrollRunHolds.Where(h => h.PayrollRunId == runId && h.IsActive).ToListAsync(ct);
         var heldIds = holdsRaw.Select(h => h.HremployeeId).ToHashSet();
 
+        var nonPayrollTypes = await PayrollEligibility.LoadNonPayrollTypeCodesAsync(ctx, run.CompanyId, ct);
+        var typeNames = await ctx.Pos_EmployeeTypes
+            .Where(t => t.CompanyId == run.CompanyId && t.Code != null)
+            .ToDictionaryAsync(t => t.Code!, t => t.Name, ct);
         var eligible = await ctx.Hremployee
-            .Where(e => e.companyid == run.CompanyId
-                        && e.WorkDate != null && e.WorkDate <= periodEndDt
-                        && (e.ResignDate == null || e.ResignDate >= periodStartDt))
+            .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
             .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosCode })
             .ToListAsync(ct);
 
         var issues = new List<Issue>();
+
+        // ---- employees left out of the run by hire/leave date or status (never silently) ----
+        var excluded = await ctx.Hremployee
+            .Where(PayrollEligibility.ExcludedButRelevant(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.IsActive, e.WorkDate, e.ResignDate, e.EmptypeCode })
+            .ToListAsync(ct);
+        foreach (var e in excluded)
+        {
+            var name = $"{e.EmpName} {e.EmpSurname}".Trim();
+            switch (PayrollEligibility.WhyExcluded(e.IsActive, e.WorkDate, e.ResignDate, e.EmptypeCode, nonPayrollTypes))
+            {
+                case PayrollEligibility.Reason.NotPayrollType:
+                    issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Info, "NOT_PAYROLL_TYPE",
+                        $"ประเภท \"{typeNames.GetValueOrDefault(e.EmptypeCode!, e.EmptypeCode!)}\" ไม่รับเงินเดือนผ่านระบบ — ไม่อยู่ในรอบนี้ (ตั้งค่าที่ประเภทพนักงาน)"));
+                    break;
+                case PayrollEligibility.Reason.NoHireDate:
+                    issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "NO_HIRE_DATE", "ไม่มีวันเริ่มงาน — จะไม่ถูกจ่ายเงินเดือนในรอบนี้"));
+                    break;
+                case PayrollEligibility.Reason.ResignBeforeHire:
+                    issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "RESIGN_BEFORE_HIRE",
+                        $"วันที่ออก {e.ResignDate:dd/MM/yyyy} อยู่ก่อนวันเริ่มงาน {e.WorkDate:dd/MM/yyyy} — ข้อมูลผิด จะไม่ถูกจ่าย"));
+                    break;
+                case PayrollEligibility.Reason.Inactive:
+                    issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "INACTIVE",
+                        "ถูกปิดสถานะ (IsActive) — ไม่ถูกจ่ายในรอบนี้ ถ้าต้องจ่ายให้เปิดสถานะก่อนคำนวณ"));
+                    break;
+            }
+        }
         foreach (var e in eligible.Where(e => !heldIds.Contains(e.id)))
         {
             var name = $"{e.EmpName} {e.EmpSurname}".Trim();

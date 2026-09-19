@@ -65,7 +65,10 @@
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    private IComponentRenderMode? RenderModeForPage => HttpContext.Request.Path.StartsWithSegments("/Account")
-        ? null
-        : InteractiveServer;
+    // Static SSR for /Account and for any page marked [ExcludeFromInteractiveRouting]
+    // (the /login family) — the interactive router then does a full page load to reach them.
+    private IComponentRenderMode? RenderModeForPage =>
+        HttpContext.Request.Path.StartsWithSegments("/Account") || !HttpContext.AcceptsInteractiveRouting()
+            ? null
+            : InteractiveServer;
 }

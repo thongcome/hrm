@@ -74,8 +74,17 @@ public class PayrollAnomalyDetectionService
             .GroupBy(h => h.HremployeeId)
             .ToDictionary(g => g.Key, g => g.OrderBy(h => h.PeriodStart).ToList());
 
+        // รอบแรกของบริษัทในระบบนี้ (วันเริ่มใช้ระบบ / go-live): ทุกคนไม่มีประวัติเพราะระบบเพิ่งเริ่ม
+        // ไม่ใช่เพราะเป็นพนักงานใหม่ — ถ้าตรวจ "พนักงานใหม่" ตรงนี้จะได้คำเตือนเท็จทุกคน (CEO เห็น 101 รายการ
+        // บนรอบ 202601 หลังล้างข้อมูล 18 ก.ย. 2569) จึงข้ามการตรวจกลุ่มนี้ทั้งรอบ
+        var isFirstRunOfCompany = !await context.Pay_PayrollRuns.AnyAsync(r =>
+            r.CompanyId == run.CompanyId && r.Id != run.Id
+            && r.Status != PayrollRunStatus.Cancelled && r.PeriodStart < run.PeriodStart, ct);
+
         // พนักงานใหม่: ใครเริ่ม onboarding แล้วบ้าง
-        var newEmployeeIds = employeeIds.Where(id => !historyByEmployee.ContainsKey(id)).ToList();
+        var newEmployeeIds = isFirstRunOfCompany
+            ? new List<long>()
+            : employeeIds.Where(id => !historyByEmployee.ContainsKey(id)).ToList();
         var withOnboarding = newEmployeeIds.Count == 0
             ? new HashSet<long>()
             : (await context.Hrd_LifecycleTaskInstances
@@ -125,14 +134,19 @@ public class PayrollAnomalyDetectionService
                     PayrollEmployeeId = emp.Id,
                     AnomalyType = PayrollAnomalyType.NetPayNegativeOrZero,
                     Severity = PayrollAnomalySeverity.Critical,
-                    Description = $"เงินสุทธิของ {emp.EmpNo} เท่ากับ {emp.NetPay:N2} บาท (ติดลบหรือเป็นศูนย์)",
+                    // Say WHY when the answer is in the master data — HR must be able to tell a missing
+                    // salary from a real deduction problem (CEO, 18 ก.ย. 2569).
+                    Description = (emp.Hremployee?.SalaryAmt ?? 0m) <= 0m && (emp.Hremployee?.DailyWage ?? 0m) <= 0m
+                        ? $"เงินสุทธิของ {emp.EmpNo} เท่ากับ {emp.NetPay:N2} บาท — ข้อมูลพนักงานไม่มีเงินเดือนและไม่มีค่าจ้างรายวัน (ถ้าไม่ใช่คนที่รับเงินเดือนผ่านระบบ ให้ปิดที่ประเภทพนักงาน)"
+                        : $"เงินสุทธิของ {emp.EmpNo} เท่ากับ {emp.NetPay:N2} บาท (ติดลบหรือเป็นศูนย์)",
                     DetectedValue = emp.NetPay,
                 });
             }
 
             if (!historyByEmployee.TryGetValue(emp.HremployeeId, out var history) || history.Count == 0)
             {
-                CheckNewEmployee(emp, run, periodStart, withOnboarding.Contains(emp.HremployeeId), newRows);
+                if (!isFirstRunOfCompany)
+                    CheckNewEmployee(emp, run, periodStart, withOnboarding.Contains(emp.HremployeeId), newRows);
                 continue;
             }
 

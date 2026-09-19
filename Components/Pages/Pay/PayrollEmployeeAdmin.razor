@@ -272,9 +272,18 @@
             .ToListAsync();
 
         var empNos = _employees.Select(e => e.EmpNo).ToList();
-        _linkedUsers = await context.sc_users
-            .Where(u => u.empid != null && empNos.Contains(u.empid))
-            .ToDictionaryAsync(u => u.empid!, u => u);
+        // One employee code can be linked to more than one sc_user (legacy data — WfHealthCheck
+        // lists these for cleanup). ToDictionary threw on the duplicate and killed the whole
+        // Blazor circuit, freezing every page opened after it. Show the usable account: not
+        // cancelled/disabled first, then the newest.
+        _linkedUsers = (await context.sc_users
+                .Where(u => u.empid != null && empNos.Contains(u.empid))
+                .ToListAsync())
+            .GroupBy(u => u.empid!)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(u => u.iscancel || u.isdisable)
+                .ThenByDescending(u => u.userid)
+                .First());
     }
 
     private bool EmpFilter(Hremployee emp)

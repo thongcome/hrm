@@ -89,6 +89,10 @@ else
 
         <MudDivider Class="my-3" />
 
+        @if (_waitingForRole.Count > 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">ขั้นตอนถัดไปของรอบนี้ต้องทำโดย: @string.Join(" / ", _waitingForRole) — บัญชีของคุณไม่มีบทบาทนี้</MudAlert>
+        }
         @if (_rights is not null && !_rights.CanEdit)
         {
             <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว ปุ่มดำเนินการจะถูกปฏิเสธ</MudAlert>
@@ -182,7 +186,7 @@ else
                         <MudTable Items="_preflight.Issues" Dense="true" Hover="true" Elevation="0">
                             <HeaderContent><MudTh>ระดับ</MudTh><MudTh>รหัส</MudTh><MudTh>พนักงาน</MudTh><MudTh>ปัญหา</MudTh><MudTh></MudTh></HeaderContent>
                             <RowTemplate>
-                                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Severity == PayrollPreflightService.Severity.Error ? Color.Error : Color.Warning)">@(context.Severity == PayrollPreflightService.Severity.Error ? "ผิดพลาด" : "เตือน")</MudChip></MudTd>
+                                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Severity switch { PayrollPreflightService.Severity.Error => Color.Error, PayrollPreflightService.Severity.Warning => Color.Warning, _ => Color.Info })">@(context.Severity switch { PayrollPreflightService.Severity.Error => "ผิดพลาด", PayrollPreflightService.Severity.Warning => "เตือน", _ => "ไม่อยู่ในรอบ" })</MudChip></MudTd>
                                 <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Message</MudTd>
                                 <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info" OnClick="@(() => HoldEmployeeAsync(context.HremployeeId))" Disabled="_calcRunning">hold คนนี้</MudButton></MudTd>
                             </RowTemplate>
@@ -518,6 +522,7 @@ else
     private Pay_PayrollRun? _run;
     private bool _forbidden;
     private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
+    private List<string> _waitingForRole = new();
     private bool _busy;
 
     // Background-calc observer state (Phase A). Polled from the singleton
@@ -617,7 +622,13 @@ else
 
         _employees = employees.Select(e => new EmployeeRow(e)).ToList();
         _negativeCount = employees.Count(e => e.IsNegativeNetPayFlag && !e.IsExcluded);
-        _allowed = PayrollWorkflowService.GetAllowedActions(_run);
+        // Buttons = what the run's status allows ∩ what this user's payroll role allows
+        // (PayrollStepPermission — the same check the service enforces).
+        var byStatus = PayrollWorkflowService.GetAllowedActions(_run);
+        var permitted = await PayrollStepPermission.GetPermittedAsync(context, await GetCurrentUserIdAsync());
+        _allowed = byStatus.Where(permitted.Contains).ToHashSet();
+        _waitingForRole = byStatus.Where(a => a != PayrollAction.Cancel && !permitted.Contains(a))
+            .Select(PayrollStepPermission.RoleLabelFor).Distinct().ToList();
 
         var forBonus = _run.RunType == PayrollRunType.Bonus;
         _pendingAdhocCount = await context.Pay_AdhocPayItems

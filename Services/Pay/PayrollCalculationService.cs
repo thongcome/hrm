@@ -265,10 +265,9 @@ public class PayrollCalculationService
         var periodEndDt = run.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
         var periodStartDt = run.PeriodStart.ToDateTime(TimeOnly.MinValue);
 
+        var nonPayrollTypeCodes = await PayrollEligibility.LoadNonPayrollTypeCodesAsync(context, run.CompanyId, ct);
         var eligibleEmployees = await context.Hremployee
-            .Where(e => e.companyid == run.CompanyId
-                        && e.WorkDate != null && e.WorkDate <= periodEndDt
-                        && (e.ResignDate == null || e.ResignDate >= periodStartDt))
+            .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypeCodes))
             .ToListAsync(ct);
 
         // รอบเสริม: เฉพาะคนที่มีรายการเฉพาะกิจของงวดนี้ (ไม่สร้างแถวศูนย์ให้ทั้งบริษัท)

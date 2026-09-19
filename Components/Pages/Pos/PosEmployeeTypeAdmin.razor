@@ -37,9 +37,17 @@
     {
         <MudText Typo="Typo.h6">@(_editingId is null ? "เพิ่มประเภทพนักงาน" : "แก้ไข")</MudText>
         <MudGrid Class="mt-1">
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="ชื่อ" Required="true" /></MudItem>
-            <MudItem xs="12" sm="6">
+            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_code" Label="รหัส" Required="true" MaxLength="30"
+                HelperText="ต้องตรงกับประเภทพนักงานในข้อมูลพนักงาน เช่น 01, 02" /></MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_name" Label="ชื่อ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="4">
                 <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_isPaidByPayroll" Color="Color.Primary" Label="รับเงินเดือนผ่านระบบ" />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    ปิด = พนักงานประเภทนี้ (เช่น กรรมการที่ไม่รับเงินเดือน) จะไม่ถูกนำเข้ารอบเงินเดือน และหน้าตรวจสอบก่อนประมวลผลจะแสดงเหตุผลให้เห็น
+                </MudText>
             </MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_remark" Label="หมายเหตุ" /></MudItem>
         </MudGrid>
@@ -62,13 +70,19 @@
             <MudTh>รหัส</MudTh>
             <MudTh>ชื่อ</MudTh>
             <MudTh>หมายเหตุ</MudTh>
+            <MudTh>เงินเดือน</MudTh>
             <MudTh>สถานะ</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.Id</MudTd>
+            <MudTd>@context.Code</MudTd>
             <MudTd>@context.Name</MudTd>
             <MudTd>@context.Remark</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsPaidByPayroll ? Color.Primary : Color.Default)">
+                    @(context.IsPaidByPayroll ? "รับผ่านระบบ" : "ไม่รับผ่านระบบ")
+                </MudChip>
+            </MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
                     @(context.IsActive ? "ใช้งาน" : "ไม่ใช้งาน")
@@ -94,6 +108,8 @@
 
     private string _name = "";
     private bool _isActive = true;
+    private bool _isPaidByPayroll = true;
+    private string? _code;
     private string? _remark;
 
     protected override async Task OnInitializedAsync()
@@ -122,7 +138,9 @@
     {
         _editingId = null;
         _name = "";
+        _code = null;
         _isActive = true;
+        _isPaidByPayroll = true;
         _remark = null;
         _error = null;
         _showForm = true;
@@ -132,7 +150,9 @@
     {
         _editingId = item.Id;
         _name = item.Name;
+        _code = item.Code;
         _isActive = item.IsActive;
+        _isPaidByPayroll = item.IsPaidByPayroll;
         _remark = item.Remark;
         _error = null;
         _showForm = true;
@@ -152,15 +172,22 @@
     {
         _error = null;
         if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อ"; return; }
+        if (string.IsNullOrWhiteSpace(_code)) { _error = "กรุณาระบุรหัส"; return; }
+        _code = _code.Trim();
 
         await using var context = await DbFactory.CreateDbContextAsync();
+        var editingId = _editingId ?? 0;
+        if (await context.Pos_EmployeeTypes.AnyAsync(t => t.CompanyId == _companyId && t.Code == _code && t.Id != editingId))
+        { _error = $"รหัส {_code} มีอยู่แล้ว"; return; }
 
         if (_editingId is long id)
         {
             var existing = await context.Pos_EmployeeTypes.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == _companyId);
             if (existing is null) { _error = "ไม่พบข้อมูล"; return; }
             existing.Name = _name;
+            existing.Code = _code;
             existing.IsActive = _isActive;
+            existing.IsPaidByPayroll = _isPaidByPayroll;
             existing.Remark = _remark;
         }
         else
@@ -169,7 +196,9 @@
             {
                 CompanyId = _companyId!,
                 Name = _name,
+                Code = _code,
                 IsActive = _isActive,
+                IsPaidByPayroll = _isPaidByPayroll,
                 Remark = _remark,
             });
         }

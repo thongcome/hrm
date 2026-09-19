@@ -56,14 +56,19 @@ public class PayrollWorkflowService
             : new HashSet<PayrollAction>();
     }
 
-    public Task<PayrollRunCalculationSummary> CalculateAsync(long runId, long actorUserId, CancellationToken ct = default)
-        => _calculationService.CalculateAsync(runId, actorUserId, progress: null, ct: ct);
+    public async Task<PayrollRunCalculationSummary> CalculateAsync(long runId, long actorUserId, CancellationToken ct = default)
+    {
+        await using (var context = await _dbFactory.CreateDbContextAsync(ct))
+            await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Calculate, ct);
+        return await _calculationService.CalculateAsync(runId, actorUserId, progress: null, ct: ct);
+    }
 
     public async Task SubmitForReviewAsync(long runId, long actorUserId, CancellationToken ct = default)
     {
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.SubmitForReview);
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.SubmitForReview, ct);
         await EnsureReadyForReviewAsync(context, run, ct);
 
         var fromStatus = run.Status;
@@ -80,6 +85,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Approve);
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Approve, ct);
         await EnsureReadyForReviewAsync(context, run, ct);
         PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การอนุมัติ", _requireSeparateApprover);
 
@@ -103,6 +109,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Post);
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Post, ct);
         PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การบันทึกบัญชี (Post)", _requireSeparateApprover);
 
         var fromStatus = run.Status;
@@ -119,6 +126,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.MarkPaid);
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.MarkPaid, ct);
         PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การยืนยันว่าจ่ายเงินแล้ว", _requireSeparateApprover);
 
         var fromStatus = run.Status;
@@ -164,6 +172,7 @@ public class PayrollWorkflowService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Cancel);
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Cancel, ct);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Cancelled;

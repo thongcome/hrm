@@ -111,13 +111,14 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             identity.AddClaim(new Claim("fullname", fullName));
 
         if (!string.IsNullOrWhiteSpace(scUser.empid))
-        {
             identity.AddClaim(new Claim("empno", scUser.empid));
 
-            var companyId = await PayrollCompanyResolver.ResolveAsync(context, scUser);
-            if (!string.IsNullOrWhiteSpace(companyId))
-                identity.AddClaim(new Claim("payroll_company", companyId));
-        }
+        // Resolved for every account, not only employees: a system account such as advadmin
+        // (CEO, 18 ก.ย. 2569: "advadmin ที่ไม่ใช่พนักงาน แล้วทำได้ทุกอย่าง") has no empid but still
+        // works inside its company — sc_user.company_id is the authority, see PayrollCompanyResolver.
+        var companyId = await PayrollCompanyResolver.ResolveAsync(context, scUser);
+        if (!string.IsNullOrWhiteSpace(companyId))
+            identity.AddClaim(new Claim("payroll_company", companyId));
 
         foreach (var ur in scUser.sc_user_roles.Where(r => r.isactive))
         {
@@ -130,16 +131,37 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             .SelectMany(ur => ur.role?.sc_role_menus ?? new List<sc_role_menu>())
             .Where(rm => rm.isactive && rm.menu != null && rm.menu.isactive)
             .Distinct();
+        var menuCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var editCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var grant in activeGrants)
         {
             if (string.IsNullOrWhiteSpace(grant.menu!.menucode)) continue;
-            identity.AddClaim(new Claim("menu", grant.menu.menucode!));
+            menuCodes.Add(grant.menu.menucode!);
             // Read-only lock (Components/Shared/CrudScaffold.razor's CanEdit
             // param checks this): a grant can give menu access without
             // edit rights via PermissionAdmin.razor's "แก้ไขได้" toggle.
             if (grant.canedit)
-                identity.AddClaim(new Claim("menu_edit", grant.menu.menucode!));
+                editCodes.Add(grant.menu.menucode!);
         }
+
+        // The Admin role can do everything (CEO, 18 ก.ย. 2569) — every active menu with edit,
+        // so a new menu never needs a separate grant for the administrator. Per-page
+        // Create/Edit/Delete for Admin is already all-true in sc_program_role (ProgramRoleService).
+        if (scUser.sc_user_roles.Any(ur => ur.isactive && string.Equals(ur.role?.name, "Admin", StringComparison.OrdinalIgnoreCase)))
+        {
+            var allCodes = await context.sc_menus
+                .Where(m => m.isactive && m.menucode != null)
+                .Select(m => m.menucode!)
+                .Distinct()
+                .ToListAsync();
+            menuCodes.UnionWith(allCodes);
+            editCodes.UnionWith(allCodes);
+        }
+
+        foreach (var code in menuCodes)
+            identity.AddClaim(new Claim("menu", code));
+        foreach (var code in editCodes)
+            identity.AddClaim(new Claim("menu_edit", code));
 
         // sc_role_program (repurposed from the dormant legacy JSP dispatch
         // table — see ProgramAuthorization.cs) — per-action Create/Edit/Delete

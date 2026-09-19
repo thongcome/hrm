@@ -108,13 +108,17 @@ else
         </MudPaper>
     }
 
-    @if (_taxDetailJson is not null)
-    {
-        <MudPaper Class="pa-4">
-            <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TaxAuditTrailHeading")</MudText>
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TaxAuditTrailHeading")</MudText>
+        @if (_taxDetailJson is not null)
+        {
             <MudTextField Value="@_taxDetailJson" T="string" Lines="12" ReadOnly="true" Variant="Variant.Outlined" />
-        </MudPaper>
-    }
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">@L.Translate("TaxAuditTrailEmptyMessage")</MudAlert>
+        }
+    </MudPaper>
 }
 
 @code {

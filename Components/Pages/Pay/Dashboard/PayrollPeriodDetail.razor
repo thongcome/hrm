@@ -57,7 +57,7 @@
         <MudTextField @bind-Value="_searchTerm" Placeholder="@L.Translate("SearchByCodeOrNamePlaceholder")" Adornment="Adornment.Start"
             AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-4 mud-width-full" />
 
-        <MudTable Items="_employees" Dense="true" Hover="true" Class="mt-3" Filter="EmpFilter">
+        <MudTable RowsPerPage="50" Items="_employees" Dense="true" Hover="true" Class="mt-3" Filter="EmpFilter">
             <HeaderContent>
                 <MudTh>@L.Translate("EmpNoLabel")</MudTh>
                 <MudTh>@L.Translate("FieldFullName")</MudTh>
@@ -76,6 +76,7 @@
                 <MudTd>@context.NetPay.ToString("N2")</MudTd>
                 <MudTd><MudLink Href="@($"/pay/dashboard/period/{RunId}/employee/{context.Id}")">@L.Translate("LineItemsPageTitle")</MudLink></MudTd>
             </RowTemplate>
+            <PagerContent><MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" /></PagerContent>
         </MudTable>
     }
 </MudPaper>

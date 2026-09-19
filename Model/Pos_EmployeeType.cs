@@ -28,4 +28,10 @@ public class Pos_EmployeeType
     public string? Remark { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    // "รับเงินเดือนผ่านระบบ" (CEO, 18 ก.ย. 2569): whether people of this type are paid by the
+    // payroll run at all. Matched to Hremployee.EMPTYPE_CODE by Code within the same CompanyId.
+    // False for e.g. directors who are on the employee register but not on payroll, so the
+    // engine skips them with a stated reason instead of paying them 0 and raising "net pay 0".
+    public bool IsPaidByPayroll { get; set; } = true;
 }
