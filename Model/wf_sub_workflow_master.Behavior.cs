@@ -43,7 +43,6 @@ public partial class wf_sub_workflow_master
         foreach (var field in new Func<HRMContext, job_master, CancellationToken, Task<ApproverSource?>>[]
         {
             IsCustomUserAsync,
-            UserId123Async,
             IsAdhocUserAsync,
             IsCustomRoleAsync,
             IsLOAAsync,
@@ -73,13 +72,7 @@ public partial class wf_sub_workflow_master
             ids.Count == 0 ? "ติ๊กไว้แต่ยังไม่ได้เลือกใคร" : null);
     }
 
-    // userid1/2/3 — ระบุ userid ตรง ๆ บนตัวขั้นเอง
-    private Task<ApproverSource?> UserId123Async(HRMContext db, job_master job, CancellationToken ct)
-    {
-        var ids = new[] { userid1, userid2, userid3 }.Where(u => u is not null).Select(u => u!.Value).ToList();
-        return Task.FromResult<ApproverSource?>(
-            ids.Count == 0 ? null : new ApproverSource("userid1/2/3", "USER", ids));
-    }
+    // userid1/2/3 เลิกใช้ (AD.Workflow ข้อ 17, CEO 20 ก.ย. 2569) — ใช้ผังองค์กรแทน จึงไม่มีเมธอดอ่านมันอีก
 
     // isAdhocUser — ผู้อนุมัติที่ถูกดึงเข้ามาสด ๆ ตอนงานวิ่ง (CEO: ผู้อนุมัติเรียก
     // คนมาเพิ่มได้ ณ ตอนกำลังอนุมัติ ใช้ตอนประมูลที่ต้องเรียกด่วน)
@@ -166,7 +159,7 @@ public partial class wf_sub_workflow_master
             uid is long cc ? new List<long> { cc } : new List<long>(),
             org is null ? $"ไม่พบหน่วยงานที่ cost center {job.costcenter}" : $"หน่วยงาน {org.code}");
     }
-    // isApproverSameOrg — เพื่อนร่วมหน่วยงานของผู้ขอ (ไม่รวมตัวผู้ขอเอง)
+    // isApproverSameOrg — คนในหน่วยงานเดียวกับผู้ขอ (AD.Workflow ข้อ 16: ไม่ตัดผู้ขอออก)
     // ใช้กับขั้นที่ให้คนในหน่วยงานเดียวกันช่วยกันดู ไม่ใช่สายบังคับบัญชา
     private async Task<ApproverSource?> IsApproverSameOrgAsync(HRMContext db, job_master job, CancellationToken ct)
     {
@@ -175,7 +168,7 @@ public partial class wf_sub_workflow_master
             return new("isApproverSameOrg", "ORG", new(), "ผู้ขอไม่มีหน่วยงาน");
 
         var ids = await db.sc_users
-            .Where(u => u.orgcode == job.reqOrg && u.isdisable != true && u.userid != job.createuserid)
+            .Where(u => u.orgcode == job.reqOrg && u.isdisable != true)
             .Select(u => u.userid).ToListAsync(ct);
         return new("isApproverSameOrg", "ORG", ids, $"หน่วยงาน {job.reqOrg}");
     }
@@ -207,10 +200,8 @@ public partial class wf_sub_workflow_master
     }
 
     // ผังองค์กร: หน่วยงานของผู้ขอ -> approver_empid ยังไม่ตั้งก็ไต่ parent_code ขึ้นไป
-    // ไต่ข้ามผู้ขอเองด้วย — ถ้าผู้ขอเป็นหัวหน้าหน่วยงานตัวเอง ต้องให้หัวหน้าเขาอนุมัติ
-    // (ไม่ใช่กฎแยกที่ต้อง config — เป็นนิยามของการไต่ผังอยู่แล้ว)
     //   climb = ต้องผ่านหัวหน้ากี่ชั้น (1 = หัวหน้าตรง, 2 = หัวหน้าของหัวหน้า)
-    //   ข้ามผู้ขอเองเสมอ — ถ้าผู้ขอเป็นหัวหน้าหน่วยงานตัวเอง ต้องให้หัวหน้าเขาอนุมัติ
+    //   ไม่ข้ามผู้ขอ (AD.Workflow ข้อ 16) — ผู้ขอที่เป็นหัวหน้าหน่วยงานตัวเองคือผู้อนุมัติชั้นนั้นเอง
     //   ข้ามหน่วยงานที่ยังไม่ตั้งผู้อนุมัติ — ไต่ต่อจนเจอคนจริงหรือสุดผัง
     private static async Task<(long? UserId, string? Note)> ResolveOrgChainAsync(
         HRMContext db, job_master job, int climb, CancellationToken ct)
@@ -227,8 +218,8 @@ public partial class wf_sub_workflow_master
                     .Where(x => x.empid == org.approver_empid && x.isdisable != true)
                     .Select(x => new { x.userid }).FirstOrDefaultAsync(ct);
 
-                // เจอผู้ขอเอง = ยังไม่นับเป็นหัวหน้าหนึ่งชั้น ต้องไต่ขึ้นต่อ
-                if (u is not null && u.userid != job.createuserid)
+                // AD.Workflow ข้อ 16 (CEO 20 ก.ย. 2569): ผู้ขอเป็นผู้อนุมัติเองได้ ไม่มีตัวกัน — นับหัวหน้าตามผังตรง ๆ
+                if (u is not null)
                 {
                     levelsFound++;
                     if (levelsFound >= climb)

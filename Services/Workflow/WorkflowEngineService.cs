@@ -5,33 +5,17 @@ using HRM.Services;
 using HRM.Services.Shared;
 using Microsoft.EntityFrameworkCore;
 
-// Blocks 2-6 + 9 of the Workflow Approval Engine: sequential level
-// advancement, approve/reject, full approver resolution (Horizontal +
-// Vertical + vacancy handling), LOA amount-based branching, AND-condition %
-// partial approval, OR-condition (any-one-approval), Mix Approval (vertical
-// pre-check hops before a level's own approver), reject bounce-back to an
-// earlier level (backwardlevel, round-scoped via jobseq), admin-configured
-// Moving Status text, and a best-effort email notification to the requester
-// when a job closes. Phase 2 Block 2: Vertical resolution and the Mix
-// Approval hop-walker now share one org-chain-walking helper
-// (ResolveOrgChainApproverAsync) and both anchor on Hremployee.orgcode
-// (real, synced data) instead of the wf_employee pilot table. Phase 2 Block
-// 3: ResolveCandidatesAsync unions every non-LOA strategy ticked on a level
-// (previously only the first matching flag in an if/else-if chain ever
-// ran) — verified zero-behavior-change via a live-DB query showing no
-// existing level combines more than one strategy flag. Phase 2 Block 4:
-// three epms-inspired strategies added to that same union —
-// isReturnSender (routes back to job.createuserid directly, not epms's
-// wlevel-2 offset), isApproverSameCostCenter, isAdhocUser (per-job override
-// via wf_adhoc_user, CRUD already built in Phase 1). Still deliberately
-// excludes:
-//   - Cross-workflow LOA jumps (wf_loa.nextWorkflowId != nowWorkflowid) —
-//     see the comment on ResolveNextLevelViaLoaAsync
-//
-// Tables used are NOT new — job_master/job_user_list/job_subworkflow_master
-// already existed fully scaffolded in this DB (0 rows, unused by any app
-// code) before this work started; see the plan file's "แก้ไขสำคัญ" note
-// under Block 1 for how that was discovered.
+// Support service around the workflow engine: inbox/overview queries, the
+// live-row rule (IsLiveApprovalRow), level evaluation for AND/OR/percent
+// levels (EvaluateLevel), vacant-slot assignment and approver reassignment,
+// pool claim/release, passive overdue age (wexpireday), and the button/
+// action entry point (ActAsync). The moves themselves — submit, approve,
+// send back, decline, cancel — live in WorkflowService; approvers are
+// resolved by wf_sub_workflow_master.GetUserBySourceAsync from the step's
+// own config (see the AD.Workflow skill for the rules both must follow).
+// Send back is one level back (wlevel-1) or straight to the requester on a
+// step with isReturnSender; backwardlevel is not interpreted. LOA picks
+// approvers only — it never jumps levels.
 public class WorkflowEngineService
 {
     private readonly IDbContextFactory<HRMContext> _dbFactory;

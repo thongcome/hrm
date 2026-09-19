@@ -277,8 +277,16 @@ public class WorkflowService
     // engine เดิมเขียน audit ทุกการกระทำ ตัวใหม่ต้องเขียนเหมือนกัน ไม่งั้นผิด
     // ข้อกำหนดที่ตั้งไว้เอง (พ.ร.บ.คอมพิวเตอร์ — เก็บผู้ทำ+เวลา ไม่ต่ำกว่า 90 วัน)
     // hook อัตโนมัติของ HRMContext ไม่รู้ว่าใครเป็นคนสั่ง จึงต้องเขียนเองที่นี่
-    private async Task AuditAsync(job_master job, string action, object? detail, CancellationToken ct)
+    //
+    // AD.Workflow ข้อ 24: ทุกการกระทำต้องลงไฟล์ .log ด้วย (ใคร ทำอะไร เมื่อไร) เพื่อส่งไปเก็บที่อื่นได้
+    // ตามระยะเวลาของ พ.ร.บ.คอมพิวเตอร์ — Serilog เขียน logs/file.log อยู่แล้ว (Program.cs) เขียนก่อนลง DB
+    // เพื่อให้ยังมีรอยแม้บันทึก DB ล้มเหลว actorUserId ว่าง = ระบบเป็นผู้ทำ
+    private async Task AuditAsync(job_master job, string action, object? detail, CancellationToken ct, long? actorUserId = null)
     {
+        Serilog.Log.Information(
+            "WORKFLOW {Action} job={JobMasterId} workflow={WorkflowCode} level={Level} status={Status} jobseq={JobSeq} by userid={ActorUserId} at={At:yyyy-MM-dd HH:mm:ss}",
+            action, job.jobmasterid, job.workflowcode, job.lastLevel, job.status, job.jobseq,
+            actorUserId?.ToString() ?? "system", DateTime.Now);
         try
         {
             await _audit.LogChangeAsync(AuditActionType.Update, "job_master", job.jobmasterid.ToString(),
@@ -385,7 +393,7 @@ public class WorkflowService
         job.enddate = DateTime.Now;
 
         await db.SaveChangesAsync(ct);
-        await AuditAsync(job, "Decline", new { level, m.reason }, ct);
+        await AuditAsync(job, "Decline", new { level, m.reason }, ct, m.actorUserId);
         await WriteBackAsync(job, ct);
         await NoticeEveryoneInvolvedAsync(db, job, m.actorUserId, m.reason, ct, declined: true);
 
@@ -429,7 +437,7 @@ public class WorkflowService
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
-        await AuditAsync(job, "DeleteDraft", new { job.workflowcode, job.reftable, job.refid }, ct);
+        await AuditAsync(job, "DeleteDraft", new { job.workflowcode, job.reftable, job.refid }, ct, actorUserId);
     }
 
     public async Task<WorkFlowViewModel> CancelAsync(WorkFlowViewModel m, bool isAdminOverride = false,
@@ -477,7 +485,7 @@ public class WorkflowService
         job.enddate = DateTime.Now;
 
         await db.SaveChangesAsync(ct);
-        await AuditAsync(job, "Cancel", new { level, m.reason, isAdminOverride }, ct);
+        await AuditAsync(job, "Cancel", new { level, m.reason, isAdminOverride }, ct, m.actorUserId);
         await WriteBackAsync(job, ct);
 
         m.jobMaster = job; m.jobsub = stamp;
@@ -673,7 +681,7 @@ public class WorkflowService
         db.job_user_lists.AddRange(model.jobUserList);
 
         await db.SaveChangesAsync(ct);
-        await AuditAsync(job, "Create", new { reftable, refid, amount }, ct);
+        await AuditAsync(job, "Create", new { reftable, refid, amount }, ct, actorUserId);
         return model;
     }
 
@@ -745,7 +753,7 @@ public class WorkflowService
 
         await db.SaveChangesAsync(ct);
 
-        await AuditAsync(job, move.Name, new { from = fromLevel, to = DraftLevel, model.reason }, ct);
+        await AuditAsync(job, move.Name, new { from = fromLevel, to = DraftLevel, model.reason }, ct, model.actorUserId);
         await NotifyRecipientsAsync(db, job, new List<job_user_list> { back }, null, ct);
 
         if (move is ReturnToSenderMove)
@@ -1215,7 +1223,7 @@ public class WorkflowService
         await db.SaveChangesAsync(ct);
 
         await AuditAsync(job, move.Name,
-            new { from = fromLevel, to = toLevel, hop = hopNow, closed = job.isJobClosed, model.reason }, ct);
+            new { from = fromLevel, to = toLevel, hop = hopNow, closed = job.isJobClosed, model.reason }, ct, model.actorUserId);
 
         // ขั้นปลายทางไม่มีใคร → เดินต่อไปขั้นถัดไปใน transaction เดียวกัน
         if (autoSkip)
@@ -1466,7 +1474,6 @@ public class WorkflowService
         "isAdhocUser" => "ผู้อนุมัติที่ถูกเรียกเข้ามาเฉพาะงานนี้",
         "isApproverSameOrg" => "อยู่หน่วยงานเดียวกับผู้ขอ",
         "isApproverSameCostCenter" => "อยู่ cost center เดียวกับผู้ขอ",
-        "userid1/2/3" => "ระบุ userid ไว้ที่ขั้นนี้",
         _ => field,
     };
 

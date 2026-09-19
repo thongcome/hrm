@@ -102,7 +102,15 @@ else
             var workflows = await db.wf_workflows.ToListAsync();
             var levels = await db.wf_sub_workflow_masters.ToListAsync();
             var customUsers = await db.wf_custom_users.Where(c => c.isactive)
-                .Select(c => new { c.workflowid, c.wlevel }).ToListAsync();
+                .Select(c => new { c.workflowid, c.wlevel, c.userid }).ToListAsync();
+            // AD.Workflow ข้อ 20: เตือนตอน config เท่านั้น ไม่บังคับ — ผู้อนุมัติที่ระบุชื่อ ถ้าไม่ใช่หัวหน้าหน่วยงานใดในผัง
+            var orgApproverEmpIds = (await db.com_organizations
+                    .Where(o => o.isActive && o.approver_empid != null)
+                    .Select(o => o.approver_empid!).Distinct().ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var namedUserIds = customUsers.Select(c => c.userid).Distinct().ToList();
+            var userInfo = await db.sc_users.Where(u => namedUserIds.Contains(u.userid))
+                .Select(u => new { u.userid, u.empid, u.firstname, u.lastname }).ToDictionaryAsync(u => u.userid);
             var customRoles = await db.wf_custom_roles.Where(c => c.isactive != false)
                 .Select(c => new { c.workflowid, c.wlevel, c.roleid }).ToListAsync();
             var loaBands = await db.wf_loas.Select(l => l.wfid).ToListAsync();
@@ -168,13 +176,35 @@ else
                         break;
                     }
 
+                // คนเดียวกันถูกระบุชื่อหลายขั้นของเส้นทางเดียว — เตือนอย่างเดียว engine ยังทำตาม config
+                foreach (var g in customUsers.Where(c => c.workflowid == w.workflowid)
+                             .GroupBy(c => c.userid).Where(g => g.Select(x => x.wlevel).Distinct().Count() > 1))
+                {
+                    var who = userInfo.TryGetValue(g.Key, out var ui) ? $"{ui.firstname} {ui.lastname}".Trim() : $"userid {g.Key}";
+                    found.Add(new(Sev.Warning, name,
+                        $"{who} ถูกระบุเป็นผู้อนุมัติหลายขั้น (ขั้น {string.Join(", ", g.Select(x => x.wlevel).Distinct().OrderBy(x => x))})",
+                        "คนเดียวกันต้องอนุมัติซ้ำหลายรอบ ตรวจว่าตั้งใจหรือไม่ (ระบบยังทำตามที่ตั้งไว้ ไม่ขวาง)",
+                        "ตรวจรายชื่อผู้อนุมัติของแต่ละขั้น", design));
+                }
+
                 foreach (var s in visible)
                 {
                     var at = $"{name} ขั้น {s.wlevel}";
+
+                    // ผู้อนุมัติที่ระบุชื่อ แต่ไม่ได้เป็นหัวหน้า (approver_empid) ของหน่วยงานใดในผังองค์กร
+                    foreach (var cu in customUsers.Where(c => c.workflowid == s.workflowid && c.wlevel == s.wlevel))
+                    {
+                        if (!userInfo.TryGetValue(cu.userid, out var ui)) continue;
+                        var approverName = (ui.firstname + " " + ui.lastname).Trim();
+                        if (string.IsNullOrWhiteSpace(ui.empid) || !orgApproverEmpIds.Contains(ui.empid))
+                            found.Add(new(Sev.Warning, at,
+                                approverName + " ไม่ได้เป็นหัวหน้าหน่วยงานใดในผังองค์กร",
+                                "ตั้งไว้ได้ตามปกติ ระบบยังทำตาม config — เตือนเผื่อเลือกผิดคน",
+                                "ตรวจว่าผู้อนุมัติคนนี้ถูกต้อง หรือเลือกหัวหน้าตามผังองค์กรแทน", design));
+                    }
                     var hasSource = s.iscustomUser || s.iscustomRole || s.isupperrole || s.isupperuser
                                  || s.isAdhocUser || s.isLOA || s.isApproverSameOrg || s.isApproverSameCostCenter
-                                 || (s.isNeedsupervisorapprove ?? 0) > 0
-                                 || s.userid1 is not null || s.userid2 is not null || s.userid3 is not null;
+                                 || (s.isNeedsupervisorapprove ?? 0) > 0;
                     if (!hasSource)
                     {
                         found.Add(new(Sev.Blocking, at, "ไม่ได้ระบุว่าใครอนุมัติขั้นนี้",
