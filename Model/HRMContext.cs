@@ -360,6 +360,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_TaxDeductionSetting> Pay_TaxDeductionSettings { get; set; }
     public virtual DbSet<Pay_TaxDeductionType> Pay_TaxDeductionTypes { get; set; }
     public virtual DbSet<Pay_MinimumWage> Pay_MinimumWages { get; set; }
+    public virtual DbSet<Pay_SeveranceTaxRule> Pay_SeveranceTaxRules { get; set; }
     public virtual DbSet<Pay_EmployeeTaxDeductionElection> Pay_EmployeeTaxDeductionElections { get; set; }
 
     public virtual DbSet<Pay_EmployeePriorEmployerIncome> Pay_EmployeePriorEmployerIncomes { get; set; }

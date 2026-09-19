@@ -1,0 +1,182 @@
+@page "/pay/admin/severance-tax"
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>ภาษีค่าชดเชย</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudText Typo="Typo.h5">ภาษีค่าชดเชยตามกฎหมายแรงงาน (Severance Tax Rule)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ยกเว้นภาษี = ค่าน้อยที่สุดของ (ยอดที่จ่าย, จำนวนวัน × ค่าจ้างรายวันอัตราสุดท้าย, เพดาน) ส่วนที่เกินหักค่าใช้จ่ายส่วนที่ 1 (ต่อปีที่ทำงาน เศษปีนับเป็น 1 ปี)
+        แล้วหักส่วนที่ 2 ตามสัดส่วนของเงินที่เหลือ ก่อนเข้าฐานภาษี (คิดแบบเงินได้ครั้งเดียว ส่วนต่างเหมือนโบนัส)
+        เมื่อกฎหมายเปลี่ยนให้ <b>เพิ่มแถวใหม่พร้อมวันที่เริ่มมีผล</b> อย่าแก้แถวเดิม ระบบใช้แถวที่มีผล ณ วันแรกของงวดที่จ่าย
+        และเก็บผลไว้บนรายการที่ส่งจ่ายแล้ว การแก้กติกาทีหลังไม่กระทบรายการเดิม
+    </MudText>
+    <MudAlert Severity="Severity.Warning" Class="mt-3">
+        แถวที่ระบบใส่ให้ตอนติดตั้งมาจาก มติ ครม. 18 มิ.ย. 2567 (PRD) และบทความ SCB ตรวจเมื่อ 20 ก.ย. 2569 ยังไม่ได้ยืนยันกับราชกิจจานุเบกษา
+        <b>ให้ผู้รู้ภาษีตรวจตัวเลขก่อนใช้จ่ายจริง</b> ตารางนี้ว่างอยู่ = ระบบไม่คิดภาษีค่าชดเชย
+    </MudAlert>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <div style="overflow-x:auto;">
+    <MudTable Items="_rows" Dense="true" Hover="true" RowsPerPage="25">
+        <HeaderContent>
+            <MudTh>เริ่มมีผล</MudTh>
+            <MudTh>วัน</MudTh>
+            <MudTh>เพดานยกเว้น (บาท)</MudTh>
+            <MudTh>ค่าใช้จ่าย/ปี (บาท)</MudTh>
+            <MudTh>สัดส่วนส่วนที่ 2</MudTh>
+            <MudTh>เพดานส่วนที่ 2</MudTh>
+            <MudTh>หมายเหตุ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.ExemptDays</MudTd>
+            <MudTd>@context.ExemptCap.ToString("N2")</MudTd>
+            <MudTd>@context.ExpensePerYear.ToString("N2")</MudTd>
+            <MudTd>@((context.RemainderExpenseRate * 100m).ToString("0.##"))%</MudTd>
+            <MudTd>@(context.RemainderExpenseCap?.ToString("N2") ?? "ไม่จำกัด")</MudTd>
+            <MudTd>@context.Note</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                @if (context.IsActive && _rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(context.Id))">ปิดใช้งาน</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล — ระบบยังไม่คิดภาษีค่าชดเชย</MudText>
+        </NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" /></PagerContent>
+    </MudTable>
+    </div>
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มกติกาใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="เริ่มมีผลวันที่" @bind-Date="_effectiveFrom" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_days" Label="จำนวนวัน (ค่าจ้างวันสุดท้าย)" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_cap" Label="เพดานยกเว้น (บาท)" Format="N2" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_perYear" Label="ค่าใช้จ่ายส่วนที่ 1 ต่อปี (บาท)" Format="N2" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_ratePercent" Label="สัดส่วนส่วนที่ 2 (%)" Min="0" Max="100" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_remainderCap" Label="เพดานส่วนที่ 2 (บาท, ว่าง = ไม่จำกัด)" Format="N2" Min="0" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ / อ้างอิงกฎหมายหรือประกาศ" MaxLength="500" /></MudItem>
+            <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">+ เพิ่มกติกา</MudButton></MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    }
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/pay/admin/severance-tax";
+    private ProgramRoleService.ProgramRights? _rights;
+    private long _actorUserId;
+
+    private List<Pay_SeveranceTaxRule> _rows = new();
+    private DateTime? _effectiveFrom;
+    private int _days;
+    private decimal _cap;
+    private decimal _perYear;
+    private decimal _ratePercent = 50m;
+    private decimal? _remainderCap;
+    private string? _note;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _rows = await context.Pay_SeveranceTaxRules.AsNoTracking().OrderByDescending(r => r.EffectiveFrom).ToListAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always).
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { _error = denied; return; }
+        if (_effectiveFrom is null) { _error = "กรุณาระบุวันที่เริ่มมีผล"; return; }
+        if (_days <= 0 || _cap <= 0m) { _error = "จำนวนวันและเพดานยกเว้นต้องมากกว่า 0"; return; }
+        if (_perYear < 0m || _ratePercent < 0m || _ratePercent > 100m) { _error = "ค่าใช้จ่ายและสัดส่วนไม่ถูกต้อง"; return; }
+
+        var from = DateOnly.FromDateTime(_effectiveFrom.Value);
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (await context.Pay_SeveranceTaxRules.AnyAsync(r => r.IsActive && r.EffectiveFrom == from))
+        {
+            _error = "มีกติกาที่เริ่มมีผลวันเดียวกันอยู่แล้ว — ปิดใช้งานแถวเดิมก่อนถ้าต้องการแก้";
+            return;
+        }
+
+        context.Pay_SeveranceTaxRules.Add(new Pay_SeveranceTaxRule
+        {
+            EffectiveFrom = from,
+            ExemptDays = _days,
+            ExemptCap = _cap,
+            ExpensePerYear = _perYear,
+            RemainderExpenseRate = _ratePercent / 100m,
+            RemainderExpenseCap = _remainderCap,
+            Note = _note,
+            EnteredByUserId = _actorUserId,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มกติกาภาษีค่าชดเชยเรียบร้อย", Severity.Success);
+        _effectiveFrom = null; _days = 0; _cap = 0; _perYear = 0; _ratePercent = 50m; _remainderCap = null; _note = null;
+        await LoadAsync();
+    }
+
+    private async Task DeactivateAsync(long id)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { _error = denied; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Pay_SeveranceTaxRules.FirstOrDefaultAsync(r => r.Id == id);
+        if (row is null) return;
+        row.IsActive = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ปิดใช้งานเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

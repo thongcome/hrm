@@ -59,6 +59,37 @@ public class SeveranceService
         throw new InvalidOperationException("พนักงานคนนี้ไม่มีเงินเดือนฐานหรือค่าจ้างรายวันในระบบ ไม่สามารถคำนวณค่าชดเชยได้");
     }
 
+    // ผลภาษีของยอดที่จะจ่าย ณ งวดที่เลือก — ใช้ทั้งแสดงตัวอย่างในหน้าจอและตอนส่งจ่ายจริง (null = ไม่มีกติกาที่มีผล)
+    public async Task<SeveranceTaxCalculator.Result?> PreviewTaxAsync(long hremployeeId, decimal amount, string targetPeriod, CancellationToken ct = default)
+    {
+        var statutory = await PreviewAsync(hremployeeId, ct);
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        return await ComputeTaxAsync(context, hremployeeId, amount, statutory.DailyWage, targetPeriod, ct);
+    }
+
+    private static async Task<SeveranceTaxCalculator.Result?> ComputeTaxAsync(
+        HRMContext context, long hremployeeId, decimal amount, decimal dailyWage, string targetPeriod, CancellationToken ct)
+    {
+        if (targetPeriod.Length != 6
+            || !int.TryParse(targetPeriod.AsSpan(0, 4), out var year) || !int.TryParse(targetPeriod.AsSpan(4, 2), out var month)
+            || month < 1 || month > 12)
+            throw new InvalidOperationException("งวดที่จ่ายต้องเป็นรูปแบบ yyyyMM");
+        var asOf = new DateOnly(year, month, 1);
+
+        var rule = await context.Pay_SeveranceTaxRules.AsNoTracking()
+            .Where(r => r.IsActive && r.EffectiveFrom <= asOf)
+            .OrderByDescending(r => r.EffectiveFrom)
+            .FirstOrDefaultAsync(ct);
+        if (rule is null) return null;
+
+        var emp = await context.Hremployee.AsNoTracking().FirstAsync(e => e.id == hremployeeId, ct);
+        var hire = DateOnly.FromDateTime(emp.WorkDate!.Value);
+        var last = DateOnly.FromDateTime(emp.ResignDate!.Value);
+        return SeveranceTaxCalculator.Calculate(amount, dailyWage, hire, last,
+            new SeveranceTaxCalculator.RuleValues(rule.ExemptDays, rule.ExemptCap, rule.ExpensePerYear,
+                rule.RemainderExpenseRate, rule.RemainderExpenseCap));
+    }
+
     public async Task<long> SubmitAsync(long hremployeeId, string targetPeriod, decimal amount, string reason, long actorUserId, CancellationToken ct = default)
     {
         // Re-validate server-side rather than trusting a cached dialog preview
@@ -88,18 +119,21 @@ public class SeveranceService
         if (alreadyExists)
             throw new InvalidOperationException("มีการยื่นค่าชดเชยสำหรับพนักงานคนนี้ไปแล้ว");
 
+        // ภาษี (H-01): แบ่งยอดที่จ่ายเป็นส่วนยกเว้น / ส่วนเกิน / ค่าใช้จ่ายที่หักจากส่วนเกิน ตามกติกา Pay_SeveranceTaxRule
+        // ที่มีผล ณ วันแรกของงวดที่จ่าย เก็บผลไว้บนรายการ (snapshot) ไม่คำนวณซ้ำทีหลัง
+        // ไม่มีกติกาเลย (ตารางว่าง) = พฤติกรรมเดิมคือไม่คิดภาษีค่าชดเชย ให้ผู้ดูแลตั้งค่าที่ /pay/admin/severance-tax
+        var tax = await ComputeTaxAsync(context, hremployeeId, amount, statutory.DailyWage, targetPeriod, ct);
+
         var item = new Pay_AdhocPayItem
         {
             HremployeeId = hremployeeId,
             PayItemTypeId = severanceTypeId,
             TargetPeriod = targetPeriod,
             Amount = amount,
-            // Simplification: Thai tax-exemption rules for statutory severance
-            // are more nuanced (exempt up to a formula based on 300x average
-            // daily wage) than this system currently models — default to
-            // non-taxable, HR can override the underlying Pay_AdhocPayItem
-            // row via /pay/adhoc if a specific case needs different handling.
-            IsTaxable = false,
+            // ยังมีส่วนเกินที่ต้องเสียภาษีเมื่อหลังหักส่วนยกเว้นแล้วยังเหลือเงินได้ (แม้ค่าใช้จ่ายทำให้ฐานภาษีเป็น 0 ก็ยังต้องรายงานเป็นเงินได้)
+            IsTaxable = tax is not null && tax.Excess > 0m,
+            TaxExemptAmount = tax?.Exempt,
+            TaxExpenseDeductionAmount = tax?.ExpenseDeduction,
             Reason = reason,
             Status = PayAdhocItemStatus.Pending,
             RequestedByUserId = actorUserId,

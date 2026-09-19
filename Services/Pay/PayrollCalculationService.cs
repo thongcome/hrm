@@ -296,10 +296,11 @@ public class PayrollCalculationService
                     {
                         pe.HremployeeId,
                         pe.TaxableIncome,
-                        OneOffTaxable = pe.Pay_PayrollLineItems
-                            .Where(li => li.SourceRefTable == "Pay_AdhocPayItem" && li.SignFlag > 0
-                                         && context.Pay_AdhocPayItems.Any(a => a.Id == li.SourceRefId && a.IsTaxable))
-                            .Sum(li => (decimal?)li.Amount) ?? 0m,
+                        // เท่ากับ TaxableBasis ของรายการเฉพาะกิจที่ยึดโยงกับแถวนี้ (หลังหักส่วนยกเว้น/ค่าใช้จ่ายของค่าชดเชย)
+                        OneOffTaxable = context.Pay_AdhocPayItems
+                            .Where(a => a.IsTaxable && pe.Pay_PayrollLineItems.Any(li =>
+                                li.SourceRefTable == "Pay_AdhocPayItem" && li.SignFlag > 0 && li.SourceRefId == a.Id))
+                            .Sum(a => (decimal?)(a.Amount - (a.TaxExemptAmount ?? 0m) - (a.TaxExpenseDeductionAmount ?? 0m))) ?? 0m,
                         pe.TaxDeductionAmount,
                         pe.Pay_PayrollRun.TermNo,
                     })
@@ -714,8 +715,10 @@ public class PayrollCalculationService
 
                 if (signFlag > 0)
                 {
-                    if (adhoc.IsTaxable) adhocTaxableEarnings += adhoc.Amount;
-                    else adhocNonTaxableEarnings += adhoc.Amount;
+                    // TaxableBasis = Amount หลังหักส่วนยกเว้น/ค่าใช้จ่าย (ค่าชดเชยเลิกจ้าง H-01) — รายการอื่น = Amount เท่าเดิม
+                    var basis = adhoc.TaxableBasis;
+                    adhocTaxableEarnings += basis;
+                    adhocNonTaxableEarnings += adhoc.Amount - basis;
                 }
                 else
                 {

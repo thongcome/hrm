@@ -44,6 +44,20 @@ public class Pay_AdhocPayItem
     // purposes (e.g. a reimbursement is typically not taxable, a bonus is)
     public bool IsTaxable { get; set; } = true;
 
+    // ค่าชดเชยเลิกจ้าง (H-01): ส่วนที่ยกเว้นภาษี (ไม่ใช่เงินได้) และค่าใช้จ่ายที่หักจากส่วนเกิน — snapshot ณ วันส่งจ่าย
+    // จากกติกา Pay_SeveranceTaxRule; null ในรายการอื่นทั้งหมด (ผลเท่าเดิม: IsTaxable ทั้งก้อนหรือไม่เลย)
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal? TaxExemptAmount { get; set; }
+
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal? TaxExpenseDeductionAmount { get; set; }
+
+    // เงินได้ที่เข้าฐานภาษีจริงของรายการนี้ (หลังหักส่วนยกเว้นและค่าใช้จ่าย)
+    [NotMapped]
+    public decimal TaxableBasis => IsTaxable
+        ? Math.Max(0m, Amount - (TaxExemptAmount ?? 0m) - (TaxExpenseDeductionAmount ?? 0m))
+        : 0m;
+
     [Required, StringLength(500)]
     public string Reason { get; set; } = null!;
 

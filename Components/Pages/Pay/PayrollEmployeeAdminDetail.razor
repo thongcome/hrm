@@ -263,6 +263,28 @@ else
                         </MudGrid>
                         <MudTextField @bind-Value="_severanceReason" Label="@L.Translate("ReasonLabel")" Lines="2" Class="mt-2" />
 
+                        <MudButton Variant="Variant.Outlined" Class="mt-3" OnClick="PreviewSeveranceTaxAsync">@L.Translate("SeveranceTaxButton")</MudButton>
+                        @if (_severanceTaxChecked)
+                        {
+                            @if (_severanceTax is null)
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">@L.Translate("SeveranceTaxNoRuleNote")</MudAlert>
+                            }
+                            else
+                            {
+                                <MudSimpleTable Dense="true" Class="mt-2">
+                                    <tbody>
+                                        <tr><td>@L.Translate("SeveranceTaxExemptLabel")</td><td>@_severanceTax.Exempt.ToString("N2")</td></tr>
+                                        <tr><td>@L.Translate("SeveranceTaxExcessLabel")</td><td>@_severanceTax.Excess.ToString("N2")</td></tr>
+                                        <tr><td>@L.Translate("SeveranceTaxYearsLabel")</td><td>@_severanceTax.YearsCounted</td></tr>
+                                        <tr><td>@L.Translate("SeveranceTaxExpenseLabel")</td><td>@_severanceTax.ExpenseDeduction.ToString("N2")</td></tr>
+                                        <tr><td><b>@L.Translate("SeveranceTaxBasisLabel")</b></td><td><b>@_severanceTax.TaxableBasis.ToString("N2")</b></td></tr>
+                                    </tbody>
+                                </MudSimpleTable>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("SeveranceTaxHintNote")</MudText>
+                            }
+                        }
+
                         <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-3" OnClick="SubmitSeveranceAsync">@L.Translate("SubmitSeveranceButton")</MudButton>
                     }
                 }
@@ -372,6 +394,22 @@ else
     private HRM.Services.Pay.Calculators.SeveranceCalculator.SeveranceResult? _severancePreview;
     private DateTime? _severanceTargetMonth = DateTime.Today;
     private decimal _severanceAmount;
+    private HRM.Services.Pay.Calculators.SeveranceTaxCalculator.Result? _severanceTax;
+    private bool _severanceTaxChecked;
+
+    private async Task PreviewSeveranceTaxAsync()
+    {
+        _severanceError = null;
+        _severanceTaxChecked = false;
+        if (_employee is null || _severanceTargetMonth is null || _severanceAmount <= 0) return;
+        try
+        {
+            var period = _severanceTargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+            _severanceTax = await SeveranceService.PreviewTaxAsync(_employee.id, _severanceAmount, period);
+            _severanceTaxChecked = true;
+        }
+        catch (InvalidOperationException ex) { _severanceError = ex.Message; }
+    }
     private string _severanceReason = string.Empty;
     private string? _severanceError;
 

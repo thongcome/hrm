@@ -161,10 +161,10 @@ public static class Por1DataService
             .Where(li => payEmployeeIds.Contains(li.PayrollEmployeeId)
                 && li.SourceRefTable == "Pay_AdhocPayItem"
                 && li.SignFlag > 0)
-            .Join(context.Pay_AdhocPayItems, li => li.SourceRefId, a => a.Id, (li, a) => new { li.PayrollEmployeeId, li.Amount, a.IsTaxable })
-            .Where(x => !x.IsTaxable)
+            .Join(context.Pay_AdhocPayItems, li => li.SourceRefId, a => a.Id, (li, a) => new { li.PayrollEmployeeId, li.Amount, a.IsTaxable, a.TaxExemptAmount })
             .GroupBy(x => x.PayrollEmployeeId)
-            .Select(g => new { PayrollEmployeeId = g.Key, Total = g.Sum(x => x.Amount) })
+            // ไม่ใช่เงินได้ = ไม่ต้องเสียภาษีทั้งก้อน + ส่วนที่ยกเว้นของรายการที่ต้องเสียภาษีบางส่วน (ดู TaxableIncomeHelper)
+            .Select(g => new { PayrollEmployeeId = g.Key, Total = g.Sum(x => x.IsTaxable ? (x.TaxExemptAmount ?? 0m) : x.Amount) })
             .ToDictionaryAsync(x => x.PayrollEmployeeId, x => x.Total, ct);
     }
 }
