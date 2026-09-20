@@ -471,6 +471,7 @@ builder.Services.AddScoped<BankFileExportService>();
 builder.Services.AddScoped<GLExportService>();
 builder.Services.AddScoped<HRM.Services.Pay.SeveranceService>();
 builder.Services.AddScoped<HRM.Services.Pay.FinalPayService>();
+builder.Services.AddScoped<HRM.Services.Pay.AdhocImport.AdhocBulkEntryService>();
 builder.Services.AddScoped<HRM.Services.Att.OtPolicyService>();
 builder.Services.AddScoped<HRM.Services.Pay.EmployeeLoanService>();
 builder.Services.AddScoped<HRM.Services.Pay.InsuranceAutoEnrollService>();

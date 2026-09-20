@@ -58,6 +58,15 @@ public class Pay_AdhocPayItem
         ? Math.Max(0m, Amount - (TaxExemptAmount ?? 0m) - (TaxExpenseDeductionAmount ?? 0m))
         : 0m;
 
+    // วันที่สรุปยอด/วันที่เกิดรายการ (ไฟล์ค่าคอมของลูกค้ามีวันที่สรุปยอดมาด้วย ต้องเก็บไว้ตรวจย้อนหลัง)
+    // ไม่ใช่วันที่จ่าย — วันที่จ่ายคือ TargetPeriod ที่เลือกบนหน้าจอ (พอร์ตจาก Advance.Payroll)
+    [Column(TypeName = "date")]
+    public DateTime? ItemDate { get; set; }
+
+    // เลขที่เอกสารอ้างอิงจากต้นทาง (เลขบันทึกข้อความ / รายงานยอดขาย / ใบสั่งจ่าย) ไว้ตามรอยตอนตรวจสอบ
+    [StringLength(100)]
+    public string? ReferenceNo { get; set; }
+
     [Required, StringLength(500)]
     public string Reason { get; set; } = null!;
 

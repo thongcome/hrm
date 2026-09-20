@@ -1,0 +1,578 @@
+@page "/pay/adhoc/key"
+@page "/pay/adhoc/key/{Period}"
+@using System.Globalization
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Pay
+@using HRM.Services.Pay.AdhocImport
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AdhocBulkEntryService Bulk
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
+
+<PageTitle>คีย์เงินได้/เงินหักรายงวด</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2">
+        <div>
+            <MudText Typo="Typo.h5">คีย์เงินได้/เงินหักรายงวด (ค่าคอมมิชชั่น เบี้ยเลี้ยง โบนัส เงินหัก ฯลฯ)</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                หน้าเดียวคีย์ได้ทุกประเภท เลือกประเภทที่จะคีย์แล้วกรอกเป็นคอลัมน์ · ทุกรายการบันทึกเป็น
+                <b>"รออนุมัติ"</b> ต้องมีผู้มีสิทธิ์กดอนุมัติก่อน จึงจะถูกจ่ายในรอบเงินเดือนของงวดนั้น
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo($"/pay/adhoc/{_period}"))">
+            ไปหน้ารายการเฉพาะกิจ (อนุมัติ/แก้ทีละรายการ)
+        </MudButton>
+    </MudStack>
+
+    @if (!_canEdit)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+    }
+
+    <MudDivider Class="my-3" />
+
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_periodMonth" DateChanged="OnPeriodChangedAsync" Editable="true" Label="งวด (เดือนที่จ่าย)"
+                DateFormat="MM/yyyy" PickerVariant="PickerVariant.Dialog" OpenTo="OpenTo.Month" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="PayrollRunType" @bind-Value="_runType" Label="จ่ายในรอบ"
+                HelperText="รอบปกติ = รวมในสลิปเงินเดือน · รอบโบนัส = จ่ายแยก ภาษีคิดแบบส่วนต่างทั้งก้อน">
+                <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Regular">รอบปกติ</MudSelectItem>
+                <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Bonus">รอบโบนัส</MudSelectItem>
+                <MudSelectItem T="PayrollRunType" Value="PayrollRunType.FinalPay">รอบจ่ายคนออก</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect T="int?" @bind-Value="_termNo" Label="งวดที่ของเดือน" Clearable="true" HelperText="ว่าง = รอบแรกของเดือน">
+                <MudSelectItem T="int?" Value="1">งวดที่ 1</MudSelectItem>
+                <MudSelectItem T="int?" Value="2">งวดที่ 2</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" MultiSelection="true" SelectedValues="_selectedTypeIds" SelectedValuesChanged="OnTypesChanged"
+                Label="ประเภทรายการที่จะคีย์ (เลือกได้หลายอัน)" MultiSelectionTextFunc="@(v => $"{v.Count} ประเภท")">
+                @foreach (var t in _itemTypes)
+                {
+                    @* รหัสขึ้นก่อน + ผังบัญชี (CEO 20 ก.ย. 2569: "ใน drop down ต้องมี code ด้วย ใส่ผังบัญชีได้ไหม") *@
+                    <MudSelectItem T="int" Value="t.Id">
+                        @(t.Category == PayItemCategory.Earning ? "＋ " : "− ")<b>@t.Code</b> · @t.NameTh@(string.IsNullOrWhiteSpace(t.GLAccountCode) ? "" : $" · บัญชี {t.GLAccountCode}")
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_reason" Label="เหตุผล/ที่มาของรายการชุดนี้" Required="true"
+                HelperText="เช่น ค่าคอมมิชชั่นยอดขายเดือนกันยายน 2569 (ติดไปกับทุกรายการที่บันทึกรอบนี้)" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* กล่อง Excel อยู่นอกเงื่อนไข "เลือกประเภทก่อน" เสมอ — CEO 20 ก.ย. 2569: "ผมยังหาหน้า import รายได้ไม่เจอ" เพราะเดิมซ่อนจนกว่าจะเลือกประเภท *@
+<MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1">นำเข้าจาก Excel</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            ① เลือก "ประเภทรายการที่จะคีย์" ด้านบน → ② ดาวน์โหลดเทมเพลต (หัวคอลัมน์ = รหัสประเภท) → ③ กรอกยอด → ④ เลือกไฟล์ ·
+            ระบบตรวจว่ารหัสคอลัมน์ในไฟล์ตรงกับประเภทที่เลือกไว้ ไม่ตรงจะไม่นำเข้า
+        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadTemplateAsync"
+                Disabled="@(!_selectedTypeIds.Any())">
+                ดาวน์โหลดเทมเพลต (ตามประเภทที่เลือก)
+            </MudButton>
+            @if (_canEdit)
+            {
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelectedAsync" Accept=".xlsx">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile">
+                            เลือกไฟล์ Excel
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+            }
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                หัวคอลัมน์ใช้รหัสประเภทรายการ (เช่น COMMISSION) หรือชื่อไทยก็ได้ · งวดและรอบใช้ค่าที่เลือกด้านบน ไม่ได้อ่านจากไฟล์
+            </MudText>
+        </MudStack>
+
+        @* ล็อกงวด (CEO 20 ก.ย. 2569): ไฟล์ต้องพิสูจน์ได้ว่าเป็นของงวดไหน และไฟล์เดิมต้องไม่ถูกวนเข้างวดเดิม/งวดอื่นโดยไม่รู้ตัว *@
+        @if (_uploadedFile is not null)
+        {
+            @if (StampMismatch is string mismatch)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">
+                    @mismatch
+                    <div class="mt-2"><MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="UsePeriodFromFileAsync">ใช้งวดตามไฟล์ แล้วอ่านใหม่</MudButton></div>
+                </MudAlert>
+            }
+            else if (_fileStamp is not null)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
+                    ไฟล์นี้ตราไว้สำหรับ @StampLabel(_fileStamp) — ตรงกับที่เลือกบนหน้าจอ
+                    @(string.IsNullOrWhiteSpace(_fileStamp.GeneratedBy) ? "" : $" (เทมเพลตสร้างโดย {_fileStamp.GeneratedBy} {_fileStamp.GeneratedAt})")
+                </MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                    ไฟล์นี้ไม่มีตรางวด (ไม่ได้มาจากเทมเพลตของระบบ) — ระบบตรวจงวดให้ไม่ได้ ต้องยืนยันเอง
+                    <MudCheckBox T="bool" @bind-Value="_confirmUnstamped" Color="Color.Warning" Dense="true"
+                        Label="@($"ยืนยันว่าไฟล์ \"{_fileName}\" เป็นของ {PeriodLabel}")" />
+                </MudAlert>
+            }
+
+            @if (SamePeriodImport is { } same)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">
+                    ไฟล์นี้ (เนื้อหาเดียวกันทุกตัวอักษร) นำเข้า @PeriodLabel แล้วเมื่อ @same.ImportedAt.ToString("dd/MM/yyyy HH:mm") โดย @same.ImportedByName
+                    (@same.RowCount รายการ) — ไม่นำเข้าซ้ำ · ถ้าต้องแก้ยอด แก้ในตารางนี้หรือที่หน้ารายการเฉพาะกิจ
+                </MudAlert>
+            }
+            else if (_previousImports.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                    ไฟล์เดียวกันนี้เคยนำเข้าแล้ว: @string.Join(" · ", _previousImports.Take(3).Select(p => $"{PeriodLabelOf(p.TargetPeriod, p.TargetRunType, p.TargetTermNo)} เมื่อ {p.ImportedAt:dd/MM/yyyy} โดย {p.ImportedByName}"))
+                    — ตอนนี้กำลังจะเข้า <b>@PeriodLabel</b> แน่ใจว่าไม่ได้หยิบไฟล์ผิด?
+                    <MudCheckBox T="bool" @bind-Value="_confirmReimport" Color="Color.Warning" Dense="true" Label="@($"ตั้งใจนำเข้าไฟล์เดิมเข้า {PeriodLabel}")" />
+                </MudAlert>
+            }
+        }
+
+        @if (_typeMismatch.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">
+                ไฟล์นี้มีคอลัมน์ของประเภทที่ยังไม่ได้เลือกไว้: @string.Join(", ", _typeMismatch.Select(t => $"{t.NameTh} ({t.Code})"))
+                — ยังไม่นำเข้า จนกว่าประเภทที่เลือกกับรหัสในไฟล์จะตรงกัน
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="AdoptFileTypesAsync">เลือกประเภทตามไฟล์ แล้วอ่านใหม่</MudButton>
+                </div>
+            </MudAlert>
+        }
+
+        @if (_importIssues.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">
+                ไฟล์นี้มีปัญหา @_importIssues.Count จุด — แก้แล้วอัปโหลดใหม่
+                <MudSimpleTable Dense="true" Class="mt-2">
+                    <thead><tr><th>แถว</th><th>คอลัมน์</th><th>ปัญหา</th></tr></thead>
+                    <tbody>
+                        @foreach (var i in _importIssues.Take(20))
+                        {
+                            <tr><td>@(i.Row == 0 ? "-" : i.Row.ToString())</td><td>@i.Column</td><td>@i.Message</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudAlert>
+        }
+        @if (_unknownColumns.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                คอลัมน์ที่ระบบไม่รู้จัก: @string.Join(", ", _unknownColumns.Select(c => $"\"{c.Header}\"")) — จับคู่ให้ตรงประเภทรายการ แล้วกด "อ่านไฟล์ใหม่"
+                <MudGrid Class="mt-1">
+                    @foreach (var col in _unknownColumns)
+                    {
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="string" Value="@_columnMap.GetValueOrDefault(col.Index)" ValueChanged="@(v => _columnMap[col.Index] = v)"
+                                Label="@($"คอลัมน์ \"{col.Header}\"")" Clearable="true">
+                                @foreach (var t in _itemTypes)
+                                {
+                                    <MudSelectItem T="string" Value="@t.Code">@t.NameTh (@t.Code)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    }
+                    <MudItem xs="12">
+                        <MudButton Variant="Variant.Outlined" OnClick="ReparseAsync">อ่านไฟล์ใหม่</MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudAlert>
+        }
+</MudPaper>
+
+@if (_selectedTypeIds.Any())
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+            <MudTextField @bind-Value="_search" Label="ค้นหาพนักงานเพื่อเพิ่มลงตาราง (รหัส/ชื่อ)" Immediate="true" DebounceInterval="200"
+                Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mud-width-300"
+                HelperText="@($"พนักงานทั้งหมด {_employees.Count:N0} คน · ตารางแสดงเฉพาะคนที่มียอด (หลังคีย์/นำเข้า) และคนที่ค้นหาเจอ")" />
+            @* บริษัท 5,000 คน (CEO 20 ก.ย. 2569): ไม่ไล่รายชื่อทั้งบริษัทให้เลื่อน 100 หน้า — เปิดดูทั้งหมดเฉพาะเมื่อตั้งใจ *@
+            <MudSwitch T="bool" @bind-Value="_showAll" Label="@($"แสดงทุกคน ({_employees.Count:N0})")" Color="Color.Primary" />
+        </MudStack>
+
+        <MudTable Items="@FilteredEmployees" Dense="true" Hover="true" RowsPerPage="50" Class="mt-2">
+            <HeaderContent>
+                <MudTh>รหัส</MudTh>
+                <MudTh>ชื่อ-สกุล</MudTh>
+                @foreach (var t in SelectedTypes)
+                {
+                    <MudTh Style="@(t.Category == PayItemCategory.Earning ? "color:var(--mud-palette-success)" : "color:var(--mud-palette-error)")">
+                        @(t.Category == PayItemCategory.Earning ? "＋" : "−") @t.Code<br /><span class="mud-typography-caption">@t.NameTh</span>
+                    </MudTh>
+                }
+                <MudTh>วันที่สรุป</MudTh>
+                <MudTh>รายละเอียด</MudTh>
+                <MudTh>เลขที่อ้างอิง</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo</MudTd>
+                <MudTd>@context.Name</MudTd>
+                @foreach (var t in SelectedTypes)
+                {
+                    <MudTd>
+                        <MudNumericField T="decimal?" Value="@GetAmount(context.Id, t.Id)" ValueChanged="@(v => SetAmount(context.Id, t.Id, v))"
+                            Format="N2" HideSpinButtons="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                            ReadOnly="@(!_canEdit)" Style="min-width:120px" />
+                    </MudTd>
+                }
+                <MudTd>
+                    <MudTextField T="DateTime?" Value="@Meta(context.Id).ItemDate" ValueChanged="@(v => Meta(context.Id).ItemDate = v)"
+                        InputType="InputType.Date" Format="yyyy-MM-dd" Margin="Margin.Dense" Variant="Variant.Outlined"
+                        ReadOnly="@(!_canEdit)" Style="min-width:150px" />
+                </MudTd>
+                <MudTd>
+                    <MudTextField T="string" Value="@Meta(context.Id).Remark" ValueChanged="@(v => Meta(context.Id).Remark = v)"
+                        Margin="Margin.Dense" Variant="Variant.Outlined" MaxLength="500" ReadOnly="@(!_canEdit)" Style="min-width:220px"
+                        Placeholder="เช่น ยอดขาย ส.ค. 1.2 ล้าน × 3%" />
+                </MudTd>
+                <MudTd>
+                    <MudTextField T="string" Value="@Meta(context.Id).ReferenceNo" ValueChanged="@(v => Meta(context.Id).ReferenceNo = v)"
+                        Margin="Margin.Dense" Variant="Variant.Outlined" MaxLength="100" ReadOnly="@(!_canEdit)" Style="min-width:140px"
+                        Placeholder="เลขที่เอกสาร" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-3">ยังไม่มีใครในตาราง — พิมพ์รหัส/ชื่อในช่องค้นหาเพื่อเพิ่มคน หรืออัปโหลด Excel ด้านบน (หรือเปิด "แสดงทุกคน" ถ้าบริษัทเล็ก)</MudText>
+            </NoRecordsContent>
+            <PagerContent><MudTablePager /></PagerContent>
+        </MudTable>
+
+        <MudDivider Class="my-3" />
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3">
+            <MudStack Row="true" Spacing="4">
+                <div><MudText Typo="Typo.caption">คนที่มียอด</MudText><MudText Typo="Typo.h6">@EnteredEmployeeCount</MudText></div>
+                <div><MudText Typo="Typo.caption">รวมเงินได้</MudText><MudText Typo="Typo.h6" Color="Color.Success">@TotalEarning.ToString("N2")</MudText></div>
+                <div><MudText Typo="Typo.caption">รวมเงินหัก</MudText><MudText Typo="Typo.h6" Color="Color.Error">@TotalDeduction.ToString("N2")</MudText></div>
+            </MudStack>
+            <div>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(!CanSave)"
+                    OnClick="SaveAsync" StartIcon="@Icons.Material.Filled.Save">
+                    บันทึกเป็น "รออนุมัติ" (@LineCount รายการ) — @PeriodLabel
+                </MudButton>
+                @if (_uploadedFile is not null && !ImportLockSatisfied && EnteredEmployeeCount > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block mt-1">ยังบันทึกไม่ได้ — ดูข้อความล็อกงวดในกล่อง "นำเข้าจาก Excel"</MudText>
+                }
+            </div>
+        </MudStack>
+
+        @if (_warnings.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                @foreach (var w in _warnings) { <div>• @w</div> }
+            </MudAlert>
+        }
+    </MudPaper>
+}
+else
+{
+    <MudAlert Severity="Severity.Info" Dense="true">เลือก "ประเภทรายการที่จะคีย์" อย่างน้อยหนึ่งประเภทก่อน — แต่ละประเภทจะกลายเป็นหนึ่งคอลัมน์ให้กรอก</MudAlert>
+}
+
+@code {
+    [Parameter] public string? Period { get; set; }
+
+    private sealed record EmployeeRow(long Id, string EmpNo, string Name);
+
+    private List<Pay_PayItemType> _itemTypes = new();
+    private List<EmployeeRow> _employees = new();
+    private IEnumerable<int> _selectedTypeIds = Array.Empty<int>();
+    private readonly Dictionary<(long EmployeeId, int TypeId), decimal> _amounts = new();
+
+    // ข้อมูลประกอบรายแถว (คนละชุดกับยอด): วันที่สรุป / รายละเอียด / เลขที่อ้างอิง — ใช้กับทุกประเภทรายการของคนนั้น
+    private sealed class RowMeta { public DateTime? ItemDate { get; set; } public string? Remark { get; set; } public string? ReferenceNo { get; set; } }
+    private readonly Dictionary<long, RowMeta> _rowMeta = new();
+    private RowMeta Meta(long employeeId) => _rowMeta.TryGetValue(employeeId, out var m) ? m : (_rowMeta[employeeId] = new RowMeta());
+    private readonly Dictionary<int, string> _columnMap = new();
+    private List<AdhocImportParser.Issue> _importIssues = new();
+    private List<AdhocImportParser.Column> _unknownColumns = new();
+    private List<Pay_PayItemType> _typeMismatch = new(); // คอลัมน์ในไฟล์ที่ระบบรู้จัก แต่ผู้ใช้ไม่ได้เลือกประเภทนั้นไว้
+    private List<string> _warnings = new();
+    private byte[]? _uploadedFile;
+
+    // ล็อกงวดของไฟล์ (CEO 20 ก.ย. 2569): ตราในไฟล์ต้องตรงกับหน้าจอ · ไฟล์เดิม (SHA-256) เข้างวดเดิมไม่ได้ · เข้างวดอื่นต้องยืนยัน
+    private string? _fileName;
+    private string? _fileSha;
+    private AdhocImportParser.FileStamp? _fileStamp;
+    private List<AdhocBulkEntryService.PreviousImport> _previousImports = new();
+    private bool _confirmUnstamped;
+    private bool _confirmReimport;
+
+    private string PeriodLabel => PeriodLabelOf(_period, _runType, _termNo);
+    private static string PeriodLabelOf(string period, PayrollRunType run, int? term)
+    {
+        var label = period.Length == 6 ? $"งวด {period[4..]}/{int.Parse(period[..4]) + 543}" : $"งวด {period}";
+        label += run switch { PayrollRunType.Bonus => " รอบโบนัส", PayrollRunType.FinalPay => " รอบจ่ายคนออก", _ => " รอบปกติ" };
+        return term is int t ? $"{label} งวดที่ {t}" : label;
+    }
+    private static string StampLabel(AdhocImportParser.FileStamp s)
+        => PeriodLabelOf(s.Period, Enum.TryParse<PayrollRunType>(s.RunType, true, out var r) ? r : PayrollRunType.Regular, s.TermNo);
+
+    private string? StampMismatch
+    {
+        get
+        {
+            if (_fileStamp is null) return null;
+            var runMatches = Enum.TryParse<PayrollRunType>(_fileStamp.RunType, true, out var r) ? r == _runType : true;
+            return _fileStamp.Period == _period && runMatches && _fileStamp.TermNo == _termNo ? null
+                : $"ไฟล์นี้สร้างสำหรับ {StampLabel(_fileStamp)} แต่หน้าจอเลือก {PeriodLabel} — ไม่นำเข้า จนกว่างวดจะตรงกัน (กันเอาไฟล์เดือนเก่ามาวน)";
+        }
+    }
+    private AdhocBulkEntryService.PreviousImport? SamePeriodImport
+        => _previousImports.FirstOrDefault(p => p.TargetPeriod == _period && p.TargetRunType == _runType && p.TargetTermNo == _termNo);
+    private bool ImportLockSatisfied
+        => _uploadedFile is null
+           || (StampMismatch is null && SamePeriodImport is null
+               && (_fileStamp is not null || _confirmUnstamped)
+               && (_previousImports.Count == 0 || _confirmReimport));
+    private bool CanSave => _canEdit && !_saving && EnteredEmployeeCount > 0 && ImportLockSatisfied;
+
+    private DateTime? _periodMonth = DateTime.Today;
+    private PayrollRunType _runType = PayrollRunType.Regular;
+    private int? _termNo;
+    private string _reason = string.Empty;
+    private string _search = string.Empty;
+    private bool _showAll;
+    private bool _canEdit;
+    private bool _saving;
+
+    private string _period = DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
+
+    private IEnumerable<Pay_PayItemType> SelectedTypes => _itemTypes.Where(t => _selectedTypeIds.Contains(t.Id));
+
+    // ค้นหา = ผลค้นหา (สูงสุด 200) · ไม่ค้นหา = คนที่มียอดแล้ว (ตารางไม่บวมตามขนาดบริษัท) · "แสดงทุกคน" = ทั้งหมดแบบแบ่งหน้า
+    private IEnumerable<EmployeeRow> FilteredEmployees
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_search))
+                return _employees.Where(e => e.EmpNo.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                                             || e.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)).Take(200);
+            if (_showAll) return _employees;
+            var withAmount = _amounts.Where(a => a.Value != 0m).Select(a => a.Key.EmployeeId).ToHashSet();
+            return _employees.Where(e => withAmount.Contains(e.Id));
+        }
+    }
+
+    private int LineCount => _amounts.Count(a => a.Value != 0m);
+    private int EnteredEmployeeCount => _amounts.Where(a => a.Value != 0m).Select(a => a.Key.EmployeeId).Distinct().Count();
+    private decimal TotalEarning => SumByCategory(PayItemCategory.Earning);
+    private decimal TotalDeduction => SumByCategory(PayItemCategory.Deduction);
+
+    private decimal SumByCategory(PayItemCategory category) => _amounts
+        .Where(a => _itemTypes.FirstOrDefault(t => t.Id == a.Key.TypeId)?.Category == category)
+        .Sum(a => a.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Period) && Period.Length == 6 && int.TryParse(Period, out _))
+        {
+            _period = Period;
+            _periodMonth = new DateTime(int.Parse(Period[..4]), int.Parse(Period[4..]), 1);
+        }
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = (await ProgramRoles.GetRightsAsync(state.User, "/pay/adhoc")).CanEdit;
+        _itemTypes = await Bulk.GetItemTypesAsync();
+        await LoadEmployeesAsync();
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        var companyId = await CompanyIdAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employees = (await context.Hremployee
+                .Where(e => e.companyid == companyId && e.IsActive)
+                .OrderBy(e => e.EmpNo)
+                .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname })
+                .ToListAsync())
+            .Select(e => new EmployeeRow(e.id, e.EmpNo ?? "", $"{e.EmpName} {e.EmpSurname}".Trim()))
+            .ToList();
+    }
+
+    private Task OnPeriodChangedAsync(DateTime? date)
+    {
+        _periodMonth = date;
+        if (date is DateTime d) _period = d.ToString("yyyyMM", CultureInfo.InvariantCulture);
+        return Task.CompletedTask;
+    }
+
+    private void OnTypesChanged(IEnumerable<int> ids)
+    {
+        _selectedTypeIds = ids?.ToList() ?? new List<int>();
+        // ลบยอดของประเภทที่ถูกเอาออกจากคอลัมน์ ไม่ให้ค้างแล้วถูกบันทึกโดยไม่เห็น
+        foreach (var key in _amounts.Keys.Where(k => !_selectedTypeIds.Contains(k.TypeId)).ToList())
+            _amounts.Remove(key);
+    }
+
+    private decimal? GetAmount(long employeeId, int typeId)
+        => _amounts.TryGetValue((employeeId, typeId), out var v) ? v : null;
+
+    private void SetAmount(long employeeId, int typeId, decimal? value)
+    {
+        if (value is null or 0m) _amounts.Remove((employeeId, typeId));
+        else _amounts[(employeeId, typeId)] = value.Value;
+    }
+
+    // ── Excel ────────────────────────────────────────────────────────────────
+    private async Task DownloadTemplateAsync()
+    {
+        try
+        {
+            var bytes = await Bulk.BuildTemplateAsync(await CompanyIdAsync(), _selectedTypeIds.ToList(), _period, _runType, _termNo, await UserNameAsync());
+            using var streamRef = new DotNetStreamReference(new MemoryStream(bytes));
+            await JS.InvokeVoidAsync("fileDownload.fromStream", $"เงินได้-เงินหัก-{_period}.xlsx", streamRef);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task OnFileSelectedAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(20 * 1024 * 1024).CopyToAsync(ms);
+        _uploadedFile = ms.ToArray();
+        _fileName = file.Name;
+        _fileSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(_uploadedFile));
+        _fileStamp = null;
+        _confirmUnstamped = false;
+        _confirmReimport = false;
+        _previousImports = await Bulk.GetPreviousImportsAsync(await CompanyIdAsync(), _fileSha);
+        _columnMap.Clear();
+        await ReparseAsync();
+    }
+
+    private async Task UsePeriodFromFileAsync()
+    {
+        if (_fileStamp is null) return;
+        _period = _fileStamp.Period;
+        _periodMonth = new DateTime(int.Parse(_period[..4]), int.Parse(_period[4..]), 1);
+        if (Enum.TryParse<PayrollRunType>(_fileStamp.RunType, true, out var r)) _runType = r;
+        _termNo = _fileStamp.TermNo;
+        await ReparseAsync();
+    }
+
+    private void ClearFileState()
+    {
+        _uploadedFile = null;
+        _fileName = null;
+        _fileSha = null;
+        _fileStamp = null;
+        _previousImports = new();
+        _confirmUnstamped = false;
+        _confirmReimport = false;
+    }
+
+    private async Task ReparseAsync()
+    {
+        if (_uploadedFile is null) return;
+        _importIssues = new();
+        _unknownColumns = new();
+        _typeMismatch = new();
+
+        var lookups = await Bulk.GetLookupsAsync(await CompanyIdAsync());
+        using var ms = new MemoryStream(_uploadedFile);
+        var map = _columnMap.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var result = AdhocImportParser.Parse(ms, lookups, map);
+
+        _importIssues = result.Issues.ToList();
+        _unknownColumns = result.Columns.Where(c => !c.Recognised).ToList();
+        _fileStamp = result.Stamp;
+        if (result.Lines.Count == 0) return;
+
+        // ล็อกงวด: ตราในไฟล์ไม่ตรงหน้าจอ หรือไฟล์เดิมเคยเข้างวดนี้แล้ว → ไม่เอาตัวเลขลงตารางเลย ผู้ใช้จะได้ไม่เผลอกดบันทึก
+        if (StampMismatch is not null || SamePeriodImport is not null) return;
+
+        // รหัสในไฟล์ต้องตรงกับประเภทที่ผู้ใช้เลือกไว้ — ไม่แอบเพิ่มประเภทให้เอง (CEO 20 ก.ย. 2569:
+        // "ให้เลือกว่าเป็นเงินประเภทไหน แล้ว check code ใน excel ว่าตรงกัน") คนคีย์ตั้งใจเลือกก่อน แล้วไฟล์ต้องตรง
+        var typeIdsInFile = result.Lines.Select(l => l.PayItemTypeId).Distinct().ToList();
+        _typeMismatch = _itemTypes.Where(t => typeIdsInFile.Contains(t.Id) && !_selectedTypeIds.Contains(t.Id)).ToList();
+        if (_typeMismatch.Count > 0) return;
+        foreach (var line in result.Lines)
+        {
+            _amounts[(line.HremployeeId, line.PayItemTypeId)] = line.Amount;
+            var meta = Meta(line.HremployeeId);
+            meta.ItemDate = line.ItemDate;
+            meta.Remark = line.Remark;
+            meta.ReferenceNo = line.ReferenceNo;
+        }
+
+        Snackbar.Add($"อ่านไฟล์แล้ว {result.Lines.Count} รายการ ({result.EmployeeCount} คน) — ตรวจในตารางแล้วกดบันทึก", Severity.Success);
+    }
+
+    // ปุ่มบนกล่องแจ้ง mismatch: ผู้ใช้ยืนยันเองว่าจะเอาประเภทตามไฟล์ แล้วอ่านซ้ำ
+    private async Task AdoptFileTypesAsync()
+    {
+        _selectedTypeIds = _selectedTypeIds.Union(_typeMismatch.Select(t => t.Id)).ToList();
+        await ReparseAsync();
+    }
+
+    // ── บันทึก ───────────────────────────────────────────────────────────────
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _warnings = new();
+        try
+        {
+            var rows = _amounts.Where(a => a.Value != 0m)
+                .Select(a => new AdhocBulkEntryService.Row(
+                    a.Key.EmployeeId,
+                    _employees.FirstOrDefault(e => e.Id == a.Key.EmployeeId)?.EmpNo ?? a.Key.EmployeeId.ToString(),
+                    a.Key.TypeId, a.Value,
+                    Meta(a.Key.EmployeeId).ItemDate, Meta(a.Key.EmployeeId).Remark, Meta(a.Key.EmployeeId).ReferenceNo))
+                .ToList();
+
+            if (!ImportLockSatisfied) throw new InvalidOperationException("ไฟล์นี้ยังไม่ผ่านการตรวจงวด — ดูข้อความในกล่อง \"นำเข้าจาก Excel\"");
+
+            var fileInfo = _uploadedFile is null || _fileSha is null ? null
+                : new AdhocBulkEntryService.ImportFileInfo(await CompanyIdAsync(), _fileName ?? "", _fileSha, _fileStamp?.Period, await UserNameAsync());
+            var result = await Bulk.SaveAsync(rows, _period, _runType, _termNo, _reason, await UserIdAsync(), fileInfo);
+            _warnings = result.Warnings;
+            Snackbar.Add($"บันทึกแล้ว — ใหม่ {result.Created} · แก้ยอดเดิม {result.Updated} · ข้าม {result.Skipped} (ทั้งหมดอยู่สถานะ \"รออนุมัติ\")",
+                result.Skipped > 0 ? Severity.Warning : Severity.Success);
+            if (result.Created + result.Updated > 0) { _amounts.Clear(); _rowMeta.Clear(); ClearFileState(); }
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _saving = false; }
+    }
+
+    private async Task<long> UserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+    }
+
+    private async Task<string> UserNameAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return state.User.Identity?.Name ?? state.User.FindFirstValue("sc_userid") ?? "";
+    }
+
+    private async Task<string> CompanyIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return state.User.FindFirstValue("payroll_company") ?? "";
+    }
+}
