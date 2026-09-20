@@ -30,8 +30,9 @@ public static class WorkflowButtonSeeder
     // approve / sendback / decline — keep these codes aligned with that mapping.
     private static readonly (string Code, string Label, string ClassStyle, string ActionType, int Order)[] CoreButtons =
     {
-        ("submit",  "ส่งต่อ",     "btn btn-primary", "submit",  1), // ขั้นกลาง: ส่งไปขั้นถัดไป
-        ("approve", "อนุมัติ",    "btn btn-success", "approve", 2), // ขั้นสุดท้าย: อนุมัติแล้วงานจบ
+        ("submit",  "ส่งต่อ",     "btn btn-primary", "submit",  1), // ขั้นร่าง: ผู้ยื่นส่งเรื่องเข้าสายอนุมัติ
+        ("approvenext", "อนุมัติและส่งต่อ", "btn btn-primary", "approvenext", 1), // ขั้นกลาง: อนุมัติแล้วส่งไปขั้นถัดไป (AD.Workflow ข้อ 4)
+        ("approve", "อนุมัติ (สิ้นสุด)", "btn btn-success", "approve", 2), // ขั้นสุดท้าย: อนุมัติแล้วงานจบ
         ("reject",  "ส่งกลับ",    "btn btn-warning", "reject",  3), // ให้กลับไปแก้แล้วส่งใหม่
         ("decline", "ไม่อนุมัติ", "btn btn-danger",  "decline", 4), // ปฏิเสธและปิดเรื่อง
     };
@@ -42,8 +43,8 @@ public static class WorkflowButtonSeeder
     // ต้องมีทั้ง isAndCondition true/false เพราะ service กรองตรง ๆ ตาม epms
     private static readonly (string Code, bool IsTop, bool IsAnd)[] CoreMappings =
     {
-        ("submit", false, false), ("reject", false, false),
-        ("submit", false, true),  ("reject", false, true),
+        ("approvenext", false, false), ("reject", false, false),
+        ("approvenext", false, true),  ("reject", false, true),
         ("approve", true, false), ("reject", true, false), ("decline", true, false),
         ("approve", true, true),  ("reject", true, true),  ("decline", true, true),
     };

@@ -66,7 +66,8 @@ public partial class wf_sub_workflow_master
     {
         if (!iscustomUser) return null;
         var q = db.wf_custom_users.Where(c => c.workflowid == workflowid && c.wlevel == wlevel && c.isactive);
-        if (job.loaid is long loa) q = q.Where(c => c.loaid == loa);
+        // AD.Workflow ข้อ 15: LOA เลือกได้แค่ "ผู้อนุมัติ" — แถวที่ไม่ผูกวงเงิน (loaid ว่าง) ใช้ได้เสมอ
+        if (job.loaid is long loa) q = q.Where(c => c.loaid == loa || c.loaid == null);
         var ids = await q.Select(c => c.userid).ToListAsync(ct);
         return new("iscustomUser", "USER", ids,
             ids.Count == 0 ? "ติ๊กไว้แต่ยังไม่ได้เลือกใคร" : null);
@@ -92,7 +93,7 @@ public partial class wf_sub_workflow_master
     {
         if (!iscustomRole) return null;
         var q = db.wf_custom_roles.Where(c => c.workflowid == workflowid && c.wlevel == wlevel && c.isactive != false);
-        if (job.loaid is long loa) q = q.Where(c => c.loaid == loa);
+        if (job.loaid is long loa) q = q.Where(c => c.loaid == loa || c.loaid == null);
         var roleIds = await q.Select(c => c.roleid).ToListAsync(ct);
         var users = roleIds.Count == 0 ? new List<long>() : await db.sc_user_roles
             .Where(ur => roleIds.Contains(ur.roleid) && ur.isactive)
@@ -114,8 +115,8 @@ public partial class wf_sub_workflow_master
     // CEO, 10 ก.ย. 2569: "สมัยก่อนให้วิ่งตาม sc_user ตอนหลังทำ org tree แล้วเลยไม่ใช้"
     // isupperrole/isupperuser เป็นชื่อจากยุคที่ไต่ตาม sc_user.upperuserid /
     // sc_role.upperrole ซึ่งเลิกใช้แล้ว ทั้งคู่จึงหมายถึง "ไต่ผัง 1 ชั้น" เท่ากัน
-    // ของใหม่ใช้ isNeedsupervisorapprove (int) ตัวเดียว = ไต่กี่ชั้น อ่านง่ายกว่า
-    // และครอบของเดิมได้หมด — 6 ขั้นที่ยังตั้ง flag เก่าไว้จึงทำงานต่อได้ตามปกติ
+    // ของใหม่ใช้ isNeedsupervisorapprove (bool) + verticalMaxLevel = ไต่กี่ชั้น
+    // และครอบของเดิมได้หมด — ขั้นที่ยังตั้ง flag เก่าไว้จึงทำงานต่อได้ตามปกติ (ชั้นเดียว)
     private Task<ApproverSource?> SupervisorChainAsync(HRMContext db, job_master job, CancellationToken ct)
         => SupervisorAtHopAsync(db, job, 1, ct);   // มาถึงระดับนี้ครั้งแรก = หัวหน้าชั้นที่ 1
 
@@ -129,17 +130,33 @@ public partial class wf_sub_workflow_master
     {
         if (SupervisorLevels <= 0) return null;
 
-        var field = isNeedsupervisorapprove > 0 ? "isNeedsupervisorapprove"
+        var field = isNeedsupervisorapprove ? "isNeedsupervisorapprove"
                   : isupperrole ? "isupperrole" : "isupperuser";
-        var (boss, note) = await ResolveOrgChainAsync(db, job, hop, ct);
+        var startOrg = await SenderOrgAsync(db, job, ct);
+        var (boss, note) = await ResolveOrgChainAsync(db, startOrg, hop, ct);
         return new(field, "ORG", boss is long b ? new List<long> { b } : new List<long>(),
             SupervisorLevels > 1 ? $"หัวหน้าชั้นที่ {hop}/{SupervisorLevels}" + (note is null ? "" : $" · {note}") : note);
     }
 
-    // ระดับนี้ต้องผ่านหัวหน้ากี่ชั้น (0 = ไม่ผ่าน) — flag เก่าถือว่า 1 ชั้น
+    // ระดับนี้ต้องผ่านหัวหน้ากี่ชั้น (0 = ไม่ผ่าน) — isNeedsupervisorapprove เปิด = verticalMaxLevel ชั้น
+    // (ว่าง = 1) ส่วน flag เก่า isupperrole/isupperuser ถือว่า 1 ชั้น (AD.Workflow ข้อ 13, 14)
     public int SupervisorLevels =>
-        (isNeedsupervisorapprove ?? 0) > 0 ? isNeedsupervisorapprove!.Value
+        isNeedsupervisorapprove ? Math.Max(1, verticalMaxLevel ?? 1)
         : (isupperrole || isupperuser) ? 1 : 0;
+
+    // ตัวช่วยให้หน้าจอตั้งค่าถามคำถามเดียว "ผ่านหัวหน้ากี่ชั้น" แล้วแปลงเป็น 2 ฟิลด์ให้เอง
+    // 0 = ปิดทั้งสาย รวมถึง flag เก่าที่เคยเปิดค้างไว้ (ไม่งั้นหน้าจอโชว์ 0 แต่ engine ยังไต่ 1 ชั้น)
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int SupervisorTiers
+    {
+        get => SupervisorLevels;
+        set
+        {
+            isNeedsupervisorapprove = value > 0;
+            verticalMaxLevel = value > 1 ? value : null;
+            if (value <= 0) { isupperrole = false; isupperuser = false; }
+        }
+    }
 
     // isApproverSameCostCenter — หัวหน้าตัวจริงที่มีอำนาจทางการเงินของ cost center นั้น
     // (CEO: ตรวจว่าเป็นหัวหน้าจริง ๆ ที่มีผลเรื่องเงิน) หา com_organization ที่
@@ -199,16 +216,36 @@ public partial class wf_sub_workflow_master
         return (users, $"วงเงิน {band.min:N0}–{band.max:N0}");
     }
 
-    // ผังองค์กร: หน่วยงานของผู้ขอ -> approver_empid ยังไม่ตั้งก็ไต่ parent_code ขึ้นไป
+    // หน่วยงานตั้งต้นของการไต่ (AD.Workflow ข้อ 14): หน่วยงานของ "คนที่ส่งงานมาถึงขั้นนี้"
+    // = แถวอนุมัติล่าสุดของขั้นก่อนหน้า (wlevel มากกว่า 0 และน้อยกว่าขั้นนี้ ที่กดแล้ว)
+    // ยังไม่มี (ขั้นแรก) หรือหาหน่วยงานไม่เจอ → ใช้หน่วยงานของผู้ขอ
+    // ไต่ชั้นที่ 2 ขึ้นไปก็เริ่มจากที่เดียวกัน เพราะแถวของขั้นนี้เองไม่ถูกนับ (wlevel น้อยกว่า)
+    private async Task<string?> SenderOrgAsync(HRMContext db, job_master job, CancellationToken ct)
+    {
+        var sender = await db.job_user_lists
+            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel > 0 && a.wlevel < wlevel && a.approvedate != null)
+            .OrderByDescending(a => a.approvedate).ThenByDescending(a => a.jobseq)
+            .Select(a => new { a.userid, a.orgcode })
+            .FirstOrDefaultAsync(ct);
+        if (sender is null) return job.reqOrg;
+
+        var org = sender.userid is long uid
+            ? await db.sc_users.Where(u => u.userid == uid).Select(u => u.orgcode).FirstOrDefaultAsync(ct)
+            : null;
+        org ??= sender.orgcode;
+        return string.IsNullOrWhiteSpace(org) ? job.reqOrg : org;
+    }
+
+    // ผังองค์กร: หน่วยงานตั้งต้น -> approver_empid ยังไม่ตั้งก็ไต่ parent_code ขึ้นไป
     //   climb = ต้องผ่านหัวหน้ากี่ชั้น (1 = หัวหน้าตรง, 2 = หัวหน้าของหัวหน้า)
     //   ไม่ข้ามผู้ขอ (AD.Workflow ข้อ 16) — ผู้ขอที่เป็นหัวหน้าหน่วยงานตัวเองคือผู้อนุมัติชั้นนั้นเอง
     //   ข้ามหน่วยงานที่ยังไม่ตั้งผู้อนุมัติ — ไต่ต่อจนเจอคนจริงหรือสุดผัง
     private static async Task<(long? UserId, string? Note)> ResolveOrgChainAsync(
-        HRMContext db, job_master job, int climb, CancellationToken ct)
+        HRMContext db, string? startOrg, int climb, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(job.reqOrg)) return (null, "ผู้ขอไม่มีหน่วยงาน (reqOrg ว่าง)");
+        if (string.IsNullOrWhiteSpace(startOrg)) return (null, "ไม่พบหน่วยงานตั้งต้นของการไต่ (ผู้ส่งงาน/ผู้ขอไม่มีหน่วยงาน)");
 
-        var org = await db.com_organizations.FirstOrDefaultAsync(o => o.code == job.reqOrg, ct);
+        var org = await db.com_organizations.FirstOrDefaultAsync(o => o.code == startOrg, ct);
         var levelsFound = 0;
         for (var hop = 0; org is not null && hop < 20; hop++)   // 20 = กันผังที่วนกลับมาหาตัวเอง
         {

@@ -1596,7 +1596,7 @@ public class WorkflowService
             // อ่านธงพวกนี้จากรอยเท้าของงาน ไม่ใช่จาก config สด — เดิมขาด 4 ตัวแรก งาน pool บน engine ใหม่จึงหาย
             isPool = sub.isPool,
             empLevel = sub.empLevel,
-            isNeedsupervisorapprove = sub.isNeedsupervisorapprove,
+            isNeedsupervisorapprove = sub.SupervisorLevels,   // snapshot เป็นจำนวนชั้นที่ไต่จริง (int)
             verticalMaxLevel = sub.verticalMaxLevel,
             isAdhocUser = sub.isAdhocUser,
             iscustomApprover = sub.iscustomApprover,

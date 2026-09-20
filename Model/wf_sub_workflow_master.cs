@@ -87,24 +87,12 @@ public partial class wf_sub_workflow_master
 
     public bool isAutoApproveAllow { get; set; } = false;
 
-    // Block 6 (Mix Approval): number of vertical (org-chart) pre-check hops
-    // that must approve, in sequence, before this level's own approver
-    // (Horizontal or Vertical) is even resolved. 0/null = no pre-check,
-    // behaves exactly as before Block 6. Hop 1 = requester's own org
-    // approver, hop 2 = that org's parent's approver, etc. — walked via
-    // com_organization.parent_code. See WorkflowEngineService.AssignLevelApproversAsync.
-    public int? isNeedsupervisorapprove { get; set; }
+    // ขั้นนี้ต้องผ่านหัวหน้าตามผังองค์กรหรือไม่ (AD.Workflow ข้อ 13: ทุก is* เป็น boolean)
+    // จำนวนชั้นอยู่ที่ verticalMaxLevel (ข้อ 14) — ดู SupervisorLevels ใน Behavior
+    public bool isNeedsupervisorapprove { get; set; } = false;
 
-    // Self-contained, self-terminating vertical climb (CEO, 2026-09-07):
-    // "climb up from the requester's own org, at most N levels — whichever
-    // hop actually resolves (hop N, or an earlier hop if the org chart runs
-    // out first, e.g. a senior requester whose chain reaches the CEO in only
-    // 2 hops) closes the job (istop), not a fixed level N always". Distinct
-    // from isNeedsupervisorapprove (a pre-check gate before a SEPARATE final
-    // approval) — this field makes the hop chain itself the entire approval,
-    // with adaptive termination. Null/0 = not used, no behavior change.
-    // Requires isupperrole or isupperuser also set. See
-    // WorkflowEngineService.AssignLevelApproversAsync / ResolveVerticalChainHopAsync.
+    // จำนวนชั้นหัวหน้าที่ไต่ (AD.Workflow ข้อ 14) — ใช้เมื่อ isNeedsupervisorapprove เป็นจริง
+    // ว่าง = 1 ชั้น; ไต่เริ่มจากหน่วยงานของ "คนที่ส่งงานมาถึงขั้นนี้" ไม่ใช่ผู้ขอเสมอไป
     public int? verticalMaxLevel { get; set; }
 
     public bool isNeedBudgetApproval { get; set; } = false;

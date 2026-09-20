@@ -709,13 +709,9 @@ public class WorkflowEngineService
                     .Distinct().ToList();
                 if (names.Count > 0) parts.Add($"บทบาท: {string.Join(" / ", names)}");
             }
-            if (level.isupperrole || level.isupperuser)
-            {
-                var hops = level.verticalMaxLevel ?? level.empLevel;
-                parts.Add(hops is int h && h > 0 ? $"หัวหน้าตามผังองค์กร (ไต่ {h} ระดับ)" : "หัวหน้าตามผังองค์กร");
-            }
-            if (level.isNeedsupervisorapprove is int precheck && precheck > 0)
-                parts.Add($"ผ่านหัวหน้า {precheck} ระดับก่อน");
+            if (level.SupervisorLevels > 0)
+                parts.Add(level.SupervisorLevels > 1
+                    ? $"หัวหน้าตามผังองค์กร (ไต่ {level.SupervisorLevels} ระดับ)" : "หัวหน้าตามผังองค์กร");
             if (level.isLOA) parts.Add("ผู้อนุมัติตามวงเงิน (LOA)");
             if (level.isReturnSender) parts.Add("ส่งกลับผู้ยื่นคำขอ");
             if (level.isApproverSameOrg) parts.Add("ผู้อนุมัติในหน่วยงานเดียวกับผู้ขอ");

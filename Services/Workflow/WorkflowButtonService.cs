@@ -103,8 +103,8 @@ public sealed class WorkflowButtonService
 
         // ยังไม่ได้ config เลย — ชุดมาตรฐานเดิม (ส่งต่อ/อนุมัติ, ส่งกลับ, ไม่อนุมัติเฉพาะขั้นสุดท้าย)
         result.Add(isTop
-            ? new WorkflowButtonDescriptor("approve", step?.displayName ?? "อนุมัติ", ColorSuccess, ActionApprove)
-            : new WorkflowButtonDescriptor("submit", step?.displayName ?? "ส่งต่อ", ColorPrimary, ActionApprove));
+            ? new WorkflowButtonDescriptor("approve", step?.displayName ?? "อนุมัติ (สิ้นสุด)", ColorSuccess, ActionApprove)
+            : new WorkflowButtonDescriptor("approvenext", step?.displayName ?? "อนุมัติและส่งต่อ", ColorPrimary, ActionApprove));
         result.Add(new WorkflowButtonDescriptor("reject", "ส่งกลับ", ColorWarning, ActionSendBack));
         if (isTop) result.Add(new WorkflowButtonDescriptor("decline", "ไม่อนุมัติ", ColorError, ActionDecline));
         return result;
@@ -161,7 +161,7 @@ public sealed class WorkflowButtonService
 
         return key switch
         {
-            "approve" or "submit" or "recommend" or "approvepartial" or "memberapprove" => ActionApprove,
+            "approve" or "approvenext" or "submit" or "recommend" or "approvepartial" or "memberapprove" => ActionApprove,
             "reject" or "notrecommend" => ActionSendBack,
             "decline" or "declinepartial" or "memberdecline" => ActionDecline,
             _ => null,
