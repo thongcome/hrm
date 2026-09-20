@@ -26,6 +26,16 @@ public sealed class PayrollCalcJobService(
     // already running (the caller should just show its progress).
     public async Task<bool> StartAsync(long runId, long actorUserId)
     {
+        // Only a payroll officer (or Admin) may calculate — checked before the job is queued.
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<HRMContext>>();
+            await using var ctx = await dbFactory.CreateDbContextAsync();
+            await PayrollStepPermission.EnsureAsync(ctx, actorUserId, PayrollAction.Calculate);
+            // ตรวจก่อนประมวลผลต้องผ่านก่อนเข้าคิว ไม่งั้นงานเบื้องหลังจะข้ามด่านที่ปุ่มคำนวณธรรมดาติด
+            await scope.ServiceProvider.GetRequiredService<PayrollPreflightService>().EnsureClearAsync(runId, "คำนวณ");
+        }
+
         if (!registry.TryStart(runId)) return false;
 
         // Mark the run as in-flight up front, on a short-lived scope, so the

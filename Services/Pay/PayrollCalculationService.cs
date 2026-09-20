@@ -120,6 +120,12 @@ public class PayrollCalculationService
             .Select(e => new { e.HremployeeId, e.ExcludeReason })
             .ToDictionaryAsync(e => e.HremployeeId, e => e.ExcludeReason, ct);
 
+        // คืนรายการที่รอบนี้เคยกินไว้ทั้งหมดก่อน แล้วปล่อยให้ลูปด้านล่างหยิบใหม่เอง — คนที่ถูก "พักการจ่าย"
+        // (hold) หรือหลุดจากเงื่อนไขไปแล้ว จะได้ไม่ทิ้งโบนัส/งวดผ่อน/เงินเบิกล่วงหน้าค้างสถานะ Consumed
+        // ชี้รอบนี้ตลอดไป ซึ่งไม่มีรอบไหนหยิบได้อีก (รอบอื่นหยิบเฉพาะ Approved/Pending)
+        await PayrollItemConsumption.ReleaseAsync(context, payrollRunId, ct: ct);
+        await context.SaveChangesAsync(ct);
+
         if (existingEmployeeIds.Count > 0)
         {
             // Bulk set-based deletes (ExecuteDeleteAsync) on purpose. The previous

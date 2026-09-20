@@ -37,6 +37,26 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         public bool ReadyToCalculate => ErrorCount == 0 && PendingApprovals.Count == 0;
     }
 
+    // ตรวจก่อนประมวลผล = ด่าน ไม่ใช่รายงานให้อ่านเล่น (CEO, 20 ก.ย. 2569) — เดิมกดคำนวณตรง ๆ ได้
+    // โดยไม่เคยกดตรวจ คนที่ค่าจ้างต่ำกว่าขั้นต่ำ/ไม่มีเงินเดือน/วันที่ผิด จึงไหลไปถึงไฟล์โอนเงินและ ภ.ง.ด.1
+    // ทางออกของผู้ใช้มีสองทางเสมอ: แก้ข้อมูลของคนนั้น หรือ "พักการจ่าย" คนนั้นไว้รอบนี้ (hold)
+    // ที่เดียวที่บังคับ ใช้ร่วมกันทั้งคำนวณตรง ๆ คำนวณเบื้องหลัง และส่งอนุมัติ (พอร์ตจาก Advance.Payroll)
+    public async Task EnsureClearAsync(long runId, string action, CancellationToken ct = default)
+    {
+        var report = await CheckAsync(runId, ct);
+        if (report.ErrorCount == 0) return;
+
+        var lines = report.ConfigErrors
+            .Concat(report.Issues.Where(i => i.Severity == Severity.Error).Select(i => $"{i.EmpNo} {i.Name}: {i.Message}"))
+            .Take(5)
+            .ToList();
+        var more = report.ErrorCount - lines.Count;
+        throw new InvalidOperationException(
+            $"ตรวจก่อนประมวลผลพบข้อผิดพลาด {report.ErrorCount} รายการ จึง{action}ไม่ได้ — แก้ข้อมูล หรือพักการจ่ายคนนั้นไว้ก่อน:"
+            + Environment.NewLine + string.Join(Environment.NewLine, lines.Select(l => "• " + l))
+            + (more > 0 ? Environment.NewLine + $"• และอีก {more} รายการ — ดูทั้งหมดที่ปุ่ม \"ตรวจสอบข้อมูลก่อนประมวลผล\"" : ""));
+    }
+
     // Pay-item codes CalculateAsync indexes with payItemTypes["X"] — a missing one
     // is a KeyNotFoundException mid-run, so surface it here instead.
     private static readonly string[] RequiredPayItemCodes = { "BASE", "OT", "ALLOWANCE", "SSO", "PF", "INSURANCE", "WELFAREFUND", "LOAN", "TAX", "LATE", "ABSENT", "SAL_ADVANCE" };

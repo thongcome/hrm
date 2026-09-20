@@ -60,8 +60,13 @@ public class PayrollWorkflowService
     {
         await using (var context = await _dbFactory.CreateDbContextAsync(ct))
             await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Calculate, ct);
+        await EnsurePreflightClearAsync(runId, "คำนวณ", ct);
         return await _calculationService.CalculateAsync(runId, actorUserId, progress: null, ct: ct);
     }
+
+    // ตรวจก่อนประมวลผลเป็นด่าน ไม่ใช่รายงานให้อ่านเล่น — ที่เดียวที่บังคับ ใช้ทั้งคำนวณตรง คำนวณเบื้องหลัง และส่งอนุมัติ
+    private Task EnsurePreflightClearAsync(long runId, string action, CancellationToken ct)
+        => new PayrollPreflightService(_dbFactory).EnsureClearAsync(runId, action, ct);
 
     public async Task SubmitForReviewAsync(long runId, long actorUserId, CancellationToken ct = default)
     {
@@ -70,6 +75,7 @@ public class PayrollWorkflowService
         EnsureAllowed(run, PayrollAction.SubmitForReview);
         await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.SubmitForReview, ct);
         await EnsureReadyForReviewAsync(context, run, ct);
+        await EnsurePreflightClearAsync(runId, "ส่งอนุมัติ", ct);   // ข้อมูลอาจถูกแก้หลังคำนวณ
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Reviewed;
@@ -154,6 +160,14 @@ public class PayrollWorkflowService
         row.IsExcluded = excluded;
         row.ExcludeReason = excluded ? reason!.Trim() : null;
 
+        // คนที่ถูกกันออกไม่ได้เงินสักบาท (ถูกตัดออกจากไฟล์ธนาคาร/สลิป/GL/ยอดสะสม) รายการที่การคำนวณ
+        // "กิน" ไว้ให้เขาจึงต้องคืนทันที ไม่งั้นโบนัส/ค่าคอมหายถาวร และยอดหนี้เงินกู้ลดทั้งที่ไม่เคยหักเงิน
+        // เอากลับเข้ารอบ = ผูกรายการตามแถวผลลัพธ์เดิมคืน (ถ้ารอบอื่นหยิบไปแล้วจะให้คำนวณรอบนี้ใหม่)
+        if (excluded)
+            await PayrollItemConsumption.ReleaseAsync(context, runId, new[] { row.HremployeeId }, ct);
+        else
+            await PayrollItemConsumption.ReconsumeAsync(context, runId, row.Id, row.EmpNo, ct);
+
         context.Pay_PayrollAuditLogs.Add(new Pay_PayrollAuditLog
         {
             PayrollRunId = runId,
@@ -177,40 +191,9 @@ public class PayrollWorkflowService
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Cancelled;
 
-        // release any ad-hoc items this run had consumed back to Approved so
-        // they can be picked up by a future run for the same period instead
-        // of being stranded forever in Consumed status
-        var consumedItems = await context.Pay_AdhocPayItems
-            .Where(a => a.ConsumedByPayrollRunId == runId)
-            .ToListAsync(ct);
-        foreach (var item in consumedItems)
-        {
-            item.Status = PayAdhocItemStatus.Approved;
-            item.ConsumedByPayrollRunId = null;
-        }
-        // same for salary advances this run had recovered
-        var consumedAdvances = await context.Pay_SalaryAdvances
-            .Where(a => a.ConsumedByPayrollRunId == runId)
-            .ToListAsync(ct);
-        foreach (var adv in consumedAdvances)
-        {
-            adv.Status = PaySalaryAdvanceStatus.Approved;
-            adv.ConsumedByPayrollRunId = null;
-        }
-        // และงวดผ่อนเงินกู้ที่รอบนี้หักไปแล้ว (audit H2): เดิมไม่คืน งวดนั้นหายไปจากการหักตลอดกาล
-        // เพราะยอดคงเหลือของเงินกู้ถูกลดไปแล้วและรอบใหม่หยิบเฉพาะงวด Pending
-        var consumedInstallments = await context.Pay_EmployeeLoanInstallments
-            .Include(i => i.Pay_EmployeeLoan)
-            .Where(i => i.ConsumedByPayrollRunId == runId)
-            .ToListAsync(ct);
-        foreach (var inst in consumedInstallments)
-        {
-            inst.Status = Pay_LoanInstallmentStatus.Pending;
-            inst.ConsumedByPayrollRunId = null;
-            inst.Pay_EmployeeLoan.RemainingBalance = inst.BalanceAfter + inst.Amount;
-            if (inst.Pay_EmployeeLoan.Status == Pay_EmployeeLoanStatus.PaidOff)
-                inst.Pay_EmployeeLoan.Status = Pay_EmployeeLoanStatus.Active;
-        }
+        // คืนรายการที่รอบนี้กินไปแล้ว (โบนัส/ค่าคอม, งวดผ่อนเงินกู้, เงินเบิกล่วงหน้า) ให้รอบหน้าหยิบต่อได้
+        // — กติกาเดียวกับตอนคำนวณใหม่และตอนกันคนออกจากรอบ ดู PayrollItemConsumption
+        await PayrollItemConsumption.ReleaseAsync(context, runId, ct: ct);
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);
