@@ -82,5 +82,5 @@ public class SeveranceTaxCalculatorTests
     [InlineData("2015-06-01", "2020-09-15", 6)]    // 5 ปีเต็ม + เศษ = 6
     [InlineData("2020-01-01", "2022-12-31", 3)]    // ครบ 3 ปีพอดี ไม่มีเศษ
     public void Years_counted_rounds_a_fraction_up(string hire, string last, int expected)
-        => Assert.Equal(expected, SeveranceTaxCalculator.YearsCounted(DateOnly.Parse(hire), DateOnly.Parse(last)));
+        => Assert.Equal(expected, SeveranceTaxCalculator.YearsCounted(DateOnly.Parse(hire, System.Globalization.CultureInfo.InvariantCulture), DateOnly.Parse(last, System.Globalization.CultureInfo.InvariantCulture)));
 }

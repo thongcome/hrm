@@ -1,0 +1,175 @@
+@page "/att/ot-policy"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ATT_ADMIN")]
+
+<PageTitle>เพดานชั่วโมง OT ต่อสัปดาห์</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudText Typo="Typo.h5">เพดานชั่วโมง OT ต่อสัปดาห์ (Weekly OT Cap)</MudText>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        นับ OT ทุกประเภทวันรวมกันในสัปดาห์ จันทร์–อาทิตย์ ทั้งคำขอ (ร่าง/รออนุมัติ/อนุมัติแล้ว ไม่รวมที่ถูกปฏิเสธหรือยกเลิก) และรายการ OT ในระบบเงินเดือนที่ไม่ได้มาจากคำขอ
+        เมื่อกฎหมายเปลี่ยนให้ <b>เพิ่มแถวใหม่พร้อมวันที่เริ่มมีผล</b> อย่าแก้แถวเดิม ระบบใช้แถวที่มีผล ณ วันที่ทำ OT
+        เลือกได้ว่า <b>เตือนอย่างเดียว</b> (บันทึกได้) หรือ <b>ไม่ให้บันทึก/ส่งคำขอ</b> ที่ทำให้เกินเพดาน
+    </MudText>
+    <MudAlert Severity="Severity.Warning" Class="mt-3">
+        ตารางนี้ว่างอยู่ = ระบบ <b>ไม่ตรวจ</b> เพดาน ระบบไม่ได้ใส่ตัวเลขให้ — ตามความเข้าใจของผู้พัฒนา พ.ร.บ.คุ้มครองแรงงานให้ทำ OT รวมไม่เกิน 36 ชม./สัปดาห์ (มาตรา 26)
+        แต่ยังไม่ได้ยืนยันกับตัวบท และมีร่างแก้ไขกฎหมายที่กำลังพิจารณา ให้ผู้รู้กฎหมายแรงงานยืนยันตัวเลขก่อนตั้ง
+    </MudAlert>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีของคุณยังไม่ผูกกับบริษัท</MudAlert>
+        return;
+    }
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudDivider Class="my-4" />
+
+    <MudTable Items="_rows" Dense="true" Hover="true" RowsPerPage="25">
+        <HeaderContent>
+            <MudTh>เริ่มมีผล</MudTh>
+            <MudTh>เพดาน (ชม./สัปดาห์)</MudTh>
+            <MudTh>เมื่อเกินเพดาน</MudTh>
+            <MudTh>หมายเหตุ</MudTh>
+            <MudTh>สถานะ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.WeeklyCapHours.ToString("0.#")</MudTd>
+            <MudTd>@(context.BlockOnExceed ? "ไม่ให้บันทึก" : "เตือนอย่างเดียว")</MudTd>
+            <MudTd>@context.Note</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</MudTd>
+            <MudTd>
+                @if (context.IsActive && _rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(context.Id))">ปิดใช้งาน</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ยังไม่มีข้อมูล — ยังไม่มีการตรวจเพดาน OT</MudText>
+        </NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" /></PagerContent>
+    </MudTable>
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle1" Class="mb-2">เพิ่มเพดานใหม่</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="4"><MudDatePicker Label="เริ่มมีผลวันที่" @bind-Date="_effectiveFrom" /></MudItem>
+            <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_cap" Label="เพดาน (ชม./สัปดาห์)" Format="0.#" Min="0" /></MudItem>
+            <MudItem xs="12" sm="4"><MudSwitch T="bool" @bind-Value="_block" Color="Color.Primary" Label="ไม่ให้บันทึกเมื่อเกินเพดาน (ปิด = เตือนอย่างเดียว)" /></MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ / อ้างอิงกฎหมายหรือประกาศ" MaxLength="500" /></MudItem>
+            <MudItem xs="12"><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">+ เพิ่มเพดาน</MudButton></MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+    }
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/att/ot-policy";
+    private ProgramRoleService.ProgramRights? _rights;
+    private string _companyId = "";
+    private long _actorUserId;
+
+    private List<Att_OtPolicy> _rows = new();
+    private DateTime? _effectiveFrom;
+    private decimal _cap;
+    private bool _block;
+    private string? _note;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company") ?? "";
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_companyId)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _rows = await context.Att_OtPolicies.AsNoTracking()
+            .Where(p => p.CompanyId == _companyId).OrderByDescending(p => p.EffectiveFrom).ToListAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always).
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied) { _error = denied; return; }
+        if (_effectiveFrom is null) { _error = "กรุณาระบุวันที่เริ่มมีผล"; return; }
+        if (_cap <= 0m) { _error = "เพดานต้องมากกว่า 0"; return; }
+
+        var from = DateOnly.FromDateTime(_effectiveFrom.Value);
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (await context.Att_OtPolicies.AnyAsync(p => p.CompanyId == _companyId && p.IsActive && p.EffectiveFrom == from))
+        {
+            _error = "มีเพดานที่เริ่มมีผลวันเดียวกันอยู่แล้ว — ปิดใช้งานแถวเดิมก่อนถ้าต้องการแก้";
+            return;
+        }
+
+        context.Att_OtPolicies.Add(new Att_OtPolicy
+        {
+            CompanyId = _companyId,
+            EffectiveFrom = from,
+            WeeklyCapHours = _cap,
+            BlockOnExceed = _block,
+            Note = _note,
+            EnteredByUserId = _actorUserId,
+        });
+        await context.SaveChangesAsync();
+
+        Snackbar.Add("เพิ่มเพดาน OT เรียบร้อย", Severity.Success);
+        _effectiveFrom = null; _cap = 0; _block = false; _note = null;
+        await LoadAsync();
+    }
+
+    private async Task DeactivateAsync(long id)
+    {
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied) { _error = denied; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Att_OtPolicies.FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == _companyId);
+        if (row is null) return;
+        row.IsActive = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ปิดใช้งานเรียบร้อย", Severity.Success);
+        await LoadAsync();
+    }
+}

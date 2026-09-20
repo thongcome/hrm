@@ -8,6 +8,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject WorkflowEngineService Engine
+@inject HRM.Services.Att.OtPolicyService OtPolicy
 @inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Policy = "Menu:WF_WORKFLOW_ADMIN")]
 
@@ -122,6 +123,7 @@
     private string? _objective;
     private string? _remark;
     private string? _rateSuggestionNote;
+    private string? _capWarning;
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,21 +187,17 @@
             return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        var companyId = _selectedEmployee.companyid;
-        var date = DateOnly.FromDateTime(_otDate.Value);
-        var isHoliday = await context.Lve_CompanyHolidays.AnyAsync(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate == date);
-        var dayType = OtRateCalculator.ClassifyDayType(date, isHoliday);
-
-        var rule = await context.Att_OtRules.FirstOrDefaultAsync(r => r.CompanyId == companyId && r.DayType == dayType && r.IsActive);
-        if (rule is null)
+        var suggestion = await OtPolicy.GetMinimumRateAsync(context, _selectedEmployee, DateOnly.FromDateTime(_otDate.Value));
+        if (suggestion is null)
         {
-            _rateSuggestionNote = $"ยังไม่ได้ตั้งค่าตัวคูณ OT สำหรับ{DayTypeLabel(dayType)} — ตั้งค่าได้ที่ /att/ot-rules";
+            var date = DateOnly.FromDateTime(_otDate.Value);
+            var isHoliday = await context.Lve_CompanyHolidays.AnyAsync(h => h.CompanyId == _selectedEmployee.companyid && h.IsActive && h.HolidayDate == date);
+            _rateSuggestionNote = $"ยังไม่ได้ตั้งค่าตัวคูณ OT สำหรับ{DayTypeLabel(OtRateCalculator.ClassifyDayType(date, isHoliday))} — ตั้งค่าได้ที่ /att/ot-rules";
             return;
         }
 
-        var hourlyWage = OtRateCalculator.CalculateHourlyWage(salary);
-        _otRate = Math.Round(hourlyWage * rule.Multiplier, 2);
-        _rateSuggestionNote = $"คำนวณอัตโนมัติ: {DayTypeLabel(dayType)} × {rule.Multiplier:0.0#} เท่า (ค่าจ้างรายชั่วโมง {hourlyWage:N2} บาท) — แก้ไขเองได้";
+        _otRate = suggestion.Rate;
+        _rateSuggestionNote = $"คำนวณอัตโนมัติ: {DayTypeLabel(suggestion.DayType)} × {suggestion.Multiplier:0.0#} เท่า (ค่าจ้างรายชั่วโมง {suggestion.HourlyWage:N2} บาท) — เพิ่มได้ แต่ต่ำกว่านี้ไม่ได้";
     }
 
     private static string DayTypeLabel(OtDayType t) => t switch
@@ -230,6 +228,25 @@
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var duration = end - start;
+
+        // อัตรา OT ต่ำกว่าค่าจ้างรายชั่วโมง × ตัวคูณที่ตั้งไว้ไม่ได้ (ตัวคูณคือขั้นต่ำตาม ม.61–63) — ไม่มีตัวคูณตั้งไว้ = ไม่ตรวจ
+        var minimum = await OtPolicy.GetMinimumRateAsync(context, _selectedEmployee, DateOnly.FromDateTime(_otDate.Value));
+        if (minimum is not null && (_otRate ?? 0m) < minimum.Rate)
+        {
+            _error = $"อัตรา OT {(_otRate ?? 0m):N2} บาท/ชม. ต่ำกว่าขั้นต่ำ {minimum.Rate:N2} บาท/ชม. ({DayTypeLabel(minimum.DayType)} × {minimum.Multiplier:0.0#} เท่า)";
+            return;
+        }
+
+        // เพดานชั่วโมง OT ต่อสัปดาห์ (ตั้งที่ /att/ot-policy) — เตือน หรือไม่ให้บันทึก ตามที่ตั้งไว้
+        var cap = await OtPolicy.CheckWeeklyCapAsync(_selectedEmployee.companyid, _selectedEmployee.EmpNo, start, (decimal)duration.TotalHours);
+        if (cap.Result is { Exceeds: true } over)
+        {
+            var text = $"OT สัปดาห์นี้จะรวม {over.TotalHours:N1} ชม. เกินเพดาน {over.Cap:N1} ชม./สัปดาห์ อยู่ {over.Excess:N1} ชม. (มีอยู่แล้ว {over.ExistingHours:N1} + คำขอนี้ {over.NewHours:N1})";
+            if (cap.Block) { _error = text + " — ไม่สามารถบันทึกได้"; return; }
+            _capWarning = text;
+        }
+        else _capWarning = null;
+
         context.emp_overtime_requests.Add(new emp_overtime_request
         {
             empid = _selectedEmployee.EmpNo,
@@ -249,7 +266,8 @@
         });
         await context.SaveChangesAsync();
 
-        _info = $"บันทึกคำขอ OT #{_requests.Count + 1} สำเร็จ (ยังเป็นร่าง กด \"ส่งขออนุมัติ\" เพื่อเข้าสู่ workflow)";
+        _info = $"บันทึกคำขอ OT #{_requests.Count + 1} สำเร็จ (ยังเป็นร่าง กด \"ส่งขออนุมัติ\" เพื่อเข้าสู่ workflow)"
+                + (_capWarning is null ? "" : $" — คำเตือน: {_capWarning}");
         _selectedEmployee = null;
         _objective = null;
         _remark = null;
@@ -268,6 +286,13 @@
                 ?? throw new InvalidOperationException("ไม่พบคำขอนี้");
             if (request.jobmasterid is not null)
                 throw new InvalidOperationException("คำขอนี้ถูกส่งเข้าสู่กระบวนการอนุมัติไปแล้ว");
+
+            // ตรวจเพดานซ้ำตอนส่ง — ระหว่างเป็นร่างอาจมีคำขอ/รายการอื่นเข้ามาในสัปดาห์เดียวกันแล้ว (ตัดคำขอนี้เองออกจากยอดเดิม)
+            var capCheck = await OtPolicy.CheckWeeklyCapAsync(request.companyid ?? "", request.empid ?? "", request.starttime,
+                request.workhour ?? 0m, request.id);
+            if (capCheck is { Block: true, Result.Exceeds: true })
+                throw new InvalidOperationException(
+                    $"OT สัปดาห์นี้จะรวม {capCheck.Result!.TotalHours:N1} ชม. เกินเพดาน {capCheck.Result.Cap:N1} ชม./สัปดาห์");
 
             var workflow = await context.wf_workflows.FirstOrDefaultAsync(w => w.workflowcode == "OT_APPROVAL")
                 ?? throw new InvalidOperationException("ไม่พบ workflow OT_APPROVAL — ตรวจสอบว่า migration ถูก apply แล้ว");
