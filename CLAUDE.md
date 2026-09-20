@@ -20,6 +20,8 @@ dotnet ef migrations add <Name>
 dotnet ef database update
 ```
 
+**Build time (20 ก.ย. 2569):** the `*.Designer.cs` files under `Migrations/` were 3.5M lines of generated model snapshots that Roslyn recompiled on every build (15+ min). The 96 migrations whose `Up` has no `InsertData`/`UpdateData`/`DeleteData` were cut to attribute-only stubs (empty `BuildTargetModel`, like the hand-authored ones) — a touch-one-file build is now ~2 min, and `dotnet ef migrations script` output is byte-identical before/after. The 82 migrations that seed data through `InsertData`/`UpdateData`/`DeleteData` **must keep their full Designer**: EF needs the target model to type those columns, and a stub makes `migrations script` fail with "no entity type mapped to the table …". Rule for new migrations: hand-author with an attribute-only Designer, and seed with `migrationBuilder.Sql(...)` (not `InsertData`) so it can stay a stub.
+
 Tests (xUnit, in `HRM.Tests/`):
 ```
 dotnet test
