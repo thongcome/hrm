@@ -124,6 +124,7 @@ public static class WorkflowDocumentHandlers
         Map("Succ_SuccessorNomination", (sp, e, ct) => sp.GetRequiredService<HRM.Services.Succession.SuccessionService>().SyncStatusFromJobAsync(Id(e), ct));
         Map("Rec_Offer", (sp, e, ct) => sp.GetRequiredService<HRM.Services.Rec.RecOfferService>().SyncStatusFromJobAsync(Id(e), ct));
         Map("Rec_Requisition", (sp, e, ct) => sp.GetRequiredService<HRM.Services.Rec.RecRequisitionService>().SyncStatusFromJobAsync(Id(e), ct));
+        Map(HRM.Services.Pay.PayrollWorkflowService.ApprovalRefTable, (sp, e, ct) => sp.GetRequiredService<HRM.Services.Pay.PayrollWorkflowService>().SyncStatusFromJobAsync(Id(e), ct));
         Map("Pay_ProvidentFundExitCase", (sp, e, ct) => sp.GetRequiredService<HRM.Services.Pay.ProvidentFundExitCaseService>().SyncStatusFromJobAsync(Id(e), ct));
         Map("Pay_ProvidentFundRateChangeRequest", (sp, e, ct) => sp.GetRequiredService<HRM.Services.Pay.ProvidentFundRateChangeRequestService>().SyncStatusFromJobAsync(Id(e), ct));
         Map("Wf_WorkflowStateChangeRequest", (sp, e, ct) => sp.GetRequiredService<WorkflowStateChangeService>().ApplyApprovedAsync(ct));

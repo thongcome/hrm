@@ -56,6 +56,9 @@ public class Pay_PayrollRun
     public long? ReviewedByUserId { get; set; }
     public DateTime? ReviewedDate { get; set; }
 
+    // งานอนุมัติใน workflow engine (PAYROLL_RUN_APPROVAL) ที่เปิดตอนส่งอนุมัติ — ว่าง = ไม่ผ่าน workflow ใช้ปุ่มอนุมัติในหน้าเดิม
+    public long? JobMasterId { get; set; }
+
     public long? ApprovedByUserId { get; set; }
     public DateTime? ApprovedDate { get; set; }
 

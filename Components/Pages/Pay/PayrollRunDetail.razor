@@ -11,6 +11,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject PayrollWorkflowService WorkflowService
+@inject HRM.Services.Workflow.WorkflowEngineService WorkflowEngine
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -108,6 +109,14 @@ else
 
         <MudDivider Class="my-3" />
 
+        @if (_run.Status == PayrollRunStatus.Reviewed && _run.JobMasterId is long approvalJobId)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                รอบนี้อยู่ใน workflow อนุมัติ — รออนุมัติโดย: <b>@(string.IsNullOrWhiteSpace(_pendingApprovers) ? "-" : _pendingApprovers)</b>
+                · ผู้อนุมัติกดอนุมัติ/ตีกลับที่ <MudLink Href="@($"/wf/my-inbox/{approvalJobId}")">กล่องงานของฉัน</MudLink>
+                (ข้อมูลทั้งหมดของรอบดูได้ที่หน้านี้)
+            </MudAlert>
+        }
         @if (_waitingForRole.Count > 0)
         {
             <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">ขั้นตอนถัดไปของรอบนี้ต้องทำโดย: @string.Join(" / ", _waitingForRole) — บัญชีของคุณไม่มีบทบาทนี้</MudAlert>
@@ -542,6 +551,7 @@ else
     private bool _forbidden;
     private IReadOnlySet<PayrollAction> _allowed = new HashSet<PayrollAction>();
     private List<string> _waitingForRole = new();
+    private string? _pendingApprovers;
     private bool _busy;
 
     // Background-calc observer state (Phase A). Polled from the singleton
@@ -613,10 +623,16 @@ else
 
     private async Task LoadAsync()
     {
+        // รับผลอนุมัติที่ตัดสินใน inbox (ตาข่ายนิรภัยของ write-back)
+        await WorkflowService.SyncStatusFromJobAsync(RunId);
+
         await using var context = await DbFactory.CreateDbContextAsync();
 
         _run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == RunId);
         if (_run is null) return;
+        _pendingApprovers = _run.Status == PayrollRunStatus.Reviewed && _run.JobMasterId is long jobId
+            ? await WorkflowEngine.GetPendingApproverNamesAsync(jobId)
+            : null;
 
         // One sc_user resolves to exactly one company via empid ->
         // Hremployee.EmpNo — see PayrollCompanyResolver. A run for any

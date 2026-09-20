@@ -17,13 +17,24 @@ public class PayrollWorkflowService
     // แยกหน้าที่ (audit H6): คนส่งตรวจกับคนอนุมัติต้องเป็นคนละคน — ปิดได้ใน appsettings
     // ("Payroll:RequireSeparateApprover": false) สำหรับ dev/demo ที่มีผู้ใช้คนเดียว
     private readonly bool _requireSeparateApprover;
+    private readonly HRM.Services.Workflow.WorkflowEngineService? _engine;
+
+    // อนุมัติผ่าน workflow engine (CEO, 18 ก.ย. 2569): เมื่อ workflow PAYROLL_RUN_APPROVAL เปิดอยู่
+    // "ส่งอนุมัติ" (SubmitForReview) เปิดงานที่ reftable Pay_PayrollRun ผู้อนุมัติกดใน inbox และดูทั้งรอบที่
+    // /pay/runs/{refid} ผลกลับมาทาง SyncStatusFromJobAsync (WorkflowDocumentWriteback เรียกตอนงานปิด และหน้า
+    // รายละเอียดเรียกซ้ำตอนเปิดเป็นตาข่ายนิรภัย) การคำนวณไม่อยู่ใน workflow
+    // ไม่มี workflow ที่เปิดอยู่ = ใช้ปุ่มอนุมัติขั้นเดียวเดิม ไม่ต้องตั้งค่าอะไรสำหรับบริษัทเล็ก
+    public const string ApprovalWorkflowCode = "PAYROLL_RUN_APPROVAL";
+    public const string ApprovalRefTable = "Pay_PayrollRun";
 
     public PayrollWorkflowService(IDbContextFactory<HRMContext> dbFactory, PayrollCalculationService calculationService,
-        Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
+        Microsoft.Extensions.Configuration.IConfiguration? configuration = null,
+        HRM.Services.Workflow.WorkflowEngineService? engine = null)
     {
         _dbFactory = dbFactory;
         _calculationService = calculationService;
         _requireSeparateApprover = PayrollSeparationOfDuties.IsRequired(configuration);
+        _engine = engine;
     }
 
     // Single source of truth for "what buttons should be enabled" — shared by
@@ -49,6 +60,9 @@ public class PayrollWorkflowService
     public static IReadOnlySet<PayrollAction> GetAllowedActions(Pay_PayrollRun run)
     {
         var allowed = GetAllowedActions(run.Status);
+        // ส่งเข้า workflow อนุมัติแล้ว: การอนุมัติทำที่ inbox ของผู้อนุมัติ ไม่ใช่ปุ่มในหน้านี้
+        if (run.JobMasterId is not null && allowed.Contains(PayrollAction.Approve))
+            allowed = allowed.Where(a => a != PayrollAction.Approve).ToHashSet();
         if (PayrollRunTypes.IsSupported(run.RunType))
             return allowed;
         return allowed.Contains(PayrollAction.Cancel)
@@ -77,13 +91,128 @@ public class PayrollWorkflowService
         await EnsureReadyForReviewAsync(context, run, ct);
         await EnsurePreflightClearAsync(runId, "ส่งอนุมัติ", ct);   // ข้อมูลอาจถูกแก้หลังคำนวณ
 
+        var workflow = _engine is null ? null : await context.wf_workflows
+            .FirstOrDefaultAsync(w => w.workflowcode == ApprovalWorkflowCode && w.isactive == true, ct);
+        if (workflow is not null)
+            await EnsureNoUnresolvedNegativePayAsync(context, runId, ct);   // ด่านเดียวกับที่ปุ่มอนุมัติใช้
+
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Reviewed;
         run.ReviewedByUserId = actorUserId;
         run.ReviewedDate = DateTime.Now;
 
-        AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Reviewed, actorUserId);
+        AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Reviewed, actorUserId,
+            workflow is null ? null : "ส่งอนุมัติผ่าน workflow");
         await context.SaveChangesAsync(ct);
+
+        if (workflow is null) return;
+
+        // รอบต้องเป็น Reviewed ก่อนเปิดงาน: workflow แบบอนุมัติอัตโนมัติปิดงานภายใน StartJobAsync
+        // แล้ว write-back อ่านรอบทันที
+        long jobId;
+        try
+        {
+            var totalNet = await context.Pay_PayrollEmployees
+                .Where(e => e.PayrollRunId == runId && !e.IsExcluded)
+                .SumAsync(e => (decimal?)e.NetPay, ct) ?? 0m;
+            var requesterEmpId = await context.sc_users.Where(u => u.userid == actorUserId).Select(u => u.empid).FirstOrDefaultAsync(ct);
+            jobId = await _engine!.StartJobAsync(workflow.workflowid, ApprovalRefTable, runId.ToString(),
+                actorUserId, requesterEmpId,
+                $"อนุมัติรอบเงินเดือน {run.CompanyId} งวด {run.PayrollPeriod} ({RunTypeLabel(run.RunType)}) — สุทธิ {totalNet:N2} บาท",
+                totalNet, ct);
+        }
+        catch (Exception ex)
+        {
+            // หาผู้อนุมัติไม่เจอ ฯลฯ — คืนรอบกลับ ไม่ให้ค้างสถานะ "ส่งแล้ว"
+            await using var undo = await _dbFactory.CreateDbContextAsync(ct);
+            var r = await LoadRunOrThrowAsync(undo, runId, ct);
+            r.Status = fromStatus;
+            r.ReviewedByUserId = null;
+            r.ReviewedDate = null;
+            AddTransitionLog(undo, runId, PayrollRunStatus.Reviewed, fromStatus, actorUserId, $"ส่งอนุมัติไม่สำเร็จ: {ex.Message}");
+            await undo.SaveChangesAsync(ct);
+            throw new InvalidOperationException($"ส่งเข้า workflow อนุมัติไม่สำเร็จ: {ex.Message}", ex);
+        }
+
+        await using var after = await _dbFactory.CreateDbContextAsync(ct);
+        var saved = await LoadRunOrThrowAsync(after, runId, ct);
+        saved.JobMasterId = jobId;
+        await after.SaveChangesAsync(ct);
+        await SyncStatusFromJobAsync(runId, ct);   // ครอบกรณีอนุมัติอัตโนมัติ
+    }
+
+    // นำผลของงานอนุมัติมาใส่รอบ (idempotent, ทำเฉพาะตอนรอบรออยู่ใน Reviewed) อนุมัติ = รอบล็อกเป็น Approved
+    // ไม่อนุมัติ/ตีกลับ/ยกเลิก = กลับเป็น Calculated พร้อมเหตุผล ผู้เตรียมแก้แล้วส่งใหม่ (เป็นงานใหม่)
+    public async Task SyncStatusFromJobAsync(long runId, CancellationToken ct = default)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync(ct);
+        var run = await context.Pay_PayrollRuns.FirstOrDefaultAsync(r => r.Id == runId, ct);
+        if (run is null || run.Status != PayrollRunStatus.Reviewed) return;
+
+        var refId = runId.ToString();
+        var job = run.JobMasterId is long id
+            ? await context.job_masters.FirstOrDefaultAsync(j => j.jobmasterid == id, ct)
+            : await context.job_masters.Where(j => j.reftable == ApprovalRefTable && j.refid == refId)
+                .OrderByDescending(j => j.jobmasterid).FirstOrDefaultAsync(ct);
+        if (job is null) return;
+        run.JobMasterId ??= job.jobmasterid;
+
+        var closed = job.isJobClosed == true;
+        var status = job.status;
+        if (closed && status == HRM.Services.Workflow.WorkflowEngineService.StatusCompleted)
+        {
+            var approverId = job.approvedUserID ?? 0;
+            if (_requireSeparateApprover && approverId != 0 && (approverId == run.CalculatedByUserId || approverId == run.ReviewedByUserId))
+            {
+                SendBack(context, run, approverId, "ผู้อนุมัติใน workflow เป็นคนเดียวกับผู้คำนวณ/ผู้ส่ง (แยกหน้าที่) — ต้องให้ผู้อนุมัติคนอื่นอนุมัติ");
+            }
+            else
+            {
+                run.Status = PayrollRunStatus.Approved;
+                run.ApprovedByUserId = approverId;
+                run.ApprovedDate = DateTime.Now;
+                AddTransitionLog(context, run.Id, PayrollRunStatus.Reviewed, PayrollRunStatus.Approved, approverId,
+                    $"อนุมัติผ่าน workflow (job #{job.jobmasterid})");
+            }
+        }
+        else if (closed
+                 || status == HRM.Services.Workflow.WorkflowEngineService.StatusReturned
+                 || status == HRM.Services.Workflow.WorkflowEngineService.StatusRejected)
+        {
+            var reason = string.IsNullOrWhiteSpace(job.remark) ? status : job.remark;
+            SendBack(context, run, job.approvedUserID ?? 0, $"ตีกลับจาก workflow (job #{job.jobmasterid}): {reason}");
+            await context.SaveChangesAsync(ct);
+            // งานที่ถูกตีกลับแต่ยังเปิดอยู่: ปิดทิ้ง ส่งใหม่ = งานใหม่ ทำหลังบันทึกเพราะการปิดจะยิง write-back
+            // ซึ่งวนกลับมาที่นี่และต้องเห็นรอบกลับสถานะเดิมแล้ว
+            if (!closed && _engine is not null)
+                await _engine.CancelAsync(job.jobmasterid, job.approvedUserID ?? 0, isAdminOverride: true, "ตีกลับ — ปิดงานเดิม ส่งใหม่เป็นงานใหม่", ct);
+            return;
+        }
+
+        await context.SaveChangesAsync(ct);
+    }
+
+    private static void SendBack(HRMContext context, Pay_PayrollRun run, long actorUserId, string reason)
+    {
+        run.Status = PayrollRunStatus.Calculated;
+        run.ReviewedByUserId = null;
+        run.ReviewedDate = null;
+        run.JobMasterId = null;
+        AddTransitionLog(context, run.Id, PayrollRunStatus.Reviewed, PayrollRunStatus.Calculated, actorUserId, reason);
+    }
+
+    private static string RunTypeLabel(PayrollRunType type) => type switch
+    {
+        PayrollRunType.Bonus => "โบนัส",
+        PayrollRunType.FinalPay => "จ่ายผู้พ้นสภาพ",
+        _ => "ปกติ",
+    };
+
+    private static async Task EnsureNoUnresolvedNegativePayAsync(HRMContext context, long runId, CancellationToken ct)
+    {
+        if (await context.Pay_PayrollEmployees.AnyAsync(e => e.PayrollRunId == runId && e.IsNegativeNetPayFlag && !e.IsExcluded, ct))
+            throw new InvalidOperationException(
+                "มีพนักงานที่เงินสุทธิติดลบและยังไม่ได้แก้หรือกันออกจากรอบ — แก้ข้อมูลแล้วคำนวณใหม่ หรือกันคนนั้นออกพร้อมเหตุผลก่อนส่งอนุมัติ");
     }
 
     public async Task ApproveAsync(long runId, long actorUserId, string? comment, CancellationToken ct = default)
@@ -197,6 +326,15 @@ public class PayrollWorkflowService
 
         AddTransitionLog(context, run.Id, fromStatus, PayrollRunStatus.Cancelled, actorUserId, reason);
         await context.SaveChangesAsync(ct);
+
+        // รอบที่รออยู่ใน workflow อนุมัติ: ปิดงานนั้นด้วย ไม่งั้นค้างใน inbox — ทำหลังบันทึก
+        // เพราะการปิดยิง write-back ซึ่งต้องเห็นรอบเป็น Cancelled แล้ว
+        if (run.JobMasterId is long jobId && _engine is not null)
+        {
+            await using var check = await _dbFactory.CreateDbContextAsync(ct);
+            if (await check.job_masters.AnyAsync(j => j.jobmasterid == jobId && j.isJobClosed != true, ct))
+                await _engine.CancelAsync(jobId, actorUserId, isAdminOverride: true, $"ยกเลิกรอบเงินเดือน: {reason}", ct);
+        }
     }
 
     private static void EnsureAllowed(Pay_PayrollRun run, PayrollAction action)
