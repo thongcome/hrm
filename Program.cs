@@ -441,11 +441,14 @@ builder.Services.AddScoped<HRM.Services.ThemeService>();
 
 // Configure Serilog
 
+// พ.ร.บ.คอมพิวเตอร์: เก็บ log อย่างน้อย 90 วัน — ค่าตั้งต้นของ Serilog เก็บแค่ 31 ไฟล์ จึงตั้ง 120 วันไว้เผื่อ
+// และลดระดับ log ของ EF เป็น Warning ไม่งั้นทุกคำสั่ง SQL ลงไฟล์ ทำให้ไฟล์บวมจน log ที่ต้องเก็บถูกบดบัง
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
     .WriteTo.Console()
-    .WriteTo.File("logs/error-log.txt", restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error, rollingInterval: RollingInterval.Day)
-    .WriteTo.File("logs/file.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File("logs/error-log.txt", restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 120)
+    .WriteTo.File("logs/file.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 120)
     .CreateLogger();
 
 builder.Host.UseSerilog();  // �� Serilog �� logging provider
