@@ -24,6 +24,7 @@
 @inject PayrollCalcJobRegistry CalcJobs
 @inject PayrollCalcJobService CalcJobService
 @inject PayrollPreflightService Preflight
+@inject FinalPayService FinalPay
 @inject ProgramRoleService ProgramRoles
 @inject IAuditLogger AuditLogger
 @implements IDisposable
@@ -52,6 +53,24 @@ else
             <MudChip T="string" Color="StatusColor(_run.Status)" Size="Size.Medium">@StatusLabel(_run.Status)</MudChip>
         </MudStack>
 
+        @if (_run.RunType == PayrollRunType.FinalPay)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                รอบจ่ายคนออก (ม.70) — คำนวณเฉพาะพนักงานด้านล่าง: เงินเดือนถึงวันออก + ค่าชดเชย/ค่าบอกกล่าว/พักร้อนคงเหลือที่อนุมัติแล้ว
+                ภาษีคิดจากเงินได้จริงทั้งปี · รอบปกติของงวดนี้จะข้ามคนเหล่านี้ให้เอง
+            </MudAlert>
+            <MudStack Row="true" Spacing="1" Class="mt-2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.body2">พนักงานในรอบ:</MudText>
+                @foreach (var m in _members)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary"
+                             OnClose="@(_run.Status is PayrollRunStatus.Draft or PayrollRunStatus.Calculated && _allowed.Contains(PayrollAction.Calculate) ? (_ => RemoveMemberAsync(m.HremployeeId)) : null)">
+                        @m.EmpNo
+                    </MudChip>
+                }
+                @if (_members.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Error">ยังไม่มี — เพิ่มจากหน้าพนักงานที่ออก</MudText> }
+            </MudStack>
+        }
         @if (!PayrollRunTypes.IsSupported(_run.RunType) && _run.Status != PayrollRunStatus.Cancelled)
         {
             <MudAlert Severity="Severity.Error" Class="mt-3">@PayrollRunTypes.UnsupportedMessage — รอบนี้ทำอะไรไม่ได้นอกจากยกเลิก</MudAlert>
@@ -553,6 +572,8 @@ else
     private PayslipGenerationResult? _payslipSummary;
     private List<Pay_PayrollAnomaly> _anomalies = new();
     private List<Pay_PayrollRun> _pastRuns = new();
+    private List<Pay_PayrollRunMember> _members = new();   // leaver final-pay run only
+    private List<long> _memberIds = new();
     private long? _selectedBaselineRunId;
     private Dictionary<long, long> _payslipIdByEmployeeId = new();
     private readonly HashSet<long> _sendingPayslipIds = new();
@@ -631,15 +652,22 @@ else
             .Select(PayrollStepPermission.RoleLabelFor).Distinct().ToList();
 
         var forBonus = _run.RunType == PayrollRunType.Bonus;
+        var forFinal = _run.RunType == PayrollRunType.FinalPay;
+        _members = forFinal ? await FinalPay.MembersAsync(RunId) : [];
+        _memberIds = _members.Select(m => m.HremployeeId).ToList();
         _pendingAdhocCount = await context.Pay_AdhocPayItems
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
                 && a.Hremployee.companyid == _run.CompanyId
-                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
+                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus
+                    : forFinal ? (a.TargetRunType == PayrollRunType.Regular || a.TargetRunType == PayrollRunType.FinalPay) && _memberIds.Contains(a.HremployeeId)
+                    : a.TargetRunType != PayrollRunType.Bonus && a.TargetRunType != PayrollRunType.FinalPay)
                 && a.Status == PayAdhocItemStatus.Pending);
         _unconsumedApprovedAdhocCount = await context.Pay_AdhocPayItems
             .CountAsync(a => a.TargetPeriod == _run.PayrollPeriod
                 && a.Hremployee.companyid == _run.CompanyId
-                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
+                && (forBonus ? a.TargetRunType == PayrollRunType.Bonus
+                    : forFinal ? (a.TargetRunType == PayrollRunType.Regular || a.TargetRunType == PayrollRunType.FinalPay) && _memberIds.Contains(a.HremployeeId)
+                    : a.TargetRunType != PayrollRunType.Bonus && a.TargetRunType != PayrollRunType.FinalPay)
                 && a.Status == PayAdhocItemStatus.Approved);
 
         _canGenerateDocuments = _run.IsFinal();
@@ -668,7 +696,7 @@ else
         // first. Excludes the current run itself.
         _pastRuns = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == _run.CompanyId && r.Id != RunId && r.Status != PayrollRunStatus.Cancelled
-                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus))
+                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus || r.RunType == PayrollRunType.FinalPay))
             .OrderByDescending(r => r.PeriodStart)
             .ToListAsync();
     }
@@ -708,6 +736,17 @@ else
     }
 
     private string BoldItemCount(int count) => $"<b>{string.Format(L.Translate("AdhocItemCountUnit"), count)}</b>";
+
+    private async Task RemoveMemberAsync(long hremployeeId)
+    {
+        try
+        {
+            await FinalPay.RemoveMemberAsync(RunId, hremployeeId, await GetCurrentUserIdAsync());
+            Snackbar.Add("เอาออกจากรอบแล้ว — กดคำนวณใหม่", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
 
     private async Task<long> GetCurrentUserIdAsync()
     {

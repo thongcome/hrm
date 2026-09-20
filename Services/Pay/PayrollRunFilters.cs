@@ -13,7 +13,7 @@ public static class PayrollRunFilters
     // Approved, Posted or Paid — and a run type this product actually has (Regular/Bonus).
     public static readonly Expression<Func<Pay_PayrollRun, bool>> RunIsFinal = r =>
         (r.Status == PayrollRunStatus.Approved || r.Status == PayrollRunStatus.Posted || r.Status == PayrollRunStatus.Paid)
-        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus);
+        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus || r.RunType == PayrollRunType.FinalPay);
 
     // An employee row whose money was actually paid: its run is final AND the employee was
     // not excluded from that run. An excluded row is left out of the bank file, GL and SSO
@@ -22,7 +22,8 @@ public static class PayrollRunFilters
     public static readonly Expression<Func<Pay_PayrollEmployee, bool>> RowWasPaid = pe =>
         !pe.IsExcluded
         && (pe.Pay_PayrollRun.Status == PayrollRunStatus.Approved || pe.Pay_PayrollRun.Status == PayrollRunStatus.Posted || pe.Pay_PayrollRun.Status == PayrollRunStatus.Paid)
-        && (pe.Pay_PayrollRun.RunType == PayrollRunType.Regular || pe.Pay_PayrollRun.RunType == PayrollRunType.Bonus);
+        && (pe.Pay_PayrollRun.RunType == PayrollRunType.Regular || pe.Pay_PayrollRun.RunType == PayrollRunType.Bonus
+            || pe.Pay_PayrollRun.RunType == PayrollRunType.FinalPay);
 
     private static readonly Func<Pay_PayrollRun, bool> RunIsFinalCompiled = RunIsFinal.Compile();
 

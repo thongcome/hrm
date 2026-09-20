@@ -293,6 +293,8 @@ public class SeparationRequestService(IDbContextFactory<HRMContext> dbFactory, W
         SeparationType.VoluntaryResignation => "ลาออกเอง",
         SeparationType.TerminationOrdinary => "เลิกจ้าง (ไม่เข้าข่ายมาตรา 119 — มีค่าชดเชย)",
         SeparationType.TerminationSection119 => "เลิกจ้าง (เข้าข่ายมาตรา 119 — ไม่มีค่าชดเชย)",
+        SeparationType.Retirement => "เกษียณอายุ (มีค่าชดเชย)",
+        SeparationType.ContractEnd => "สิ้นสุดสัญญาจ้างมีกำหนดระยะเวลา (มีค่าชดเชย)",
         _ => type.ToString(),
     };
 }

@@ -96,9 +96,32 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
 
         var issues = new List<Issue>();
 
+        // ---- leaver final pay: only its members · regular: members of this period's final-pay runs are out ----
+        if (run.RunType == PayrollRunType.FinalPay)
+        {
+            var members = await ctx.Pay_PayrollRunMembers.Where(m => m.PayrollRunId == run.Id).ToListAsync(ct);
+            if (members.Count == 0)
+                configErrors.Add("รอบจ่ายคนออกยังไม่มีพนักงาน — เพิ่มพนักงานที่ออกจากหน้าพนักงาน (ส่วน \"จ่ายเงินคนออก\")");
+            var memberIds = members.Select(m => m.HremployeeId).ToHashSet();
+            foreach (var m in members.Where(m => eligible.All(e => e.id != m.HremployeeId)))
+                issues.Add(new Issue(m.HremployeeId, m.EmpNo, m.EmpNo, Severity.Error, "MEMBER_NOT_ELIGIBLE",
+                    "อยู่ในรอบนี้แต่ไม่เข้าเงื่อนไขรับเงินงวดนี้ (วันที่ออกไม่อยู่ในงวด / ถูกปิดสถานะ / ประเภทไม่รับเงินเดือน) — จะไม่ถูกคำนวณ"));
+            eligible = eligible.Where(e => memberIds.Contains(e.id)).ToList();
+        }
+        else
+        {
+            var settled = await PayrollEligibility.PaidInFinalPayRunAsync(ctx, run, ct);
+            foreach (var e in eligible.Where(e => settled.ContainsKey(e.id)))
+                issues.Add(new Issue(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(), Severity.Info, "PAID_IN_FINAL_PAY",
+                    $"จ่ายแล้วในรอบจ่ายคนออก #{settled[e.id]} — ไม่อยู่ในรอบนี้"));
+            if (settled.Count > 0) eligible = eligible.Where(e => !settled.ContainsKey(e.id)).ToList();
+        }
+
         // ---- employees left out of the run by hire/leave date or status (never silently) ----
+        var isFinalPay = run.RunType == PayrollRunType.FinalPay;   // a leaver run: the rest of the company is not its business
         var excluded = await ctx.Hremployee
             .Where(PayrollEligibility.ExcludedButRelevant(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
+            .Where(e => !isFinalPay)
             .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.IsActive, e.WorkDate, e.ResignDate, e.EmptypeCode })
             .ToListAsync(ct);
         foreach (var e in excluded)
@@ -155,7 +178,9 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var pendingAdhoc = await ctx.Pay_AdhocPayItems
             .Include(a => a.Pay_PayItemType)
             .Where(a => a.TargetPeriod == run.PayrollPeriod && a.Status == PayAdhocItemStatus.Pending
-                        && (run.RunType == PayrollRunType.Bonus ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus))
+                        && (run.RunType == PayrollRunType.Bonus ? a.TargetRunType == PayrollRunType.Bonus
+                            : run.RunType == PayrollRunType.FinalPay ? a.TargetRunType == PayrollRunType.Regular || a.TargetRunType == PayrollRunType.FinalPay
+                            : a.TargetRunType != PayrollRunType.Bonus && a.TargetRunType != PayrollRunType.FinalPay))
             .ToListAsync(ct);
         foreach (var a in pendingAdhoc)
         {

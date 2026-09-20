@@ -14,6 +14,7 @@
 @inject ISnackbar Snackbar
 @inject PrivateFileStorage FileStorage
 @inject SeveranceService SeveranceService
+@inject FinalPayService FinalPay
 @inject HRM.Services.Hr.SeparationRequestService SeparationRequestService
 @inject NavigationManager Nav
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
@@ -156,6 +157,8 @@ else
                             <MudSelectItem T="SeparationType" Value="SeparationType.VoluntaryResignation">ลาออกเอง (ไม่มีค่าชดเชย)</MudSelectItem>
                             <MudSelectItem T="SeparationType" Value="SeparationType.TerminationOrdinary">เลิกจ้าง — ไม่เข้าข่ายมาตรา 119 (มีค่าชดเชยตามอายุงาน)</MudSelectItem>
                             <MudSelectItem T="SeparationType" Value="SeparationType.TerminationSection119">เลิกจ้าง — เข้าข่ายมาตรา 119 (ไม่มีค่าชดเชย)</MudSelectItem>
+                            <MudSelectItem T="SeparationType" Value="SeparationType.Retirement">เกษียณอายุ (มีค่าชดเชยตามอายุงาน)</MudSelectItem>
+                            <MudSelectItem T="SeparationType" Value="SeparationType.ContractEnd">สิ้นสุดสัญญาจ้างมีกำหนดระยะเวลา (มีค่าชดเชยตามอายุงาน)</MudSelectItem>
                         </MudSelect>
                         <MudDatePicker @bind-Date="_separationEffectiveDate" Label="วันที่มีผล (วันสุดท้ายของการจ้างงาน)" Class="mt-2" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
                         <MudTextField @bind-Value="_separationReason" Label="เหตุผล / หมายเหตุ" Lines="2" Class="mt-2" />
@@ -254,9 +257,16 @@ else
                         </MudSimpleTable>
 
                         <MudGrid Class="mt-3">
-                            <MudItem xs="12" sm="4">
-                                <MudDatePicker @bind-Date="_severanceTargetMonth" Label="@L.Translate("SeverancePayPeriodLabel")" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                            <MudItem xs="12">
+                                <MudSwitch T="bool" @bind-Value="_severanceViaFinalPay" Color="Color.Primary"
+                                           Label="จ่ายในรอบจ่ายคนออก (ภายใน 3 วันตาม ม.70) — ปิด = จ่ายในรอบปกติของเดือนที่เลือก" />
                             </MudItem>
+                            @if (!_severanceViaFinalPay)
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudDatePicker @bind-Date="_severanceTargetMonth" Label="@L.Translate("SeverancePayPeriodLabel")" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                                </MudItem>
+                            }
                             <MudItem xs="12" sm="4">
                                 <MudNumericField @bind-Value="_severanceAmount" Label="@L.Translate("SeveranceAmountLabel")" Format="N2" />
                             </MudItem>
@@ -289,6 +299,69 @@ else
                     }
                 }
             </MudPaper>
+
+            @if (_settlement is { } st)
+            {
+                <MudPaper Class="pa-4 mb-4">
+                    <MudText Typo="Typo.h6" Class="mb-1">จ่ายเงินคนออก (ม.70)</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-3">
+                        นายจ้างเลิกจ้างต้องจ่ายค่าจ้างที่ค้างภายใน 3 วันนับแต่วันเลิกจ้าง — สร้างรอบจ่ายคนออกของงวด @st.Period
+                        (เงินเดือนถึงวันที่ @st.ResignDate.ToString("dd/MM/yyyy") + รายการด้านล่างที่อนุมัติแล้ว) แยกจากรอบสิ้นเดือน
+                    </MudText>
+
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField T="decimal" @bind-Value="_noticePay" Label="สินจ้างแทนการบอกกล่าวล่วงหน้า (ม.17/1)" Format="N2" Min="0m"
+                                             HelperText="@(st.SuggestedNoticePay > 0 ? $"แนะนำ {st.SuggestedNoticePay:N2} (ค่าจ้าง 1 งวด) — แก้ตามวันที่บอกกล่าวขาด" : "ลาออกเอง/ม.119/เกษียณ/ครบสัญญา: โดยทั่วไปไม่มี")" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField T="decimal" @bind-Value="_leaveDays" Label="วันพักร้อนคงเหลือ (วัน)" Format="0.##" Min="0m"
+                                             HelperText="@($"จากสิทธิ์ลาพักร้อนปี {st.ResignDate.Year}: เหลือ {st.AnnualLeaveDaysLeft:0.##} วัน")" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField T="decimal" @bind-Value="_leavePayout" Label="ค่าจ้างวันพักร้อนที่ไม่ได้ใช้ (ม.67)" Format="N2" Min="0m"
+                                             HelperText="@($"วันละ {st.DailyWage:N2} × วันคงเหลือ")" />
+                        </MudItem>
+                    </MudGrid>
+                    <MudStack Row="true" Spacing="2" Class="mt-3" Wrap="Wrap.Wrap">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => _leavePayout = Math.Round(_leaveDays * st.DailyWage, 2))">คำนวณค่าพักร้อนจากวัน</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateSettlementItemsAsync" Disabled="_settlementBusy">บันทึกค่าบอกกล่าว / ค่าพักร้อน</MudButton>
+                        @if (st.OpenFinalPayRun is { } fr)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Href="@($"/pay/runs/{fr.Id}")">ไปที่รอบจ่ายคนออก #@fr.Id (จ่าย @fr.PayDate.ToString("dd/MM/yyyy"))</MudButton>
+                        }
+                        else
+                        {
+                            <MudDatePicker @bind-Date="_finalPayDate" Label="วันจ่าย" Style="max-width:180px" Culture="@System.Globalization.CultureInfo.InvariantCulture" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="CreateFinalPayRunAsync" Disabled="_settlementBusy">สร้างรอบจ่ายคนออก</MudButton>
+                        }
+                    </MudStack>
+                    @if (!string.IsNullOrEmpty(_settlementError))
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-2">@_settlementError</MudAlert>
+                    }
+                    @if (st.ExistingItems.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">รายการเฉพาะกิจของงวด @st.Period</MudText>
+                        <MudSimpleTable Dense="true" Class="mt-1">
+                            <thead><tr><th>รายการ</th><th style="text-align:right">จำนวนเงิน</th><th>ภาษี</th><th>รอบ</th><th>สถานะ</th></tr></thead>
+                            <tbody>
+                                @foreach (var i in st.ExistingItems)
+                                {
+                                    <tr>
+                                        <td>@(i.Pay_PayItemType?.NameTh ?? "-")</td>
+                                        <td style="text-align:right">@i.Amount.ToString("N2")</td>
+                                        <td>@(i.IsTaxable ? "ต้องเสีย" : "ยกเว้น")</td>
+                                        <td>@PayrollRunTypes.Label(i.TargetRunType)</td>
+                                        <td>@i.Status</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">รายการที่ยัง Pending ต้องอนุมัติที่ <MudLink Href="@($"/pay/adhoc/{st.Period}")">รายการเฉพาะกิจ</MudLink> ก่อนคำนวณ</MudText>
+                    }
+                </MudPaper>
+            }
 
             <MudPaper Class="pa-4 mb-4">
                 <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("DocumentsHeading")</MudText>
@@ -404,14 +477,19 @@ else
         if (_employee is null || _severanceTargetMonth is null || _severanceAmount <= 0) return;
         try
         {
-            var period = _severanceTargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
-            _severanceTax = await SeveranceService.PreviewTaxAsync(_employee.id, _severanceAmount, period);
+            _severanceTax = await SeveranceService.PreviewTaxAsync(_employee.id, _severanceAmount, SeverancePeriod());
             _severanceTaxChecked = true;
         }
         catch (InvalidOperationException ex) { _severanceError = ex.Message; }
     }
     private string _severanceReason = string.Empty;
     private string? _severanceError;
+
+    // InvariantCulture: ambient Thai culture formats "yyyy" as Buddhist year — the period must stay Gregorian.
+    // Paid in the leaver run → always the resign month (that run's period).
+    private bool _severanceViaFinalPay = true;
+    private string SeverancePeriod() => (_severanceViaFinalPay ? _employee!.ResignDate!.Value : _severanceTargetMonth!.Value)
+        .ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
 
     private List<Pay_EmployeeDocument> _docs = new();
     private Pay_EmployeeDocumentType _uploadDocType = Pay_EmployeeDocumentType.Other;
@@ -504,6 +582,7 @@ else
                 _severanceError = ex.Message;
             }
         }
+        await LoadSettlementAsync();
 
         await LoadDocsAsync(context);
     }
@@ -712,13 +791,12 @@ else
         var userIdClaim = state.User.FindFirstValue("sc_userid");
         var userId = long.TryParse(userIdClaim, out var uid) ? uid : 0;
 
-        // InvariantCulture: ambient Thai culture formats "yyyy" as Buddhist
-        // year — TargetPeriod must stay Gregorian to match Pay_PayrollRun.
-        var targetPeriod = _severanceTargetMonth.Value.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+        var targetPeriod = SeverancePeriod();
 
         try
         {
-            await SeveranceService.SubmitAsync(_employee.id, targetPeriod, _severanceAmount, _severanceReason, userId);
+            await SeveranceService.SubmitAsync(_employee.id, targetPeriod, _severanceAmount, _severanceReason, userId,
+                targetRunType: _severanceViaFinalPay ? PayrollRunType.FinalPay : PayrollRunType.Regular);
         }
         catch (InvalidOperationException ex)
         {
@@ -727,7 +805,64 @@ else
         }
 
         Snackbar.Add(L.Translate("SeveranceSubmittedSuccess"), Severity.Success);
-        Nav.NavigateTo($"/pay/adhoc/{targetPeriod}");
+        if (_severanceViaFinalPay) await LoadSettlementAsync();   // stay: the leaver's settlement continues below
+        else Nav.NavigateTo($"/pay/adhoc/{targetPeriod}");
+    }
+
+    // ── leaver final pay (FinalPayService) ─────────────────────────────────────
+    private FinalPayService.Settlement? _settlement;
+    private decimal _noticePay, _leaveDays, _leavePayout;
+    private DateTime? _finalPayDate;
+    private string? _settlementError;
+    private bool _settlementBusy;
+
+    private async Task LoadSettlementAsync()
+    {
+        _settlement = null;
+        if (_employee?.ResignDate is null) return;
+        try
+        {
+            _settlement = await FinalPay.PreviewAsync(_employee.id);
+            _noticePay = _settlement.SuggestedNoticePay;
+            _leaveDays = _settlement.AnnualLeaveDaysLeft;
+            _leavePayout = _settlement.SuggestedLeavePayout;
+            _finalPayDate ??= _settlement.ResignDate.AddDays(3).ToDateTime(TimeOnly.MinValue);
+        }
+        catch (InvalidOperationException ex) { _settlementError = ex.Message; }
+    }
+
+    private async Task<long> CurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+    }
+
+    private async Task CreateSettlementItemsAsync()
+    {
+        if (_employee is null || _settlementBusy) return;
+        _settlementBusy = true; _settlementError = null;
+        try
+        {
+            var n = await FinalPay.CreateItemsAsync(_employee.id, _noticePay, _leaveDays, _leavePayout, await CurrentUserIdAsync());
+            Snackbar.Add(n == 0 ? "ไม่มีรายการใหม่ (ยอดเป็น 0)" : $"บันทึก {n} รายการ — รออนุมัติที่หน้ารายการเฉพาะกิจ", n == 0 ? Severity.Info : Severity.Success);
+            await LoadSettlementAsync();
+        }
+        catch (InvalidOperationException ex) { _settlementError = ex.Message; }
+        finally { _settlementBusy = false; }
+    }
+
+    private async Task CreateFinalPayRunAsync()
+    {
+        if (_employee is null || _settlementBusy) return;
+        _settlementBusy = true; _settlementError = null;
+        try
+        {
+            var runId = await FinalPay.CreateRunAsync(_employee.id,
+                _finalPayDate is null ? null : DateOnly.FromDateTime(_finalPayDate.Value), await CurrentUserIdAsync());
+            Nav.NavigateTo($"/pay/runs/{runId}");
+        }
+        catch (InvalidOperationException ex) { _settlementError = ex.Message; }
+        finally { _settlementBusy = false; }
     }
 
     private void OnFileSelected(IBrowserFile file)

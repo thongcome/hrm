@@ -14,8 +14,15 @@ using HRM.Models;
 public static class PayrollRunTypes
 {
     public const string UnsupportedMessage =
-        "ประเภทรอบนี้ไม่มีในระบบ — มีเฉพาะรอบปกติและรอบโบนัส ถ้าข้อมูลของพนักงานคนใดผิด ให้บันทึกเงินได้/เงินหักรายครั้งในงวดถัดไป";
+        "ประเภทรอบนี้ไม่มีในระบบ — มีเฉพาะรอบปกติ รอบโบนัส และรอบจ่ายคนออก ถ้าข้อมูลของพนักงานคนใดผิด ให้บันทึกเงินได้/เงินหักรายครั้งในงวดถัดไป";
 
     public static bool IsSupported(PayrollRunType type) =>
-        type is PayrollRunType.Regular or PayrollRunType.Bonus;
+        type is PayrollRunType.Regular or PayrollRunType.Bonus or PayrollRunType.FinalPay;
+
+    public static string Label(PayrollRunType type) => type switch
+    {
+        PayrollRunType.Bonus => "โบนัส",
+        PayrollRunType.FinalPay => "จ่ายคนออก",
+        _ => "ปกติ",
+    };
 }

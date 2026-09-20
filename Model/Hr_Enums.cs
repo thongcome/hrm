@@ -45,6 +45,8 @@ public enum SeparationType
     VoluntaryResignation = 1,  // ลาออกเอง — ไม่มีค่าชดเชย
     TerminationOrdinary = 2,   // เลิกจ้าง ไม่เข้าข่ายมาตรา 119 — มีค่าชดเชยตามอายุงาน
     TerminationSection119 = 3, // เลิกจ้างเข้าข่ายมาตรา 119 — ไม่มีค่าชดเชย
+    Retirement = 4,            // เกษียณ — นับเป็นการเลิกจ้าง (ม.118/1) มีค่าชดเชย
+    ContractEnd = 5,           // สิ้นสุดสัญญาจ้างมีกำหนดระยะเวลา — มีค่าชดเชยตามอายุงาน (เว้นแต่เข้าข้อยกเว้น ม.118 วรรคสาม)
 }
 
 public enum SeparationRequestStatus

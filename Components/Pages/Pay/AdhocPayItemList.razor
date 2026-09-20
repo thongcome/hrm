@@ -89,6 +89,7 @@
                     HelperText="รอบโบนัส = จ่ายแยกจากเงินเดือน ภาษีคิดแบบส่วนต่างทั้งก้อน · รอบปกติ = รวมในสลิปเงินเดือนของงวด">
                     <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Regular">รอบปกติ</MudSelectItem>
                     <MudSelectItem T="PayrollRunType" Value="PayrollRunType.Bonus">รอบโบนัส</MudSelectItem>
+                    <MudSelectItem T="PayrollRunType" Value="PayrollRunType.FinalPay">รอบจ่ายคนออก</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6">
@@ -156,7 +157,7 @@
                 <RowTemplate>
                     <MudTd>@context.Hremployee.EmpNo — @context.Hremployee.EmpName @context.Hremployee.EmpSurname</MudTd>
                     <MudTd>@context.Pay_PayItemType.NameTh</MudTd>
-                    <MudTd>@context.TargetPeriod@(context.TargetRunType == PayrollRunType.Bonus ? " (รอบโบนัส)" : "")@(context.TargetTermNo is int tn ? $" งวด {tn}" : "")</MudTd>
+                    <MudTd>@context.TargetPeriod@(context.TargetRunType switch { PayrollRunType.Bonus => " (รอบโบนัส)", PayrollRunType.FinalPay => " (รอบจ่ายคนออก)", _ => "" })@(context.TargetTermNo is int tn ? $" งวด {tn}" : "")</MudTd>
                     <MudTd>
                         @context.Amount.ToString("N2")
                         @if (context.IsAmountAnomalyFlagged)

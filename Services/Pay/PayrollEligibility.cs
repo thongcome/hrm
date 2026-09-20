@@ -48,6 +48,22 @@ public static class PayrollEligibility
              && (!e.IsActive || e.WorkDate == null || (e.ResignDate != null && e.ResignDate < e.WorkDate)
                  || (e.EmptypeCode != null && nonPayrollTypeCodes.Contains(e.EmptypeCode)));
 
+    // Leavers already settled in a leaver final-pay run (PayrollRunType.FinalPay) of this period —
+    // the regular run of the same period and term leaves them out (they must not be paid twice).
+    // Key = HremployeeId, value = the final-pay run id.
+    public static async Task<Dictionary<long, long>> PaidInFinalPayRunAsync(HRMContext context, Pay_PayrollRun run, CancellationToken ct = default)
+    {
+        if (run.RunType != PayrollRunType.Regular) return [];
+        return (await context.Pay_PayrollRunMembers
+                .Join(context.Pay_PayrollRuns, m => m.PayrollRunId, r => r.Id, (m, r) => new { m.HremployeeId, Run = r })
+                .Where(x => x.Run.CompanyId == run.CompanyId && x.Run.RunType == PayrollRunType.FinalPay
+                            && x.Run.PayrollPeriod == run.PayrollPeriod && x.Run.TermNo == run.TermNo
+                            && x.Run.Status != PayrollRunStatus.Cancelled)
+                .Select(x => new { x.HremployeeId, x.Run.Id })
+                .ToListAsync(ct))
+            .GroupBy(x => x.HremployeeId).ToDictionary(g => g.Key, g => g.First().Id);
+    }
+
     public static Reason? WhyExcluded(bool isActive, DateTime? workDate, DateTime? resignDate, string? empTypeCode,
         IReadOnlyCollection<string> nonPayrollTypeCodes)
     {

@@ -71,6 +71,8 @@ public class PayrollCalculationService
         if (!PayrollRunTypes.IsSupported(run.RunType))
             throw new InvalidOperationException(PayrollRunTypes.UnsupportedMessage);
         var supplementary = run.RunType == PayrollRunType.Bonus;
+        // รอบจ่ายคนออก = คิดเหมือนรอบปกติ (เงินเดือนถึงวันออก OT ประกันสังคม กองทุน ภาษี) แต่เฉพาะคนที่ระบุไว้
+        var finalPay = run.RunType == PayrollRunType.FinalPay;
 
         // ลำดับงวดต้องถูก (audit H3): ภาษีสะสมของงวดนี้อ่านจากงวดก่อนหน้าที่ "อนุมัติแล้ว" เท่านั้น
         // ดังนั้นงวดก่อนหน้าในปีเดียวกันต้องอนุมัติ/ยกเลิกให้หมดก่อน และห้ามคำนวณงวดเก่าซ้ำ
@@ -78,7 +80,7 @@ public class PayrollCalculationService
         var yearStartForOrder = new DateOnly(run.PeriodStart.Year, 1, 1);
         var openEarlier = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == run.CompanyId && r.Id != run.Id
-                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus)
+                        && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus || r.RunType == PayrollRunType.FinalPay)
                         && r.PeriodStart >= yearStartForOrder && r.PeriodStart < run.PeriodStart
                         && r.Status != PayrollRunStatus.Cancelled && r.Status < PayrollRunStatus.Approved)
             .Select(r => r.PayrollPeriod).Distinct().OrderBy(p => p).ToListAsync(ct);
@@ -319,6 +321,20 @@ public class PayrollCalculationService
                     Terms: Math.Max(1, g.Select(x => x.TermNo).Distinct().Count())));
         }
 
+        // รอบจ่ายคนออก: เฉพาะพนักงานที่ระบุในรอบ · รอบปกติ: ข้ามคนที่จ่ายในรอบจ่ายคนออกของงวดเดียวกันแล้ว
+        if (finalPay)
+        {
+            var members = (await context.Pay_PayrollRunMembers.Where(m => m.PayrollRunId == run.Id)
+                .Select(m => m.HremployeeId).ToListAsync(ct)).ToHashSet();
+            eligibleEmployees = eligibleEmployees.Where(e => members.Contains(e.id)).ToList();
+        }
+        else if (!supplementary)
+        {
+            var settled = await PayrollEligibility.PaidInFinalPayRunAsync(context, run, ct);
+            if (settled.Count > 0)
+                eligibleEmployees = eligibleEmployees.Where(e => !settled.ContainsKey(e.id)).ToList();
+        }
+
         // Phase B: employees HR placed on hold for THIS run (data not ready, dispute,
         // documents pending) are skipped here and calculated in a later run.
         var heldEmployeeIds = await context.Pay_PayrollRunHolds
@@ -395,7 +411,10 @@ public class PayrollCalculationService
         var adhocByEmployee = (await context.Pay_AdhocPayItems
                 .Include(a => a.Pay_PayItemType)
                 .Where(a => a.TargetPeriod == run.PayrollPeriod
-                            && (supplementary ? a.TargetRunType == PayrollRunType.Bonus : a.TargetRunType != PayrollRunType.Bonus)
+                            // รอบจ่ายคนออกหยิบรายการของรอบปกติด้วย (คนนี้ไม่อยู่ในรอบปกติของงวดนี้แล้ว) — รอบปกติไม่หยิบรายการของรอบจ่ายคนออก
+                            && (supplementary ? a.TargetRunType == PayrollRunType.Bonus
+                                : finalPay ? a.TargetRunType == PayrollRunType.Regular || a.TargetRunType == PayrollRunType.FinalPay
+                                : a.TargetRunType != PayrollRunType.Bonus && a.TargetRunType != PayrollRunType.FinalPay)
                             && (a.TargetTermNo == null || a.TargetTermNo == run.TermNo)
                             && (a.Status == PayAdhocItemStatus.Approved
                                 || (a.Status == PayAdhocItemStatus.Consumed && a.ConsumedByPayrollRunId == run.Id)))
@@ -438,6 +457,11 @@ public class PayrollCalculationService
             var schedule = PayScheduleResolver.Resolve(emp.id,
                 isDailyWage ? PayScheduleGroup.DailyWage : PayScheduleGroup.MonthlySalaried,
                 run.PeriodStart, paySchedules, payScheduleOverrides);
+            // งวดสุดท้ายของคนที่ออก (วันออกอยู่ในงวดนี้): ไม่มีเงินได้หลังจากนี้แล้ว ภาษีทั้งปีจึงคิดจากเงินได้จริง
+            // (สะสม + งวดนี้) แล้วหักส่วนที่ยังขาดทั้งหมดในงวดนี้ — ไม่ประมาณการเงินเดือนต่อถึงสิ้นปีแล้วหักแค่ส่วนเดียว
+            var leavesThisPeriod = resignDate is DateOnly lastDay && lastDay <= run.PeriodEnd && !supplementary;
+            if (leavesThisPeriod)
+                schedule = schedule with { RemainingMonthsIncludingThis = schedule.MonthFraction, RemainingPeriodsIncludingThis = 1 };
             var proration = ProrationCalculator.Calculate(run.PeriodStart, run.PeriodEnd, joinDate, resignDate, prorationDivisor, schedule.MonthFraction);
 
             var payEmp = new Pay_PayrollEmployee
@@ -782,8 +806,10 @@ public class PayrollCalculationService
                 var termsLeftThisMonth = schedule.PeriodsPerMonth - schedule.TermNo;
                 var restOfMonthFlat = Math.Max(0m, ssoMonthlyProjected - priorMonthSso - ssoAmount) + pfDeductible * termsLeftThisMonth;
                 var monthsAfterThis = Math.Max(0m, schedule.RemainingMonthsIncludingThis - (termsLeftThisMonth + 1) * schedule.MonthFraction);
-                var projectedRemainingFlat = thisPeriodFlatDeduction + restOfMonthFlat
-                                             + (ssoMonthlyProjected + pfDeductible * schedule.PeriodsPerMonth) * monthsAfterThis;
+                var projectedRemainingFlat = leavesThisPeriod
+                    ? thisPeriodFlatDeduction   // no later periods for a leaver
+                    : thisPeriodFlatDeduction + restOfMonthFlat
+                      + (ssoMonthlyProjected + pfDeductible * schedule.PeriodsPerMonth) * monthsAfterThis;
 
                 // รายการเฉพาะกิจที่ต้องเสียภาษี (ค่าคอมฯ/โบนัสที่จ่ายในรอบปกติ) = เงินได้ครั้งเดียว คิดภาษีแบบส่วนต่าง ไม่คูณเดือนที่เหลือ
                 (monthlyTax, annualCalc) = TaxBracketCalculator.CalculatePeriodWithholding(

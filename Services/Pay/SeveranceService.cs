@@ -36,7 +36,8 @@ public class SeveranceService
         // SeparationRequestService once an Hr_SeparationRequest is approved,
         // so this also means "no approved separation request yet" blocks
         // severance the same as any other disqualifying type.
-        if (emp.SeparationType != SeparationType.TerminationOrdinary)
+        // เกษียณ (ม.118/1) และสิ้นสุดสัญญาจ้างมีกำหนดเวลา นับเป็นการเลิกจ้างที่ต้องจ่ายค่าชดเชยเช่นกัน
+        if (emp.SeparationType is not (SeparationType.TerminationOrdinary or SeparationType.Retirement or SeparationType.ContractEnd))
         {
             var reason = emp.SeparationType switch
             {
@@ -90,7 +91,8 @@ public class SeveranceService
                 rule.RemainderExpenseRate, rule.RemainderExpenseCap));
     }
 
-    public async Task<long> SubmitAsync(long hremployeeId, string targetPeriod, decimal amount, string reason, long actorUserId, CancellationToken ct = default)
+    public async Task<long> SubmitAsync(long hremployeeId, string targetPeriod, decimal amount, string reason, long actorUserId,
+        CancellationToken ct = default, PayrollRunType targetRunType = PayrollRunType.Regular)
     {
         // Re-validate server-side rather than trusting a cached dialog preview
         // — WorkDate/ResignDate/SalaryAmt could have changed between preview
@@ -129,6 +131,7 @@ public class SeveranceService
             HremployeeId = hremployeeId,
             PayItemTypeId = severanceTypeId,
             TargetPeriod = targetPeriod,
+            TargetRunType = targetRunType,   // FinalPay = จ่ายในรอบจ่ายคนออก (ม.70)
             Amount = amount,
             // ยังมีส่วนเกินที่ต้องเสียภาษีเมื่อหลังหักส่วนยกเว้นแล้วยังเหลือเงินได้ (แม้ค่าใช้จ่ายทำให้ฐานภาษีเป็น 0 ก็ยังต้องรายงานเป็นเงินได้)
             IsTaxable = tax is not null && tax.Excess > 0m,

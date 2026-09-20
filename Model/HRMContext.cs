@@ -361,6 +361,7 @@ public partial class HRMContext : DbContext
     public virtual DbSet<Pay_TaxDeductionType> Pay_TaxDeductionTypes { get; set; }
     public virtual DbSet<Pay_MinimumWage> Pay_MinimumWages { get; set; }
     public virtual DbSet<Pay_SeveranceTaxRule> Pay_SeveranceTaxRules { get; set; }
+    public virtual DbSet<Pay_PayrollRunMember> Pay_PayrollRunMembers { get; set; }
     public virtual DbSet<Pay_EmployeeTaxDeductionElection> Pay_EmployeeTaxDeductionElections { get; set; }
 
     public virtual DbSet<Pay_EmployeePriorEmployerIncome> Pay_EmployeePriorEmployerIncomes { get; set; }
@@ -1589,7 +1590,8 @@ public partial class HRMContext : DbContext
             entity.HasIndex(r => new { r.CompanyId, r.PayrollPeriod, r.TermNo, r.RunType })
                 .IsUnique()
                 .HasDatabaseName("IX_Pay_PayrollRun_CompanyId_PayrollPeriod_RunType")
-                .HasFilter("[Status] <> 9");
+                // รอบจ่ายคนออก (RunType 4) ไม่อยู่ในกติกานี้: คนออกคนละวันในเดือนเดียวกันต้องได้เงินภายใน 3 วันคนละรอบ
+                .HasFilter("[Status] <> 9 AND [RunType] <> 4");
         });
 
         modelBuilder.Entity<Pay_PayrollEmployee>(entity =>
