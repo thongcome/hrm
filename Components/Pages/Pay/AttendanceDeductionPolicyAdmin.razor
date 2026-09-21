@@ -32,6 +32,16 @@
 
     @if (_policy is not null)
     {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">รอบตัดเวลา</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int?" @bind-Value="_policy.AttendanceCutoffDay" Label="ตัดเวลาทำงานทุกวันที่ (ว่าง = ตามงวดเงินเดือน)" Min="1" Max="30" Clearable="true" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@CutoffHint</MudText>
+            </MudItem>
+        </MudGrid>
+
         <MudText Typo="Typo.h6" Class="mt-4 mb-2">มาสาย</MudText>
         <MudGrid>
             <MudItem xs="12" sm="6">
@@ -96,7 +106,19 @@
                     <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.WorkingDays">วันทำงานของบริษัทในงวด — ไม่นับวันหยุดประจำสัปดาห์และวันหยุดบริษัท (ค่าเริ่มต้น)</MudSelectItem>
                     <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.CalendarDays">วันตามปฏิทินในงวด รวมเสาร์-อาทิตย์ (ตามสัดส่วนวันเข้า-ออก)</MudSelectItem>
                     <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.AttendanceDays">วันที่มีการลงเวลาและไม่ขาดงาน (ถ้าไม่มีข้อมูลลงเวลาจะกลับไปใช้วันตามปฏิทิน)</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode" Value="PayDailyWageDaysMode.FixedDaysPerMonth">จำนวนวันคงที่ต่อเดือน (รายวันแบบประจำ เช่น 22 วัน) − วันขาดงาน</MudSelectItem>
                 </MudSelect>
+            </MudItem>
+            @if (_policy.DailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="int?" @bind-Value="_policy.DailyWageFixedDays" Label="จำนวนวันต่อเดือน" Min="1" Max="31" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    ถ้าบริษัทมีรายวันมากกว่าหนึ่งแบบ (เช่น รายวันประจำ 22 วัน กับรายวันทั่วไปตามวันทำงานจริง) ตั้งทับรายประเภทได้ที่หน้า "ประเภทพนักงาน"
+                </MudText>
             </MudItem>
             <MudItem xs="12">
                 <MudText Typo="Typo.caption" Class="mud-text-secondary">
@@ -116,6 +138,112 @@
     }
 </MudPaper>
 
+@* กติกาแบบตั้งค่าได้ (CEO 21 ก.ย. 2569): เลือกได้ว่าตัดจากส่วนไหน — เงินเดือน หรือรายได้ประจำตัวใดตัวหนึ่ง (เบี้ยขยัน ค่าอาหาร …) และสูตรอะไร *@
+<MudPaper Class="pa-4 mb-4" MaxWidth="1200px">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <div>
+            <MudText Typo="Typo.h5">กติกาเวลาทำงาน → เงิน (ตั้งได้หลายข้อ)</MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                แต่ละข้อ = เหตุ (มาสาย / ขาดงาน) → หักจากอะไร → สูตร · ตัวอย่าง: <i>"มาสายในรอบตัดเวลา 1 ครั้ง → เบี้ยขยัน → ไม่จ่ายทั้งก้อน"</i> ·
+                รายได้ที่ถูกตัดยังขึ้นบรรทัดในสลิปพร้อมเหตุผล ไม่หายไปเฉย ๆ · ยอดที่หักรวมกันไม่เกินยอดของรายได้ตัวนั้น
+            </MudText>
+        </div>
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NewRule">เพิ่มกติกา</MudButton>
+        }
+    </MudStack>
+
+    @if (_benefits.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            ยังไม่มีรายได้ประจำให้ผูก — สร้าง "เบี้ยขยัน" (หรือรายได้อื่น) เป็นสวัสดิการแบบจ่ายประจำรายเดือนที่หน้า
+            <MudLink Href="/welfare/benefit-types">ประเภทสวัสดิการ</MudLink> ก่อน แล้วกลับมาผูกกติกาที่นี่
+        </MudAlert>
+    }
+
+    <MudTable Items="_rules" Dense="true" Hover="true" Class="mt-3" Elevation="0">
+        <HeaderContent>
+            <MudTh>ลำดับ</MudTh><MudTh>ชื่อกติกา</MudTh><MudTh>เหตุ</MudTh><MudTh>หักจาก</MudTh><MudTh>สูตร</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.SortOrder</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@TriggerText(context)</MudTd>
+            <MudTd>@TargetText(context)</MudTd>
+            <MudTd>@FormulaText(context)</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "ใช้งาน" : "ปิด")</MudChip></MudTd>
+            <MudTd>
+                @if (_rights?.CanEdit == true)
+                {
+                    <MudButton Size="Size.Small" OnClick="@(() => EditRule(context))">แก้ไข</MudButton>
+                    <MudButton Size="Size.Small" Color="@(context.IsActive ? Color.Error : Color.Success)" OnClick="@(() => ToggleRuleAsync(context))">@(context.IsActive ? "ปิดใช้" : "เปิดใช้")</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-2">ยังไม่มีกติกา — ระบบหักเฉพาะตามนโยบายด้านบน</MudText></NoRecordsContent>
+    </MudTable>
+
+    @if (_editing is not null)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-2">@(_editing.Id == 0 ? "เพิ่มกติกา" : "แก้ไขกติกา")</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_editing.Name" Label="ชื่อกติกา (ขึ้นในสลิป)" Required="true" MaxLength="200" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="6" sm="3"><MudNumericField T="int" @bind-Value="_editing.SortOrder" Label="ลำดับ" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="PayAttendanceTrigger" @bind-Value="_editing.Trigger" Label="เหตุ" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayAttendanceTrigger" Value="PayAttendanceTrigger.Late">มาสาย</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceTrigger" Value="PayAttendanceTrigger.Absent">ขาดงาน</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="PayAttendanceTarget" @bind-Value="_editing.Target" Label="หักจาก" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayAttendanceTarget" Value="PayAttendanceTarget.RecurringEarning">รายได้ประจำ (เลือกด้านขวา)</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceTarget" Value="PayAttendanceTarget.BaseSalary">เงินเดือน (เฉพาะพนักงานรายเดือน)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (_editing.Target == PayAttendanceTarget.RecurringEarning)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="long?" @bind-Value="_editing.WelBenefitTypeId" Label="รายได้ประจำที่ถูกหัก" Variant="Variant.Outlined">
+                        @foreach (var b in _benefits)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)b.Id)">@BenefitLabel(b)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudSelect T="PayAttendanceFormula" @bind-Value="_editing.Formula" Label="สูตร" Variant="Variant.Outlined">
+                    <MudSelectItem T="PayAttendanceFormula" Value="PayAttendanceFormula.ForfeitAll">ไม่จ่ายทั้งก้อน</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceFormula" Value="PayAttendanceFormula.AmountPerMinute">นาทีที่สาย × บาท</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceFormula" Value="PayAttendanceFormula.PercentPerMinute">นาทีที่สาย × % ของยอดรายได้นั้น</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceFormula" Value="PayAttendanceFormula.AmountPerOccurrence">จำนวนครั้ง (วัน) × บาท</MudSelectItem>
+                    <MudSelectItem T="PayAttendanceFormula" Value="PayAttendanceFormula.PercentPerOccurrence">จำนวนครั้ง (วัน) × % ของยอดรายได้นั้น</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (_editing.Formula != PayAttendanceFormula.ForfeitAll)
+            {
+                <MudItem xs="6" sm="3"><MudNumericField T="decimal" @bind-Value="_editing.Value" Label="@ValueLabel(_editing)" Format="0.####" Min="0" Variant="Variant.Outlined" /></MudItem>
+            }
+            <MudItem xs="6" sm="3"><MudNumericField T="int" @bind-Value="_editing.ThresholdCount" Label="เริ่มมีผลเมื่อครบ (ครั้ง)" Min="1" Variant="Variant.Outlined" /></MudItem>
+            @if (_editing.Trigger == PayAttendanceTrigger.Late)
+            {
+                <MudItem xs="6" sm="3"><MudNumericField T="int" @bind-Value="_editing.GraceMinutes" Label="ผ่อนผัน (นาที/วัน)" Min="0" Max="240" Variant="Variant.Outlined" /></MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_editing.Note" Label="หมายเหตุ (ที่มาของกติกา เช่น ประกาศบริษัทเลขที่ …)" MaxLength="500" Variant="Variant.Outlined" /></MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Normal" Dense="true">อ่านว่า: @Sentence(_editing)</MudAlert>
+            </MudItem>
+        </MudGrid>
+        <MudStack Row="true" Class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRuleAsync" Disabled="_busy">บันทึกกติกา</MudButton>
+            <MudButton OnClick="@(() => _editing = null)">ยกเลิก</MudButton>
+        </MudStack>
+    }
+</MudPaper>
+
 @code {
     private const string ProgramPath = "/pay/admin/attendance-deduction";
     private ProgramRoleService.ProgramRights? _rights;
@@ -123,6 +251,19 @@
     private string _companyId = "";
     private long _userId;
     private bool _busy;
+    private List<Pay_AttendanceRule> _rules = new();
+    private List<Wel_BenefitType> _benefits = new();
+    private Pay_AttendanceRule? _editing;
+
+    private string CutoffHint => _policy?.AttendanceCutoffDay is int c && c >= 1 && c <= 30
+        ? $"เงินเดือนคิดเต็มเดือนปฏิทิน ส่วนสาย/ขาดงาน/กติกาด้านล่าง อ่านเวลาทำงานวันที่ {c + 1} ของเดือนก่อน ถึงวันที่ {c} ของเดือนของงวด"
+        : "ไม่ตั้ง = อ่านเวลาทำงานช่วงเดียวกับงวดเงินเดือน (วันที่ 1 ถึงสิ้นเดือน)";
+
+    private static string BenefitLabel(Wel_BenefitType b)
+        => $"{b.Code} · {b.NameTh}" + (b.MonthlyAllowanceAmount is decimal a ? $" ({a:N2}/เดือน)" : "");
+
+    private static string ValueLabel(Pay_AttendanceRule r)
+        => r.Formula is PayAttendanceFormula.PercentPerMinute or PayAttendanceFormula.PercentPerOccurrence ? "%" : "บาท";
 
     protected override async Task OnInitializedAsync()
     {
@@ -134,6 +275,110 @@
         await using var ctx = await DbFactory.CreateDbContextAsync();
         _policy = await ctx.Pay_AttendanceDeductionPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.CompanyId == _companyId)
                   ?? new Pay_AttendanceDeductionPolicy { CompanyId = _companyId };
+        _benefits = await ctx.Wel_BenefitTypes.AsNoTracking()
+            .Where(b => b.CompanyId == _companyId && b.IsActive && b.EntitlementMode == WelfareEntitlementMode.MonthlyAllowance)
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Code).ToListAsync();
+        await LoadRulesAsync();
+    }
+
+    private async Task LoadRulesAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        _rules = await ctx.Pay_AttendanceRules.AsNoTracking().Where(r => r.CompanyId == _companyId)
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync();
+    }
+
+    private static string TriggerText(Pay_AttendanceRule r) => r.Trigger == PayAttendanceTrigger.Late
+        ? "มาสาย" + (r.GraceMinutes > 0 ? $" (ผ่อนผัน {r.GraceMinutes} นาที)" : "") : "ขาดงาน";
+
+    private string TargetText(Pay_AttendanceRule r) => r.Target == PayAttendanceTarget.BaseSalary ? "เงินเดือน"
+        : _benefits.FirstOrDefault(b => b.Id == r.WelBenefitTypeId) is { } b ? $"{b.Code} · {b.NameTh}" : "(รายได้ที่ผูกไว้ถูกปิด/ลบ)";
+
+    private static string FormulaText(Pay_AttendanceRule r)
+    {
+        var from = r.ThresholdCount > 1 ? $"ครบ {r.ThresholdCount} ครั้ง → " : "";
+        return from + r.Formula switch
+        {
+            PayAttendanceFormula.ForfeitAll => "ไม่จ่ายทั้งก้อน",
+            PayAttendanceFormula.AmountPerMinute => $"{r.Value:0.####} บาท/นาที",
+            PayAttendanceFormula.PercentPerMinute => $"{r.Value:0.####}% ต่อนาที",
+            PayAttendanceFormula.AmountPerOccurrence => $"{r.Value:N2} บาท/ครั้ง",
+            PayAttendanceFormula.PercentPerOccurrence => $"{r.Value:0.####}% ต่อครั้ง",
+            _ => "-",
+        };
+    }
+
+    private string Sentence(Pay_AttendanceRule r)
+        => $"ถ้า{TriggerText(r)}ในรอบตัดเวลา{(r.ThresholdCount > 1 ? $" ครบ {r.ThresholdCount} ครั้ง" : " แม้ครั้งเดียว")} → {TargetText(r)} : {FormulaText(r)}";
+
+    private void NewRule() => _editing = new Pay_AttendanceRule
+    {
+        CompanyId = _companyId, Name = "", SortOrder = (_rules.Count + 1) * 10,
+        WelBenefitTypeId = _benefits.FirstOrDefault()?.Id,
+    };
+
+    private void EditRule(Pay_AttendanceRule r) => _editing = new Pay_AttendanceRule
+    {
+        Id = r.Id, CompanyId = r.CompanyId, Name = r.Name, Trigger = r.Trigger, Target = r.Target, WelBenefitTypeId = r.WelBenefitTypeId,
+        Formula = r.Formula, Value = r.Value, GraceMinutes = r.GraceMinutes, ThresholdCount = r.ThresholdCount, SortOrder = r.SortOrder,
+        IsActive = r.IsActive, Note = r.Note,
+    };
+
+    private async Task SaveRuleAsync()
+    {
+        if (_editing is null) return;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, _editing.Id == 0 ? ProgramRoleService.ProgramAction.Create : ProgramRoleService.ProgramAction.Edit); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+
+        if (string.IsNullOrWhiteSpace(_editing.Name)) { Snackbar.Add("กรุณาตั้งชื่อกติกา", Severity.Warning); return; }
+        if (_editing.Target == PayAttendanceTarget.RecurringEarning && _editing.WelBenefitTypeId is null)
+        { Snackbar.Add("เลือกรายได้ประจำที่จะถูกหัก", Severity.Warning); return; }
+        if (_editing.Formula != PayAttendanceFormula.ForfeitAll && _editing.Value <= 0)
+        { Snackbar.Add("ใส่ค่าของสูตร (บาท หรือ %) มากกว่า 0", Severity.Warning); return; }
+        if (_editing.Trigger == PayAttendanceTrigger.Absent && _editing.Formula is PayAttendanceFormula.AmountPerMinute or PayAttendanceFormula.PercentPerMinute)
+        { Snackbar.Add("เหตุ \"ขาดงาน\" ใช้สูตรต่อนาทีไม่ได้ — เลือกต่อครั้ง หรือไม่จ่ายทั้งก้อน", Severity.Warning); return; }
+
+        _busy = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            var row = _editing.Id == 0 ? null : await ctx.Pay_AttendanceRules.FirstOrDefaultAsync(r => r.Id == _editing.Id && r.CompanyId == _companyId);
+            if (row is null) { row = new Pay_AttendanceRule { CompanyId = _companyId }; ctx.Pay_AttendanceRules.Add(row); }
+            row.Name = _editing.Name.Trim();
+            row.Trigger = _editing.Trigger;
+            row.Target = _editing.Target;
+            row.WelBenefitTypeId = _editing.Target == PayAttendanceTarget.RecurringEarning ? _editing.WelBenefitTypeId : null;
+            row.Formula = _editing.Formula;
+            row.Value = _editing.Formula == PayAttendanceFormula.ForfeitAll ? 0m : _editing.Value;
+            row.GraceMinutes = _editing.Trigger == PayAttendanceTrigger.Late ? Math.Max(0, _editing.GraceMinutes) : 0;
+            row.ThresholdCount = Math.Max(1, _editing.ThresholdCount);
+            row.SortOrder = _editing.SortOrder;
+            row.Note = string.IsNullOrWhiteSpace(_editing.Note) ? null : _editing.Note.Trim();
+            row.IsActive = _editing.Id == 0 || _editing.IsActive;
+            row.ModifiedDate = DateTime.Now;
+            row.ModifiedByUserId = _userId;
+            await ctx.SaveChangesAsync();
+            _editing = null;
+            await LoadRulesAsync();
+            Snackbar.Add("บันทึกกติกาแล้ว — มีผลกับรอบที่คำนวณหลังจากนี้", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    // ปิดใช้ ไม่ลบ (soft delete ตามมาตรฐาน) — รอบที่คำนวณไปแล้วยังอ้างกติกานี้ในบรรทัดสลิป
+    private async Task ToggleRuleAsync(Pay_AttendanceRule r)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Edit); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var row = await ctx.Pay_AttendanceRules.FirstOrDefaultAsync(x => x.Id == r.Id && x.CompanyId == _companyId);
+        if (row is null) return;
+        row.IsActive = !row.IsActive; row.ModifiedDate = DateTime.Now; row.ModifiedByUserId = _userId;
+        await ctx.SaveChangesAsync();
+        await LoadRulesAsync();
     }
 
     private async Task SaveAsync()
@@ -158,6 +403,10 @@
             row.ProrationMode = _policy.ProrationMode;
             row.HoursPerDay = Math.Clamp(_policy.HoursPerDay, 1m, 24m);
             row.DailyWageMode = _policy.DailyWageMode;
+            row.DailyWageFixedDays = _policy.DailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth ? _policy.DailyWageFixedDays : null;
+            if (row.DailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth && row.DailyWageFixedDays is not > 0)
+                throw new InvalidOperationException("เลือกจำนวนวันคงที่ต่อเดือนแล้ว กรุณาใส่จำนวนวัน (เช่น 22)");
+            row.AttendanceCutoffDay = _policy.AttendanceCutoffDay is int cd && cd >= 1 && cd <= 30 ? cd : null;
             row.IsActive = true;
             row.ModifiedDate = DateTime.Now;
             row.ModifiedByUserId = _userId;

@@ -248,8 +248,23 @@ public class PayrollCalculationService
         var prorationDivisor = attendancePolicy is { ProrationMode: PayProrationMode.DaysPerMonthDivisor, DaysPerMonthDivisor: > 0 }
             ? attendancePolicy.DaysPerMonthDivisor
             : (int?)null;
+        // รอบตัดเวลา (PST, 21 ก.ย. 2569): เงินเดือนคิดตามงวดปฏิทิน แต่สาย/ขาด/เบี้ยขยันอ่านจากรอบตัดเวลา (เช่น 26–25)
+        // ไม่ตั้งวันตัด = ช่วงเดียวกับงวด ผลเท่าเดิม
+        var (attFrom, attTo) = AttendanceRuleCalculator.AttendanceWindow(run.PeriodStart, run.PeriodEnd, attendancePolicy?.AttendanceCutoffDay);
+        var attendanceWindowNote = attendancePolicy?.AttendanceCutoffDay is int ? $" [รอบตัดเวลา {attFrom:dd/MM}–{attTo:dd/MM/yyyy}]" : "";
+        var attendanceRules = await context.Pay_AttendanceRules
+            .Where(r => r.CompanyId == run.CompanyId && r.IsActive)
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.Id)
+            .ToListAsync(ct);
+        // วิธีนับวันของค่าจ้างรายวันตั้งทับรายประเภทพนักงานได้ (รายวันแบบประจำ 22 วัน vs รายวันทั่วไป)
+        var dailyWageByEmpType = (await context.Pos_EmployeeTypes
+                .Where(x => x.CompanyId == run.CompanyId && x.IsActive && x.Code != null && x.DailyWageMode != null)
+                .Select(x => new { x.Code, x.DailyWageMode, x.DailyWageFixedDays })
+                .ToListAsync(ct))
+            .GroupBy(x => x.Code!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var attendanceByEmployee = (await context.Att_DailyAttendances
-                .Where(a => a.CompanyId == run.CompanyId && a.WorkDate >= run.PeriodStart && a.WorkDate <= run.PeriodEnd)
+                .Where(a => a.CompanyId == run.CompanyId && a.WorkDate >= attFrom && a.WorkDate <= attTo)
                 .Select(a => new { a.HremployeeId, a.IsAbsent, a.LateMinutes })
                 .ToListAsync(ct))
             .GroupBy(a => a.HremployeeId)
@@ -500,7 +515,9 @@ public class PayrollCalculationService
             {
                 // นับวันจ่ายตามนโยบาย (audit M6): ค่าเริ่มต้น = วันทำงานจริงของบริษัท (ไม่นับเสาร์-อาทิตย์/วันหยุดบริษัท)
                 // ไม่ใช่วันตามปฏิทินซึ่งจ่ายเกินให้พนักงานรายวัน — วันตามปฏิทินยังเลือกได้ถ้าบริษัทจ่ายแบบนั้นจริง
-                var dailyMode = attendancePolicy?.DailyWageMode ?? PayDailyWageDaysMode.WorkingDays;
+                var typeOverride = emp.EmptypeCode is not null && dailyWageByEmpType.TryGetValue(emp.EmptypeCode, out var dwo) ? dwo : null;
+                var dailyMode = typeOverride?.DailyWageMode ?? attendancePolicy?.DailyWageMode ?? PayDailyWageDaysMode.WorkingDays;
+                var fixedDays = typeOverride?.DailyWageFixedDays ?? attendancePolicy?.DailyWageFixedDays;
                 var useAttendance = dailyMode == PayDailyWageDaysMode.AttendanceDays && empAttendance is { Count: > 0 };
                 int paidDays;
                 string paidDaysNote;
@@ -514,6 +531,18 @@ public class PayrollCalculationService
                 {
                     paidDays = empAttendance!.Count(a => !a.IsAbsent) + paidHolidays;
                     paidDaysNote = $"วันที่มีการลงเวลา + วันหยุดตามประเพณี {paidHolidays} วัน";
+                }
+                else if (dailyMode == PayDailyWageDaysMode.FixedDaysPerMonth && fixedDays is int fd && fd > 0)
+                {
+                    // รายวันแบบประจำ: จำนวนวันคงที่ต่อเดือน (เช่น 22) − วันขาดงานในรอบตัดเวลา
+                    // เข้า/ออกกลางงวด: จ่ายตามวันทำงานจริงของช่วงที่อยู่ แต่ไม่เกินจำนวนวันคงที่
+                    var fullPeriod = spanStartD <= run.PeriodStart && spanEndD >= run.PeriodEnd;
+                    var spanWorkdays = spanEndD < spanStartD ? 0
+                        : (int)HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(spanStartD, spanEndD, new HashSet<DateOnly>(), companyWorkDaysMask);
+                    var entitled = fullPeriod ? (int)Math.Round(fd * schedule.MonthFraction, MidpointRounding.AwayFromZero) : Math.Min(fd, spanWorkdays);
+                    var absentFixed = empAttendance?.Count(a => a.IsAbsent) ?? 0;
+                    paidDays = Math.Max(0, entitled - absentFixed);
+                    paidDaysNote = $"จำนวนวันคงที่ {fd} วัน/เดือน{(fullPeriod ? "" : $" — อยู่ไม่เต็มงวด จ่าย {entitled} วัน")}{(absentFixed > 0 ? $" หักขาดงาน {absentFixed} วัน" : "")}{attendanceWindowNote}";
                 }
                 else if (dailyMode == PayDailyWageDaysMode.CalendarDays)
                 {
@@ -598,6 +627,22 @@ public class PayrollCalculationService
                 attendanceDeduction = Math.Min(attendanceDeduction, baseSalary);
             }
 
+            // กติกาแบบตั้งค่าได้ (Pay_AttendanceRule) — ข้อเท็จจริงเวลาทำงานของคนนี้ในรอบตัดเวลา
+            var ruleFacts = new AttendanceRuleCalculator.Facts(
+                empAttendance?.Where(a => !a.IsAbsent && a.LateMinutes > 0).Select(a => a.LateMinutes).ToList() ?? new List<int>(),
+                empAttendance?.Count(a => a.IsAbsent) ?? 0);
+            if (!supplementary && !isDailyWage && attendanceRules.Count > 0)
+            {
+                foreach (var rule in attendanceRules.Where(r => r.Target == PayAttendanceTarget.BaseSalary))
+                {
+                    var outcome = AttendanceRuleCalculator.Apply(rule, ruleFacts, baseSalary, baseSalary - attendanceDeduction);
+                    if (outcome.Deduction <= 0m) continue;
+                    lineItems.Add(NewLine(payItemTypes[rule.Trigger == PayAttendanceTrigger.Late ? "LATE" : "ABSENT"], PayLineSourceType.Adjustment,
+                        outcome.Deduction, -1, ++seq, "Pay_AttendanceRule", rule.Id, outcome.Note + attendanceWindowNote));
+                    attendanceDeduction += outcome.Deduction;
+                }
+            }
+
             var otAmount = 0m;
             if (!supplementary)
             {
@@ -633,8 +678,24 @@ public class PayrollCalculationService
                         amt = Math.Round(amt * schedule.MonthFraction * proration.ExactFactor, 2, MidpointRounding.AwayFromZero);
                         prorateNote = $" × สัดส่วนวันทำงาน {proration.ProrationFactor:P2}{(schedule.MonthFraction != 1m ? $" × ส่วนของเดือน {schedule.MonthFraction:0.##}" : "")}";
                     }
+                    // กติกาเวลาทำงานที่ผูกกับรายได้ตัวนี้ (เช่น เบี้ยขยัน: สายในรอบตัดเวลา → ไม่จ่าย) — ยอดเต็มก่อนหักอยู่ในคำอธิบาย
+                    var ruleNote = "";
+                    if (attendanceRules.Count > 0)
+                    {
+                        var fullAmt = amt;
+                        foreach (var rule in attendanceRules.Where(r => r.Target == PayAttendanceTarget.RecurringEarning && r.WelBenefitTypeId == wb.Id))
+                        {
+                            var outcome = AttendanceRuleCalculator.Apply(rule, ruleFacts, fullAmt, amt);
+                            if (outcome.Deduction <= 0m) continue;
+                            amt -= outcome.Deduction;
+                            ruleNote += $" · {outcome.Note}";
+                        }
+                        if (ruleNote.Length > 0) ruleNote = $" (ยอดเต็ม {fullAmt:N2}{ruleNote}{attendanceWindowNote})";
+                    }
+                    // ถูกตัดจนเหลือ 0 ยังลงบรรทัดไว้ให้พนักงานเห็นเหตุผลบนสลิป ไม่ใช่หายไปเฉย ๆ
+                    if (amt <= 0 && ruleNote.Length == 0) continue;
                     lineItems.Add(NewLine(itemType, PayLineSourceType.Allowance, amt, 1, ++seq, "Wel_BenefitType", wb.Id,
-                        $"สวัสดิการจ่ายประจำ {wb.NameTh}{prorateNote} = {amt:N2}"));
+                        $"สวัสดิการจ่ายประจำ {wb.NameTh}{prorateNote}{ruleNote} = {amt:N2}"));
                     welfareAllowanceTotal += amt;
                     if (wb.IsTaxable) welfareTaxableAllowance += amt;
                     if (itemType.IsSsoWageBase) ssoWageBaseAllowance += amt;

@@ -1,0 +1,167 @@
+@using HRM.Models
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+
+@*
+    ที่อยู่ของพนักงาน — ให้ HR กรอก/แก้ได้ (CEO, 21 ก.ย. 2569: "ประวัติบุคลากร ไม่มีข้อมูลที่อยู่ … ใน jsp มี table แล้ว")
+    ใช้ตารางเดิมของระบบ JSP: pis.address (personid + addrcode → addrtype) ซึ่งที่นี่คือ address (hremployeeid + address_type_id →
+    mas_address_type REG/CUR) คอลัมน์ที่อยู่ชุดเดียวกันทุกช่อง (no/moo/village/buildingname/soi/road/subdistrict/districtid/postcode) — ไม่สร้างตารางใหม่
+    เดิมมีแค่ (1) หน้าประวัติแสดงอย่างเดียว (2) พนักงานแก้ที่อยู่ปัจจุบันเองใน ESS — ไม่มีทางให้ HR ใส่ตอนรับพนักงาน
+    ทั้งที่ 50 ทวิ / ภ.ง.ด.1ก พิมพ์ที่อยู่จากตารางนี้ · อีเมล/โทรศัพท์อยู่บนแถว CUR เหมือนเดิม (EmployeeEmailResolver) หน้านี้ไม่แตะ
+*@
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h6">ที่อยู่</MudText>
+        @if (_canEdit && !_editing)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="@(() => _editing = true)">แก้ไขที่อยู่</MudButton>
+        }
+    </MudStack>
+    @if (!_canEdit)
+    {
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudText>
+    }
+
+    @if (!_editing)
+    {
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ที่อยู่ตามทะเบียนบ้าน (ใช้พิมพ์ 50 ทวิ)</MudText>
+                <MudText Typo="Typo.body1">@Format(_reg)</MudText>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ที่อยู่ปัจจุบัน / ติดต่อได้</MudText>
+                <MudText Typo="Typo.body1">@Format(_cur)</MudText>
+            </MudItem>
+        </MudGrid>
+    }
+    else
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-3">ที่อยู่ตามทะเบียนบ้าน</MudText>
+        @AddressFields(_reg)
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+            <MudText Typo="Typo.subtitle2">ที่อยู่ปัจจุบัน / ติดต่อได้</MudText>
+            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyRegToCur">เหมือนทะเบียนบ้าน</MudButton>
+        </MudStack>
+        @AddressFields(_cur)
+
+        <MudStack Row="true" Class="mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">บันทึกที่อยู่</MudButton>
+            <MudButton OnClick="CancelAsync">ยกเลิก</MudButton>
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public long HremployeeId { get; set; }
+
+    // สิทธิ์แก้ไขใช้ของหน้าทะเบียนพนักงาน (AD.CRUDManage) — component นี้ฝังอยู่ในหน้านั้น
+    [Parameter] public string ProgramPath { get; set; } = "/pay/employees";
+
+    private const long RegTypeId = 1, CurTypeId = 2;   // mas_address_type: REG / CUR
+    private address _reg = new(), _cur = new();
+    private bool _editing, _canEdit, _busy;
+
+    private RenderFragment AddressFields(address a) => @<MudGrid Class="mt-1">
+        <MudItem xs="6" sm="2"><MudTextField @bind-Value="a.no" Label="เลขที่" MaxLength="100" /></MudItem>
+        <MudItem xs="6" sm="2"><MudTextField @bind-Value="a.moo" Label="หมู่" MaxLength="50" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="a.village" Label="หมู่บ้าน" MaxLength="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="a.buildingname" Label="อาคาร / ชั้น / ห้อง" MaxLength="200" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="a.soi" Label="ซอย" MaxLength="200" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="a.road" Label="ถนน" MaxLength="200" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="a.subdistrict" Label="ตำบล / แขวง" MaxLength="100" /></MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="a.districtid" Label="อำเภอ / เขต" MaxLength="100" /></MudItem>
+        <MudItem xs="12" sm="4"><MudTextField @bind-Value="a.province" Label="จังหวัด" MaxLength="100" /></MudItem>
+        <MudItem xs="6" sm="2"><MudTextField @bind-Value="a.postcode" Label="รหัสไปรษณีย์" MaxLength="50" /></MudItem>
+    </MudGrid>;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _canEdit = (await ProgramRoles.GetRightsAsync(state.User, ProgramPath)).CanEdit;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var ctx = await DbFactory.CreateDbContextAsync();
+        var rows = await ctx.addresses.AsNoTracking()
+            .Where(a => a.hremployeeid == HremployeeId && a.isactive)
+            .OrderByDescending(a => a.moddate ?? a.createdate).ToListAsync();
+        _reg = rows.FirstOrDefault(a => a.address_type_id == RegTypeId) ?? new address { hremployeeid = HremployeeId, address_type_id = RegTypeId };
+        _cur = rows.FirstOrDefault(a => a.address_type_id == CurTypeId) ?? new address { hremployeeid = HremployeeId, address_type_id = CurTypeId };
+    }
+
+    private void CopyRegToCur() => CopyFields(_reg, _cur);
+
+    private static void CopyFields(address from, address to)
+    {
+        to.no = from.no; to.moo = from.moo; to.village = from.village; to.buildingname = from.buildingname; to.soi = from.soi;
+        to.road = from.road; to.subdistrict = from.subdistrict; to.districtid = from.districtid; to.province = from.province; to.postcode = from.postcode;
+    }
+
+    private async Task CancelAsync() { _editing = false; await LoadAsync(); }
+
+    private async Task SaveAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Edit); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+        var userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : (long?)null;
+
+        _busy = true;
+        try
+        {
+            await using var ctx = await DbFactory.CreateDbContextAsync();
+            foreach (var edited in new[] { _reg, _cur })
+            {
+                // แถว CUR อาจมีอยู่แล้วเพราะเก็บอีเมล/โทรศัพท์ — แก้เฉพาะช่องที่อยู่ ไม่แตะช่องติดต่อ
+                var row = await ctx.addresses
+                    .Where(a => a.hremployeeid == HremployeeId && a.address_type_id == edited.address_type_id && a.isactive)
+                    .OrderByDescending(a => a.moddate ?? a.createdate).FirstOrDefaultAsync();
+                if (row is null)
+                {
+                    if (IsBlank(edited)) continue;
+                    row = new address { hremployeeid = HremployeeId, address_type_id = edited.address_type_id, isactive = true, createdate = DateTime.Now, createby = userId };
+                    ctx.addresses.Add(row);
+                }
+                else { row.moddate = DateTime.Now; row.modby = userId; }
+                CopyFields(Trimmed(edited), row);
+            }
+            await ctx.SaveChangesAsync();
+            _editing = false;
+            await LoadAsync();
+            Snackbar.Add("บันทึกที่อยู่แล้ว", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private static address Trimmed(address a)
+    {
+        static string? T(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        return new address { no = T(a.no), moo = T(a.moo), village = T(a.village), buildingname = T(a.buildingname), soi = T(a.soi),
+            road = T(a.road), subdistrict = T(a.subdistrict), districtid = T(a.districtid), province = T(a.province), postcode = T(a.postcode) };
+    }
+
+    private static bool IsBlank(address a) => new[] { a.no, a.moo, a.village, a.buildingname, a.soi, a.road, a.subdistrict, a.districtid, a.province, a.postcode }
+        .All(string.IsNullOrWhiteSpace);
+
+    private static string Format(address a)
+    {
+        if (IsBlank(a)) return "— ยังไม่ได้กรอก —";
+        var parts = new List<string>();
+        void Add(string? prefix, string? v) { if (!string.IsNullOrWhiteSpace(v)) parts.Add($"{prefix}{v.Trim()}"); }
+        Add("", a.no); Add("หมู่ ", a.moo); Add("", a.village); Add("", a.buildingname); Add("ซ.", a.soi); Add("ถ.", a.road);
+        Add("ต./แขวง ", a.subdistrict); Add("อ./เขต ", a.districtid); Add("จ.", a.province); Add("", a.postcode);
+        return string.Join(" ", parts);
+    }
+}

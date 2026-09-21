@@ -21,6 +21,7 @@ public enum PayDailyWageDaysMode
     CalendarDays = 0,   // DailyWage × calendar days in the period (pro-rated by join/resign)
     AttendanceDays = 1, // DailyWage × days with an attendance record that is not absent
     WorkingDays = 2,    // DailyWage × working days (company work-day mask, minus company holidays) — ค่าเริ่มต้น (audit M6)
+    FixedDaysPerMonth = 3, // DailyWage × จำนวนวันคงที่ต่อเดือน (เช่น 22) − วันขาดงาน — "รายวันแบบประจำ" (PST, 21 ก.ย. 2569)
 }
 
 // อัตราต่อวันของพนักงานรายเดือนใช้สูตรเดียวทั้งตอนคิดสัดส่วนเข้า-ออกกลางเดือนและตอนหักขาดงาน (audit M7)
@@ -67,6 +68,13 @@ public class Pay_AttendanceDeductionPolicy
     public decimal HoursPerDay { get; set; } = 8m;
 
     public PayDailyWageDaysMode DailyWageMode { get; set; } = PayDailyWageDaysMode.WorkingDays;
+
+    // จำนวนวันต่อเดือนเมื่อ DailyWageMode = FixedDaysPerMonth (เช่น 22) — ตั้งทับรายประเภทพนักงานได้ที่ Pos_EmployeeType
+    public int? DailyWageFixedDays { get; set; }
+
+    // รอบตัดเวลา (CEO, 21 ก.ย. 2569 — PST จ่าย 25 แต่เงินเดือนคิดเต็มเดือนปฏิทิน ส่วนสาย/ขาด/เบี้ยขยันคิดรอบ 26–25):
+    // ว่าง = อ่านเวลาทำงานตามช่วงของงวดเงินเดือนเหมือนเดิม · 25 = อ่านวันที่ 26 เดือนก่อน ถึง 25 เดือนของงวด
+    public int? AttendanceCutoffDay { get; set; }
 
     // สัดส่วนเงินเดือนของคนเข้า/ออกกลางงวดคิดจากอะไร — ค่าเริ่มต้นใช้ตัวหารเดียวกับการหักขาดงาน (audit M7)
     public PayProrationMode ProrationMode { get; set; } = PayProrationMode.DaysPerMonthDivisor;

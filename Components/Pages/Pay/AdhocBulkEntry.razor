@@ -18,7 +18,9 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
 @inject IJSRuntime JS
-@attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
+@* รหัสเมนูของหน้านี้เอง (21 ก.ย. 2569): บทบาท PAY_DATA_ENTRY คีย์ได้โดยไม่เห็นเงินเดือน/ค่าตอบแทนของใคร —
+   หน้านี้แสดงแค่รหัส+ชื่อพนักงาน กับยอดที่ตัวเองคีย์ · อนุมัติ/คำนวณเป็นของอีกบทบาทที่หน้า /pay/adhoc (รหัส PAY_ADHOC) *@
+@attribute [Authorize(Policy = "Menu:PAY_ADHOC_KEY")]
 
 <PageTitle>คีย์เงินได้/เงินหักรายงวด</PageTitle>
 
@@ -31,9 +33,12 @@
                 <b>"รออนุมัติ"</b> ต้องมีผู้มีสิทธิ์กดอนุมัติก่อน จึงจะถูกจ่ายในรอบเงินเดือนของงวดนั้น
             </MudText>
         </div>
-        <MudButton Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo($"/pay/adhoc/{_period}"))">
-            ไปหน้ารายการเฉพาะกิจ (อนุมัติ/แก้ทีละรายการ)
-        </MudButton>
+        @if (_canOpenApprovalPage)
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo($"/pay/adhoc/{_period}"))">
+                ไปหน้ารายการเฉพาะกิจ (อนุมัติ/แก้ทีละรายการ)
+            </MudButton>
+        }
     </MudStack>
 
     @if (!_canEdit)
@@ -202,6 +207,31 @@
         }
 </MudPaper>
 
+@* สิ่งที่ฉันส่งไปแล้วในงวดนี้ — คนคีย์ติดตามสถานะได้เองโดยไม่ต้องเปิดหน้าอนุมัติ (เห็นเฉพาะรายการที่ตัวเองคีย์) *@
+@if (_mine.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1">รายการที่ฉันส่งไว้ใน @PeriodLabel — @_mine.Count รายการ รวม @_mine.Sum(m => m.Amount).ToString("N2")</MudText>
+        <MudStack Row="true" Spacing="2" Class="mt-1" Wrap="Wrap.Wrap">
+            @foreach (var g in _mine.GroupBy(m => m.Status).OrderBy(g => g.Key))
+            {
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(g.Key)">@StatusText(g.Key): @g.Count()</MudChip>
+            }
+        </MudStack>
+        <MudTable Items="_mine" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" Class="mt-2">
+            <HeaderContent><MudTh>พนักงาน</MudTh><MudTh>ประเภท</MudTh><MudTh Style="text-align:right">ยอด</MudTh><MudTh>สถานะ</MudTh><MudTh>ส่งเมื่อ</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.EmpNo — @context.Name</MudTd>
+                <MudTd>@context.TypeCode · @context.TypeName</MudTd>
+                <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@StatusText(context.Status)</MudChip></MudTd>
+                <MudTd>@context.RequestedDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            </RowTemplate>
+            <PagerContent><MudTablePager /></PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
 @if (_selectedTypeIds.Any())
 {
     <MudPaper Class="pa-4 mb-4">
@@ -313,6 +343,42 @@ else
     private List<string> _warnings = new();
     private byte[]? _uploadedFile;
 
+    private const string ProgramPath = "/pay/adhoc/key";
+    private bool _canOpenApprovalPage;
+    private sealed record MyItem(string EmpNo, string Name, string TypeCode, string TypeName, decimal Amount, PayAdhocItemStatus Status, DateTime RequestedDate);
+    private List<MyItem> _mine = new();
+
+    private static string StatusText(PayAdhocItemStatus s) => s switch
+    {
+        PayAdhocItemStatus.Pending => "รออนุมัติ",
+        PayAdhocItemStatus.Approved => "อนุมัติแล้ว",
+        PayAdhocItemStatus.Rejected => "ไม่อนุมัติ",
+        PayAdhocItemStatus.Cancelled => "ยกเลิก",
+        PayAdhocItemStatus.Consumed => "จ่ายแล้ว",
+        _ => s.ToString(),
+    };
+    private static Color StatusColor(PayAdhocItemStatus s) => s switch
+    {
+        PayAdhocItemStatus.Pending => Color.Warning,
+        PayAdhocItemStatus.Approved => Color.Info,
+        PayAdhocItemStatus.Consumed => Color.Success,
+        PayAdhocItemStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private async Task LoadMineAsync()
+    {
+        var me = await UserIdAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _mine = (await context.Pay_AdhocPayItems.AsNoTracking()
+                .Where(a => a.RequestedByUserId == me && a.TargetPeriod == _period && a.TargetRunType == _runType)
+                .OrderByDescending(a => a.RequestedDate)
+                .Select(a => new { a.Hremployee.EmpNo, a.Hremployee.EmpName, a.Hremployee.EmpSurname, a.Pay_PayItemType.Code, a.Pay_PayItemType.NameTh, a.Amount, a.Status, a.RequestedDate })
+                .ToListAsync())
+            .Select(a => new MyItem(a.EmpNo ?? "", $"{a.EmpName} {a.EmpSurname}".Trim(), a.Code, a.NameTh, a.Amount, a.Status, a.RequestedDate))
+            .ToList();
+    }
+
     // ล็อกงวดของไฟล์ (CEO 20 ก.ย. 2569): ตราในไฟล์ต้องตรงกับหน้าจอ · ไฟล์เดิม (SHA-256) เข้างวดเดิมไม่ได้ · เข้างวดอื่นต้องยืนยัน
     private string? _fileName;
     private string? _fileSha;
@@ -394,9 +460,11 @@ else
             _periodMonth = new DateTime(int.Parse(Period[..4]), int.Parse(Period[4..]), 1);
         }
         var state = await AuthProvider.GetAuthenticationStateAsync();
-        _canEdit = (await ProgramRoles.GetRightsAsync(state.User, "/pay/adhoc")).CanEdit;
+        _canEdit = (await ProgramRoles.GetRightsAsync(state.User, ProgramPath)).CanEdit;
+        _canOpenApprovalPage = state.User.HasClaim("menu", "PAY_ADHOC");
         _itemTypes = await Bulk.GetItemTypesAsync();
         await LoadEmployeesAsync();
+        await LoadMineAsync();
     }
 
     private async Task LoadEmployeesAsync()
@@ -416,7 +484,7 @@ else
     {
         _periodMonth = date;
         if (date is DateTime d) _period = d.ToString("yyyyMM", CultureInfo.InvariantCulture);
-        return Task.CompletedTask;
+        return LoadMineAsync();
     }
 
     private void OnTypesChanged(IEnumerable<int> ids)
@@ -544,6 +612,8 @@ else
                     Meta(a.Key.EmployeeId).ItemDate, Meta(a.Key.EmployeeId).Remark, Meta(a.Key.EmployeeId).ReferenceNo))
                 .ToList();
 
+            // ด่านฝั่ง server (AD.CRUDManage): ปุ่มถูกซ่อน/ปิดไม่พอ
+            await ProgramRoles.RequireAsync((await AuthProvider.GetAuthenticationStateAsync()).User, ProgramPath, ProgramRoleService.ProgramAction.Edit);
             if (!ImportLockSatisfied) throw new InvalidOperationException("ไฟล์นี้ยังไม่ผ่านการตรวจงวด — ดูข้อความในกล่อง \"นำเข้าจาก Excel\"");
 
             var fileInfo = _uploadedFile is null || _fileSha is null ? null
@@ -553,6 +623,7 @@ else
             Snackbar.Add($"บันทึกแล้ว — ใหม่ {result.Created} · แก้ยอดเดิม {result.Updated} · ข้าม {result.Skipped} (ทั้งหมดอยู่สถานะ \"รออนุมัติ\")",
                 result.Skipped > 0 ? Severity.Warning : Severity.Success);
             if (result.Created + result.Updated > 0) { _amounts.Clear(); _rowMeta.Clear(); ClearFileState(); }
+            await LoadMineAsync();
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _saving = false; }

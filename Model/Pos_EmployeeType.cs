@@ -34,4 +34,9 @@ public class Pos_EmployeeType
     // False for e.g. directors who are on the employee register but not on payroll, so the
     // engine skips them with a stated reason instead of paying them 0 and raising "net pay 0".
     public bool IsPaidByPayroll { get; set; } = true;
+
+    // วิธีนับวันจ่ายค่าจ้างรายวันของประเภทนี้ (ว่าง = ใช้ของบริษัทใน Pay_AttendanceDeductionPolicy) — PST, 21 ก.ย. 2569:
+    // "รายวันแบบประจำ" คิด 22 วันตายตัว ขณะที่รายวันทั่วไปคิดตามวันทำงานจริงเชื่อมปฏิทินวันหยุดบริษัท
+    public PayDailyWageDaysMode? DailyWageMode { get; set; }
+    public int? DailyWageFixedDays { get; set; }
 }

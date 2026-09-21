@@ -39,6 +39,34 @@ public class AttendanceAggregationService
                 .ToListAsync(ct)
             : new List<Att_ShiftAssignment>();
 
+        // เวลาเข้า-ออกงานต่อสาขา/หน่วยงาน (Att_OrgWorkTime — PST 2 สาขาเวลาไม่เหมือนกัน): หน่วยงานลูกใช้ของแม่จนกว่าจะตั้งเอง
+        // ลำดับ: กะที่มอบรายวัน → เวลาของหน่วยงาน (ไล่ขึ้นตามผัง) → เวลาของบริษัท
+        var orgTimes = (await context.Att_OrgWorkTimes.Where(o => o.CompanyId == companyId && o.IsActive).ToListAsync(ct))
+            .GroupBy(o => o.OrganizationId).ToDictionary(g => g.Key, g => g.First());
+        var empOrg = new Dictionary<long, long?>();
+        var orgParent = new Dictionary<long, long?>();
+        if (orgTimes.Count > 0)
+        {
+            empOrg = await context.Hremployee.Where(e => e.companyid == companyId)
+                .Select(e => new { e.id, e.OrganizationId }).ToDictionaryAsync(e => e.id, e => e.OrganizationId, ct);
+            var orgIds = empOrg.Values.Where(v => v != null).Select(v => v!.Value).Distinct().ToList();
+            // โหลดผังทั้งบริษัทครั้งเดียว (ผ่านบริษัทของหน่วยงานที่พนักงานสังกัด) แล้วไล่ parentID ในหน่วยความจำ
+            var companyKeys = await context.com_organizations.Where(o => orgIds.Contains(o.id)).Select(o => o.companyid).Distinct().ToListAsync(ct);
+            orgParent = await context.com_organizations.Where(o => companyKeys.Contains(o.companyid))
+                .Select(o => new { o.id, o.parentID }).ToDictionaryAsync(o => o.id, o => o.parentID, ct);
+        }
+        Att_OrgWorkTime? ResolveOrgTime(long employeeId)
+        {
+            if (orgTimes.Count == 0 || !empOrg.TryGetValue(employeeId, out var org) || org is null) return null;
+            var current = org; var guard = 0;
+            while (current is long id && guard++ < 20)
+            {
+                if (orgTimes.TryGetValue(id, out var wt)) return wt;
+                current = orgParent.TryGetValue(id, out var parent) ? parent : null;
+            }
+            return null;
+        }
+
         // existing summary rows in range get replaced wholesale
         var existing = await context.Att_DailyAttendances
             .Where(a => a.CompanyId == companyId && a.WorkDate >= fromDate && a.WorkDate <= toDate)
@@ -72,6 +100,18 @@ public class AttendanceAggregationService
                 var expectedOut = endRef < startRef
                     ? group.Key.WorkDate.AddDays(1).ToDateTime(endRef)
                     : group.Key.WorkDate.ToDateTime(endRef);
+
+                isLate = firstIn > expectedIn;
+                isEarlyLeave = lastOut < expectedOut;
+                lateMinutes = isLate ? (int)Math.Ceiling((firstIn - expectedIn).TotalMinutes) : 0;
+                earlyLeaveMinutes = isEarlyLeave ? (int)Math.Ceiling((expectedOut - lastOut).TotalMinutes) : 0;
+            }
+            else if (ResolveOrgTime(group.Key.HremployeeId) is Att_OrgWorkTime orgTime)
+            {
+                var expectedIn = group.Key.WorkDate.ToDateTime(orgTime.WorkStart);
+                var expectedOut = orgTime.WorkEnd < orgTime.WorkStart
+                    ? group.Key.WorkDate.AddDays(1).ToDateTime(orgTime.WorkEnd)
+                    : group.Key.WorkDate.ToDateTime(orgTime.WorkEnd);
 
                 isLate = firstIn > expectedIn;
                 isEarlyLeave = lastOut < expectedOut;

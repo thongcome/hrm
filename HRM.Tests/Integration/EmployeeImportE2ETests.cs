@@ -52,7 +52,10 @@ public class EmployeeImportE2ETests
             e["CreateLogin"] = EmployeeImportSchema.No;
             return e;
         }).ToList();
-        EmployeeImportParserTests.Fill(wb.Worksheet(EmployeeImportSchema.Org.Name), EmployeeImportSchema.Org, [orgRow]);
+        // a previous run leaves the unit in the system, so the template already lists it
+        var alreadyListed = orgWs.CellsUsed().Any(c => c.GetString() == "E2EIORG");
+        if (!alreadyListed)
+            EmployeeImportParserTests.Fill(orgWs, EmployeeImportSchema.Org, [orgRow]);
         EmployeeImportParserTests.Fill(wb.Worksheet(EmployeeImportSchema.Employee.Name), EmployeeImportSchema.Employee, people);
         using var ms = new MemoryStream();
         wb.SaveAs(ms);

@@ -53,10 +53,10 @@ public partial class address
 
     public long? provinceid { get; set; }
 
-    [StringLength(20)]
+    [StringLength(100)]
     public string? province { get; set; }
 
-    [StringLength(10)]
+    [StringLength(50)]
     public string? postcode { get; set; }
 
     [StringLength(50)]
@@ -65,10 +65,10 @@ public partial class address
     [StringLength(50)]
     public string? mobileno { get; set; }
 
-    [StringLength(18)]
+    [StringLength(50)]
     public string? officeno { get; set; }
 
-    [StringLength(18)]
+    [StringLength(50)]
     public string? fax { get; set; }
 
     [StringLength(250)]

@@ -43,6 +43,22 @@
             <MudItem xs="12" sm="4">
                 <MudSwitch T="bool" @bind-Value="_isActive" Color="Color.Success" Label="ใช้งานอยู่" />
             </MudItem>
+            @* รายวันแบบประจำ 22 วัน vs รายวันทั่วไป (PST, 21 ก.ย. 2569) — ว่าง = ใช้ของบริษัทที่หน้านโยบายหักสาย/ขาดงาน *@
+            <MudItem xs="12" sm="8">
+                <MudSelect T="PayDailyWageDaysMode?" @bind-Value="_dailyWageMode" Label="ค่าจ้างรายวันของประเภทนี้ นับวันจ่ายจาก" Clearable="true"
+                    HelperText="ว่าง = ใช้ตามนโยบายของบริษัท · มีผลเฉพาะคนที่จ่ายเป็นค่าจ้างรายวัน">
+                    <MudSelectItem T="PayDailyWageDaysMode?" Value="PayDailyWageDaysMode.FixedDaysPerMonth">จำนวนวันคงที่ต่อเดือน (รายวันแบบประจำ) − วันขาดงาน</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode?" Value="PayDailyWageDaysMode.WorkingDays">วันทำงานจริงตามปฏิทินวันหยุดของบริษัท − วันขาดงาน</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode?" Value="PayDailyWageDaysMode.AttendanceDays">วันที่มีการลงเวลา</MudSelectItem>
+                    <MudSelectItem T="PayDailyWageDaysMode?" Value="PayDailyWageDaysMode.CalendarDays">วันตามปฏิทิน รวมเสาร์-อาทิตย์</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (_dailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="int?" @bind-Value="_dailyWageFixedDays" Label="จำนวนวันต่อเดือน" Min="1" Max="31" />
+                </MudItem>
+            }
             <MudItem xs="12">
                 <MudSwitch T="bool" @bind-Value="_isPaidByPayroll" Color="Color.Primary" Label="รับเงินเดือนผ่านระบบ" />
                 <MudText Typo="Typo.caption" Class="mud-text-secondary">
@@ -141,10 +157,15 @@
         _code = null;
         _isActive = true;
         _isPaidByPayroll = true;
+        _dailyWageMode = null;
+        _dailyWageFixedDays = null;
         _remark = null;
         _error = null;
         _showForm = true;
     }
+
+    private PayDailyWageDaysMode? _dailyWageMode;
+    private int? _dailyWageFixedDays;
 
     private void StartEdit(Pos_EmployeeType item)
     {
@@ -153,6 +174,8 @@
         _code = item.Code;
         _isActive = item.IsActive;
         _isPaidByPayroll = item.IsPaidByPayroll;
+        _dailyWageMode = item.DailyWageMode;
+        _dailyWageFixedDays = item.DailyWageFixedDays;
         _remark = item.Remark;
         _error = null;
         _showForm = true;
@@ -174,6 +197,9 @@
         if (string.IsNullOrWhiteSpace(_name)) { _error = "กรุณาระบุชื่อ"; return; }
         if (string.IsNullOrWhiteSpace(_code)) { _error = "กรุณาระบุรหัส"; return; }
         _code = _code.Trim();
+        if (_dailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth && _dailyWageFixedDays is not > 0)
+        { _error = "เลือกจำนวนวันคงที่ต่อเดือนแล้ว กรุณาใส่จำนวนวัน (เช่น 22)"; return; }
+        var fixedDays = _dailyWageMode == PayDailyWageDaysMode.FixedDaysPerMonth ? _dailyWageFixedDays : null;
 
         await using var context = await DbFactory.CreateDbContextAsync();
         var editingId = _editingId ?? 0;
@@ -188,6 +214,8 @@
             existing.Code = _code;
             existing.IsActive = _isActive;
             existing.IsPaidByPayroll = _isPaidByPayroll;
+            existing.DailyWageMode = _dailyWageMode;
+            existing.DailyWageFixedDays = fixedDays;
             existing.Remark = _remark;
         }
         else
@@ -199,6 +227,8 @@
                 Code = _code,
                 IsActive = _isActive,
                 IsPaidByPayroll = _isPaidByPayroll,
+                DailyWageMode = _dailyWageMode,
+                DailyWageFixedDays = fixedDays,
                 Remark = _remark,
             });
         }

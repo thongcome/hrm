@@ -215,6 +215,9 @@ public static class ScMenuNavCatalog
         new("GRP_PAYROLL", "PAY_ADMIN", "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 50), // gated 1 ก.ย. 2569 (gap-closure)
         new("GRP_PAYROLL", "PAY_RUNS", "/pay/runs", "เงินเดือน (ใหม่)", "Payroll (New)", "Icons.Material.Filled.RequestQuote", 60),
         new("GRP_PAYROLL", "PAY_ADHOC", "/pay/adhoc", "รายการเฉพาะกิจ", "Ad-hoc Pay Items", "Icons.Material.Filled.PostAdd", 70),
+        // หน้าคีย์หลายคนมีรหัสเมนูของตัวเอง เพื่อให้บทบาท PAY_DATA_ENTRY เปิดได้หน้าเดียวโดยไม่เห็นเงินเดือนคนอื่น
+        // (เดิมใช้รหัส PAY_ADHOC ร่วมกับหน้าอนุมัติ/รายการประจำ) — ต้องอยู่ในแคตตาล็อกนี้ด้วย ไม่งั้น seeder ไม่จัดที่ให้
+        new("GRP_PAYROLL", "PAY_ADHOC_KEY", "/pay/adhoc/key", "คีย์เงินได้-เงินหักรายงวด (หลายคน)", "Bulk Pay Item Entry", "Icons.Material.Filled.TableChart", 65),
         new("GRP_PAYROLL", "PAY_ADHOC", "/pay/recurring-items", "เงินได้เงินหักประจำ", "Recurring Pay Items", "Icons.Material.Filled.Repeat", 80),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/payslip-settings", "ตั้งค่าสลิป", "Payslip Settings", "Icons.Material.Filled.Receipt", 90),
         new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/periods", "จัดการงวดเงินเดือน", "Payroll Periods", "Icons.Material.Filled.CalendarMonth", 100),

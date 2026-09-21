@@ -71,7 +71,94 @@
     }
 </MudPaper>
 
+@* เวลาเข้า-ออกงานต่อสาขา/หน่วยงาน (PST, 21 ก.ย. 2569: 2 สาขาเวลาไม่เหมือนกัน) — หน่วยงานลูกใช้ตามแม่จนกว่าจะตั้งเอง *@
+@if (!string.IsNullOrEmpty(_companyId) && _settings is not null && _settings.TrackingMode != AttTrackingMode.None)
+{
+    <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+        <MudText Typo="Typo.h6">เวลาเข้า-ออกงานของสาขา / หน่วยงาน</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1">
+            ตั้งเฉพาะสาขาหรือหน่วยงานที่เวลาไม่เหมือนบริษัท — หน่วยงานที่อยู่ใต้ลงไปใช้เวลาเดียวกันโดยอัตโนมัติ ·
+            ลำดับที่ระบบใช้ตัดสินมาสาย: กะที่มอบรายวัน → เวลาของหน่วยงาน (ไล่ขึ้นตามผัง) → เวลาของบริษัทด้านบน ·
+            แก้แล้วให้กด "ประมวลผลเวลา" ของช่วงวันที่เกี่ยวข้องใหม่ที่หน้ารายงานเวลาเข้างาน
+        </MudText>
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="5">
+                <MudAutocomplete T="OrgOption" @bind-Value="_newOrg" SearchFunc="SearchOrgsAsync" ToStringFunc="@(o => o is null ? "" : o.Label)"
+                    Label="สาขา / หน่วยงาน" Clearable="true" ResetValueOnEmptyText="true" />
+            </MudItem>
+            <MudItem xs="6" sm="2"><MudTimePicker @bind-Time="_newStart" Label="เวลาเข้า" /></MudItem>
+            <MudItem xs="6" sm="2"><MudTimePicker @bind-Time="_newEnd" Label="เวลาออก" /></MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddOrgTimeAsync">บันทึกเวลาของหน่วยงานนี้</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="_orgTimes" Dense="true" Hover="true" Elevation="0" Class="mt-3">
+            <HeaderContent><MudTh>สาขา / หน่วยงาน</MudTh><MudTh>เวลาเข้า</MudTh><MudTh>เวลาออก</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Label</MudTd>
+                <MudTd>@context.Row.WorkStart.ToString("HH:mm")</MudTd>
+                <MudTd>@context.Row.WorkEnd.ToString("HH:mm")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Row.IsActive ? Color.Success : Color.Default)">@(context.Row.IsActive ? "ใช้งาน" : "ปิด")</MudChip></MudTd>
+                <MudTd><MudButton Size="Size.Small" Color="@(context.Row.IsActive ? Color.Error : Color.Success)" OnClick="@(() => ToggleOrgTimeAsync(context.Row.Id))">@(context.Row.IsActive ? "ปิดใช้" : "เปิดใช้")</MudButton></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Class="pa-2">ยังไม่ได้ตั้ง — ทุกหน่วยงานใช้เวลาของบริษัท</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
 @code {
+    private sealed record OrgOption(long Id, string Label);
+    private sealed record OrgTimeRow(Att_OrgWorkTime Row, string Label);
+    private List<OrgOption> _orgs = new();
+    private List<OrgTimeRow> _orgTimes = new();
+    private OrgOption? _newOrg;
+    private TimeSpan? _newStart = new TimeSpan(8, 30, 0);
+    private TimeSpan? _newEnd = new TimeSpan(17, 30, 0);
+
+    private async Task LoadOrgTimesAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var companyKey = await context.com_companies.Where(c => c.code == _companyId).Select(c => (long?)c.id).FirstOrDefaultAsync();
+        _orgs = (await context.com_organizations.Where(o => o.companyid == companyKey && o.isActive)
+                .OrderBy(o => o.code).Select(o => new { o.id, o.code, o.name }).ToListAsync())
+            .Select(o => new OrgOption(o.id, $"{o.code} · {o.name}")).ToList();
+        var rows = await context.Att_OrgWorkTimes.AsNoTracking().Where(o => o.CompanyId == _companyId).ToListAsync();
+        _orgTimes = rows.Select(r => new OrgTimeRow(r, _orgs.FirstOrDefault(o => o.Id == r.OrganizationId)?.Label ?? $"(หน่วยงาน #{r.OrganizationId})"))
+            .OrderBy(r => r.Label).ToList();
+    }
+
+    private Task<IEnumerable<OrgOption>> SearchOrgsAsync(string? text, CancellationToken ct)
+        => Task.FromResult(_orgs.Where(o => string.IsNullOrWhiteSpace(text) || o.Label.Contains(text, StringComparison.OrdinalIgnoreCase)).Take(30));
+
+    // หนึ่งหน่วยงานมีแถวเดียว — ตั้งซ้ำ = แก้เวลาของแถวเดิม
+    private async Task AddOrgTimeAsync()
+    {
+        if (_newOrg is null || _newStart is null || _newEnd is null) { Snackbar.Add("เลือกหน่วยงาน และใส่เวลาเข้า-ออกให้ครบ", Severity.Warning); return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Att_OrgWorkTimes.FirstOrDefaultAsync(o => o.CompanyId == _companyId && o.OrganizationId == _newOrg.Id);
+        if (row is null) { row = new Att_OrgWorkTime { CompanyId = _companyId!, OrganizationId = _newOrg.Id }; context.Att_OrgWorkTimes.Add(row); }
+        row.WorkStart = TimeOnly.FromTimeSpan(_newStart.Value);
+        row.WorkEnd = TimeOnly.FromTimeSpan(_newEnd.Value);
+        row.IsActive = true;
+        row.ModifiedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+        _newOrg = null;
+        await LoadOrgTimesAsync();
+        Snackbar.Add("บันทึกเวลาของหน่วยงานแล้ว", Severity.Success);
+    }
+
+    private async Task ToggleOrgTimeAsync(long id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Att_OrgWorkTimes.FirstOrDefaultAsync(o => o.Id == id && o.CompanyId == _companyId);
+        if (row is null) return;
+        row.IsActive = !row.IsActive; row.ModifiedDate = DateTime.Now;
+        await context.SaveChangesAsync();
+        await LoadOrgTimesAsync();
+    }
+
     private string? _companyId;
     private Att_CompanySetting? _settings;
     private TimeSpan? _workStart;
@@ -95,6 +182,7 @@
 
         _workStart = _settings.DefaultWorkStart?.ToTimeSpan();
         _workEnd = _settings.DefaultWorkEnd?.ToTimeSpan();
+        await LoadOrgTimesAsync();
     }
 
     private async Task SaveAsync()
