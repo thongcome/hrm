@@ -35,6 +35,22 @@
             </MudText>
         }
 
+        @if (_scope.IsManager)
+        {
+            <MudPaper Class="pa-3 mt-3" Outlined="true">
+                <MudText Typo="Typo.subtitle2">หน่วยงานที่ฉันเป็นหัวหน้า (จากผังองค์กร) — รวม @_scope.Nodes.Count หน่วยงาน · @_scope.Team.Count คน</MudText>
+                @foreach (var n in _scope.Nodes)
+                {
+                    <div style="padding-left:@(n.Depth * 18)px">
+                        <MudIcon Icon="@(n.IsHeadedByMe ? Icons.Material.Filled.SupervisorAccount : Icons.Material.Filled.SubdirectoryArrowRight)" Size="Size.Small"
+                                 Color="@(n.IsHeadedByMe ? Color.Primary : Color.Default)" />
+                        <span>@n.Code · @n.Name</span>
+                        <span class="mud-text-secondary"> (@_scope.Team.Count(e => e.OrganizationId == n.Id) คน)</span>
+                    </div>
+                }
+            </MudPaper>
+        }
+
         @if (_directReports.Count == 0)
         {
             <MudAlert Severity="Severity.Info" Class="mt-3">
@@ -49,7 +65,7 @@
                     <MudPaper Class="pa-4" Elevation="2" Style="height:100%;">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                             <MudIcon Icon="@Icons.Material.Filled.Groups" Color="Color.Primary" />
-                            <MudText Typo="Typo.h6">ทีมของฉัน (Direct Reports)</MudText>
+                            <MudText Typo="Typo.h6">ทีมของฉัน (ทั้งสายบังคับบัญชา)</MudText>
                             <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_directReports.Count คน</MudChip>
                         </MudStack>
                         <MudStack Spacing="1" Class="mt-2">
@@ -208,6 +224,8 @@
         }).OrderBy(r => r.OnLeave).ThenBy(r => r.FirstIn is null).ThenBy(r => r.EmployeeName).ToList();
     }
 
+    private ManagerScopeService.Scope _scope = ManagerScopeService.Scope.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -225,9 +243,9 @@
         _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
         if (_employee is not null)
         {
-            _directReports = (await DirectReportResolverHelper.ResolveDirectReportsAsync(context, _employee))
-                .OrderBy(e => e.EmpNo)
-                .ToList();
+            // node ที่เป็นหัวหน้ามาจาก session (claim mss_org ที่ตั้งตอน login จากผังองค์กร) แล้วดึงโครงสร้างใต้ node นั้นทั้งสาย
+            _scope = await ManagerScopeService.ResolveAsync(context, state.User);
+            _directReports = _scope.Team.ToList();
 
             if (_directReports.Count > 0)
             {

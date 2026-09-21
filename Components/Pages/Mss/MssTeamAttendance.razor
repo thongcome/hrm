@@ -78,7 +78,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
         _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
         if (_employee is not null)
-            _reports = await DirectReportResolverHelper.ResolveDirectReportsAsync(context, _employee);
+            _reports = (await ManagerScopeService.ResolveAsync(context, state.User)).Team.ToList();   // ทั้งสายใต้ node ที่เป็นหัวหน้า (จาก session)
         await LoadAsync();
         _loaded = true;
     }

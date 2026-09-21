@@ -23,15 +23,21 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
     private readonly IDbContextFactory<HRMContext> _hrmDbFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly HRM.Services.Security.PasswordPolicyService _passwordPolicy;
+    private readonly IConfiguration _configuration;
+
+    // เมนูบริการตนเองที่พนักงานทุกคนได้โดยไม่ต้องไล่ให้สิทธิ์ (ตั้งทับได้ที่ appsettings "SelfService:EmployeeMenuCodes")
+    private static readonly string[] DefaultEmployeeMenuCodes = { "ESS_ACCESS", "LEAVE_ACCESS", "EXP_ACCESS", "HR_ANNOUNCE_ACCESS" };
 
     public ScUserClaimsPrincipalFactory(
         UserManager<ApplicationUser> userManager,
         IOptions<IdentityOptions> optionsAccessor,
         IDbContextFactory<HRMContext> hrmDbFactory,
         IHttpContextAccessor httpContextAccessor,
-        HRM.Services.Security.PasswordPolicyService passwordPolicy)
+        HRM.Services.Security.PasswordPolicyService passwordPolicy,
+        IConfiguration configuration)
         : base(userManager, optionsAccessor)
     {
+        _configuration = configuration;
         _hrmDbFactory = hrmDbFactory;
         _httpContextAccessor = httpContextAccessor;
         _passwordPolicy = passwordPolicy;
@@ -142,6 +148,23 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
             // edit rights via PermissionAdmin.razor's "แก้ไขได้" toggle.
             if (grant.canedit)
                 editCodes.Add(grant.menu.menucode!);
+        }
+
+        // พนักงานทุกคนได้ ESS (CEO, 21 ก.ย. 2569: "ESS ติดสิทธิ์หมดเลย — พนักงานทุกคนต้องได้ ถ้าใน sc_user มี employee no")
+        // เดิมต้องมีบทบาท emp ซึ่งได้มาจากการ map ประเภทพนักงาน→บทบาทตอนสร้าง user — ฐานลูกค้าที่ยังไม่ตั้ง mapping
+        // หรือ user ที่สร้างทางอื่น จึงเปิด ESS ไม่ได้สักหน้า · หน้า ESS ทุกหน้าเห็นเฉพาะข้อมูลของตัวเอง (resolve จาก claim empno)
+        // สิทธิ์อื่นทั้งหมดยังมาจาก sc_role_menu ตามเดิม
+        if (!string.IsNullOrWhiteSpace(scUser.empid))
+        {
+            var selfService = _configuration.GetSection("SelfService:EmployeeMenuCodes").Get<string[]>();
+            menuCodes.UnionWith(selfService is { Length: > 0 } ? selfService : DefaultEmployeeMenuCodes);
+
+            // MSS: เป็นหัวหน้าไหม ดูจากผังองค์กร (com_organization.approver_empid) แล้วเก็บ node ไว้ใน session (claim)
+            var headedNodes = await HRM.Services.Shared.ManagerScopeService.FindHeadedNodeIdsAsync(context, scUser.empid, companyId);
+            foreach (var nodeId in headedNodes)
+                identity.AddClaim(new Claim(HRM.Services.Shared.ManagerScopeService.HeadedOrgClaim, nodeId.ToString()));
+            if (headedNodes.Count > 0)
+                menuCodes.Add(HRM.Services.Shared.ManagerScopeService.MssMenuCode);
         }
 
         // The Admin role can do everything (CEO, 18 ก.ย. 2569) — every active menu with edit,

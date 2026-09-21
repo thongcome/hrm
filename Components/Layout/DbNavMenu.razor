@@ -106,6 +106,7 @@
             return; // fail closed: no auth, no menu, no DB query
 
         _allowedMenuCodes = user.FindAll("menu").Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _isManager = user.HasClaim(c => c.Type == HRM.Services.Shared.ManagerScopeService.HeadedOrgClaim);
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var rows = await db.sc_menus
@@ -192,8 +193,12 @@
     private static bool IsPrimaryGroup(sc_menu row)
         => string.Equals(row.menucode, "GRP_PAYROLL", StringComparison.OrdinalIgnoreCase);
 
+    // ลิงก์ในกลุ่ม MSS ไม่มีรหัสเมนู (หน้าเห็นเฉพาะข้อมูลทีมตัวเอง) จึงเคยโชว์ให้ทุกคน — ตอนนี้โชว์เฉพาะคนที่ผังองค์กรบอกว่าเป็นหัวหน้า
+    private bool _isManager;
+
     private bool IsLeafVisible(MenuNode node)
         => !string.IsNullOrWhiteSpace(node.Row.url)
+           && (_isManager || !string.Equals(node.Row.uppermenucode, "GRP_MSS", StringComparison.OrdinalIgnoreCase))
            && (string.IsNullOrWhiteSpace(node.Row.menucode) || _allowedMenuCodes.Contains(node.Row.menucode));
 
     // ---- display name (th/en) ------------------------------------------

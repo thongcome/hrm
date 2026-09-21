@@ -52,8 +52,15 @@ public class AttendanceAggregationService
             var orgIds = empOrg.Values.Where(v => v != null).Select(v => v!.Value).Distinct().ToList();
             // โหลดผังทั้งบริษัทครั้งเดียว (ผ่านบริษัทของหน่วยงานที่พนักงานสังกัด) แล้วไล่ parentID ในหน่วยความจำ
             var companyKeys = await context.com_organizations.Where(o => orgIds.Contains(o.id)).Select(o => o.companyid).Distinct().ToListAsync(ct);
-            orgParent = await context.com_organizations.Where(o => companyKeys.Contains(o.companyid))
-                .Select(o => new { o.id, o.parentID }).ToDictionaryAsync(o => o.id, o => o.parentID, ct);
+            // ผังต่อกันด้วย parent_code (parentID ของตารางเดิมว่างเกือบทั้งหมด) — แปลงรหัสแม่เป็น id ก่อน
+            var orgRows = await context.com_organizations.Where(o => companyKeys.Contains(o.companyid))
+                .Select(o => new { o.id, o.code, o.parent_code, o.parentID, o.companyid }).ToListAsync(ct);
+            var orgIdByCode = orgRows.Where(o => !string.IsNullOrWhiteSpace(o.code))
+                .GroupBy(o => (o.companyid, Code: o.code!.Trim().ToUpperInvariant()))
+                .ToDictionary(g => g.Key, g => g.First().id);
+            orgParent = orgRows.ToDictionary(o => o.id, o =>
+                !string.IsNullOrWhiteSpace(o.parent_code) && orgIdByCode.TryGetValue((o.companyid, o.parent_code!.Trim().ToUpperInvariant()), out var pid) && pid != o.id
+                    ? pid : o.parentID);
         }
         Att_OrgWorkTime? ResolveOrgTime(long employeeId)
         {
