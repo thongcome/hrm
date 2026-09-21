@@ -194,6 +194,13 @@ else
     private Task ShowCalculationDetailAsync(PayrollLineItemDisplayHelper.DisplayRow row)
     {
         var typeName = $"{row.LineItem.Pay_PayItemType.NameTh} ({row.LineItem.Pay_PayItemType.NameEn})";
+
+        // ภาษีหัก ณ ที่จ่าย: กางตัวเลขจริงในกล่อง (เงินได้ทั้งปี → หัก → ฐานภาษี → ขั้นบันได → เฉลี่ยงวด)
+        // แทนการชี้ไป JSON ดิบด้านล่าง ซึ่งคนทำเงินเดือนอ่านไม่ออก
+        if (row.IsCalculated && row.LineItem.Pay_PayItemType.Code == "TAX"
+            && TaxCalculationNarrative.TryBuild(_taxDetailJson, out var taxHtml))
+            return DialogService.ShowMessageBox(typeName, (MarkupString)taxHtml, yesText: L.Translate("CloseButton"));
+
         var message = row.IsCalculated
             ? (string.IsNullOrWhiteSpace(row.LineItem.Description)
                 ? string.Format(L.Translate("CalculationDetailAmountOnlyTemplate"), (row.LineItem.SignFlag * row.LineItem.Amount).ToString("N2"))
