@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // ScMenuNavCatalog — data catalog of the hardcoded drawer navigation.
 //
 // Source: Components/Layout/MainLayout.razor (<MudNavMenu> block), extracted
@@ -32,76 +32,45 @@ public record NavCatalogGroup(
     string NameTh,
     string NameEn,
     string Icon,
-    int Order);          // order of the group in the drawer (10, 20, ...)
+    int Order,           // order of the group in the drawer (10, 20, ...)
+    string? ParentGroupCode = null);   // กลุ่มย่อยในกลุ่ม (AD.Menu: GRP_<MOD>_DOCS / _MASTER) — null = กลุ่มบนสุด
 
 public static class ScMenuNavCatalog
 {
     public static readonly IReadOnlyList<NavCatalogGroup> Groups = new List<NavCatalogGroup>
     {
+        // AD.Menu (CEO, 21 ก.ย. 2569: "เมนูต้องดูง่ายขึ้น"): ระดับ 1 = โมดูล, แต่ละโมดูลมีงานประจำเป็นลิงก์ตรง (<100)
+        // + กลุ่มย่อย เอกสาร/รายงาน (500) + ตั้งค่า Master (900) ท้ายสุด · ESS/MSS เป็นโซนของตัวเองล่างสุด · จัดการระบบท้ายสุด
+        // สิทธิ์ผูกกับ menucode ของลิงก์ ไม่ใช่กลุ่ม — ย้ายกลุ่มได้โดยสิทธิ์ไม่เปลี่ยน
+        new("GRP_PAYROLL", "เงินเดือน", "Payroll", "Icons.Material.Filled.Payments", 10),
+        new("GRP_ATTENDANCE", "เวลาและการลา", "Time & Leave", "Icons.Material.Filled.AccessTime", 20),
+        new("GRP_WELFARE", "สวัสดิการและเบิกจ่าย", "Welfare & Expenses", "Icons.Material.Filled.VolunteerActivism", 30),
+        new("GRP_EMPLOYEE", "พนักงานและองค์กร", "Employees & Organization", "Icons.Material.Filled.Groups", 40),
+        new("GRP_RECRUIT", "สรรหาบุคลากร", "Recruitment", "Icons.Material.Filled.PersonSearch", 50),
+        new("GRP_PERF", "ผลงานและการพัฒนา", "Performance & Development", "Icons.Material.Filled.Assessment", 60),
+        new("GRP_LMS", "อบรมและความรู้", "Training & Knowledge", "Icons.Material.Filled.School", 70),
+        new("GRP_ENGAGEMENT", "พนักงานสัมพันธ์และประกาศ", "Engagement & Announcements", "Icons.Material.Filled.Favorite", 80),
+        new("GRP_WF_ENGINE", "การอนุมัติ (Workflow)", "Approvals (Workflow)", "Icons.Material.Filled.Rule", 90),
+        new("GRP_REPORTS", "รายงานและ Analytics", "Reports & Analytics", "Icons.Material.Filled.QueryStats", 100),
         // guard: _hasEssAccess (menu claim "ESS_ACCESS")
-        new("GRP_ESS", "พื้นที่พนักงาน (ESS)", "Employee Self-Service (ESS)", "Icons.Material.Filled.Person", 10),
-        // MSS (CEO 1 ก.ย. 2569: "ในระบบต้องมี ESS และ MSS ด้วย") — manager
-        // self-service. Links are all self-scoped by the logged-in user, so
-        // the group is ungated like /wf/my-inbox; non-managers see friendly
-        // empty states, not errors.
-        new("GRP_MSS", "พื้นที่หัวหน้างาน (MSS)", "Manager Self-Service (MSS)", "Icons.Material.Filled.SupervisorAccount", 15),
-        // guard: Has("REC_ADMIN")
-        new("GRP_RECRUIT", "สรรหาบุคลากร (Recruitment)", "Recruitment", "Icons.Material.Filled.PersonSearch", 20),
-        // guard: Has("PAY_ADMIN")
-        new("GRP_EMPLOYEE", "ระบบบริหารงานบุคคล (Employee)", "Employee Management", "Icons.Material.Filled.Person", 30),
-        // guard: HasAny("ORG_ADMIN","SYS_ADMIN","POS_ADMIN","PAY_ADMIN"); literal title in layout (no Translate key)
-        new("GRP_ORG_STRUCT", "โครงสร้างองค์กร (Organization Structure)", "โครงสร้างองค์กร (Organization Structure)", "Icons.Material.Filled.AccountBalance", 40),
-        // guard: HasAny("ORG_ADMIN","POS_ADMIN")
-        new("GRP_ORG_CHART", "ผังองค์กร (Organization)", "Organization Chart", "Icons.Material.Filled.AccountTree", 50),
-        // guard: Has("POS_ADMIN"); literal title in layout (no Translate key)
-        new("GRP_POSITION", "ตำแหน่งและอัตรากำลัง", "ตำแหน่งและอัตรากำลัง", "Icons.Material.Filled.Badge", 60),
-        // guard: Has("ATT_ADMIN")
-        new("GRP_ATTENDANCE", "เวลาเข้างาน (Attendance)", "Attendance", "Icons.Material.Filled.AccessTime", 70),
-        // no guard on the group itself (individual links gated inside)
-        new("GRP_PAYROLL", "เงินเดือน (Payroll)", "Payroll", "Icons.Material.Filled.Payments", 80),
-        new("GRP_WELFARE", "สวัสดิการพนักงาน", "Employee Welfare", "Icons.Material.Filled.VolunteerActivism", 85),
-        // guard: Has("CT_CONTRACT_ADMIN")
-        new("GRP_CONTRACTS", "สัญญา (Contracts)", "Contracts", "Icons.Material.Filled.Assignment", 90),
-        // guard: HasAny("HR_ANNOUNCE_ACCESS","HR_ANNOUNCE_ADMIN")
-        new("GRP_ANNOUNCE", "ประกาศ/ข่าวสาร (Announcements)", "Announcements", "Icons.Material.Filled.Campaign", 100),
-        // guard: HasAny("HR_DISCIPLINE_ADMIN","HR_GRIEVANCE_ADMIN","HR_REWARD_ADMIN")
-        new("GRP_EMP_RELATIONS", "ความสัมพันธ์พนักงาน (Employee Relations)", "Employee Relations", "Icons.Material.Filled.Balance", 110),
-        // guard: Has("EXP_ADMIN")
-        new("GRP_EXPENSE", "เบิกค่าใช้จ่าย (Expense Claims - Admin)", "Expense Claims (Admin)", "Icons.Material.Filled.ReceiptLong", 120),
-        // guard: Has("JOBCOMP_ADMIN")
-        new("GRP_JOBCOMP", "สายอาชีพ/สมรรถนะ (Job & Competency)", "Job & Competency", "Icons.Material.Filled.EmojiObjects", 130),
-        // guard: HasAny("PERF_ADMIN","PERF_ACCESS")
-        new("GRP_PERF", "ประเมินผลปฏิบัติงาน (Performance/KPI)", "Performance / KPI", "Icons.Material.Filled.Assessment", 140),
-        // guard: Has("OKR_ADMIN")
-        new("GRP_OKR", "OKR เป้าหมายเชิงกลยุทธ์ (v2)", "OKR Strategic Goals (v2)", "Icons.Material.Filled.TrackChanges", 150),
-        // guard: HasAny("TALENT_ADMIN","TALENT_ACCESS")
-        new("GRP_TALENT", "Talent Management (9-Box)", "Talent Management (9-Box)", "Icons.Material.Filled.GridView", 160),
-        // guard: HasAny("IDP_ACCESS","IDP_ADMIN")
-        new("GRP_IDP", "แผนพัฒนารายบุคคล (IDP)", "Individual Development Plan (IDP)", "Icons.Material.Filled.TrendingUp", 170),
-        // guard: HasAny("CAREER_ACCESS","CAREER_ADMIN")
-        new("GRP_CAREER", "Career Management", "Career Management", "Icons.Material.Filled.TrendingUp", 180),
-        // guard: Has("SUCC_ADMIN")
-        new("GRP_SUCCESSION", "Succession Planning", "Succession Planning", "Icons.Material.Filled.AccountTree", 190),
-        // guard: Has("LMS_ADMIN")
-        new("GRP_LMS", "ฝึกอบรม (Training / LMS)", "Training (LMS)", "Icons.Material.Filled.School", 200),
-        // guard: HasAny("KM_ACCESS","KM_ADMIN")
-        new("GRP_KM", "จัดการความรู้ (Knowledge Management)", "Knowledge Management", "Icons.Material.Filled.MenuBook", 210),
-        // guard: Has("ENG_ADMIN")
-        new("GRP_ENGAGEMENT", "Employee Engagement", "Employee Engagement", "Icons.Material.Filled.Favorite", 220),
-        // guard: Has("ORGDEV_ADMIN")
-        new("GRP_ORGDEV", "Organization Development", "Organization Development", "Icons.Material.Filled.Business", 230),
-        // no guard on the group itself (individual links gated inside)
-        new("GRP_WF_ENGINE", "Workflow (Engine)", "Workflow (Engine)", "Icons.Material.Filled.Rule", 240),
-        // guard: HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")
-        new("GRP_WF_SCAFFOLD", "ข้อมูลอ้างอิง Workflow", "Workflow Reference Data", "Icons.Material.Filled.AccountTree", 250),
-        // guard: Has("REPORT_CENTER")
-        new("GRP_REPORTS", "รายงาน (Reports)", "Reports", "Icons.Material.Filled.Assessment", 235),
-        // guard: Has("HR_ANALYTICS")
-        new("GRP_HR_ANALYTICS", "HR Analytics", "HR Analytics", "Icons.Material.Filled.QueryStats", 260),
-        // guard: Has("SYS_ADMIN")
-        new("GRP_SYS_ADMIN", "จัดการระบบ (เมนู/สิทธิ์)", "System Administration (Menus/Permissions)", "Icons.Material.Filled.AdminPanelSettings", 270),
-        // no guard on the group itself (unauthorized-by-design / dead legacy routes)
-        new("GRP_LEGACY", "ระบบ / อื่นๆ (เก่า)", "System / Other (Legacy)", "Icons.Material.Filled.Settings", 280),
+        new("GRP_ESS", "พื้นที่พนักงาน (ESS)", "Employee Self-Service (ESS)", "Icons.Material.Filled.Person", 200),
+        // MSS: ลิงก์ทั้งหมดผูกกับผู้ใช้ที่ล็อกอิน (CEO 1 ก.ย. 2569)
+        new("GRP_MSS", "พื้นที่หัวหน้างาน (MSS)", "Manager Self-Service (MSS)", "Icons.Material.Filled.SupervisorAccount", 210),
+        new("GRP_SYS_ADMIN", "จัดการระบบ", "System Administration", "Icons.Material.Filled.AdminPanelSettings", 900),
+        new("GRP_LEGACY", "ระบบเดิม (Legacy)", "Legacy", "Icons.Material.Filled.History", 990, "GRP_SYS_ADMIN"),
+        new("GRP_EMP_TAXFUND", "ภาษีและกองทุนรายคน", "Per-employee Tax & Fund", "Icons.Material.Filled.AccountBalanceWallet", 300, "GRP_EMPLOYEE"),
+        new("GRP_EMP_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_EMPLOYEE"),
+        new("GRP_PAY_DOCS", "เอกสาร / รายงาน / ติดตาม", "Documents & Reports", "Icons.Material.Filled.Description", 500, "GRP_PAYROLL"),
+        new("GRP_PAY_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_PAYROLL"),
+        new("GRP_ATT_DOCS", "เอกสาร / รายงาน / ติดตาม", "Documents & Reports", "Icons.Material.Filled.Description", 500, "GRP_ATTENDANCE"),
+        new("GRP_ATT_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_ATTENDANCE"),
+        new("GRP_ENG_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_ENGAGEMENT"),
+        new("GRP_PERF_DOCS", "เอกสาร / รายงาน / ติดตาม", "Documents & Reports", "Icons.Material.Filled.Description", 500, "GRP_PERF"),
+        new("GRP_PERF_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_PERF"),
+        new("GRP_LMS_DOCS", "เอกสาร / รายงาน / ติดตาม", "Documents & Reports", "Icons.Material.Filled.Description", 500, "GRP_LMS"),
+        new("GRP_LMS_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_LMS"),
+        new("GRP_WF_DOCS", "เอกสาร / รายงาน / ติดตาม", "Documents & Reports", "Icons.Material.Filled.Description", 500, "GRP_WF_ENGINE"),
+        new("GRP_WF_MASTER", "ตั้งค่า (Master)", "Settings (Master)", "Icons.Material.Filled.Settings", 900, "GRP_WF_ENGINE"),
     };
 
     public static readonly IReadOnlyList<NavCatalogEntry> Links = new List<NavCatalogEntry>
@@ -161,279 +130,279 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "ESS_ACCESS", "/ess/grievance/my", "เรื่องร้องเรียนของฉัน", "My Grievances", "Icons.Material.Filled.ListAlt", 180),
 
         // ---- GRP_RECRUIT (group guarded by Has("REC_ADMIN")) ----
-        new("GRP_RECRUIT", "REC_ADMIN", "/rec/requisitions", "คำขออัตรากำลัง", "Headcount Requisitions", "Icons.Material.Filled.RequestPage", 10),
-        new("GRP_RECRUIT", "REC_ADMIN", "/rec/postings", "ประกาศรับสมัคร", "Job Postings", "Icons.Material.Filled.Campaign", 20),
-        new("GRP_RECRUIT", "REC_ADMIN", "/rec/offers", "ข้อเสนอจ้างงาน", "Job Offers", "Icons.Material.Filled.Mail", 30),
-        new("GRP_RECRUIT", "REC_ADMIN", "/rec/dashboard", "ภาพรวมการสรรหา", "Recruitment Overview", "Icons.Material.Filled.Dashboard", 40),
+        new("GRP_RECRUIT", "REC_ADMIN", "/rec/requisitions", "คำขออัตรากำลัง", "Headcount Requisitions", "Icons.Material.Filled.RequestPage", 20),
+        new("GRP_RECRUIT", "REC_ADMIN", "/rec/postings", "ประกาศรับสมัคร", "Job Postings", "Icons.Material.Filled.Campaign", 30),
+        new("GRP_RECRUIT", "REC_ADMIN", "/rec/offers", "ข้อเสนอจ้างงาน", "Job Offers", "Icons.Material.Filled.Mail", 40),
+        new("GRP_RECRUIT", "REC_ADMIN", "/rec/dashboard", "ภาพรวมการสรรหา", "Recruitment Overview", "Icons.Material.Filled.Dashboard", 10),
 
         // ---- GRP_EMPLOYEE (group guarded by Has("PAY_ADMIN")) ----
         new("GRP_EMPLOYEE", "PAY_ADMIN", "/employee", "ค้นหาข้อมูลพนักงาน", "Employee Search", "Icons.Material.Filled.Search", 10),
         new("GRP_EMPLOYEE", "PAY_ADMIN", "/employee/personnel-profile", "ข้อมูลบุคลากร (AI Search)", "Personnel Profile (AI Search)", "Icons.Material.Filled.Badge", 20),
 
         // ---- GRP_ORG_STRUCT (group guarded by HasAny("ORG_ADMIN","SYS_ADMIN","POS_ADMIN","PAY_ADMIN")) ----
-        new("GRP_ORG_STRUCT", "SYS_ADMIN", "/admin/system/companies", "ข้อมูลบริษัท", "Company Information", "Icons.Material.Filled.Apartment", 10),
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/organizations", "ข้อมูลสังกัด", "Organization Units", "Icons.Material.Filled.Business", 20),
+        new("GRP_EMP_MASTER", "SYS_ADMIN", "/admin/system/companies", "ข้อมูลบริษัท", "Company Information", "Icons.Material.Filled.Apartment", 10),
+        new("GRP_EMPLOYEE", "ORG_ADMIN", "/org/organizations", "ข้อมูลสังกัด", "Organization Units", "Icons.Material.Filled.Business", 30),
         // Interactive tree with inline add/edit/end (effective-dated) + change
         // history — added to the menu 2 ก.ย. 2569 (was reachable by URL only).
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/com_organizations/orgtree", "ผังหน่วยงาน (แก้ไข/ประวัติ)", "Org Tree (Edit/History)", "Icons.Material.Filled.AccountTree", 25),
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/section-types", "ข้อมูลประเภทสังกัด", "Organization Unit Types", "Icons.Material.Filled.Layers", 30),
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/subsection-types", "ลักษณะของหน่วยงาน", "Unit Characteristics", "Icons.Material.Filled.Category", 40),
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/layers", "ระดับชั้นหน่วยงาน (Org Layer)", "ระดับชั้นหน่วยงาน (Org Layer)", "Icons.Material.Filled.Layers", 50), // literal Thai label
-        new("GRP_ORG_STRUCT", "ORG_ADMIN", "/org/layer-groups", "กลุ่มระดับชั้นหน่วยงาน", "กลุ่มระดับชั้นหน่วยงาน", "Icons.Material.Filled.Domain", 60), // literal Thai label
-        new("GRP_ORG_STRUCT", "POS_ADMIN", "/pos/position-master", "ทำเนียบตำแหน่ง (Legacy)", "ทำเนียบตำแหน่ง (Legacy)", "Icons.Material.Filled.Badge", 70), // literal Thai label
-        new("GRP_ORG_STRUCT", "PAY_ADMIN", "/pay/admin/chart-of-accounts", "ผังบัญชี", "Chart of Accounts", "Icons.Material.Filled.AccountBalance", 80),
+        new("GRP_EMPLOYEE", "ORG_ADMIN", "/com_organizations/orgtree", "ผังหน่วยงาน (แก้ไข/ประวัติ)", "Org Tree (Edit/History)", "Icons.Material.Filled.AccountTree", 40),
+        new("GRP_EMP_MASTER", "ORG_ADMIN", "/org/section-types", "ข้อมูลประเภทสังกัด", "Organization Unit Types", "Icons.Material.Filled.Layers", 20),
+        new("GRP_EMP_MASTER", "ORG_ADMIN", "/org/subsection-types", "ลักษณะของหน่วยงาน", "Unit Characteristics", "Icons.Material.Filled.Category", 30),
+        new("GRP_EMP_MASTER", "ORG_ADMIN", "/org/layers", "ระดับชั้นหน่วยงาน (Org Layer)", "ระดับชั้นหน่วยงาน (Org Layer)", "Icons.Material.Filled.Layers", 40), // literal Thai label
+        new("GRP_EMP_MASTER", "ORG_ADMIN", "/org/layer-groups", "กลุ่มระดับชั้นหน่วยงาน", "กลุ่มระดับชั้นหน่วยงาน", "Icons.Material.Filled.Domain", 50), // literal Thai label
+        new("GRP_LEGACY", "POS_ADMIN", "/pos/position-master", "ทำเนียบตำแหน่ง (Legacy)", "ทำเนียบตำแหน่ง (Legacy)", "Icons.Material.Filled.Badge", 50), // literal Thai label
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/chart-of-accounts", "ผังบัญชี", "Chart of Accounts", "Icons.Material.Filled.AccountBalance", 140),
 
         // ---- GRP_ORG_CHART (group guarded by HasAny("ORG_ADMIN","POS_ADMIN")) ----
-        new("GRP_ORG_CHART", "ORG_ADMIN", "/org/set-boss", "แสดงกำหนดหัวหน้า", "Assign Supervisors", "Icons.Material.Filled.SupervisorAccount", 10),
-        new("GRP_ORG_CHART", "ORG_ADMIN", "/org/change-history", "ประวัติการปรับผังองค์กร", "Org Chart Change History", "Icons.Material.Filled.History", 20),
-        new("GRP_ORG_CHART", "POS_ADMIN", "/org/headcount", "อัตรากำลังตามผังองค์กร", "Headcount by Org Chart", "Icons.Material.Filled.Groups", 30),
-        new("GRP_ORG_CHART", "ORG_ADMIN", "/org/chart", "ผังองค์กรแบบภาพ (Org Chart)", "Org Chart (Visual)", "Icons.Material.Filled.AccountTree", 40),
-        new("GRP_ORG_CHART", "ORG_ADMIN", "/org/chart-draggable", "ผังองค์กร (แบบลากอิสระ)", "Org Chart (Free Drag)", "Icons.Material.Filled.PanTool", 50),
+        new("GRP_EMP_MASTER", "ORG_ADMIN", "/org/set-boss", "แสดงกำหนดหัวหน้า", "Assign Supervisors", "Icons.Material.Filled.SupervisorAccount", 60),
+        new("GRP_EMPLOYEE", "ORG_ADMIN", "/org/change-history", "ประวัติการปรับผังองค์กร", "Org Chart Change History", "Icons.Material.Filled.History", 570),
+        new("GRP_EMP_MASTER", "POS_ADMIN", "/org/headcount", "อัตรากำลังตามผังองค์กร", "Headcount by Org Chart", "Icons.Material.Filled.Groups", 70),
+        new("GRP_EMPLOYEE", "ORG_ADMIN", "/org/chart", "ผังองค์กรแบบภาพ (Org Chart)", "Org Chart (Visual)", "Icons.Material.Filled.AccountTree", 50),
+        new("GRP_EMPLOYEE", "ORG_ADMIN", "/org/chart-draggable", "ผังองค์กร (แบบลากอิสระ)", "Org Chart (Free Drag)", "Icons.Material.Filled.PanTool", 60),
 
         // ---- GRP_POSITION (group guarded by Has("POS_ADMIN")) ----
-        new("GRP_POSITION", "POS_ADMIN", "/pos/employee-types", "ประเภทพนักงาน", "Employee Types", "Icons.Material.Filled.Groups", 10),
-        new("GRP_POSITION", "POS_ADMIN", "/pos/exec-types", "ชื่อตำแหน่ง", "Position Titles", "Icons.Material.Filled.WorkOutline", 20),
-        new("GRP_POSITION", "POS_ADMIN", "/pos/positions", "อัตราตำแหน่ง (Legacy)", "อัตราตำแหน่ง (Legacy)", "Icons.Material.Filled.AssignmentInd", 30), // literal Thai label
-        new("GRP_POSITION", "POS_ADMIN", "/pos/position-levels", "ระดับตำแหน่ง (Legacy)", "ระดับตำแหน่ง (Legacy)", "Icons.Material.Filled.Stairs", 40), // literal Thai label
-        new("GRP_POSITION", "POS_ADMIN", "/pos/position-slots", "เลขที่อัตรา", "Position Slots", "Icons.Material.Filled.EventSeat", 50),
-        new("GRP_POSITION", "POS_ADMIN", "/pos/headcount-budget", "งบประมาณอัตรากำลัง", "Headcount Budget", "Icons.Material.Filled.PieChart", 60),
+        new("GRP_EMP_MASTER", "POS_ADMIN", "/pos/employee-types", "ประเภทพนักงาน", "Employee Types", "Icons.Material.Filled.Groups", 80),
+        new("GRP_EMP_MASTER", "POS_ADMIN", "/pos/exec-types", "ชื่อตำแหน่ง", "Position Titles", "Icons.Material.Filled.WorkOutline", 90),
+        new("GRP_LEGACY", "POS_ADMIN", "/pos/positions", "อัตราตำแหน่ง (Legacy)", "อัตราตำแหน่ง (Legacy)", "Icons.Material.Filled.AssignmentInd", 60), // literal Thai label
+        new("GRP_LEGACY", "POS_ADMIN", "/pos/position-levels", "ระดับตำแหน่ง (Legacy)", "ระดับตำแหน่ง (Legacy)", "Icons.Material.Filled.Stairs", 70), // literal Thai label
+        new("GRP_EMP_MASTER", "POS_ADMIN", "/pos/position-slots", "เลขที่อัตรา", "Position Slots", "Icons.Material.Filled.EventSeat", 100),
+        new("GRP_EMP_MASTER", "POS_ADMIN", "/pos/headcount-budget", "งบประมาณอัตรากำลัง", "Headcount Budget", "Icons.Material.Filled.PieChart", 110),
 
         // ---- GRP_ATTENDANCE (group guarded by Has("ATT_ADMIN")) ----
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/settings", "ตั้งค่าเวลาเข้างาน", "Attendance Settings", "Icons.Material.Filled.Tune", 10),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/shifts", "จัดการกะ", "Shift Management", "Icons.Material.Filled.Schedule", 20),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/import", "นำเข้า Log เครื่องสแกน", "Import Scanner Log", "Icons.Material.Filled.UploadFile", 30),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/report", "รายงานเวลาเข้างาน", "Attendance Report", "Icons.Material.Filled.Assessment", 40),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/geofence-locations", "พื้นที่อนุญาตเช็คอิน (GPS)", "Allowed Check-in Areas (GPS)", "Icons.Material.Filled.MyLocation", 50),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/projects", "โครงการ (Timesheet)", "Projects (Timesheet)", "Icons.Material.Filled.Work", 60),
-        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/ot-rules", "อัตราคูณค่าล่วงเวลา (OT)", "Overtime Multiplier Rules", "Icons.Material.Filled.MoneyOff", 70),
+        new("GRP_ATT_MASTER", "ATT_ADMIN", "/att/settings", "ตั้งค่าเวลาเข้างาน", "Attendance Settings", "Icons.Material.Filled.Tune", 10),
+        new("GRP_ATT_MASTER", "ATT_ADMIN", "/att/shifts", "จัดการกะ", "Shift Management", "Icons.Material.Filled.Schedule", 20),
+        new("GRP_ATTENDANCE", "ATT_ADMIN", "/att/import", "นำเข้า Log เครื่องสแกน", "Import Scanner Log", "Icons.Material.Filled.UploadFile", 10),
+        new("GRP_ATT_DOCS", "ATT_ADMIN", "/att/report", "รายงานเวลาเข้างาน", "Attendance Report", "Icons.Material.Filled.Assessment", 10),
+        new("GRP_ATT_MASTER", "ATT_ADMIN", "/att/geofence-locations", "พื้นที่อนุญาตเช็คอิน (GPS)", "Allowed Check-in Areas (GPS)", "Icons.Material.Filled.MyLocation", 30),
+        new("GRP_ATT_MASTER", "ATT_ADMIN", "/att/projects", "โครงการ (Timesheet)", "Projects (Timesheet)", "Icons.Material.Filled.Work", 40),
+        new("GRP_ATT_MASTER", "ATT_ADMIN", "/att/ot-rules", "อัตราคูณค่าล่วงเวลา (OT)", "Overtime Multiplier Rules", "Icons.Material.Filled.MoneyOff", 50),
 
         // ---- GRP_PAYROLL (group itself ungated; per-link gates inside) ----
-        new("GRP_PAYROLL", "PAY_ADMIN", "/hrpayrolldasboard", "แดชบอร์ดเงินเดือน (ระบบเดิม)", "Payroll Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // gated 1 ก.ย. 2569 (gap-closure)
-        new("GRP_PAYROLL", "PAY_ADMIN", "/hremployees", "ทะเบียนพนักงาน (ระบบเดิม)", "Employee Register (Legacy)", "Icons.Material.Filled.People", 20), // gated 1 ก.ย. 2569 (gap-closure)
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/employees", "ข้อมูลพนักงาน / จัดการพนักงาน (Payroll)", "Employee Data / Management (Payroll)", "Icons.Material.Filled.Badge", 30),
-        new("GRP_PAYROLL", "PAY_RUNS", "/payrollprocess", "ประมวลผลเงินเดือน", "Payroll Processing", "Icons.Material.Filled.PlaylistPlay", 40),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 50), // gated 1 ก.ย. 2569 (gap-closure)
-        new("GRP_PAYROLL", "PAY_RUNS", "/pay/runs", "เงินเดือน (ใหม่)", "Payroll (New)", "Icons.Material.Filled.RequestQuote", 60),
-        new("GRP_PAYROLL", "PAY_ADHOC", "/pay/adhoc", "รายการเฉพาะกิจ", "Ad-hoc Pay Items", "Icons.Material.Filled.PostAdd", 70),
+        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolldasboard", "แดชบอร์ดเงินเดือน (ระบบเดิม)", "Payroll Dashboard (Legacy)", "Icons.Material.Filled.Dashboard", 10), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_LEGACY", "PAY_ADMIN", "/hremployees", "ทะเบียนพนักงาน (ระบบเดิม)", "Employee Register (Legacy)", "Icons.Material.Filled.People", 20), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/employees", "ข้อมูลพนักงาน / จัดการพนักงาน (Payroll)", "Employee Data / Management (Payroll)", "Icons.Material.Filled.Badge", 20),
+        new("GRP_LEGACY", "PAY_RUNS", "/payrollprocess", "ประมวลผลเงินเดือน", "Payroll Processing", "Icons.Material.Filled.PlaylistPlay", 30),
+        new("GRP_LEGACY", "PAY_ADMIN", "/AIpayrollprocess", "AI ประมวลผลเงินเดือน", "AI Payroll Processing", "Icons.Material.Filled.AutoAwesome", 40), // gated 1 ก.ย. 2569 (gap-closure)
+        new("GRP_PAYROLL", "PAY_RUNS", "/pay/runs", "เงินเดือน (ใหม่)", "Payroll (New)", "Icons.Material.Filled.RequestQuote", 30),
+        new("GRP_PAYROLL", "PAY_ADHOC", "/pay/adhoc", "รายการเฉพาะกิจ", "Ad-hoc Pay Items", "Icons.Material.Filled.PostAdd", 50),
         // หน้าคีย์หลายคนมีรหัสเมนูของตัวเอง เพื่อให้บทบาท PAY_DATA_ENTRY เปิดได้หน้าเดียวโดยไม่เห็นเงินเดือนคนอื่น
         // (เดิมใช้รหัส PAY_ADHOC ร่วมกับหน้าอนุมัติ/รายการประจำ) — ต้องอยู่ในแคตตาล็อกนี้ด้วย ไม่งั้น seeder ไม่จัดที่ให้
-        new("GRP_PAYROLL", "PAY_ADHOC_KEY", "/pay/adhoc/key", "คีย์เงินได้-เงินหักรายงวด (หลายคน)", "Bulk Pay Item Entry", "Icons.Material.Filled.TableChart", 65),
-        new("GRP_PAYROLL", "PAY_ADHOC", "/pay/recurring-items", "เงินได้เงินหักประจำ", "Recurring Pay Items", "Icons.Material.Filled.Repeat", 80),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/payslip-settings", "ตั้งค่าสลิป", "Payslip Settings", "Icons.Material.Filled.Receipt", 90),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/periods", "จัดการงวดเงินเดือน", "Payroll Periods", "Icons.Material.Filled.CalendarMonth", 100),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นเงินเดือน)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 1),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/pay-schedules", "รอบจ่ายเงินเดือน (กี่งวด/เดือน)", "Pay Schedules", "Icons.Material.Filled.EventRepeat", 101),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/bank-file-formats", "รูปแบบไฟล์ธนาคาร", "Bank File Formats", "Icons.Material.Filled.AccountBalance", 103),
-        new("GRP_PAYROLL", "PAY_GL_ADMIN", "/pay/admin/gl-account-mapping", "บัญชี GL ฝั่งนายจ้าง (ฝ่ายบัญชี)", "GL Account Mapping", "Icons.Material.Filled.AccountBalance", 102),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/salary-grades", "โครงสร้างเงินเดือน (Pay Grade)", "Salary Structure (Pay Grade)", "Icons.Material.Filled.BarChart", 110),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/lifecycle-task-templates", "Checklist การเริ่มงาน/ลาออก", "Onboarding/Offboarding Checklist", "Icons.Material.Filled.ChecklistRtl", 120),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/insurance-plans", "แผนประกันกลุ่ม", "Group Insurance Plans", "Icons.Material.Filled.HealthAndSafety", 130),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/welfare-fund-policy", "กองทุนสงเคราะห์ลูกจ้าง", "Employee Welfare Fund", "Icons.Material.Filled.Savings", 140),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/provident-fund-policy", "กองทุนสำรองเลี้ยงชีพ", "Provident Fund", "Icons.Material.Filled.Savings", 150),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/tax-deduction-config", "ตั้งค่าค่าลดหย่อนภาษี", "ตั้งค่าค่าลดหย่อนภาษี", "Icons.Material.Filled.RequestQuote", 160), // literal Thai label
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/employee-tax-deductions", "ค่าลดหย่อนภาษีพนักงาน", "ค่าลดหย่อนภาษีพนักงาน", "Icons.Material.Filled.PersonSearch", 170), // literal Thai label
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/prior-employer-income", "เงินได้จากนายจ้างเดิม", "เงินได้จากนายจ้างเดิม", "Icons.Material.Filled.MoveToInbox", 180), // literal Thai label
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/provident-fund-rate-requests", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "Icons.Material.Filled.SwapHoriz", 190), // literal Thai label
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/provident-fund-exit-cases", "ปิดสมาชิกภาพกองทุนสำรอง", "ปิดสมาชิกภาพกองทุนสำรอง", "Icons.Material.Filled.ExitToApp", 200), // literal Thai label
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/admin/document-expiry", "เอกสารใกล้หมดอายุ", "Expiring Documents", "Icons.Material.Filled.EventBusy", 210),
-        new("GRP_PAYROLL", "PAY_REPORTS", "/pay/reports/labor-cost-trend", "แนวโน้มต้นทุนแรงงาน", "Labor Cost Trend", "Icons.Material.Filled.TrendingUp", 220),
-        new("GRP_PAYROLL", "PAY_REPORTS", "/pay/reports/pay-item-breakdown", "สัดส่วนรายรับ-รายหัก", "Earnings-Deductions Breakdown", "Icons.Material.Filled.PieChart", 230),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/withholding-cert", "หนังสือรับรองหักภาษี 50 ทวิ", "Withholding Tax Certificate (50 Tawi)", "Icons.Material.Filled.Receipt", 240),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/por1", "ภ.ง.ด.1 / ภ.ง.ด.1ก", "PND.1 / PND.1A", "Icons.Material.Filled.RequestPage", 250),
-        new("GRP_PAYROLL", "PAY_ADMIN", "/pay/salary-cert", "หนังสือรับรองเงินเดือน", "Salary Certificate", "Icons.Material.Filled.Description", 260),
-        new("GRP_PAYROLL", "PAY_REPORTS", "/pay/dashboard", "แดชบอร์ดเงินเดือน", "Payroll Dashboard", "Icons.Material.Filled.Dashboard", 270),
+        new("GRP_PAYROLL", "PAY_ADHOC_KEY", "/pay/adhoc/key", "คีย์เงินได้-เงินหักรายงวด (หลายคน)", "Bulk Pay Item Entry", "Icons.Material.Filled.TableChart", 40),
+        new("GRP_PAYROLL", "PAY_ADHOC", "/pay/recurring-items", "เงินได้เงินหักประจำ", "Recurring Pay Items", "Icons.Material.Filled.Repeat", 60),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/payslip-settings", "ตั้งค่าสลิป", "Payslip Settings", "Icons.Material.Filled.Receipt", 20),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/periods", "จัดการงวดเงินเดือน", "Payroll Periods", "Icons.Material.Filled.CalendarMonth", 30),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นเงินเดือน)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 10),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/pay-schedules", "รอบจ่ายเงินเดือน (กี่งวด/เดือน)", "Pay Schedules", "Icons.Material.Filled.EventRepeat", 40),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/bank-file-formats", "รูปแบบไฟล์ธนาคาร", "Bank File Formats", "Icons.Material.Filled.AccountBalance", 60),
+        new("GRP_PAY_MASTER", "PAY_GL_ADMIN", "/pay/admin/gl-account-mapping", "บัญชี GL ฝั่งนายจ้าง (ฝ่ายบัญชี)", "GL Account Mapping", "Icons.Material.Filled.AccountBalance", 50),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/salary-grades", "โครงสร้างเงินเดือน (Pay Grade)", "Salary Structure (Pay Grade)", "Icons.Material.Filled.BarChart", 70),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/lifecycle-task-templates", "Checklist การเริ่มงาน/ลาออก", "Onboarding/Offboarding Checklist", "Icons.Material.Filled.ChecklistRtl", 80),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/insurance-plans", "แผนประกันกลุ่ม", "Group Insurance Plans", "Icons.Material.Filled.HealthAndSafety", 90),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/welfare-fund-policy", "กองทุนสงเคราะห์ลูกจ้าง", "Employee Welfare Fund", "Icons.Material.Filled.Savings", 100),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/provident-fund-policy", "กองทุนสำรองเลี้ยงชีพ", "Provident Fund", "Icons.Material.Filled.Savings", 110),
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/tax-deduction-config", "ตั้งค่าค่าลดหย่อนภาษี", "ตั้งค่าค่าลดหย่อนภาษี", "Icons.Material.Filled.RequestQuote", 120), // literal Thai label
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/employee-tax-deductions", "ค่าลดหย่อนภาษีพนักงาน", "ค่าลดหย่อนภาษีพนักงาน", "Icons.Material.Filled.PersonSearch", 10), // literal Thai label
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/prior-employer-income", "เงินได้จากนายจ้างเดิม", "เงินได้จากนายจ้างเดิม", "Icons.Material.Filled.MoveToInbox", 20), // literal Thai label
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-rate-requests", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "Icons.Material.Filled.SwapHoriz", 30), // literal Thai label
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-exit-cases", "ปิดสมาชิกภาพกองทุนสำรอง", "ปิดสมาชิกภาพกองทุนสำรอง", "Icons.Material.Filled.ExitToApp", 40), // literal Thai label
+        new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/document-expiry", "เอกสารใกล้หมดอายุ", "Expiring Documents", "Icons.Material.Filled.EventBusy", 130),
+        new("GRP_PAY_DOCS", "PAY_REPORTS", "/pay/reports/labor-cost-trend", "แนวโน้มต้นทุนแรงงาน", "Labor Cost Trend", "Icons.Material.Filled.TrendingUp", 10),
+        new("GRP_PAY_DOCS", "PAY_REPORTS", "/pay/reports/pay-item-breakdown", "สัดส่วนรายรับ-รายหัก", "Earnings-Deductions Breakdown", "Icons.Material.Filled.PieChart", 20),
+        new("GRP_PAY_DOCS", "PAY_ADMIN", "/pay/withholding-cert", "หนังสือรับรองหักภาษี 50 ทวิ", "Withholding Tax Certificate (50 Tawi)", "Icons.Material.Filled.Receipt", 30),
+        new("GRP_PAY_DOCS", "PAY_ADMIN", "/pay/por1", "ภ.ง.ด.1 / ภ.ง.ด.1ก", "PND.1 / PND.1A", "Icons.Material.Filled.RequestPage", 40),
+        new("GRP_PAY_DOCS", "PAY_ADMIN", "/pay/salary-cert", "หนังสือรับรองเงินเดือน", "Salary Certificate", "Icons.Material.Filled.Description", 50),
+        new("GRP_PAYROLL", "PAY_REPORTS", "/pay/dashboard", "แดชบอร์ดเงินเดือน", "Payroll Dashboard", "Icons.Material.Filled.Dashboard", 10),
 
         // ---- GRP_WELFARE (employee welfare entitlement module; PAY_ADMIN grant) ----
-        new("GRP_WELFARE", "PAY_ADMIN", "/welfare", "หน้าหลักสวัสดิการ", "Welfare Home", "Icons.Material.Filled.VolunteerActivism", 5),
-        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/benefit-types", "แคตตาล็อกสวัสดิการ", "Welfare Benefit Catalog", "Icons.Material.Filled.CardGiftcard", 10),
-        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/entitlements", "กำหนดสิทธิ์ (ใครได้เท่าไหร่)", "Welfare Entitlements", "Icons.Material.Filled.Tune", 20),
-        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/allowance-report", "รายงานสวัสดิการจ่ายประจำ", "Monthly Allowance Report", "Icons.Material.Filled.Assessment", 30),
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare", "หน้าหลักสวัสดิการ", "Welfare Home", "Icons.Material.Filled.VolunteerActivism", 10),
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/benefit-types", "แคตตาล็อกสวัสดิการ", "Welfare Benefit Catalog", "Icons.Material.Filled.CardGiftcard", 940),
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/entitlements", "กำหนดสิทธิ์ (ใครได้เท่าไหร่)", "Welfare Entitlements", "Icons.Material.Filled.Tune", 950),
+        new("GRP_WELFARE", "PAY_ADMIN", "/welfare/allowance-report", "รายงานสวัสดิการจ่ายประจำ", "Monthly Allowance Report", "Icons.Material.Filled.Assessment", 530),
 
         // ---- GRP_CONTRACTS (group guarded by Has("CT_CONTRACT_ADMIN")) ----
-        new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts", "รายการสัญญา", "Contract List", "Icons.Material.Filled.Description", 10),
-        new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts/expiring", "สัญญาใกล้หมดอายุ", "Expiring Contracts", "Icons.Material.Filled.EventBusy", 20),
-        new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts/currencies", "สกุลเงิน", "Currencies", "Icons.Material.Filled.AttachMoney", 30),
-        new("GRP_CONTRACTS", "CT_CONTRACT_ADMIN", "/contracts/warranty-types", "ประเภทการรับประกัน", "Warranty Types", "Icons.Material.Filled.VerifiedUser", 40),
+        new("GRP_SYS_ADMIN", "CT_CONTRACT_ADMIN", "/contracts", "รายการสัญญา", "Contract List", "Icons.Material.Filled.Description", 10),
+        new("GRP_SYS_ADMIN", "CT_CONTRACT_ADMIN", "/contracts/expiring", "สัญญาใกล้หมดอายุ", "Expiring Contracts", "Icons.Material.Filled.EventBusy", 20),
+        new("GRP_SYS_ADMIN", "CT_CONTRACT_ADMIN", "/contracts/currencies", "สกุลเงิน", "Currencies", "Icons.Material.Filled.AttachMoney", 30),
+        new("GRP_SYS_ADMIN", "CT_CONTRACT_ADMIN", "/contracts/warranty-types", "ประเภทการรับประกัน", "Warranty Types", "Icons.Material.Filled.VerifiedUser", 40),
 
         // ---- GRP_ANNOUNCE (group guarded by HasAny("HR_ANNOUNCE_ACCESS","HR_ANNOUNCE_ADMIN")) ----
         // Duplicate Url: /hr/announcements also appears under GRP_ESS above — kept both per extraction rules; seeder decides.
-        new("GRP_ANNOUNCE", "HR_ANNOUNCE_ACCESS", "/hr/announcements", "หน้าประชาสัมพันธ์", "Announcements Board", "Icons.Material.Filled.Article", 10),
-        new("GRP_ANNOUNCE", "HR_ANNOUNCE_ADMIN", "/hr/announcements/admin", "จัดการประกาศ", "Manage Announcements", "Icons.Material.Filled.EditNote", 20),
+        new("GRP_ENGAGEMENT", "HR_ANNOUNCE_ACCESS", "/hr/announcements", "หน้าประชาสัมพันธ์", "Announcements Board", "Icons.Material.Filled.Article", 90),
+        new("GRP_ENG_MASTER", "HR_ANNOUNCE_ADMIN", "/hr/announcements/admin", "จัดการประกาศ", "Manage Announcements", "Icons.Material.Filled.EditNote", 40),
 
         // ---- GRP_EMP_RELATIONS (group guarded by HasAny("HR_DISCIPLINE_ADMIN","HR_GRIEVANCE_ADMIN","HR_REWARD_ADMIN")) ----
-        new("GRP_EMP_RELATIONS", "HR_DISCIPLINE_ADMIN", "/hr/disciplinary", "วินัยพนักงาน", "Employee Discipline", "Icons.Material.Filled.Gavel", 10),
-        new("GRP_EMP_RELATIONS", "HR_GRIEVANCE_ADMIN", "/hr/grievances", "เรื่องร้องเรียน (HR)", "Grievances (HR)", "Icons.Material.Filled.ReportProblem", 20),
-        new("GRP_EMP_RELATIONS", "HR_REWARD_ADMIN", "/hr/reward", "รางวัลพนักงาน", "Employee Rewards", "Icons.Material.Filled.EmojiEvents", 30),
+        new("GRP_ENGAGEMENT", "HR_DISCIPLINE_ADMIN", "/hr/disciplinary", "วินัยพนักงาน", "Employee Discipline", "Icons.Material.Filled.Gavel", 60),
+        new("GRP_ENGAGEMENT", "HR_GRIEVANCE_ADMIN", "/hr/grievances", "เรื่องร้องเรียน (HR)", "Grievances (HR)", "Icons.Material.Filled.ReportProblem", 70),
+        new("GRP_ENGAGEMENT", "HR_REWARD_ADMIN", "/hr/reward", "รางวัลพนักงาน", "Employee Rewards", "Icons.Material.Filled.EmojiEvents", 80),
 
         // ---- GRP_EXPENSE (group guarded by Has("EXP_ADMIN")) ----
-        new("GRP_EXPENSE", "EXP_ADMIN", "/exp/admin/categories", "ประเภทค่าใช้จ่าย", "Expense Categories", "Icons.Material.Filled.Category", 10),
-        new("GRP_EXPENSE", "EXP_ADMIN", "/exp/admin/claims", "ใบเบิกทั้งหมด", "All Claims", "Icons.Material.Filled.FactCheck", 20),
+        new("GRP_WELFARE", "EXP_ADMIN", "/exp/admin/categories", "ประเภทค่าใช้จ่าย", "Expense Categories", "Icons.Material.Filled.Category", 960),
+        new("GRP_WELFARE", "EXP_ADMIN", "/exp/admin/claims", "ใบเบิกทั้งหมด", "All Claims", "Icons.Material.Filled.FactCheck", 20),
 
         // ---- GRP_JOBCOMP (group guarded by Has("JOBCOMP_ADMIN")) ----
-        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/job/families", "สายอาชีพ (Job Family)", "Job Families", "Icons.Material.Filled.AccountTree", 10),
-        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/job/levels", "ระดับสายอาชีพ (Job Level)", "Job Levels", "Icons.Material.Filled.Stairs", 20),
-        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/categories", "หมวดสมรรถนะ", "Competency Categories", "Icons.Material.Filled.Category", 30),
-        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/library", "คลังสมรรถนะ", "Competency Library", "Icons.Material.Filled.MenuBook", 40),
-        new("GRP_JOBCOMP", "JOBCOMP_ADMIN", "/competency/analytics", "ภาพรวมสมรรถนะ (ช่องว่าง)", "Competency Analytics", "Icons.Material.Filled.Insights", 45),
+        new("GRP_PERF_MASTER", "JOBCOMP_ADMIN", "/job/families", "สายอาชีพ (Job Family)", "Job Families", "Icons.Material.Filled.AccountTree", 50),
+        new("GRP_PERF_MASTER", "JOBCOMP_ADMIN", "/job/levels", "ระดับสายอาชีพ (Job Level)", "Job Levels", "Icons.Material.Filled.Stairs", 60),
+        new("GRP_PERF_MASTER", "JOBCOMP_ADMIN", "/competency/categories", "หมวดสมรรถนะ", "Competency Categories", "Icons.Material.Filled.Category", 70),
+        new("GRP_PERF", "JOBCOMP_ADMIN", "/competency/library", "คลังสมรรถนะ", "Competency Library", "Icons.Material.Filled.MenuBook", 120),
+        new("GRP_PERF_DOCS", "JOBCOMP_ADMIN", "/competency/analytics", "ภาพรวมสมรรถนะ (ช่องว่าง)", "Competency Analytics", "Icons.Material.Filled.Insights", 10),
 
         // ---- GRP_PERF (group guarded by HasAny("PERF_ADMIN","PERF_ACCESS")) ----
-        new("GRP_PERF", "PERF_ADMIN", "/perf/periods", "รอบการประเมิน", "Evaluation Periods", "Icons.Material.Filled.DateRange", 10),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/evaluation-types", "ประเภทแบบประเมิน", "Evaluation Types", "Icons.Material.Filled.Description", 20),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/rater-directions", "ทิศทางการประเมิน", "Rater Directions", "Icons.Material.Filled.CompareArrows", 30),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/assignments", "มอบหมายการประเมิน", "Evaluation Assignments", "Icons.Material.Filled.AssignmentInd", 40),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/goals", "เป้าหมาย OKR", "OKR Goals", "Icons.Material.Filled.Flag", 50),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/calibration", "Calibration การกลั่นกรองคะแนน", "Score Calibration", "Icons.Material.Filled.Tune", 60),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/pip", "Performance Improvement Plan (PIP)", "Performance Improvement Plan (PIP)", "Icons.Material.Filled.TrendingDown", 70),
-        new("GRP_PERF", "PERF_ADMIN", "/perf/hr-dashboard", "ภาพรวม (HR Dashboard)", "Overview (HR Dashboard)", "Icons.Material.Filled.Dashboard", 80),
+        new("GRP_PERF_MASTER", "PERF_ADMIN", "/perf/periods", "รอบการประเมิน", "Evaluation Periods", "Icons.Material.Filled.DateRange", 10),
+        new("GRP_PERF_MASTER", "PERF_ADMIN", "/perf/evaluation-types", "ประเภทแบบประเมิน", "Evaluation Types", "Icons.Material.Filled.Description", 20),
+        new("GRP_PERF_MASTER", "PERF_ADMIN", "/perf/rater-directions", "ทิศทางการประเมิน", "Rater Directions", "Icons.Material.Filled.CompareArrows", 30),
+        new("GRP_PERF", "PERF_ADMIN", "/perf/assignments", "มอบหมายการประเมิน", "Evaluation Assignments", "Icons.Material.Filled.AssignmentInd", 50),
+        new("GRP_PERF", "PERF_ADMIN", "/perf/goals", "เป้าหมาย OKR", "OKR Goals", "Icons.Material.Filled.Flag", 60),
+        new("GRP_PERF", "PERF_ADMIN", "/perf/calibration", "Calibration การกลั่นกรองคะแนน", "Score Calibration", "Icons.Material.Filled.Tune", 70),
+        new("GRP_PERF", "PERF_ADMIN", "/perf/pip", "Performance Improvement Plan (PIP)", "Performance Improvement Plan (PIP)", "Icons.Material.Filled.TrendingDown", 80),
+        new("GRP_PERF", "PERF_ADMIN", "/perf/hr-dashboard", "ภาพรวม (HR Dashboard)", "Overview (HR Dashboard)", "Icons.Material.Filled.Dashboard", 10),
         new("GRP_PERF", "PERF_ACCESS", "/perf/my-evaluations", "งานประเมินของฉัน", "My Evaluations", "Icons.Material.Filled.RateReview", 90),
 
         // ---- GRP_OKR (group guarded by Has("OKR_ADMIN")) ----
-        new("GRP_OKR", "OKR_ADMIN", "/okr/cycles", "วงจร OKR", "OKR Cycles", "Icons.Material.Filled.DateRange", 10),
-        new("GRP_OKR", "OKR_ADMIN", "/okr/categories", "หมวดกลยุทธ์", "Strategic Categories", "Icons.Material.Filled.Category", 20),
-        new("GRP_OKR", "OKR_ADMIN", "/okr/tree", "ต้นไม้ OKR ทั้งบริษัท", "Company-wide OKR Tree", "Icons.Material.Filled.AccountTree", 30),
-        new("GRP_OKR", "OKR_ADMIN", "/okr/dashboard", "แดชบอร์ด OKR", "OKR Dashboard", "Icons.Material.Filled.Dashboard", 40),
+        new("GRP_PERF", "OKR_ADMIN", "/okr/cycles", "วงจร OKR", "OKR Cycles", "Icons.Material.Filled.DateRange", 100),
+        new("GRP_PERF_MASTER", "OKR_ADMIN", "/okr/categories", "หมวดกลยุทธ์", "Strategic Categories", "Icons.Material.Filled.Category", 40),
+        new("GRP_PERF", "OKR_ADMIN", "/okr/tree", "ต้นไม้ OKR ทั้งบริษัท", "Company-wide OKR Tree", "Icons.Material.Filled.AccountTree", 110),
+        new("GRP_PERF", "OKR_ADMIN", "/okr/dashboard", "แดชบอร์ด OKR", "OKR Dashboard", "Icons.Material.Filled.Dashboard", 20),
 
         // ---- GRP_TALENT (group guarded by HasAny("TALENT_ADMIN","TALENT_ACCESS")) ----
-        new("GRP_TALENT", "TALENT_ADMIN", "/hrd/cycle", "รอบการบริหารคนเก่ง (HRD Cycle)", "HRD Cycle", "Icons.Material.Filled.Loop", 5),
-        new("GRP_TALENT", "TALENT_ACCESS", "/talent/team-rating", "ให้คะแนนศักยภาพทีม", "Rate Team Potential", "Icons.Material.Filled.Star", 10),
-        new("GRP_TALENT", "TALENT_ADMIN", "/talent/nine-box", "9-Box Grid ทั้งบริษัท", "Company-wide 9-Box Grid", "Icons.Material.Filled.GridOn", 20),
-        new("GRP_TALENT", "TALENT_ADMIN", "/talent/pool", "Talent Pool", "Talent Pool", "Icons.Material.Filled.EmojiEvents", 30),
-        new("GRP_TALENT", "TALENT_ADMIN", "/talent/review", "บัตรทาเลนต์รายบุคคล", "Talent Review Card", "Icons.Material.Filled.Badge", 40),
+        new("GRP_PERF_MASTER", "TALENT_ADMIN", "/hrd/cycle", "รอบการบริหารคนเก่ง (HRD Cycle)", "HRD Cycle", "Icons.Material.Filled.Loop", 80),
+        new("GRP_PERF", "TALENT_ACCESS", "/talent/team-rating", "ให้คะแนนศักยภาพทีม", "Rate Team Potential", "Icons.Material.Filled.Star", 130),
+        new("GRP_PERF_DOCS", "TALENT_ADMIN", "/talent/nine-box", "9-Box Grid ทั้งบริษัท", "Company-wide 9-Box Grid", "Icons.Material.Filled.GridOn", 20),
+        new("GRP_PERF", "TALENT_ADMIN", "/talent/pool", "Talent Pool", "Talent Pool", "Icons.Material.Filled.EmojiEvents", 140),
+        new("GRP_PERF", "TALENT_ADMIN", "/talent/review", "บัตรทาเลนต์รายบุคคล", "Talent Review Card", "Icons.Material.Filled.Badge", 150),
 
         // ---- GRP_IDP (group guarded by HasAny("IDP_ACCESS","IDP_ADMIN")) ----
-        new("GRP_IDP", "IDP_ACCESS", "/idp/my-plans", "สมรรถนะ+แผนของฉัน", "My Competencies & Plan", "Icons.Material.Filled.Person", 10),
-        new("GRP_IDP", "IDP_ACCESS", "/idp/team", "ทีมของฉัน", "My Team", "Icons.Material.Filled.Group", 20),
-        new("GRP_IDP", "IDP_ADMIN", "/idp/hr-overview", "ภาพรวม HR", "HR Overview", "Icons.Material.Filled.Dashboard", 30),
+        new("GRP_PERF", "IDP_ACCESS", "/idp/my-plans", "สมรรถนะ+แผนของฉัน", "My Competencies & Plan", "Icons.Material.Filled.Person", 160),
+        new("GRP_PERF", "IDP_ACCESS", "/idp/team", "ทีมของฉัน", "My Team", "Icons.Material.Filled.Group", 170),
+        new("GRP_PERF", "IDP_ADMIN", "/idp/hr-overview", "ภาพรวม HR", "HR Overview", "Icons.Material.Filled.Dashboard", 30),
 
         // ---- GRP_CAREER (group guarded by HasAny("CAREER_ACCESS","CAREER_ADMIN")) ----
-        new("GRP_CAREER", "CAREER_ACCESS", "/career/my-path", "เส้นทางความก้าวหน้าของฉัน", "My Career Path", "Icons.Material.Filled.Timeline", 10),
-        new("GRP_CAREER", "CAREER_ACCESS", "/career/explorer", "สำรวจเส้นทางความก้าวหน้า", "Career Path Explorer", "Icons.Material.Filled.AccountTree", 20),
-        new("GRP_CAREER", "CAREER_ACCESS", "/career/internal-jobs", "โอกาสเติบโตภายใน", "Internal Growth Opportunities", "Icons.Material.Filled.SwapHoriz", 30),
-        new("GRP_CAREER", "CAREER_ADMIN", "/career/paths", "จัดการ Career Path", "Manage Career Paths", "Icons.Material.Filled.EditRoad", 40),
+        new("GRP_PERF", "CAREER_ACCESS", "/career/my-path", "เส้นทางความก้าวหน้าของฉัน", "My Career Path", "Icons.Material.Filled.Timeline", 180),
+        new("GRP_PERF", "CAREER_ACCESS", "/career/explorer", "สำรวจเส้นทางความก้าวหน้า", "Career Path Explorer", "Icons.Material.Filled.AccountTree", 190),
+        new("GRP_PERF", "CAREER_ACCESS", "/career/internal-jobs", "โอกาสเติบโตภายใน", "Internal Growth Opportunities", "Icons.Material.Filled.SwapHoriz", 200),
+        new("GRP_PERF_MASTER", "CAREER_ADMIN", "/career/paths", "จัดการ Career Path", "Manage Career Paths", "Icons.Material.Filled.EditRoad", 90),
 
         // ---- GRP_SUCCESSION (group guarded by Has("SUCC_ADMIN")) ----
-        new("GRP_SUCCESSION", "SUCC_ADMIN", "/succession/key-positions", "ตำแหน่งสำคัญ", "Key Positions", "Icons.Material.Filled.Shield", 10),
-        new("GRP_SUCCESSION", "SUCC_ADMIN", "/succession/bench-strength", "Bench Strength", "Bench Strength", "Icons.Material.Filled.Insights", 20),
+        new("GRP_PERF_MASTER", "SUCC_ADMIN", "/succession/key-positions", "ตำแหน่งสำคัญ", "Key Positions", "Icons.Material.Filled.Shield", 100),
+        new("GRP_PERF_DOCS", "SUCC_ADMIN", "/succession/bench-strength", "Bench Strength", "Bench Strength", "Icons.Material.Filled.Insights", 30),
 
         // ---- GRP_LMS (group guarded by Has("LMS_ADMIN")) ----
         new("GRP_LMS", "LMS_ADMIN", "/lms/dashboard", "ภาพรวม", "Overview", "Icons.Material.Filled.Dashboard", 10),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/categories", "หมวดหมู่หลักสูตร", "Course Categories", "Icons.Material.Filled.Category", 20),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/courses", "คลังหลักสูตร", "Course Catalog", "Icons.Material.Filled.MenuBook", 30),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/enrollments", "ผู้ลงทะเบียนอบรม", "Enrollments", "Icons.Material.Filled.HowToReg", 40),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/mandatory-compliance", "ติดตามคอร์สบังคับ", "Mandatory Training", "Icons.Material.Filled.FactCheck", 50),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/training-needs", "ความต้องการฝึกอบรม", "Training Needs", "Icons.Material.Filled.Assignment", 60),
-        new("GRP_LMS", "LMS_ADMIN", "/lms/training-budget", "งบประมาณฝึกอบรม", "Training Budget", "Icons.Material.Filled.AccountBalanceWallet", 70),
+        new("GRP_LMS_MASTER", "LMS_ADMIN", "/lms/categories", "หมวดหมู่หลักสูตร", "Course Categories", "Icons.Material.Filled.Category", 10),
+        new("GRP_LMS", "LMS_ADMIN", "/lms/courses", "คลังหลักสูตร", "Course Catalog", "Icons.Material.Filled.MenuBook", 20),
+        new("GRP_LMS", "LMS_ADMIN", "/lms/enrollments", "ผู้ลงทะเบียนอบรม", "Enrollments", "Icons.Material.Filled.HowToReg", 30),
+        new("GRP_LMS_DOCS", "LMS_ADMIN", "/lms/mandatory-compliance", "ติดตามคอร์สบังคับ", "Mandatory Training", "Icons.Material.Filled.FactCheck", 10),
+        new("GRP_LMS", "LMS_ADMIN", "/lms/training-needs", "ความต้องการฝึกอบรม", "Training Needs", "Icons.Material.Filled.Assignment", 40),
+        new("GRP_LMS_MASTER", "LMS_ADMIN", "/lms/training-budget", "งบประมาณฝึกอบรม", "Training Budget", "Icons.Material.Filled.AccountBalanceWallet", 20),
 
         // ---- GRP_KM (group guarded by HasAny("KM_ACCESS","KM_ADMIN")) ----
-        new("GRP_KM", "KM_ACCESS", "/km/articles-list", "คลังความรู้", "Knowledge Base", "Icons.Material.Filled.LibraryBooks", 10),
-        new("GRP_KM", "KM_ACCESS", "/km/experts", "ผู้เชี่ยวชาญภายในองค์กร", "Internal Experts", "Icons.Material.Filled.Person", 20),
-        new("GRP_KM", "KM_ADMIN", "/km/categories", "หมวดหมู่ความรู้", "Knowledge Categories", "Icons.Material.Filled.Category", 30),
-        new("GRP_KM", "KM_ADMIN", "/km/articles", "จัดการบทความ", "Manage Articles", "Icons.Material.Filled.Edit", 40),
-        new("GRP_KM", "KM_ADMIN", "/km/analytics", "ภาพรวมคลังความรู้", "KM Analytics", "Icons.Material.Filled.Insights", 50),
+        new("GRP_LMS", "KM_ACCESS", "/km/articles-list", "คลังความรู้", "Knowledge Base", "Icons.Material.Filled.LibraryBooks", 50),
+        new("GRP_LMS", "KM_ACCESS", "/km/experts", "ผู้เชี่ยวชาญภายในองค์กร", "Internal Experts", "Icons.Material.Filled.Person", 60),
+        new("GRP_LMS_MASTER", "KM_ADMIN", "/km/categories", "หมวดหมู่ความรู้", "Knowledge Categories", "Icons.Material.Filled.Category", 30),
+        new("GRP_LMS", "KM_ADMIN", "/km/articles", "จัดการบทความ", "Manage Articles", "Icons.Material.Filled.Edit", 70),
+        new("GRP_LMS_DOCS", "KM_ADMIN", "/km/analytics", "ภาพรวมคลังความรู้", "KM Analytics", "Icons.Material.Filled.Insights", 20),
 
         // ---- GRP_ENGAGEMENT (group guarded by Has("ENG_ADMIN")) ----
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/dashboard", "ภาพรวม", "Overview", "Icons.Material.Filled.Dashboard", 10),
         new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/campaigns", "แคมเปญ Survey/Pulse/eNPS", "Survey/Pulse/eNPS Campaigns", "Icons.Material.Filled.Poll", 20),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/question-bank", "คลังคำถาม", "Question Bank", "Icons.Material.Filled.QuestionAnswer", 30),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/action-plans", "แผนปฏิบัติการ", "Action Plans", "Icons.Material.Filled.Checklist", 40),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeem-items", "ของรางวัลแลกแต้ม", "Redeem Catalog", "Icons.Material.Filled.Redeem", 50),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeems", "อนุมัติแลกของรางวัล", "Redeem Approvals", "Icons.Material.Filled.CardGiftcard", 60),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/points-rules", "กติกาสะสมแต้ม & ประวัติ", "Points Rules & Ledger", "Icons.Material.Filled.Stars", 70),
-        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/points-balances", "ยอดแต้มรายพนักงาน", "Points Balances", "Icons.Material.Filled.AccountBalanceWallet", 80),
+        new("GRP_ENG_MASTER", "ENG_ADMIN", "/eng/question-bank", "คลังคำถาม", "Question Bank", "Icons.Material.Filled.QuestionAnswer", 10),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/action-plans", "แผนปฏิบัติการ", "Action Plans", "Icons.Material.Filled.Checklist", 30),
+        new("GRP_ENG_MASTER", "ENG_ADMIN", "/eng/redeem-items", "ของรางวัลแลกแต้ม", "Redeem Catalog", "Icons.Material.Filled.Redeem", 20),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/redeems", "อนุมัติแลกของรางวัล", "Redeem Approvals", "Icons.Material.Filled.CardGiftcard", 40),
+        new("GRP_ENG_MASTER", "ENG_ADMIN", "/eng/points-rules", "กติกาสะสมแต้ม & ประวัติ", "Points Rules & Ledger", "Icons.Material.Filled.Stars", 30),
+        new("GRP_ENGAGEMENT", "ENG_ADMIN", "/eng/points-balances", "ยอดแต้มรายพนักงาน", "Points Balances", "Icons.Material.Filled.AccountBalanceWallet", 50),
 
         // ---- GRP_REPORTS (group guarded by Has("REPORT_CENTER")) ----
         new("GRP_REPORTS", "REPORT_CENTER", "/reports", "ศูนย์รายงาน", "Report Center", "Icons.Material.Filled.Assessment", 10),
 
         // ---- GRP_ORGDEV (group guarded by Has("ORGDEV_ADMIN")) ----
-        new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/dashboard", "ภาพรวมสุขภาพองค์กร", "Org Health Overview", "Icons.Material.Filled.Dashboard", 10),
-        new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/workforce-plan", "แผนอัตรากำลัง", "Workforce Plan", "Icons.Material.Filled.People", 20),
-        new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/leadership-development", "พัฒนาผู้นำ", "Leadership Development", "Icons.Material.Filled.School", 30),
-        new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/change-initiatives", "โครงการเปลี่ยนแปลง", "Change Initiatives", "Icons.Material.Filled.Autorenew", 40),
-        new("GRP_ORGDEV", "ORGDEV_ADMIN", "/orgdev/culture-assessment", "ประเมินวัฒนธรรมองค์กร", "Culture Assessment", "Icons.Material.Filled.Favorite", 50),
+        new("GRP_PERF", "ORGDEV_ADMIN", "/orgdev/dashboard", "ภาพรวมสุขภาพองค์กร", "Org Health Overview", "Icons.Material.Filled.Dashboard", 40),
+        new("GRP_PERF_MASTER", "ORGDEV_ADMIN", "/orgdev/workforce-plan", "แผนอัตรากำลัง", "Workforce Plan", "Icons.Material.Filled.People", 110),
+        new("GRP_PERF", "ORGDEV_ADMIN", "/orgdev/leadership-development", "พัฒนาผู้นำ", "Leadership Development", "Icons.Material.Filled.School", 210),
+        new("GRP_PERF", "ORGDEV_ADMIN", "/orgdev/change-initiatives", "โครงการเปลี่ยนแปลง", "Change Initiatives", "Icons.Material.Filled.Autorenew", 220),
+        new("GRP_PERF", "ORGDEV_ADMIN", "/orgdev/culture-assessment", "ประเมินวัฒนธรรมองค์กร", "Culture Assessment", "Icons.Material.Filled.Favorite", 230),
 
         // ---- GRP_WF_ENGINE (group itself ungated; per-link gates inside) ----
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/canvas", "ภาพรวม Workflow", "Workflow Overview", "Icons.Material.Filled.ViewKanban", 10),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/workflows", "จัดการ Workflow", "Manage Workflows", "Icons.Material.Filled.Route", 20),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/state-change-requests", "คำขอเปลี่ยนสถานะ Workflow", "Workflow State-Change Requests", "Icons.Material.Filled.Gavel", 25),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wfworkflows", "จัดการ Workflow (ระบบเดิม)", "Workflow (Legacy)", "Icons.Material.Filled.Route", 30), // legacy scaffold CRUD, superseded by /wf/workflows
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/sub-workflow-levels", "จัดการระดับการอนุมัติ", "Approval Levels", "Icons.Material.Filled.Layers", 40),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/custom-users", "ผู้อนุมัติเจาะจง (Custom User)", "Specific Approvers (Custom User)", "Icons.Material.Filled.Person", 50),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/custom-roles", "ผู้อนุมัติตาม Role", "Approvers by Role", "Icons.Material.Filled.Badge", 60),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/loa", "ช่วงวงเงินอนุมัติ (LOA)", "Approval Limit Ranges (LOA)", "Icons.Material.Filled.Payments", 70),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/loa-users", "ผู้อนุมัติตามวงเงิน", "Approvers by Limit", "Icons.Material.Filled.PersonPin", 80),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/adhoc-users", "ผู้อนุมัติเฉพาะกิจ", "Ad-hoc Approvers", "Icons.Material.Filled.PersonAdd", 90),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/canvas", "ภาพรวม Workflow", "Workflow Overview", "Icons.Material.Filled.ViewKanban", 10),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/workflows", "จัดการ Workflow", "Manage Workflows", "Icons.Material.Filled.Route", 20),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/state-change-requests", "คำขอเปลี่ยนสถานะ Workflow", "Workflow State-Change Requests", "Icons.Material.Filled.Gavel", 10),
+        new("GRP_LEGACY", "WF_WORKFLOW_ADMIN", "/wfworkflows", "จัดการ Workflow (ระบบเดิม)", "Workflow (Legacy)", "Icons.Material.Filled.Route", 80), // legacy scaffold CRUD, superseded by /wf/workflows
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/sub-workflow-levels", "จัดการระดับการอนุมัติ", "Approval Levels", "Icons.Material.Filled.Layers", 30),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/custom-users", "ผู้อนุมัติเจาะจง (Custom User)", "Specific Approvers (Custom User)", "Icons.Material.Filled.Person", 40),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/custom-roles", "ผู้อนุมัติตาม Role", "Approvers by Role", "Icons.Material.Filled.Badge", 50),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/loa", "ช่วงวงเงินอนุมัติ (LOA)", "Approval Limit Ranges (LOA)", "Icons.Material.Filled.Payments", 60),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/loa-users", "ผู้อนุมัติตามวงเงิน", "Approvers by Limit", "Icons.Material.Filled.PersonPin", 70),
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/adhoc-users", "ผู้อนุมัติเฉพาะกิจ", "Ad-hoc Approvers", "Icons.Material.Filled.PersonAdd", 80),
         // CEO order 7 ก.ย. 2569 (epms study: Detail.cshtml's mas_reason_id
         // dropdown) — reason-code master list, config-first per workflow/level.
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reasons", "เหตุผลการพิจารณา", "Approval Reasons", "Icons.Material.Filled.ListAlt", 95),
-        new("GRP_WF_ENGINE", null, "/wf/my-inbox", "งานรออนุมัติของฉัน", "My Pending Approvals", "Icons.Material.Filled.Inbox", 100), // TODO ungated today (ESS-personalized approval inbox, self-scoped by userid)
-        new("GRP_WF_ENGINE", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 101), // ungated: ESS-personalized, self-scoped by createuserid
-        new("GRP_WF_ENGINE", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 102), // ungated: ESS-personalized, self-scoped by userid
+        new("GRP_WF_MASTER", "WF_WORKFLOW_ADMIN", "/wf/reasons", "เหตุผลการพิจารณา", "Approval Reasons", "Icons.Material.Filled.ListAlt", 90),
+        new("GRP_WF_ENGINE", null, "/wf/my-inbox", "งานรออนุมัติของฉัน", "My Pending Approvals", "Icons.Material.Filled.Inbox", 20), // TODO ungated today (ESS-personalized approval inbox, self-scoped by userid)
+        new("GRP_WF_ENGINE", null, "/wf/my-requests", "งานที่ฉันขอไป", "My Requests", "Icons.Material.Filled.Send", 30), // ungated: ESS-personalized, self-scoped by createuserid
+        new("GRP_WF_ENGINE", null, "/wf/pool", "งานที่ต้องช่วยกันดู (Pool)", "Pool Workflow", "Icons.Material.Filled.Groups", 40), // ungated: ESS-personalized, self-scoped by userid
         // BA proposals (CEO 10 ก.ย. 2569). Delegation is ungated/self-scoped (also under
         // GRP_ESS); health check and cycle-time are admin tools, gated like the rest.
-        new("GRP_WF_ENGINE", null, "/wf/delegations", "มอบฉันทะการอนุมัติ", "Approval Delegation", "Icons.Material.Filled.SwapHorizontalCircle", 103),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/health", "ตรวจสุขภาพ Workflow", "Workflow Health Check", "Icons.Material.Filled.HealthAndSafety", 7), // sits next to the designer — used together when fixing config
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/cycle-time", "เวลาที่ใช้ในแต่ละขั้น", "Cycle Time by Step", "Icons.Material.Filled.Timer", 106), // a report, so next to the jobs overview
+        new("GRP_WF_ENGINE", null, "/wf/delegations", "มอบฉันทะการอนุมัติ", "Approval Delegation", "Icons.Material.Filled.SwapHorizontalCircle", 50),
+        new("GRP_WF_DOCS", "WF_WORKFLOW_ADMIN", "/wf/health", "ตรวจสุขภาพ Workflow", "Workflow Health Check", "Icons.Material.Filled.HealthAndSafety", 10), // sits next to the designer — used together when fixing config
+        new("GRP_WF_DOCS", "WF_WORKFLOW_ADMIN", "/wf/cycle-time", "เวลาที่ใช้ในแต่ละขั้น", "Cycle Time by Step", "Icons.Material.Filled.Timer", 20), // a report, so next to the jobs overview
         // CEO order 7 ก.ย. 2569 (approval-inbox gap #2): cross-module search
         // over every job_master, not just vacant slots — "ผู้ที่เกี่ยวข้อง...
         // ต้องรู้เห็น เรียกดูงานได้".
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/jobs", "ภาพรวมงานอนุมัติ", "Approval Jobs Overview", "Icons.Material.Filled.FactCheck", 105),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/vacant-approvals", "ตำแหน่งผู้อนุมัติว่าง", "Vacant Approver Positions", "Icons.Material.Filled.PersonSearch", 110),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/jobs", "ภาพรวมงานอนุมัติ", "Approval Jobs Overview", "Icons.Material.Filled.FactCheck", 60),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/vacant-approvals", "ตำแหน่งผู้อนุมัติว่าง", "Vacant Approver Positions", "Icons.Material.Filled.PersonSearch", 70),
         // CEO item 5 (2026-09-07): reassign an already-pending approval —
         // distinct from vacant-approvals above (vacant-only, refuses a row
         // that already has someone).
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reassign-approver", "เปลี่ยนผู้อนุมัติ", "Reassign Approver", "Icons.Material.Filled.SwapHoriz", 115),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/ot-requests", "คำขอทำงานล่วงเวลา (OT)", "Overtime Requests", "Icons.Material.Filled.MoreTime", 120),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/on-behalf", "ลา (แทนพนักงาน)", "Leave (On Behalf)", "Icons.Material.Filled.PersonAddAlt", 130),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/policy", "สิทธิการลา", "Leave Policy", "Icons.Material.Filled.Rule", 140),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/leave-types", "ตั้งค่าประเภทการลา", "Leave Type Settings", "Icons.Material.Filled.Category", 150),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/holidays", "ปฏิทินวันหยุดบริษัท", "Company Holiday Calendar", "Icons.Material.Filled.CalendarMonth", 160),
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-policy", "นโยบาย Block Leave", "นโยบาย Block Leave", "Icons.Material.Filled.Block", 170), // literal Thai label
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-compliance", "รายงาน Block Leave", "รายงาน Block Leave", "Icons.Material.Filled.FactCheck", 180), // literal Thai label
-        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/leave-requests/analytics", "แดชบอร์ดการลา", "Leave Analytics Dashboard", "Icons.Material.Filled.Insights", 190),
+        new("GRP_WF_ENGINE", "WF_WORKFLOW_ADMIN", "/wf/reassign-approver", "เปลี่ยนผู้อนุมัติ", "Reassign Approver", "Icons.Material.Filled.SwapHoriz", 80),
+        new("GRP_ATTENDANCE", "WF_WORKFLOW_ADMIN", "/ot-requests", "คำขอทำงานล่วงเวลา (OT)", "Overtime Requests", "Icons.Material.Filled.MoreTime", 20),
+        new("GRP_ATTENDANCE", "WF_WORKFLOW_ADMIN", "/leave-requests/on-behalf", "ลา (แทนพนักงาน)", "Leave (On Behalf)", "Icons.Material.Filled.PersonAddAlt", 30),
+        new("GRP_ATT_MASTER", "WF_WORKFLOW_ADMIN", "/leave-requests/policy", "สิทธิการลา", "Leave Policy", "Icons.Material.Filled.Rule", 60),
+        new("GRP_ATT_MASTER", "WF_WORKFLOW_ADMIN", "/leave-requests/leave-types", "ตั้งค่าประเภทการลา", "Leave Type Settings", "Icons.Material.Filled.Category", 70),
+        new("GRP_ATT_MASTER", "WF_WORKFLOW_ADMIN", "/leave-requests/holidays", "ปฏิทินวันหยุดบริษัท", "Company Holiday Calendar", "Icons.Material.Filled.CalendarMonth", 80),
+        new("GRP_ATT_MASTER", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-policy", "นโยบาย Block Leave", "นโยบาย Block Leave", "Icons.Material.Filled.Block", 90), // literal Thai label
+        new("GRP_ATT_DOCS", "WF_WORKFLOW_ADMIN", "/leave-requests/block-leave-compliance", "รายงาน Block Leave", "รายงาน Block Leave", "Icons.Material.Filled.FactCheck", 20), // literal Thai label
+        new("GRP_ATT_DOCS", "WF_WORKFLOW_ADMIN", "/leave-requests/analytics", "แดชบอร์ดการลา", "Leave Analytics Dashboard", "Icons.Material.Filled.Insights", 30),
 
         // ---- GRP_WF_SCAFFOLD (group guarded by HasAny("WF_EMPLOYEE_ADMIN","WF_ORG_TYPE_ADMIN")) ----
-        new("GRP_WF_SCAFFOLD", "WF_EMPLOYEE_ADMIN", "/wf/employees", "จัดการพนักงาน (Workflow)", "Workflow Employees", "Icons.Material.Filled.Badge", 10),
-        new("GRP_WF_SCAFFOLD", "WF_ORG_TYPE_ADMIN", "/wf/org-types", "จัดการประเภทหน่วยงาน (Workflow)", "Workflow Org Types", "Icons.Material.Filled.Business", 20),
+        new("GRP_WF_MASTER", "WF_EMPLOYEE_ADMIN", "/wf/employees", "จัดการพนักงาน (Workflow)", "Workflow Employees", "Icons.Material.Filled.Badge", 100),
+        new("GRP_WF_MASTER", "WF_ORG_TYPE_ADMIN", "/wf/org-types", "จัดการประเภทหน่วยงาน (Workflow)", "Workflow Org Types", "Icons.Material.Filled.Business", 110),
 
         // ---- GRP_HR_ANALYTICS (group guarded by Has("HR_ANALYTICS")) ----
-        new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/analytics", "ภาพรวม Analytics", "Analytics Overview", "Icons.Material.Filled.Dashboard", 10),
-        new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/reports/headcount", "อัตรากำลัง (Headcount)", "Headcount & Workforce", "Icons.Material.Filled.Groups", 20),
-        new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/reports/turnover", "อัตราการลาออก (Turnover)", "Turnover Rate", "Icons.Material.Filled.TrendingDown", 30),
-        new("GRP_HR_ANALYTICS", "HR_ANALYTICS", "/hr/reports/absenteeism", "รายงานการขาดงาน (Absenteeism)", "Absenteeism Report", "Icons.Material.Filled.EventBusy", 40),
+        new("GRP_REPORTS", "HR_ANALYTICS", "/hr/analytics", "ภาพรวม Analytics", "Analytics Overview", "Icons.Material.Filled.Dashboard", 20),
+        new("GRP_REPORTS", "HR_ANALYTICS", "/hr/reports/headcount", "อัตรากำลัง (Headcount)", "Headcount & Workforce", "Icons.Material.Filled.Groups", 30),
+        new("GRP_REPORTS", "HR_ANALYTICS", "/hr/reports/turnover", "อัตราการลาออก (Turnover)", "Turnover Rate", "Icons.Material.Filled.TrendingDown", 40),
+        new("GRP_REPORTS", "HR_ANALYTICS", "/hr/reports/absenteeism", "รายงานการขาดงาน (Absenteeism)", "Absenteeism Report", "Icons.Material.Filled.EventBusy", 50),
 
         // ---- GRP_SYS_ADMIN (group guarded by Has("SYS_ADMIN")) ----
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นระบบ)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 5),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/menus", "จัดการเมนู", "Menu Management", "Icons.Material.Filled.AccountTree", 10),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/roles", "จัดการกลุ่มผู้ใช้", "User Group Management", "Icons.Material.Filled.Groups", 20),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/super-master", "Super Master (ค่าตั้งต้นระบบ)", "Super Master", "Icons.Material.Filled.AdminPanelSettings", 50),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/menus", "จัดการเมนู", "Menu Management", "Icons.Material.Filled.AccountTree", 60),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/roles", "จัดการกลุ่มผู้ใช้", "User Group Management", "Icons.Material.Filled.Groups", 70),
         // AD.CRUDManage permission-admin screen (สิทธิ์ราย role × หน้า) — added 1 ก.ย. 2569.
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/program-rights", "สิทธิ์การใช้งานรายหน้า (CRUD)", "Per-page CRUD Rights", "Icons.Material.Filled.Rule", 25),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/users", "จัดการผู้ใช้", "User Management", "Icons.Material.Filled.ManageAccounts", 30),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/program-rights", "สิทธิ์การใช้งานรายหน้า (CRUD)", "Per-page CRUD Rights", "Icons.Material.Filled.Rule", 80),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/users", "จัดการผู้ใช้", "User Management", "Icons.Material.Filled.ManageAccounts", 90),
         // Demo polish 1 ก.ย. 2569: two legacy rows floated ungrouped at the
         // top of the drawer ("Role" /sc_roles, "ผูกบัญชี Identity") — these
         // catalog entries make the seeder ADOPT them into this group
         // (placement only; their menucode grants stay untouched).
-        new("GRP_SYS_ADMIN", "role", "/sc_roles", "กลุ่มผู้ใช้ (Legacy)", "Roles (Legacy)", "Icons.Material.Filled.Badge", 35),
-        new("GRP_SYS_ADMIN", "SYS_LINK_IDENTITY", "/admin/link-identity-account", "ผูกบัญชีผู้ใช้ (Identity)", "Link Identity Account", "Icons.Material.Filled.Link", 38),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/permissions", "จัดการสิทธิ์การใช้ระบบ", "Permission Management", "Icons.Material.Filled.Security", 40),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/role-scopes", "ขอบเขตข้อมูล (Data Scope)", "Data Scope", "Icons.Material.Filled.Domain", 50),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/user-sessions", "เซสชันการเข้าใช้งาน", "User Sessions", "Icons.Material.Filled.DevicesOther", 60),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/document-types", "ประเภทเอกสาร (Document Types)", "Document Types", "Icons.Material.Filled.Description", 70),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/languages", "ตั้งค่าภาษา (Language Settings)", "Language Settings", "Icons.Material.Filled.Language", 80),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/sso-roles", "สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)", "External App Roles (SSO)", "Icons.Material.Filled.Key", 90),
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "เครื่องมือออกแบบหน้าจอ", "Screen Designer", "Icons.Material.Filled.DesignServices", 100),
+        new("GRP_LEGACY", "role", "/sc_roles", "กลุ่มผู้ใช้ (Legacy)", "Roles (Legacy)", "Icons.Material.Filled.Badge", 90),
+        new("GRP_SYS_ADMIN", "SYS_LINK_IDENTITY", "/admin/link-identity-account", "ผูกบัญชีผู้ใช้ (Identity)", "Link Identity Account", "Icons.Material.Filled.Link", 100),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/permissions", "จัดการสิทธิ์การใช้ระบบ", "Permission Management", "Icons.Material.Filled.Security", 110),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/role-scopes", "ขอบเขตข้อมูล (Data Scope)", "Data Scope", "Icons.Material.Filled.Domain", 120),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/user-sessions", "เซสชันการเข้าใช้งาน", "User Sessions", "Icons.Material.Filled.DevicesOther", 130),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/document-types", "ประเภทเอกสาร (Document Types)", "Document Types", "Icons.Material.Filled.Description", 140),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/languages", "ตั้งค่าภาษา (Language Settings)", "Language Settings", "Icons.Material.Filled.Language", 150),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/system/sso-roles", "สิทธิ์ผู้ใช้สำหรับระบบภายนอก (SSO)", "External App Roles (SSO)", "Icons.Material.Filled.Key", 160),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design", "เครื่องมือออกแบบหน้าจอ", "Screen Designer", "Icons.Material.Filled.DesignServices", 170),
         // The way IN to whatever the designer has built: its generated CRUD
         // routes (tablename + "s") belong to no menu, so without this row an
         // admin has to already know the URL (CEO, 8 ก.ย. 2569).
-        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design/tables", "ตารางที่สร้างด้วยเครื่องมือออกแบบ", "Designer Tables", "Icons.Material.Filled.TableChart", 110),
+        new("GRP_SYS_ADMIN", "SYS_ADMIN", "/admin/workflow-design/tables", "ตารางที่สร้างด้วยเครื่องมือออกแบบ", "Designer Tables", "Icons.Material.Filled.TableChart", 180),
 
         // ---- GRP_LEGACY (gap-closure 1 ก.ย. 2569: live pages gated by code;
         // /income, /ot, /onlinereport were DEAD links (no @page owns those
         // routes — instant 404) and were removed here + hidden by the
         // CloseLegacyMenuGaps migration rather than gated) ----
-        new("GRP_LEGACY", "SYS_ADMIN", "/masterdata", "ข้อมูลหลัก (ระบบเดิม)", "Master Data (Legacy)", "Icons.Material.Filled.Storage", 20),
-        new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "ผู้ใช้ (ระบบเดิม)", "Users (Legacy)", "Icons.Material.Filled.ManageAccounts", 40),
-        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "ทะเบียนจ่ายเงินเดือน (ระบบเดิม)", "Payroll Register (Legacy)", "Icons.Material.Filled.Folder", 60),
-        new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-log", "Audit Log ระบบ", "System Audit Log", "Icons.Material.Filled.History", 70),
-        new("GRP_LEGACY", "SYS_AUDIT_LOG", "/admin/audit-archive", "จัดเก็บ Audit Log เป็นไฟล์", "Audit Log Archive", "Icons.Material.Filled.Archive", 75),
+        new("GRP_LEGACY", "SYS_ADMIN", "/masterdata", "ข้อมูลหลัก (ระบบเดิม)", "Master Data (Legacy)", "Icons.Material.Filled.Storage", 100),
+        new("GRP_LEGACY", "SYS_ADMIN", "/sc_users", "ผู้ใช้ (ระบบเดิม)", "Users (Legacy)", "Icons.Material.Filled.ManageAccounts", 110),
+        new("GRP_LEGACY", "PAY_ADMIN", "/hrpayrolls", "ทะเบียนจ่ายเงินเดือน (ระบบเดิม)", "Payroll Register (Legacy)", "Icons.Material.Filled.Folder", 120),
+        new("GRP_SYS_ADMIN", "SYS_AUDIT_LOG", "/admin/audit-log", "Audit Log ระบบ", "System Audit Log", "Icons.Material.Filled.History", 190),
+        new("GRP_SYS_ADMIN", "SYS_AUDIT_LOG", "/admin/audit-archive", "จัดเก็บ Audit Log เป็นไฟล์", "Audit Log Archive", "Icons.Material.Filled.Archive", 200),
     };
 }

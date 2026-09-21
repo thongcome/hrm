@@ -1,4 +1,4 @@
-namespace HRM.Services.Security;
+﻿namespace HRM.Services.Security;
 
 using HRM.Models;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +68,10 @@ public static class ScMenuNavSeeder
                 existing.menuorder = g.Order;
                 existing.icon = g.Icon;
                 existing.menuname_en = g.NameEn;
+                // ที่อยู่ของกลุ่มมาจากแคตตาล็อกเหมือนลิงก์ (กลุ่มย่อยในกลุ่ม)
+                existing.uppermenucode = g.ParentGroupCode;
+                existing.menulevel = g.ParentGroupCode is null ? 1 : 2;
+                existing.isshow = true;
                 if (SeederOwns(existing)) existing.menuname = g.NameTh;
                 continue;
             }
@@ -76,8 +80,8 @@ public static class ScMenuNavSeeder
                 menucode = g.GroupCode,
                 menuname = g.NameTh,
                 menuname_en = g.NameEn,
-                menulevel = 1,
-                uppermenucode = null,
+                menulevel = g.ParentGroupCode is null ? 1 : 2,
+                uppermenucode = g.ParentGroupCode,
                 url = null,
                 icon = g.Icon,
                 menuorder = g.Order,
@@ -92,7 +96,21 @@ public static class ScMenuNavSeeder
             byCode[g.GroupCode] = row;
         }
 
-        // 2) Links — level 2 under a group, level 1 when top-level.
+        // กลุ่มที่แคตตาล็อกเลิกใช้ (ยุบเข้าโมดูลอื่นแล้ว) ซ่อนไว้ ไม่ลบ — สิทธิ์ผูกกับ menucode ของลิงก์ ไม่ใช่กลุ่ม
+        var liveGroups = ScMenuNavCatalog.Groups.Select(g => g.GroupCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in all.Where(m => m.url is null && m.menucode is not null
+                     && m.menucode.StartsWith("GRP_", StringComparison.OrdinalIgnoreCase) && !liveGroups.Contains(m.menucode)))
+            stale.isshow = false;
+
+        // ลิงก์อยู่ชั้นไหน: ไม่มีกลุ่ม = 1 · อยู่ในกลุ่มบนสุด = 2 · อยู่ในกลุ่มย่อย = 3
+        static int LevelFor(string? groupCode)
+        {
+            if (groupCode is null) return 1;
+            var g = ScMenuNavCatalog.Groups.FirstOrDefault(x => string.Equals(x.GroupCode, groupCode, StringComparison.OrdinalIgnoreCase));
+            return g?.ParentGroupCode is null ? 2 : 3;
+        }
+
+        // 2) Links — level 2 under a group, level 3 under a sub-group, level 1 when top-level.
         foreach (var l in ScMenuNavCatalog.Links)
         {
             var candidates = byUrl.TryGetValue(l.Url, out var list) ? list : null;
@@ -102,7 +120,7 @@ public static class ScMenuNavSeeder
             var existing = candidates?.FirstOrDefault(m => SameGroup(m.uppermenucode, l.GroupCode));
             if (existing is not null)
             {
-                existing.menulevel = l.GroupCode is null ? 1 : 2;
+                existing.menulevel = LevelFor(l.GroupCode);
                 existing.menuorder = l.Order;
                 existing.icon = l.Icon;
                 if (string.IsNullOrWhiteSpace(existing.menuname_en))
@@ -122,7 +140,7 @@ public static class ScMenuNavSeeder
             if (orphan is not null)
             {
                 orphan.uppermenucode = l.GroupCode;
-                orphan.menulevel = l.GroupCode is null ? 1 : 2;
+                orphan.menulevel = LevelFor(l.GroupCode);
                 orphan.menuorder = l.Order;
                 orphan.icon = l.Icon;
                 if (string.IsNullOrWhiteSpace(orphan.menuname_en))
@@ -135,7 +153,7 @@ public static class ScMenuNavSeeder
                 menucode = l.Code, // null = visible to any logged-in user (rendered fail-closed by DbNavMenu)
                 menuname = l.NameTh,
                 menuname_en = l.NameEn,
-                menulevel = l.GroupCode is null ? 1 : 2,
+                menulevel = LevelFor(l.GroupCode),
                 uppermenucode = l.GroupCode,
                 url = l.Url,
                 icon = l.Icon,

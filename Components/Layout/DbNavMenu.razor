@@ -1,4 +1,4 @@
-@* DbNavMenu — database-driven drawer navigation.
+﻿@* DbNavMenu — database-driven drawer navigation.
    Renders the sidebar from sc_menu rows (isactive && isshow), gated by the
    "menu" claims that ScUserClaimsPrincipalFactory stamps at sign-in from
    sc_role_menu. Same claim set [Authorize(Policy = "Menu:XXX")] checks on
@@ -37,16 +37,34 @@
                 {
                     @* Group row: rendered as a MudNavGroup. If the row also has a
                        url it is ignored — a row with children is always a group. *@
-                    @if (node.Children.Any(IsLeafVisible))
+                    @if (HasVisibleContent(node))
                     {
                         <!-- hrm-nav-toplevel (CEO, 12 ก.ย. 2569: "เมนูหลักต้องเห็นชัด") —
                              bolds + colors every top-level row so the drawer reads as
                              two tiers at a glance instead of one flat list; see
                              DbNavMenu.razor.css. Sub-items inside a group stay plain. -->
-                        <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)" Expanded="false" Class="hrm-nav-toplevel">
-                            @foreach (var child in node.Children.Where(IsLeafVisible))
+                        @* เงินเดือนคือหัวใจของผลิตภัณฑ์ (CEO, 20 ก.ย. 2569) จึงกางไว้ตั้งแต่เปิด กลุ่มอื่นพับไว้
+                           กลุ่มย่อยในกลุ่ม (เอกสาร/รายงาน, ตั้งค่า Master) วาดเป็นกลุ่มซ้อนอีกชั้น — รวม 3 ชั้น (AD.Menu) *@
+                        <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)"
+                                     Expanded="@IsPrimaryGroup(node.Row)" Class="hrm-nav-toplevel">
+                            @foreach (var child in node.Children)
                             {
-                                <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
+                                @if (child.Children.Count > 0)
+                                {
+                                    @if (HasVisibleContent(child))
+                                    {
+                                        <MudNavGroup Title="@DisplayName(child.Row)" Icon="@ResolveIcon(child.Row.icon)" Expanded="false">
+                                            @foreach (var leaf in child.Children.Where(IsLeafVisible))
+                                            {
+                                                <MudNavLink Href="@leaf.Row.url" Icon="@ResolveIcon(leaf.Row.icon)">@DisplayName(leaf.Row)</MudNavLink>
+                                            }
+                                        </MudNavGroup>
+                                    }
+                                }
+                                else if (IsLeafVisible(child))
+                                {
+                                    <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
+                                }
                             }
                         </MudNavGroup>
                     }
@@ -126,9 +144,14 @@
                 continue;
             }
 
-            // One level of nesting is enough for the drawer: rows deeper than
-            // level 2 are FLATTENED under their nearest top-level ancestor
-            // (walk the uppermenucode chain up until a root is found).
+            // ผูกกับพ่อโดยตรงถ้าหาเจอ (กลุ่มย่อยในกลุ่ม เช่น เงินเดือน → ตั้งค่า) — วาดได้ 3 ชั้น
+            // ลึกกว่านั้นยังถูกยุบขึ้นมาที่บรรพบุรุษระดับบนสุดเหมือนเดิม
+            if (byCode.TryGetValue(node.Row.uppermenucode, out var parent) && !ReferenceEquals(parent, node))
+            {
+                parent.Children.Add(node);
+                continue;
+            }
+
             var ancestor = FindTopLevelAncestor(node, byCode);
             if (ancestor is not null)
                 ancestor.Children.Add(node);
@@ -161,6 +184,14 @@
     // A LEAF is visible when it has a url to go to AND either its menucode
     // is empty (open to any logged-in user) or the user holds the matching
     // "menu" claim. Rows with neither url nor children render nothing.
+    // กลุ่มมีของให้เห็นไหม — นับทั้งเมนูตรง ๆ และเมนูในกลุ่มย่อย
+    private bool HasVisibleContent(MenuNode node)
+        => node.Children.Any(c => c.Children.Count > 0 ? HasVisibleContent(c) : IsLeafVisible(c));
+
+    // กลุ่มหลักของผลิตภัณฑ์ — กางไว้ตั้งแต่เปิด ไม่ต้องกดหา
+    private static bool IsPrimaryGroup(sc_menu row)
+        => string.Equals(row.menucode, "GRP_PAYROLL", StringComparison.OrdinalIgnoreCase);
+
     private bool IsLeafVisible(MenuNode node)
         => !string.IsNullOrWhiteSpace(node.Row.url)
            && (string.IsNullOrWhiteSpace(node.Row.menucode) || _allowedMenuCodes.Contains(node.Row.menucode));
