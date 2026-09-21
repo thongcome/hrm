@@ -464,6 +464,8 @@ builder.Services.AddScoped<LoanDeductionCalculator>();
 builder.Services.AddScoped<HRM.Services.Pay.PayrollAnomalyDetectionService>();
 builder.Services.AddScoped<HRM.Services.Pay.PayrollCalculationService>();
 builder.Services.AddScoped<PayrollWorkflowService>();
+builder.Services.AddScoped<HRM.Services.Hr.EmployeeImport.EmployeeImportTemplateService>();
+builder.Services.AddScoped<HRM.Services.Hr.EmployeeImport.EmployeeImportService>();
 builder.Services.AddSingleton<PrivateFileStorage>();
 builder.Services.AddScoped<PayslipGenerationService>();
 builder.Services.AddScoped<PayslipEmailService>();
@@ -786,6 +788,7 @@ app.MapAdditionalIdentityEndpoints();
 
 app.MapRazorPages();  // �Դ��ҹ��鹷ҧ Razor Pages �ͧ Identity
 app.MapPayrollFileEndpoints();
+app.MapEmployeeImportEndpoints();
 app.MapReportEndpoints();
 
 // Login/logout endpoints — see Endpoints/LoginEndpoints.cs. Routing sign-in

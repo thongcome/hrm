@@ -1,0 +1,213 @@
+@page "/hr/employee-import"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Hr.EmployeeImport
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using MudBlazor
+@using HRM.Services.Deploy
+@inject EmployeeImportService Importer
+@inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IConfiguration Configuration
+@inject IHostEnvironment HostEnvironment
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>นำเข้าพนักงานจาก Excel</PageTitle>
+
+@if (!InstallerToolsGate.IsEnabled(Configuration, HostEnvironment))
+{
+    <MudAlert Severity="Severity.Info" Class="ma-4">@InstallerToolsGate.DisabledMessage</MudAlert>
+    return;
+}
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h5">นำเข้าหน่วยงานและพนักงานจาก Excel</MudText>
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+        เครื่องมือ <b>ช่วงขึ้นระบบ</b> ของทีมติดตั้ง Advance Digital — ไฟล์เดียวเปลี่ยนทะเบียนพนักงานทั้งบริษัทได้
+        เมื่อขึ้นระบบเสร็จให้ปิดด้วย <code>"Deploy": { "InstallerTools": false }</code> ·
+        งานประจำเดือนของลูกค้า (ค่าคอมมิชชั่น/เงินได้-เงินหักรายงวด) ใช้หน้า
+        <MudLink Href="/pay/adhoc/key">คีย์เงินได้-เงินหักรายงวด</MudLink> แทน
+    </MudAlert>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ดาวน์โหลดแบบฟอร์ม → กรอก → อัปโหลด ระบบตรวจทุกแถวก่อน ยังไม่บันทึกอะไรจนกว่าจะกดยืนยัน ·
+        นำเข้าซ้ำได้ — รหัสพนักงาน/รหัสหน่วยงานเดิมจะถูกอัปเดต ไม่สร้างซ้ำ
+    </MudText>
+
+    @if (string.IsNullOrEmpty(_companyId))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีนี้ยังไม่ผูกกับบริษัท</MudAlert>
+        return;
+    }
+    @if (_rights is not null && !_rights.CanCreate)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดาวน์โหลดแบบฟอร์มและตรวจไฟล์ได้ แต่นำเข้าไม่ได้</MudAlert>
+    }
+
+    <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudButton Href="/hr/employee-import/template" Target="_blank" Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Download">ดาวน์โหลดแบบฟอร์ม</MudButton>
+        <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".xlsx" Disabled="_busy">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Disabled="_busy">
+                    เลือกไฟล์ที่กรอกแล้ว (.xlsx)
+                </MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+        @if (_busy) { <MudProgressCircular Indeterminate="true" Size="Size.Small" /> }
+    </MudStack>
+
+    @if (_preview is not null)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6">ผลตรวจไฟล์: @_preview.FileName</MudText>
+        <MudStack Row="true" Spacing="2" Class="mt-2" Wrap="Wrap.Wrap">
+            <MudChip T="string" Color="Color.Primary">พนักงานใหม่ @_preview.NewEmployees</MudChip>
+            <MudChip T="string" Color="Color.Info">พนักงานเดิม (อัปเดต) @_preview.ExistingEmployees</MudChip>
+            <MudChip T="string" Color="Color.Primary">หน่วยงานใหม่ @_preview.NewOrgs</MudChip>
+            <MudChip T="string" Color="Color.Info">หน่วยงานเดิม (อัปเดต) @_preview.ExistingOrgs</MudChip>
+            <MudChip T="string" Color="@(_preview.Issues.Count == 0 ? Color.Success : Color.Error)">ข้อผิดพลาด @_preview.Issues.Count</MudChip>
+        </MudStack>
+
+        @if (_preview.SameFileImportedBefore is { } before)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                ไฟล์นี้ (เนื้อหาเดียวกันทุกไบต์) ถูกนำเข้าแล้วเมื่อ @before.ImportedAt.ToString("dd/MM/yyyy HH:mm") —
+                นำเข้าซ้ำได้ ข้อมูลจะถูกอัปเดต ไม่ซ้ำ แต่ตรวจให้แน่ใจว่าไม่ได้อัปโหลดผิดไฟล์
+            </MudAlert>
+        }
+        @foreach (var note in _preview.Notes)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@note</MudAlert>
+        }
+
+        @if (_preview.Issues.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">ต้องแก้ทุกข้อในไฟล์แล้วอัปโหลดใหม่ — ถ้ามีข้อผิดพลาดแม้แต่ข้อเดียว ระบบจะไม่นำเข้าเลย</MudAlert>
+            @if (_uploaded is not null)
+            {
+                <MudButton Class="mt-2" Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadMarkedAsync" Disabled="_busy">ดาวน์โหลดไฟล์ของคุณพร้อมจุดที่ต้องแก้ (ช่องสีแดง)</MudButton>
+            }
+            <MudTable Items="_preview.Issues" Dense="true" Hover="true" Class="mt-2" RowsPerPage="50">
+                <HeaderContent><MudTh>ชีต</MudTh><MudTh>แถว</MudTh><MudTh>คอลัมน์</MudTh><MudTh>ปัญหา</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Sheet</MudTd><MudTd>@(context.Row > 0 ? context.Row.ToString() : "-")</MudTd>
+                    <MudTd>@context.Column</MudTd><MudTd>@context.Message</MudTd>
+                </RowTemplate>
+                <PagerContent><MudTablePager /></PagerContent>
+            </MudTable>
+        }
+        else
+        {
+            <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.CheckCircle"
+                       OnClick="ImportAsync" Disabled="@(_busy || !_preview.CanImport || _rights?.CanCreate != true)">
+                ยืนยันนำเข้า
+            </MudButton>
+        }
+    }
+
+    @if (_result is not null)
+    {
+        <MudAlert Severity="Severity.Success" Class="mt-4">
+            นำเข้าแล้ว — หน่วยงานใหม่ @_result.OrgsAdded · อัปเดต @_result.OrgsUpdated ·
+            พนักงานใหม่ @_result.EmployeesAdded · อัปเดต @_result.EmployeesUpdated · สร้าง user ESS @_result.LoginsCreated
+        </MudAlert>
+        @foreach (var w in _result.Warnings)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-1">@w</MudAlert>
+        }
+    }
+</MudPaper>
+
+<MudPaper Class="pa-4">
+    <MudText Typo="Typo.h6">ประวัติการนำเข้า</MudText>
+    <MudTable Items="_history" Dense="true" Hover="true" Class="mt-2">
+        <HeaderContent>
+            <MudTh>วันที่</MudTh><MudTh>ไฟล์</MudTh><MudTh>หน่วยงาน ใหม่/อัปเดต</MudTh><MudTh>พนักงาน ใหม่/อัปเดต</MudTh><MudTh>user ESS</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ImportedAt.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd>@context.FileName</MudTd>
+            <MudTd>@context.OrgsAdded / @context.OrgsUpdated</MudTd>
+            <MudTd>@context.EmployeesAdded / @context.EmployeesUpdated</MudTd>
+            <MudTd>@context.LoginsCreated</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่เคยนำเข้า</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/hr/employee-import";
+    private const long MaxFileSize = 10 * 1024 * 1024;
+
+    private string? _companyId;
+    private long _userId;
+    private ProgramRoleService.ProgramRights? _rights;
+    private bool _busy;
+    private ImportPreview? _preview;
+    private byte[]? _uploaded;   // the file as uploaded, to hand it back with the problems marked
+    private ImportResult? _result;
+    private List<Hr_EmployeeImportBatch> _history = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirstValue("payroll_company");
+        _userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var id) ? id : 0;
+        if (string.IsNullOrEmpty(_companyId)) return;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        _history = await Importer.HistoryAsync(_companyId);
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (_busy || string.IsNullOrEmpty(_companyId)) return;
+        _busy = true; _result = null; _preview = null; _uploaded = null;
+        try
+        {
+            if (file.Size > MaxFileSize) { Snackbar.Add("ไฟล์ใหญ่เกิน 10 MB", Severity.Error); return; }
+            await using var stream = file.OpenReadStream(MaxFileSize);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            _uploaded = buffer.ToArray();
+            _preview = await Importer.PreviewAsync(new MemoryStream(_uploaded), file.Name, _companyId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_busy || _preview is null || string.IsNullOrEmpty(_companyId)) return;
+        _busy = true;   // the button is disabled from this moment — a double click cannot start a second import
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Create);
+            _result = await Importer.ImportAsync(_preview, _companyId, _userId);
+            _preview = null; _uploaded = null;
+            _history = await Importer.HistoryAsync(_companyId);
+            Snackbar.Add("นำเข้าเรียบร้อย", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task DownloadMarkedAsync()
+    {
+        if (_uploaded is null || _preview is null) return;
+        try
+        {
+            var marked = EmployeeImportErrorMarker.Mark(_uploaded, _preview.Issues);
+            var name = Path.GetFileNameWithoutExtension(_preview.FileName) + "-ต้องแก้.xlsx";
+            using var streamRef = new DotNetStreamReference(new MemoryStream(marked));
+            await JS.InvokeVoidAsync("fileDownload.fromStream", name, streamRef);
+        }
+        catch (Exception ex) { Snackbar.Add("สร้างไฟล์ไม่ได้: " + ex.Message, Severity.Error); }
+    }
+}
