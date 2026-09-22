@@ -26,6 +26,8 @@ using HRM.Services.Pay;
 using HRM.Services.Workflow;
 using HRM.Services.Pay.Calculators;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using OpenIddict.Abstractions;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
@@ -272,14 +274,32 @@ builder.Services.AddOpenIddict()
 
         options.RegisterScopes(Scopes.OpenId, Scopes.Profile, Scopes.Email);
 
-        // Dev-only ephemeral certs so this works out of the box locally —
-        // production needs real, persisted signing/encryption certificates
-        // (same "dev fallback, real config required outside Development"
-        // shape as ExternalApiAuth:DevSigningKey elsewhere in this file).
+        // Dev-only ephemeral certs so this works out of the box locally (same
+        // "dev fallback, real config required outside Development" shape as
+        // ExternalApiAuth:DevSigningKey elsewhere in this file). Outside
+        // Development, HRM already has a real OpenIddict client (ERP's
+        // "erp-web" app, seeded below) that depends on tokens surviving an
+        // app-pool recycle — an ephemeral cert regenerated on every restart
+        // would silently invalidate every live ERP session on each deploy,
+        // so this reads a real certificate from config when an ops team has
+        // provided one (OpenIddict:CertificateThumbprint from the machine's
+        // certificate store, or CertificatePath/CertificatePassword for a
+        // .pfx file), and otherwise auto-generates one self-signed cert ONCE
+        // and persists it under App_Data so every restart reuses the same
+        // key (CEO/CI, 20 ก.ย. 2569: production start must not require a
+        // manual certificate step for every new customer install — see
+        // handoff #12/#11). This is the only place either certificate is
+        // configured; do not add AddDevelopmentEncryptionCertificate calls
+        // elsewhere.
         if (builder.Environment.IsDevelopment())
         {
             options.AddDevelopmentEncryptionCertificate()
                 .AddDevelopmentSigningCertificate();
+        }
+        else
+        {
+            var cert = LoadOrCreateOpenIddictCertificate(builder.Configuration, builder.Environment);
+            options.AddEncryptionCertificate(cert).AddSigningCertificate(cert);
         }
 
         var aspNetCoreBuilder = options.UseAspNetCore()
@@ -303,6 +323,68 @@ builder.Services.AddOpenIddict()
         options.UseLocalServer();
         options.UseAspNetCore();
     });
+
+// Real OpenIddict signing/encryption certificate for non-Development environments (handoff #12:
+// production start crashed with no cert configured — this closes that gap without the
+// ephemeral-key stopgap Advance.Payroll left open, since HRM already has a real client, "erp-web",
+// whose tokens must survive an app-pool recycle).
+//   1) OpenIddict:CertificateThumbprint — a certificate already installed in the machine's
+//      LocalMachine\My store (the enterprise-managed path: ops rotates/revokes it there).
+//   2) OpenIddict:CertificatePath (+ optional CertificatePassword) — a .pfx file, e.g. mounted
+//      into the container/VM outside the deploy package.
+//   3) Neither configured — auto-generate one self-signed certificate ONCE and persist it under
+//      App_Data\security so every subsequent start (and every instance behind the same shared
+//      App_Data, if load-balanced) reuses the identical key instead of minting a new one per
+//      process. This is what makes a fresh customer install (#11) start in Production with zero
+//      manual certificate step; an ops team that wants a real CA-issued cert instead just sets
+//      option 1 or 2 and this path is never reached.
+static X509Certificate2 LoadOrCreateOpenIddictCertificate(IConfiguration configuration, IWebHostEnvironment env)
+{
+    var thumbprint = configuration["OpenIddict:CertificateThumbprint"];
+    if (!string.IsNullOrWhiteSpace(thumbprint))
+    {
+        using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
+        store.Open(OpenFlags.ReadOnly);
+        return store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, validOnly: false)
+                .OfType<X509Certificate2>().FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"OpenIddict:CertificateThumbprint '{thumbprint}' was not found in the LocalMachine\\My certificate store. " +
+                "Install the certificate there (with its private key) or remove the setting to fall back to an auto-generated one.");
+    }
+
+    var certPath = configuration["OpenIddict:CertificatePath"];
+    if (!string.IsNullOrWhiteSpace(certPath))
+    {
+        if (!File.Exists(certPath))
+            throw new InvalidOperationException($"OpenIddict:CertificatePath '{certPath}' does not exist.");
+        return new X509Certificate2(certPath, configuration["OpenIddict:CertificatePassword"],
+            X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+    }
+
+    // No cert configured — reuse (or create once) a self-signed one persisted to disk so its
+    // private key, and therefore every token it has signed/encrypted, survives an app restart.
+    var persistedPath = Path.Combine(env.ContentRootPath, "App_Data", "security", "openiddict-cert.pfx");
+    if (File.Exists(persistedPath))
+    {
+        try
+        {
+            return new X509Certificate2(persistedPath, (string?)null, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+        }
+        catch (CryptographicException)
+        {
+            // Corrupt/unreadable file (e.g. copied without its key, or from a different machine
+            // profile) — regenerate rather than block startup forever; the price is every
+            // existing token/session becomes invalid, same as if this were the very first start.
+        }
+    }
+
+    using var rsa = RSA.Create(2048);
+    var request = new CertificateRequest("CN=HumanOk OpenIddict (auto-generated)", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+    var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(10));
+    Directory.CreateDirectory(Path.GetDirectoryName(persistedPath)!);
+    File.WriteAllBytes(persistedPath, generated.Export(X509ContentType.Pfx));
+    return new X509Certificate2(persistedPath, (string?)null, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+}
 
 builder.Services.AddRazorPages();  // ���������ҹ Razor Pages
                                    // bootstrap blazor
