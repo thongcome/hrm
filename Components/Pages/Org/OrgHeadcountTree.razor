@@ -81,9 +81,9 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         // CEO 1 ก.ย. 2569: ดึงใน com_organization เลย — active roots only,
-        // children via parent_code linkage; no com_company join.
+        // children via parentID linkage; no com_company join.
         _allOrgs = await context.com_organizations.ToListAsync();
-        _roots = _allOrgs.Where(o => (o.istop || string.IsNullOrEmpty(o.parent_code)) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
+        _roots = _allOrgs.Where(o => (o.istop || o.parentID == null) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
 
         var slots = await context.Pos_PositionSlots
             .Where(s => s.CompanyId == _companyId && s.IsActive && s.OrganizationId != null)
@@ -129,7 +129,7 @@
 
     private RenderFragment RenderNode(com_organization node, int depth) => builder =>
     {
-        var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var children = _allOrgs.Where(o => o.parentID == node.id).OrderBy(o => o.orgcodefull).ToList();
         var slots = _slotsByOrgCode[node.code].OrderBy(s => s.PosCode).ToList();
         var (total, vacant) = (slots.Count, slots.Count(IsVacantAsOf));
         var isExpanded = _expanded.Contains(node.id);

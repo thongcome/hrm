@@ -5,7 +5,7 @@ namespace HRM.Services.Perf;
 
 // Resolves a Perf_EvaluationAssignment "rule" into real Perf_EvaluationInstance +
 // Perf_RaterAssignment rows. Walks the org chart directly via
-// Hremployee.OrganizationId / com_organization.parent_code / approver_empid —
+// Hremployee.OrganizationId / com_organization.parentID / approver_empid —
 // per the plan's explicit instruction, NOT via wf_employee (the legacy demo
 // table WorkflowEngineService's Vertical resolution still uses, a known,
 // separate gap outside this module's scope).
@@ -96,7 +96,7 @@ public class PerfAssignmentResolverService(IDbContextFactory<HRMContext> dbFacto
     private static readonly PerfRaterDirection[] SubordinateDirections =
         { PerfRaterDirection.Subordinate1, PerfRaterDirection.Subordinate2, PerfRaterDirection.Subordinate3 };
 
-    // Walks up org.parent_code one hop per level (level 1 = employee's own
+    // Walks up org.parentID one hop per level (level 1 = employee's own
     // org's approver, level 2 = that org's parent's approver, ...). Once a
     // hop can't be resolved (org missing, or no approver_empid set on it),
     // every remaining level is marked Skipped rather than attempted, since
@@ -135,13 +135,13 @@ public class PerfAssignmentResolverService(IDbContextFactory<HRMContext> dbFacto
             // approver resolved, so a single org missing approver_empid
             // doesn't also block levels further up that might still resolve
             // — only a missing parent org genuinely breaks the chain.
-            if (string.IsNullOrWhiteSpace(currentOrg!.parent_code))
+            if (currentOrg!.parentID is not long parentOrgId)
             {
                 chainBroken = true;
             }
             else
             {
-                currentOrg = await context.com_organizations.FirstOrDefaultAsync(o => o.code == currentOrg.parent_code, ct);
+                currentOrg = await context.com_organizations.FirstOrDefaultAsync(o => o.id == parentOrgId, ct);
                 chainBroken = currentOrg is null;
             }
         }

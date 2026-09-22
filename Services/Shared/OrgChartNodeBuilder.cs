@@ -63,7 +63,7 @@ public static class OrgChartNodeBuilder
         void AddOrgSkeleton(com_organization org, string? parentId)
         {
             nodes.Add(BuildSkeletonNode(org, parentId));
-            var children = allOrgs.Where(o => o.parent_code == org.code).OrderBy(o => o.orgcodefull).ToList();
+            var children = allOrgs.Where(o => o.parentID == org.id).OrderBy(o => o.orgcodefull).ToList();
             foreach (var child in children)
                 AddOrgSkeleton(child, org.code);
         }
@@ -76,7 +76,7 @@ public static class OrgChartNodeBuilder
             return nodes;
         }
 
-        var roots = allOrgs.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code)).OrderBy(o => o.orgcodefull).ToList();
+        var roots = allOrgs.Where(o => o.istop || o.parentID == null).OrderBy(o => o.orgcodefull).ToList();
         var validRoots = roots.Where(o => !string.IsNullOrEmpty(o.code)).ToList();
 
         // d3-org-chart (via d3.stratify internally) requires exactly one node

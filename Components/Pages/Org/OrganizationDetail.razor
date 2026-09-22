@@ -354,11 +354,11 @@ else
         _activeDelegation = await BossApproverService.GetActiveDelegationAsync(Id);
 
         // Relatives resolve purely by com_organization's own linkage
-        // (parent_code by code) — codes are globally unique, no scoping
+        // (parentID by id — the tree links by id since 21 ก.ย. 2569), no scoping
         // needed (CEO: ดึงใน com_organization เลย ผูกอย่างไรดึงแบบนั้น).
         _allOrgs = await context.com_organizations.ToListAsync();
 
-        var parentOrg = _allOrgs.FirstOrDefault(o => o.code == _org.parent_code);
+        var parentOrg = _allOrgs.FirstOrDefault(o => o.id == _org.parentID);
         _parentName = parentOrg is { } p ? $"{p.code} — {p.name}" : null;
         _parentOrgId = parentOrg?.id;
 
@@ -386,13 +386,14 @@ else
         // on why this is a separate concern from Pos_PositionSlot's establishment/vacancy tracking
         // on /org/headcount) — direct vs. this org's whole subtree.
         var subtreeOrgIds = new HashSet<long> { _org.id };
-        var frontier = new List<string> { _org.code! };
+        // ไล่ลูกด้วย parentID (id) — ผังองค์กรต่อกันด้วย id ตั้งแต่ 21 ก.ย. 2569
+        var frontier = new List<long> { _org.id };
         while (frontier.Count > 0)
         {
-            var next = _allOrgs.Where(o => o.parent_code is not null && frontier.Contains(o.parent_code)).ToList();
+            var next = _allOrgs.Where(o => o.parentID is long pid && frontier.Contains(pid) && !subtreeOrgIds.Contains(o.id)).ToList();
             if (next.Count == 0) break;
             foreach (var n in next) subtreeOrgIds.Add(n.id);
-            frontier = next.Select(o => o.code!).Where(c => c is not null).ToList();
+            frontier = next.Select(o => o.id).ToList();
         }
         _directEmployeeCount = await context.Hremployee.CountAsync(e => e.IsActive == true && e.OrganizationId == _org.id);
         _subtreeEmployeeCount = await context.Hremployee.CountAsync(e => e.IsActive == true && e.OrganizationId != null && subtreeOrgIds.Contains(e.OrganizationId.Value));
@@ -414,7 +415,7 @@ else
 
     private RenderFragment RenderNode(com_organization node, int depth) => builder =>
     {
-        var children = _allOrgs.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var children = _allOrgs.Where(o => o.parentID == node.id).OrderBy(o => o.orgcodefull).ToList();
         var isExpanded = _expanded.Contains(node.id);
         var meta = OrgChangeAuditFormatter.DescribeBossApprover(node);
 

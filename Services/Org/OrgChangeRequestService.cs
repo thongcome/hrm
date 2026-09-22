@@ -133,7 +133,8 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                         SectionTypeCode = req.NewSectionTypeCode,
                         SubSectionTypeId = req.NewSubSectionTypeId,
                         layer_code = req.NewLayerCode,
-                        parent_code = req.NewParentCode,
+                        parentID = parent?.id,                       // id คือความจริงของผัง — parent_code เป็นสำเนา (HRMContext.OrgParent.cs)
+                        parent_code = parent?.code ?? req.NewParentCode,
                         CostCenterCode = req.NewCostCenterCode,
                         orgcodefull = orgcodefull,
                         startdate = req.NewStartDate,
@@ -154,7 +155,8 @@ public class OrgChangeRequestService(IDbContextFactory<HRMContext> dbFactory, Wo
                         : await context.com_organizations.FirstOrDefaultAsync(o => o.code == req.NewParentCode, ct);
 
                     var oldFull = existing.orgcodefull;
-                    existing.parent_code = req.NewParentCode;
+                    existing.parentID = parent?.id;          // id คือความจริงของผัง — parent_code ตามไปเองใน HRMContext.OrgParent.cs
+                    existing.parent_code = parent?.code;
                     existing.istop = req.NewIsTop ?? existing.istop;
                     existing.orgcodefull = await OrgCodeFullHelper.ComputeNextOrgCodeFullAsync(context, parent?.orgcodefull);
 

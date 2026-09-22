@@ -255,8 +255,8 @@ else
         _originalParentCode = org.parent_code;
         _originalRowVersion = org.RowVersion;
 
-        if (!string.IsNullOrWhiteSpace(org.parent_code))
-            _selectedParent = await context.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code);
+        if (org.parentID is long parentId)
+            _selectedParent = await context.com_organizations.FirstOrDefaultAsync(o => o.id == parentId);
         if (!string.IsNullOrWhiteSpace(org.CostCenterCode))
             _selectedCostCenter = await context.Com_ChartOfAccounts.FirstOrDefaultAsync(a => a.CompanyId == _companyId && a.Code == org.CostCenterCode);
 

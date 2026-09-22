@@ -15,7 +15,7 @@ public static class OrgCodeFullHelper
     public static async Task<string> ComputeNextOrgCodeFullAsync(HRMContext context, string? parentOrgCodeFull)
     {
         IQueryable<com_organization> siblings = string.IsNullOrEmpty(parentOrgCodeFull)
-            ? context.com_organizations.Where(o => o.istop || string.IsNullOrEmpty(o.parent_code))
+            ? context.com_organizations.Where(o => o.istop || o.parentID == null)
             : context.com_organizations.Where(o => o.orgcodefull != null && o.orgcodefull.StartsWith(parentOrgCodeFull) && o.orgcodefull.Length == parentOrgCodeFull.Length + 2);
 
         var siblingCodes = await siblings.Select(o => o.orgcodefull).ToListAsync();

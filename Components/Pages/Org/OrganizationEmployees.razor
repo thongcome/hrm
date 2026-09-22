@@ -84,13 +84,14 @@
         // OrganizationDetail.razor's link counts.
         var allOrgs = await context.com_organizations.ToListAsync();
         var subtreeOrgIds = new HashSet<long> { item.id };
-        var frontier = new List<string> { item.code! };
+        // ไล่ลูกด้วย parentID (id) — ผังองค์กรต่อกันด้วย id ตั้งแต่ 21 ก.ย. 2569
+        var frontier = new List<long> { item.id };
         while (frontier.Count > 0)
         {
-            var next = allOrgs.Where(o => o.parent_code is not null && frontier.Contains(o.parent_code)).ToList();
+            var next = allOrgs.Where(o => o.parentID is long pid && frontier.Contains(pid) && !subtreeOrgIds.Contains(o.id)).ToList();
             if (next.Count == 0) break;
             foreach (var n in next) subtreeOrgIds.Add(n.id);
-            frontier = next.Select(o => o.code!).Where(c => c is not null).ToList();
+            frontier = next.Select(o => o.id).ToList();
         }
 
         var employeesInSubtree = await context.Hremployee

@@ -344,7 +344,7 @@
 
         <MudTabPanel Text="ผังต้นไม้">
             @* Same recursive render pattern as OrgHeadcountTree.razor (roots =
-               istop||no parent_code, children matched by parent_code==node.code,
+               istop||no parentID, children matched by parentID==node.id,
                ordered by orgcodefull) — minus the headcount/position-slot data,
                since that's a different page's concern. Loaded eagerly (not
                search-gated) because com_organization is a small table (a few
@@ -490,7 +490,7 @@
         // CEO 1 ก.ย. 2569: "ดึงใน com_organization เลย ผูกอย่างไรดึงแบบนั้น" —
         // the org table is its own source of truth. Load everything; the
         // tree renders from ACTIVE roots only (root = istop/no parent), and
-        // children follow parent_code linkage, so an inactive root's whole
+        // children follow parentID linkage, so an inactive root's whole
         // tree (e.g. the retired CEO Office tree) drops out naturally with
         // no com_company join involved.
         _allOrgsForTree = await context.com_organizations.ToListAsync();
@@ -510,7 +510,7 @@
                 .OrderBy(e => e.EmpNo)
                 .Select(e => new EmpLite(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim()))
                 .ToList());
-        _treeRoots = _allOrgsForTree.Where(o => (o.istop || string.IsNullOrEmpty(o.parent_code)) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
+        _treeRoots = _allOrgsForTree.Where(o => (o.istop || o.parentID == null) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
         foreach (var root in _treeRoots) _expandedTreeNodes.Add(root.id);
     }
 
@@ -526,7 +526,7 @@
 
     private RenderFragment RenderTreeNode(com_organization node, int depth) => builder =>
     {
-        var children = _allOrgsForTree.Where(o => o.parent_code == node.code).OrderBy(o => o.orgcodefull).ToList();
+        var children = _allOrgsForTree.Where(o => o.parentID == node.id).OrderBy(o => o.orgcodefull).ToList();
         var isExpanded = _expandedTreeNodes.Contains(node.id);
         var meta = OrgChangeAuditFormatter.DescribeBossApprover(node);
 

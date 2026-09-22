@@ -36,8 +36,15 @@ public partial class HRMContext
     // round-trip to expand a changed role into its members.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        // ผังองค์กร: parentID คือความจริง parent_code เป็นสำเนา (HRMContext.OrgParent.cs) — ทำก่อนเก็บ audit ให้ log เห็นค่าที่ sync แล้ว
+        var deferredOrgParents = SyncOrganizationParents();
         var pending = CapturePendingAudits();
         var result = base.SaveChanges(acceptAllChangesOnSuccess);
+        if (deferredOrgParents.Count > 0)
+        {
+            foreach (var (child, parent) in deferredOrgParents) child.parentID = parent.id;
+            base.SaveChanges(acceptAllChangesOnSuccess);
+        }
         if (pending.Count > 0)
         {
             AppendAuditRows(pending);
@@ -48,12 +55,19 @@ public partial class HRMContext
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        // ผังองค์กร: parentID คือความจริง parent_code เป็นสำเนา (HRMContext.OrgParent.cs) — ทำก่อนเก็บ audit ให้ log เห็นค่าที่ sync แล้ว
+        var deferredOrgParents = SyncOrganizationParents();
         var pending = CapturePendingAudits();
         // Advance Security slice 2 — see HRMContext.PermVersion.cs. Must be
         // collected here too (before the real save), same reason as
         // CapturePendingAudits above.
         var directlyAffectedUserIds = CollectDirectlyAffectedUserIds();
         var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (deferredOrgParents.Count > 0)
+        {
+            foreach (var (child, parent) in deferredOrgParents) child.parentID = parent.id;
+            await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
         if (pending.Count > 0)
         {
             AppendAuditRows(pending);

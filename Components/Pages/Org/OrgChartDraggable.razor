@@ -243,12 +243,12 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         // CEO 1 ก.ย. 2569: ดึงใน com_organization เลย ผูกอย่างไรดึงแบบนั้น —
-        // the chart renders from ACTIVE roots; children follow parent_code,
+        // the chart renders from ACTIVE roots; children follow parentID,
         // so a retired tree (inactive root) disappears with no company join.
         var allOrgs = await context.com_organizations.ToListAsync();
         _orgsByCode = allOrgs.Where(o => !string.IsNullOrEmpty(o.code))
             .GroupBy(o => o.code!).ToDictionary(g => g.Key, g => g.First());
-        var roots = allOrgs.Where(o => (o.istop || string.IsNullOrEmpty(o.parent_code)) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
+        var roots = allOrgs.Where(o => (o.istop || o.parentID == null) && o.isActive).OrderBy(o => o.orgcodefull).ToList();
 
         var slots = await context.Pos_PositionSlots
             .Where(s => s.CompanyId == _companyId && s.IsActive && s.OrganizationId != null)
@@ -283,7 +283,7 @@
             clusterNodes[org.code!] = node;
             depth[org.code!] = d;
 
-            var children = allOrgs.Where(o => o.parent_code == org.code).OrderBy(o => o.orgcodefull).ToList();
+            var children = allOrgs.Where(o => o.parentID == org.id).OrderBy(o => o.orgcodefull).ToList();
             foreach (var child in children)
             {
                 node.Children.Add(BuildNode(child, d + 1));

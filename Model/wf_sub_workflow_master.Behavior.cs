@@ -236,7 +236,7 @@ public partial class wf_sub_workflow_master
         return string.IsNullOrWhiteSpace(org) ? job.reqOrg : org;
     }
 
-    // ผังองค์กร: หน่วยงานตั้งต้น -> approver_empid ยังไม่ตั้งก็ไต่ parent_code ขึ้นไป
+    // ผังองค์กร: หน่วยงานตั้งต้น -> approver_empid ยังไม่ตั้งก็ไต่ parentID ขึ้นไป (ผังต่อกันด้วย id — 21 ก.ย. 2569)
     //   climb = ต้องผ่านหัวหน้ากี่ชั้น (1 = หัวหน้าตรง, 2 = หัวหน้าของหัวหน้า)
     //   ไม่ข้ามผู้ขอ (AD.Workflow ข้อ 16) — ผู้ขอที่เป็นหัวหน้าหน่วยงานตัวเองคือผู้อนุมัติชั้นนั้นเอง
     //   ข้ามหน่วยงานที่ยังไม่ตั้งผู้อนุมัติ — ไต่ต่อจนเจอคนจริงหรือสุดผัง
@@ -263,11 +263,11 @@ public partial class wf_sub_workflow_master
                         return (u.userid, $"{org.code}" + (climb > 1 ? $" (หัวหน้าชั้นที่ {climb})" : ""));
                 }
             }
-            if (string.IsNullOrWhiteSpace(org.parent_code))
+            if (org.parentID is not long parentOrgId)
                 return (null, levelsFound == 0
                     ? "ไต่จนสุดผังแล้วไม่พบผู้อนุมัติ"
                     : $"ผังมีหัวหน้าแค่ {levelsFound} ชั้น แต่ตั้งไว้ {climb} ชั้น");
-            org = await db.com_organizations.FirstOrDefaultAsync(o => o.code == org.parent_code, ct);
+            org = await db.com_organizations.FirstOrDefaultAsync(o => o.id == parentOrgId, ct);
         }
         return (null, "ไต่จนสุดผังแล้วไม่พบผู้อนุมัติ");
     }

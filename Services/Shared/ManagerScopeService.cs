@@ -51,21 +51,11 @@ public static class ManagerScopeService
 
         // ผังของบริษัทเดียวกับ node ที่เป็นหัวหน้า — โหลดครั้งเดียวแล้วไล่ลูกในหน่วยความจำ (ผังองค์กรไม่กี่พันแถว)
         var companyKeys = await context.com_organizations.Where(o => headed.Contains(o.id)).Select(o => o.companyid).Distinct().ToListAsync(ct);
-        // ผังต่อกันด้วย parent_code (รหัสหน่วยงานแม่ในบริษัทเดียวกัน) — คอลัมน์ parentID ของตารางเดิมว่างเกือบทั้งหมด
-        // (ตรวจ 21 ก.ย. 2569: มีค่า 11 จาก 173 แถว) จึงแปลง parent_code → id ก่อน แล้วใช้ parentID เป็นตัวสำรองเท่านั้น
-        var raw = await context.com_organizations
+        // ผังต่อกันด้วย parentID (migration 20260921140000_OrgParentById เติมครบทุกแถว + FK ชี้ตัวเอง)
+        var all = await context.com_organizations
             .Where(o => o.isActive && companyKeys.Contains(o.companyid))
-            .Select(o => new { o.id, o.code, o.name, o.parent_code, o.parentID, o.companyid })
+            .Select(o => new { o.id, o.code, o.name, o.parentID })
             .ToListAsync(ct);
-        var idByCode = raw.Where(o => !string.IsNullOrWhiteSpace(o.code))
-            .GroupBy(o => (o.companyid, Code: o.code!.Trim().ToUpperInvariant()))
-            .ToDictionary(g => g.Key, g => g.First().id);
-        var all = raw.Select(o => new
-        {
-            o.id, o.code, o.name,
-            parentID = !string.IsNullOrWhiteSpace(o.parent_code) && idByCode.TryGetValue((o.companyid, o.parent_code!.Trim().ToUpperInvariant()), out var pid) && pid != o.id
-                ? pid : o.parentID,
-        }).ToList();
         var childrenOf = all.Where(o => o.parentID != null).GroupBy(o => o.parentID!.Value).ToDictionary(g => g.Key, g => g.ToList());
 
         var nodes = new List<OrgNode>();
