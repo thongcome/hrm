@@ -787,6 +787,14 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Installer step on a fresh customer database: give advadmin a one-time password and exit
+// (see Services/Deploy/InstallAdminInitializer.cs and tools/deploy/README.md).
+if (args.Contains(HRM.Services.Deploy.InstallAdminInitializer.CommandLineSwitch))
+{
+    Environment.ExitCode = await HRM.Services.Deploy.InstallAdminInitializer.RunAsync(app.Services);
+    return;
+}
+
 // Pluggable document components for WorkflowDocumentSlot.razor (see its own
 // header comment for the registration contract) — a module plugs in here,
 // once, rather than the slot's rendering logic needing to know about every
