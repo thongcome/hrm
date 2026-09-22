@@ -199,7 +199,8 @@ public static class EmployeePositionSync
             var bossEmp = await context.Hremployee.FirstOrDefaultAsync(e => e.id == bossEmpId, ct);
             if (bossEmp is not null)
             {
-                var bossChanged = org.boss_emp_id != bossEmp.EmpNo;
+                var bossChanged = org.boss_hremployee_id != bossEmp.id;
+                org.boss_hremployee_id = bossEmp.id;          // id คือความจริง — boss_emp_id ตามไปใน HRMContext.OrgParent.cs
                 org.boss_emp_id = bossEmp.EmpNo;
                 org.boss_name = $"{bossEmp.EmpName} {bossEmp.EmpSurname}".Trim();
 
@@ -213,7 +214,8 @@ public static class EmployeePositionSync
                         .AnyAsync(d => d.OrganizationId == organizationId && d.isactive, ct);
                     if (!hasActiveDelegation)
                     {
-                        org.approver_empid = org.boss_emp_id;
+                        org.approver_hremployee_id = bossEmp.id;
+                        org.approver_empid = bossEmp.EmpNo;
                         org.approver_name = org.boss_name;
                     }
                 }
@@ -226,6 +228,7 @@ public static class EmployeePositionSync
             // if it matched the old boss: a boss position going vacant
             // shouldn't silently blank out an approver a human explicitly
             // relies on for live workflow approvals.
+            org.boss_hremployee_id = null;
             org.boss_emp_id = null;
             org.boss_name = null;
         }

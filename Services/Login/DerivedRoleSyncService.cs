@@ -69,8 +69,8 @@ public static class DerivedRoleSyncService
         if (deptHeadRole is not null)
         {
             var bossEmpNos = await context.com_organizations
-                .Where(o => o.isActive && o.boss_emp_id != null)
-                .Select(o => o.boss_emp_id!)
+                .Where(o => o.isActive && o.boss_hremployee_id != null)
+                .Join(context.Hremployee, o => o.boss_hremployee_id, e => (long?)e.id, (o, e) => e.EmpNo!)
                 .Distinct()
                 .ToListAsync();
             var desiredUserIds = bossEmpNos

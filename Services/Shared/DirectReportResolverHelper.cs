@@ -20,7 +20,7 @@ public static class DirectReportResolverHelper
         HRMContext context, Hremployee manager, CancellationToken ct = default)
     {
         var reportOrgIds = await context.com_organizations
-            .Where(o => o.approver_empid != null && o.approver_empid == manager.EmpNo)
+            .Where(o => o.approver_hremployee_id == manager.id)
             .Select(o => o.id)
             .ToListAsync(ct);
 

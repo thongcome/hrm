@@ -26,14 +26,17 @@ public static class ManagerScopeService
         public IEnumerable<OrgNode> HeadedNodes => Nodes.Where(n => n.IsHeadedByMe);
     }
 
-    /// <summary>node ที่พนักงานคนนี้เป็นหัวหน้า (approver_empid) — เฉพาะหน่วยงานที่ยังใช้งาน ในบริษัทของเขา</summary>
+    /// <summary>node ที่พนักงานคนนี้เป็นหัวหน้า (approver_hremployee_id) — เฉพาะหน่วยงานที่ยังใช้งาน ในบริษัทของเขา</summary>
     public static async Task<List<long>> FindHeadedNodeIdsAsync(HRMContext context, string? empNo, string? companyCode, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(empNo)) return new();
-        var companyKey = string.IsNullOrWhiteSpace(companyCode) ? null
-            : await context.com_companies.Where(c => c.code == companyCode).Select(c => (long?)c.id).FirstOrDefaultAsync(ct);
+        // รหัสพนักงาน (จาก login) แปลงเป็น id ครั้งเดียวที่ขอบระบบ แล้วเทียบกับผู้อนุมัติของหน่วยงานด้วย id
+        var employeeId = await context.Hremployee
+            .Where(e => e.EmpNo == empNo && (companyCode == null || e.companyid == companyCode))
+            .Select(e => (long?)e.id).FirstOrDefaultAsync(ct);
+        if (employeeId is null) return new();
         return await context.com_organizations
-            .Where(o => o.isActive && o.approver_empid == empNo && (companyKey == null || o.companyid == companyKey))
+            .Where(o => o.isActive && o.approver_hremployee_id == employeeId)
             .Select(o => o.id)
             .ToListAsync(ct);
     }

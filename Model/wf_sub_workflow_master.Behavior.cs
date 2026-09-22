@@ -132,7 +132,7 @@ public partial class wf_sub_workflow_master
 
         var field = isNeedsupervisorapprove ? "isNeedsupervisorapprove"
                   : isupperrole ? "isupperrole" : "isupperuser";
-        var startOrg = await SenderOrgAsync(db, job, ct);
+        var startOrg = await SenderOrgIdAsync(db, job, ct);
         var (boss, note) = await ResolveOrgChainAsync(db, startOrg, hop, ct);
         return new(field, "ORG", boss is long b ? new List<long> { b } : new List<long>(),
             SupervisorLevels > 1 ? $"หัวหน้าชั้นที่ {hop}/{SupervisorLevels}" + (note is null ? "" : $" · {note}") : note);
@@ -158,9 +158,18 @@ public partial class wf_sub_workflow_master
         }
     }
 
+    // ผู้ใช้ที่เป็นพนักงานคนนี้ (sc_user ยังผูกพนักงานด้วย EMP_NO — งานแปลงถัดไป)
+    private static async Task<long?> UserOfEmployeeAsync(HRMContext db, long hremployeeId, CancellationToken ct)
+    {
+        var empNo = await db.Hremployee.Where(e => e.id == hremployeeId).Select(e => e.EmpNo).FirstOrDefaultAsync(ct);
+        return empNo is null ? null : await db.sc_users
+            .Where(u => u.empid == empNo && u.isdisable != true)
+            .Select(u => (long?)u.userid).FirstOrDefaultAsync(ct);
+    }
+
     // isApproverSameCostCenter — หัวหน้าตัวจริงที่มีอำนาจทางการเงินของ cost center นั้น
     // (CEO: ตรวจว่าเป็นหัวหน้าจริง ๆ ที่มีผลเรื่องเงิน) หา com_organization ที่
-    // CostCenterCode ตรงกับของงาน แล้วเอา approver_empid ของหน่วยงานนั้น
+    // CostCenterCode ตรงกับของงาน แล้วเอา approver_hremployee_id ของหน่วยงานนั้น
     private async Task<ApproverSource?> IsApproverSameCostCenterAsync(HRMContext db, job_master job, CancellationToken ct)
     {
         if (!isApproverSameCostCenter) return null;
@@ -169,9 +178,7 @@ public partial class wf_sub_workflow_master
 
         var org = await db.com_organizations
             .FirstOrDefaultAsync(o => o.CostCenterCode == job.costcenter && o.isActive != false, ct);
-        var uid = org?.approver_empid is null ? null : await db.sc_users
-            .Where(u => u.empid == org.approver_empid && u.isdisable != true)
-            .Select(u => (long?)u.userid).FirstOrDefaultAsync(ct);
+        var uid = org?.approver_hremployee_id is long aid ? await UserOfEmployeeAsync(db, aid, ct) : null;
         return new("isApproverSameCostCenter", "ORG",
             uid is long cc ? new List<long> { cc } : new List<long>(),
             org is null ? $"ไม่พบหน่วยงานที่ cost center {job.costcenter}" : $"หน่วยงาน {org.code}");
@@ -216,51 +223,60 @@ public partial class wf_sub_workflow_master
         return (users, $"วงเงิน {band.min:N0}–{band.max:N0}");
     }
 
-    // หน่วยงานตั้งต้นของการไต่ (AD.Workflow ข้อ 14): หน่วยงานของ "คนที่ส่งงานมาถึงขั้นนี้"
+    // หน่วยงาน (id) ตั้งต้นของการไต่ (AD.Workflow ข้อ 14): หน่วยงานของ "คนที่ส่งงานมาถึงขั้นนี้"
     // = แถวอนุมัติล่าสุดของขั้นก่อนหน้า (wlevel มากกว่า 0 และน้อยกว่าขั้นนี้ ที่กดแล้ว)
     // ยังไม่มี (ขั้นแรก) หรือหาหน่วยงานไม่เจอ → ใช้หน่วยงานของผู้ขอ
     // ไต่ชั้นที่ 2 ขึ้นไปก็เริ่มจากที่เดียวกัน เพราะแถวของขั้นนี้เองไม่ถูกนับ (wlevel น้อยกว่า)
-    private async Task<string?> SenderOrgAsync(HRMContext db, job_master job, CancellationToken ct)
+    // หาจาก Hremployee.OrganizationId (มี FK) ก่อน — รหัสหน่วยงานที่งานบันทึกไว้ตอนยื่น (job_user_list.orgcode/job.reqOrg)
+    // เป็นหลักฐาน ณ วันนั้น ใช้เป็นตัวสำรองเท่านั้น (22 ก.ย. 2569)
+    private async Task<long?> SenderOrgIdAsync(HRMContext db, job_master job, CancellationToken ct)
     {
         var sender = await db.job_user_lists
             .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel > 0 && a.wlevel < wlevel && a.approvedate != null)
             .OrderByDescending(a => a.approvedate).ThenByDescending(a => a.jobseq)
             .Select(a => new { a.userid, a.orgcode })
             .FirstOrDefaultAsync(ct);
-        if (sender is null) return job.reqOrg;
 
-        var org = sender.userid is long uid
-            ? await db.sc_users.Where(u => u.userid == uid).Select(u => u.orgcode).FirstOrDefaultAsync(ct)
-            : null;
-        org ??= sender.orgcode;
-        return string.IsNullOrWhiteSpace(org) ? job.reqOrg : org;
+        var orgCode = sender?.orgcode ?? job.reqOrg;
+        if (sender?.userid is long uid)
+        {
+            var empNo = await db.sc_users.Where(u => u.userid == uid).Select(u => u.empid).FirstOrDefaultAsync(ct);
+            if (!string.IsNullOrWhiteSpace(empNo))
+            {
+                var orgId = await db.Hremployee.Where(e => e.EmpNo == empNo && e.OrganizationId != null)
+                    .Select(e => e.OrganizationId).FirstOrDefaultAsync(ct);
+                if (orgId is not null) return orgId;
+            }
+            orgCode ??= await db.sc_users.Where(u => u.userid == uid).Select(u => u.orgcode).FirstOrDefaultAsync(ct);
+        }
+        if (string.IsNullOrWhiteSpace(orgCode)) return null;
+        return await db.com_organizations.Where(o => o.code == orgCode)
+            .OrderByDescending(o => o.isActive).Select(o => (long?)o.id).FirstOrDefaultAsync(ct);
     }
 
-    // ผังองค์กร: หน่วยงานตั้งต้น -> approver_empid ยังไม่ตั้งก็ไต่ parentID ขึ้นไป (ผังต่อกันด้วย id — 21 ก.ย. 2569)
+    // ผังองค์กร: หน่วยงานตั้งต้น -> ผู้อนุมัติ (approver_hremployee_id) ยังไม่ตั้งก็ไต่ parentID ขึ้นไป (id ล้วน 22 ก.ย. 2569)
     //   climb = ต้องผ่านหัวหน้ากี่ชั้น (1 = หัวหน้าตรง, 2 = หัวหน้าของหัวหน้า)
     //   ไม่ข้ามผู้ขอ (AD.Workflow ข้อ 16) — ผู้ขอที่เป็นหัวหน้าหน่วยงานตัวเองคือผู้อนุมัติชั้นนั้นเอง
     //   ข้ามหน่วยงานที่ยังไม่ตั้งผู้อนุมัติ — ไต่ต่อจนเจอคนจริงหรือสุดผัง
     private static async Task<(long? UserId, string? Note)> ResolveOrgChainAsync(
-        HRMContext db, string? startOrg, int climb, CancellationToken ct)
+        HRMContext db, long? startOrg, int climb, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(startOrg)) return (null, "ไม่พบหน่วยงานตั้งต้นของการไต่ (ผู้ส่งงาน/ผู้ขอไม่มีหน่วยงาน)");
+        if (startOrg is null) return (null, "ไม่พบหน่วยงานตั้งต้นของการไต่ (ผู้ส่งงาน/ผู้ขอไม่มีหน่วยงาน)");
 
-        var org = await db.com_organizations.FirstOrDefaultAsync(o => o.code == startOrg, ct);
+        var org = await db.com_organizations.FirstOrDefaultAsync(o => o.id == startOrg, ct);
         var levelsFound = 0;
         for (var hop = 0; org is not null && hop < 20; hop++)   // 20 = กันผังที่วนกลับมาหาตัวเอง
         {
-            if (!string.IsNullOrWhiteSpace(org.approver_empid))
+            if (org.approver_hremployee_id is long approverId)
             {
-                var u = await db.sc_users
-                    .Where(x => x.empid == org.approver_empid && x.isdisable != true)
-                    .Select(x => new { x.userid }).FirstOrDefaultAsync(ct);
+                var userId = await UserOfEmployeeAsync(db, approverId, ct);
 
                 // AD.Workflow ข้อ 16 (CEO 20 ก.ย. 2569): ผู้ขอเป็นผู้อนุมัติเองได้ ไม่มีตัวกัน — นับหัวหน้าตามผังตรง ๆ
-                if (u is not null)
+                if (userId is long found)
                 {
                     levelsFound++;
                     if (levelsFound >= climb)
-                        return (u.userid, $"{org.code}" + (climb > 1 ? $" (หัวหน้าชั้นที่ {climb})" : ""));
+                        return (found, $"{org.code}" + (climb > 1 ? $" (หัวหน้าชั้นที่ {climb})" : ""));
                 }
             }
             if (org.parentID is not long parentOrgId)

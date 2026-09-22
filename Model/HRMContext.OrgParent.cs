@@ -60,6 +60,10 @@ public partial class HRMContext
                     throw new InvalidOperationException("ย้ายหน่วยงานไปอยู่ใต้หน่วยงานลูกของตัวเองไม่ได้ (ผังจะวน)");
             }
 
+            // หัวหน้า / ผู้อนุมัติ: id ของพนักงานคือความจริง · EMP_NO เป็นสำเนา (com_organization.Heads.cs)
+            SyncHead(entry, org, isApprover: true);
+            SyncHead(entry, org, isApprover: false);
+
             // เปลี่ยนรหัสของหน่วยงาน → สำเนารหัสแม่บนลูกทุกตัวตามไป
             if (entry.State == EntityState.Modified && entry.Property(o => o.code).IsModified)
             {
@@ -68,6 +72,45 @@ public partial class HRMContext
             }
         }
         return deferred;
+    }
+
+    // ตั้ง id → EMP_NO ตามไป · ตั้งแต่ EMP_NO (ผู้เขียนเดิมทุกตัว: ตัวนำเข้า, ตั้งหัวหน้า, มอบอำนาจ, คำขอเปลี่ยนผัง) → แปลงเป็น id
+    // ของพนักงานในบริษัทเดียวกับหน่วยงาน หาไม่เจอ = ปฏิเสธ ไม่ปล่อยให้ผังชี้ไปหาคนที่ไม่มีอยู่เงียบ ๆ
+    private void SyncHead(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<com_organization> entry, com_organization org, bool isApprover)
+    {
+        var added = entry.State == EntityState.Added;
+        var idProp = isApprover ? nameof(com_organization.approver_hremployee_id) : nameof(com_organization.boss_hremployee_id);
+        var codeProp = isApprover ? nameof(com_organization.approver_empid) : nameof(com_organization.boss_emp_id);
+        var id = isApprover ? org.approver_hremployee_id : org.boss_hremployee_id;
+        var code = isApprover ? org.approver_empid : org.boss_emp_id;
+
+        var idChanged = added ? id is not null : entry.Property(idProp).IsModified;
+        var codeChanged = added ? !string.IsNullOrWhiteSpace(code) : entry.Property(codeProp).IsModified;
+        if (!idChanged && !codeChanged) return;
+
+        if (idChanged)
+        {
+            code = id is long hid ? Hremployee.AsNoTracking().Where(e => e.id == hid).Select(e => e.EmpNo).FirstOrDefault() : null;
+            if (id is not null && code is null) throw new InvalidOperationException($"ไม่พบพนักงาน id {id} ที่ตั้งเป็นหัวหน้าหน่วยงาน {org.code}");
+        }
+        else if (string.IsNullOrWhiteSpace(code)) { id = null; code = null; }
+        else
+        {
+            var empNo = code.Trim();
+            var companyCode = org.companyid is long cid ? com_companies.AsNoTracking().Where(c => c.id == cid).Select(c => c.code).FirstOrDefault() : null;
+            var matches = Hremployee.AsNoTracking()
+                .Where(e => e.EmpNo == empNo && (companyCode == null || e.companyid == companyCode))
+                .Select(e => e.id).Take(2).ToList();
+            if (matches.Count != 1)
+                throw new InvalidOperationException(matches.Count == 0
+                    ? $"ไม่พบพนักงานรหัส \"{empNo}\" ในบริษัทของหน่วยงาน {org.code} — ตั้งเป็นหัวหน้า/ผู้อนุมัติไม่ได้"
+                    : $"รหัสพนักงาน \"{empNo}\" ซ้ำหลายบริษัท และหน่วยงาน {org.code} ไม่ได้ระบุบริษัท");
+            id = matches[0];
+            code = empNo;
+        }
+
+        if (isApprover) { org.approver_hremployee_id = id; org.approver_empid = code; }
+        else { org.boss_hremployee_id = id; org.boss_emp_id = code; }
     }
 
     private com_organization? FindOrganization(long id)
