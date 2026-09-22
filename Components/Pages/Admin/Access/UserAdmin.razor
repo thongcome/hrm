@@ -50,7 +50,7 @@
             <MudTd>@context.loginname</MudTd>
             <MudTd>@context.firstname @context.lastname</MudTd>
             <MudTd>
-                @if (!string.IsNullOrWhiteSpace(context.empid) && _employeesByEmpNo.TryGetValue(context.empid, out var linkedEmp))
+                @if (context.hremployee_id is long linkedId && _employeesById.TryGetValue(linkedId, out var linkedEmp))
                 {
                     @($"{linkedEmp.EmpNo} — {linkedEmp.EmpName} {linkedEmp.EmpSurname}")
                 }
@@ -194,7 +194,7 @@
     // separately because lockout state lives in AspNetUsers (LockoutEnd), not
     // on sc_user — sc_user.invalidpwcount is only a mirror of the counter.
     private HashSet<long> _lockedUserIds = new();
-    private Dictionary<string, Hremployee> _employeesByEmpNo = new();
+    private Dictionary<long, Hremployee> _employeesById = new();   // บัญชี → พนักงาน ด้วย sc_user.hremployee_id (FK)
     private HashSet<long> _selectedRoleIds = new();
     private Hremployee? _selectedEmployee;
     private sc_user? _editing;
@@ -254,10 +254,10 @@
             .Select(u => u.userid)
             .ToListAsync()).ToHashSet();
 
-        var empNos = _users.Where(u => !string.IsNullOrWhiteSpace(u.empid)).Select(u => u.empid!).Distinct().ToList();
-        _employeesByEmpNo = await context.Hremployee
-            .Where(e => empNos.Contains(e.EmpNo))
-            .ToDictionaryAsync(e => e.EmpNo, e => e);
+        var employeeIds = _users.Where(u => u.hremployee_id != null).Select(u => u.hremployee_id!.Value).Distinct().ToList();
+        _employeesById = await context.Hremployee
+            .Where(e => employeeIds.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => e);
     }
 
     private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string search, CancellationToken ct)
@@ -278,6 +278,7 @@
         _selectedEmployee = employee;
         if (_editing is null) return;
 
+        _editing.hremployee_id = employee?.id;
         _editing.empid = employee?.EmpNo;
         if (employee is not null && _editing.userid == 0)
         {
@@ -303,7 +304,7 @@
         _editError = null;
         _editInfo = null;
         _selectedRoleIds = user.sc_user_roles.Where(ur => ur.isactive).Select(ur => ur.roleid).ToHashSet();
-        _selectedEmployee = !string.IsNullOrWhiteSpace(user.empid) && _employeesByEmpNo.TryGetValue(user.empid, out var emp) ? emp : null;
+        _selectedEmployee = user.hremployee_id is long hid && _employeesById.TryGetValue(hid, out var emp) ? emp : null;
         _editing = new sc_user
         {
             userid = user.userid,
@@ -314,6 +315,7 @@
             email = user.email,
             phone = user.phone,
             empid = user.empid,
+            hremployee_id = user.hremployee_id,
             isdisable = user.isdisable,
             isActivate = user.isActivate,
             iscancel = user.iscancel,
@@ -406,6 +408,7 @@
             existing.lastname = _editing.lastname;
             existing.email = _editing.email;
             existing.phone = _editing.phone;
+            existing.hremployee_id = _editing.hremployee_id;
             existing.empid = _editing.empid;
             existing.isdisable = _editing.isdisable;
             existing.AuthProvider = string.IsNullOrWhiteSpace(_editing.AuthProvider) ? null : _editing.AuthProvider.Trim();

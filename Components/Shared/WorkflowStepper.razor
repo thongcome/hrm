@@ -158,19 +158,19 @@ else
         await using var context = await DbFactory.CreateDbContextAsync();
         var users = await context.sc_users
             .Where(u => userIds.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid, u.loginname })
+            .Select(u => new { u.userid, u.hremployee_id, u.loginname })
             .ToListAsync();
 
-        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var empIds = users.Where(u => u.hremployee_id != null).Select(u => u.hremployee_id!.Value).Distinct().ToList();   // บัญชี → พนักงาน ด้วย id (FK)
         var emps = await context.Hremployee
-            .Where(e => empIds.Contains(e.EmpNo))
-            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .Where(e => empIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname })
             .ToListAsync();
-        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        var nameByEmployeeId = emps.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
 
         foreach (var u in users)
         {
-            _approverNames[u.userid] = u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+            _approverNames[u.userid] = u.hremployee_id is long hid && nameByEmployeeId.TryGetValue(hid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
                 : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}");
         }

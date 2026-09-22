@@ -26,11 +26,9 @@ public static class EssFileEndpoints
                 .FirstOrDefaultAsync(p => p.Id == payslipId);
             if (payslip is null) return Results.NotFound();
 
-            var empno = httpContext.User.FindFirst("empno")?.Value;
-            var company = httpContext.User.FindFirst("payroll_company")?.Value;
-            // EmpNo ซ้ำกันข้ามบริษัทได้ (alternate key คือ companyid+EmpNo) จึงต้องเทียบบริษัทด้วย
-            if (string.IsNullOrWhiteSpace(empno) || payslip.Pay_PayrollEmployee.EmpNo != empno
-                || (payslip.Pay_PayrollEmployee.CompanyId != null && company != null && payslip.Pay_PayrollEmployee.CompanyId != company)
+            // เจ้าของสลิปเทียบด้วย id ของพนักงาน (claim hremployee_id) — ไม่กำกวมข้ามบริษัทเหมือนรหัส
+            var myEmployeeId = HRM.Services.Ess.EssEmployeeResolver.EmployeeId(httpContext.User);
+            if (myEmployeeId is null || payslip.Pay_PayrollEmployee.HremployeeId != myEmployeeId
                 || !payslip.IsPublishedToEmployee)
                 return Results.Forbid();
 

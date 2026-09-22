@@ -56,12 +56,8 @@ public static class ForgotPasswordEndpoints
                 if (appUser is not null)
                 {
                     string? email = null;
-                    if (!string.IsNullOrWhiteSpace(scUser.empid))
-                    {
-                        var emp = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == scUser.empid);
-                        if (emp is not null)
-                            email = await EmployeeEmailResolver.ResolveAsync(context, emp.id);
-                    }
+                    if (scUser.hremployee_id is long employeeId)
+                        email = await EmployeeEmailResolver.ResolveAsync(context, employeeId);
 
                     if (!string.IsNullOrWhiteSpace(email))
                     {

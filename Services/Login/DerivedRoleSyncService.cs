@@ -29,16 +29,15 @@ public static class DerivedRoleSyncService
         var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<HRMContext>>();
         await using var context = await dbFactory.CreateDbContextAsync();
 
-        // sc_user.empid <-> Hremployee.EmpNo is the established bridge used
-        // everywhere else in this codebase (ScUserClaimsPrincipalFactory,
-        // UserAdmin.razor, ...).
+        // บัญชี → พนักงาน ผูกด้วย sc_user.hremployee_id (FK, 22 ก.ย. 2569) — เดิมจับคู่ empid กับ EMP_NO
+        // ซึ่งข้ามบริษัทได้ถ้ารหัสซ้ำกัน
         var users = await context.sc_users
-            .Select(u => new { u.userid, u.empid, u.isVendor })
+            .Select(u => new { u.userid, u.hremployee_id, u.isVendor })
             .ToListAsync();
-        var userIdsByEmpId = users
-            .Where(u => !string.IsNullOrWhiteSpace(u.empid))
-            .GroupBy(u => u.empid!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Select(u => u.userid).ToList(), StringComparer.OrdinalIgnoreCase);
+        var userIdsByEmployee = users
+            .Where(u => u.hremployee_id != null)
+            .GroupBy(u => u.hremployee_id!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(u => u.userid).ToList());
 
         // ---- 1) Position-ladder roles (sc_role.pos_exec_code) --------------
         var posRoles = await context.sc_roles
@@ -48,33 +47,33 @@ public static class DerivedRoleSyncService
         {
             var empByPosCode = (await context.Hremployee
                     .Where(e => e.IsActive && e.PosCode != null)
-                    .Select(e => new { e.EmpNo, e.PosCode })
+                    .Select(e => new { e.id, e.PosCode })
                     .ToListAsync())
                 .GroupBy(e => e.PosCode!, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.Select(e => e.EmpNo).ToList(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(g => g.Key, g => g.Select(e => e.id).ToList(), StringComparer.OrdinalIgnoreCase);
 
             foreach (var role in posRoles)
             {
-                var empNos = empByPosCode.TryGetValue(role.pos_exec_code!, out var list) ? list : new List<string>();
-                var desiredUserIds = empNos
-                    .SelectMany(empNo => userIdsByEmpId.TryGetValue(empNo, out var uids) ? uids : Enumerable.Empty<long>())
+                var employeeIds = empByPosCode.TryGetValue(role.pos_exec_code!, out var list) ? list : new List<long>();
+                var desiredUserIds = employeeIds
+                    .SelectMany(id => userIdsByEmployee.TryGetValue(id, out var uids) ? uids : Enumerable.Empty<long>())
                     .ToHashSet();
                 await ReconcileRoleMembershipAsync(context, role.roleid, desiredUserIds);
             }
         }
 
-        // ---- 2) หัวหน้าแผนก (com_organization.boss_emp_id, any department) --
+        // ---- 2) หัวหน้าแผนก (com_organization.boss_hremployee_id, any department) --
         var deptHeadRole = await context.sc_roles
             .FirstOrDefaultAsync(r => r.isactive && r.rolecode == PositionRoleSeeder.DeptHeadRoleCode);
         if (deptHeadRole is not null)
         {
-            var bossEmpNos = await context.com_organizations
+            var bossIds = await context.com_organizations
                 .Where(o => o.isActive && o.boss_hremployee_id != null)
-                .Join(context.Hremployee, o => o.boss_hremployee_id, e => (long?)e.id, (o, e) => e.EmpNo!)
+                .Select(o => o.boss_hremployee_id!.Value)
                 .Distinct()
                 .ToListAsync();
-            var desiredUserIds = bossEmpNos
-                .SelectMany(empNo => userIdsByEmpId.TryGetValue(empNo, out var uids) ? uids : Enumerable.Empty<long>())
+            var desiredUserIds = bossIds
+                .SelectMany(id => userIdsByEmployee.TryGetValue(id, out var uids) ? uids : Enumerable.Empty<long>())
                 .ToHashSet();
             await ReconcileRoleMembershipAsync(context, deptHeadRole.roleid, desiredUserIds);
         }
@@ -110,18 +109,13 @@ public static class DerivedRoleSyncService
         if (toAdd.Count == 0 && toReactivate.Count == 0 && toDeactivate.Count == 0)
             return;
 
-        var empidByUserId = await context.sc_users
-            .Where(u => toAdd.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid })
-            .ToDictionaryAsync(u => u.userid, u => u.empid);
-
+        // empid ของแถวใหม่ไม่ต้องตั้งเอง — HRMContext.UserEmployee.cs ทำให้ตรงกับ empid ของ user เจ้าของแถวเสมอตอน SaveChanges
         foreach (var userId in toAdd)
         {
             context.sc_user_roles.Add(new sc_user_role
             {
                 roleid = roleId,
                 userid = userId,
-                empid = empidByUserId.TryGetValue(userId, out var empid) ? empid : null,
                 isactive = true,
                 modate = DateTime.Now,
                 modby = SyncOwner,

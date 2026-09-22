@@ -118,6 +118,10 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
 
         if (!string.IsNullOrWhiteSpace(scUser.empid))
             identity.AddClaim(new Claim("empno", scUser.empid));
+        // ตัวตนของพนักงานใน session คือ id (sc_user.hremployee_id, FK) — ESS/MSS หาพนักงานจาก claim นี้ ไม่ใช่จากรหัส
+        // "empno" ยังอยู่สำหรับแสดงผลและประทับบนเอกสาร workflow
+        if (scUser.hremployee_id is long hremployeeId)
+            identity.AddClaim(new Claim(HRM.Services.Ess.EssEmployeeResolver.EmployeeIdClaim, hremployeeId.ToString()));
 
         // Resolved for every account, not only employees: a system account such as advadmin
         // (CEO, 18 ก.ย. 2569: "advadmin ที่ไม่ใช่พนักงาน แล้วทำได้ทุกอย่าง") has no empid but still
@@ -154,13 +158,13 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
         // เดิมต้องมีบทบาท emp ซึ่งได้มาจากการ map ประเภทพนักงาน→บทบาทตอนสร้าง user — ฐานลูกค้าที่ยังไม่ตั้ง mapping
         // หรือ user ที่สร้างทางอื่น จึงเปิด ESS ไม่ได้สักหน้า · หน้า ESS ทุกหน้าเห็นเฉพาะข้อมูลของตัวเอง (resolve จาก claim empno)
         // สิทธิ์อื่นทั้งหมดยังมาจาก sc_role_menu ตามเดิม
-        if (!string.IsNullOrWhiteSpace(scUser.empid))
+        if (scUser.hremployee_id is not null)
         {
             var selfService = _configuration.GetSection("SelfService:EmployeeMenuCodes").Get<string[]>();
             menuCodes.UnionWith(selfService is { Length: > 0 } ? selfService : DefaultEmployeeMenuCodes);
 
-            // MSS: เป็นหัวหน้าไหม ดูจากผังองค์กร (com_organization.approver_empid) แล้วเก็บ node ไว้ใน session (claim)
-            var headedNodes = await HRM.Services.Shared.ManagerScopeService.FindHeadedNodeIdsAsync(context, scUser.empid, companyId);
+            // MSS: เป็นหัวหน้าไหม ดูจากผังองค์กร (com_organization.approver_hremployee_id) แล้วเก็บ node ไว้ใน session (claim)
+            var headedNodes = await HRM.Services.Shared.ManagerScopeService.FindHeadedNodeIdsAsync(context, scUser.hremployee_id);
             foreach (var nodeId in headedNodes)
                 identity.AddClaim(new Claim(HRM.Services.Shared.ManagerScopeService.HeadedOrgClaim, nodeId.ToString()));
             if (headedNodes.Count > 0)

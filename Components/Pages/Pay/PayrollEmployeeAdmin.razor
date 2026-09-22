@@ -78,7 +78,7 @@
                 }
             </MudTd>
             <MudTd>
-                @if (_linkedUsers.TryGetValue(context.EmpNo, out var linkedUser))
+                @if (_linkedUsers.TryGetValue(context.id, out var linkedUser))
                 {
                     <MudChip T="string" Color="@(linkedUser.isdisable ? Color.Default : Color.Success)" Size="Size.Small">@linkedUser.loginname</MudChip>
                     <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="@L.Translate("ResetPasswordLabel")" OnClick="@(() => OpenResetPasswordAsync(context))" />
@@ -218,7 +218,7 @@
     private DateTime? _birthDate;
     private string? _formEmployeeEmail;
 
-    private Dictionary<string, sc_user> _linkedUsers = new();
+    private Dictionary<long, sc_user> _linkedUsers = new();   // พนักงาน id → บัญชี (sc_user.hremployee_id)
     private Hremployee? _userAccountEmployee;
     private List<sc_role> _userAccountRoles = new();
     private HashSet<long> _selectedUserAccountRoleIds = new();
@@ -271,15 +271,15 @@
             .OrderBy(e => e.EmpNo)
             .ToListAsync();
 
-        var empNos = _employees.Select(e => e.EmpNo).ToList();
-        // One employee code can be linked to more than one sc_user (legacy data — WfHealthCheck
+        var employeeIds = _employees.Select(e => e.id).ToList();
+        // One employee can be linked to more than one sc_user (legacy data — WfHealthCheck
         // lists these for cleanup). ToDictionary threw on the duplicate and killed the whole
         // Blazor circuit, freezing every page opened after it. Show the usable account: not
         // cancelled/disabled first, then the newest.
         _linkedUsers = (await context.sc_users
-                .Where(u => u.empid != null && empNos.Contains(u.empid))
+                .Where(u => u.hremployee_id != null && employeeIds.Contains(u.hremployee_id.Value))
                 .ToListAsync())
-            .GroupBy(u => u.empid!)
+            .GroupBy(u => u.hremployee_id!.Value)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(u => u.iscancel || u.isdisable)
                 .ThenByDescending(u => u.userid)
@@ -453,7 +453,8 @@
             return;
         }
 
-        var scUser = await context.sc_users.FirstOrDefaultAsync(u => u.empid == _resetPasswordEmployee.EmpNo);
+        var scUser = await context.sc_users.Where(u => u.hremployee_id == _resetPasswordEmployee.id)
+            .OrderBy(u => u.iscancel || u.isdisable).ThenByDescending(u => u.userid).FirstOrDefaultAsync();   // บัญชีเดียวกับที่รายการแสดง
         if (scUser is null)
         {
             _resetPasswordError = L.Translate("UserAccountNotFoundError");

@@ -161,9 +161,10 @@ public partial class wf_sub_workflow_master
     // ผู้ใช้ที่เป็นพนักงานคนนี้ (sc_user ยังผูกพนักงานด้วย EMP_NO — งานแปลงถัดไป)
     private static async Task<long?> UserOfEmployeeAsync(HRMContext db, long hremployeeId, CancellationToken ct)
     {
-        var empNo = await db.Hremployee.Where(e => e.id == hremployeeId).Select(e => e.EmpNo).FirstOrDefaultAsync(ct);
-        return empNo is null ? null : await db.sc_users
-            .Where(u => u.empid == empNo && u.isdisable != true)
+        // บัญชีผูกกับพนักงานด้วย sc_user.hremployee_id (FK) · หนึ่งคนหลายบัญชีได้ — เลือกบัญชีเก่าสุดที่ยังใช้งาน
+        return await db.sc_users
+            .Where(u => u.hremployee_id == hremployeeId && u.isdisable != true)
+            .OrderBy(u => u.userid)
             .Select(u => (long?)u.userid).FirstOrDefaultAsync(ct);
     }
 
@@ -231,27 +232,44 @@ public partial class wf_sub_workflow_master
     // เป็นหลักฐาน ณ วันนั้น ใช้เป็นตัวสำรองเท่านั้น (22 ก.ย. 2569)
     private async Task<long?> SenderOrgIdAsync(HRMContext db, job_master job, CancellationToken ct)
     {
-        var sender = await db.job_user_lists
-            .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel > 0 && a.wlevel < wlevel && a.approvedate != null)
-            .OrderByDescending(a => a.approvedate).ThenByDescending(a => a.jobseq)
-            .Select(a => new { a.userid, a.orgcode })
-            .FirstOrDefaultAsync(ct);
-
-        var orgCode = sender?.orgcode ?? job.reqOrg;
-        if (sender?.userid is long uid)
+        string? orgCode = job.reqOrg;
+        if (job.jobmasterid > 0)
         {
-            var empNo = await db.sc_users.Where(u => u.userid == uid).Select(u => u.empid).FirstOrDefaultAsync(ct);
-            if (!string.IsNullOrWhiteSpace(empNo))
+            var sender = await db.job_user_lists
+                .Where(a => a.jobmasterid == job.jobmasterid && a.wlevel > 0 && a.wlevel < wlevel && a.approvedate != null)
+                .OrderByDescending(a => a.approvedate).ThenByDescending(a => a.jobseq)
+                .Select(a => new { a.userid, a.orgcode })
+                .FirstOrDefaultAsync(ct);
+            if (sender is not null)
             {
-                var orgId = await db.Hremployee.Where(e => e.EmpNo == empNo && e.OrganizationId != null)
-                    .Select(e => e.OrganizationId).FirstOrDefaultAsync(ct);
+                // ผู้อนุมัติที่ส่งต่อเป็นผู้ใช้ → พนักงาน ด้วย sc_user.hremployee_id (FK)
+                var orgId = sender.userid is long su
+                    ? await db.sc_users.Where(u => u.userid == su && u.hremployee_id != null)
+                        .Join(db.Hremployee, u => u.hremployee_id, e => (long?)e.id, (u, e) => e.OrganizationId)
+                        .FirstOrDefaultAsync(ct)
+                    : null;
                 if (orgId is not null) return orgId;
+                orgCode = sender.orgcode ?? job.reqOrg;
             }
-            orgCode ??= await db.sc_users.Where(u => u.userid == uid).Select(u => u.orgcode).FirstOrDefaultAsync(ct);
+            else if (await SubjectOrgIdAsync(db, job, ct) is long subjectOrg) return subjectOrg;
         }
-        if (string.IsNullOrWhiteSpace(orgCode)) return null;
-        return await db.com_organizations.Where(o => o.code == orgCode)
-            .OrderByDescending(o => o.isActive).Select(o => (long?)o.id).FirstOrDefaultAsync(ct);
+        else if (await SubjectOrgIdAsync(db, job, ct) is long subjectOrg) return subjectOrg;
+        return string.IsNullOrWhiteSpace(orgCode) ? null
+            : await db.com_organizations.Where(o => o.code == orgCode).OrderByDescending(o => o.isActive).Select(o => (long?)o.id).FirstOrDefaultAsync(ct);
+    }
+
+    // ขั้น 0: พนักงานที่งานนี้เป็นเรื่องของเขา — job_master.empid เป็นรหัสที่ประทับบนเอกสาร (อาจเป็นคนที่ HR ยื่นแทน)
+    // จึงแปลงเป็นพนักงานในบริษัทของผู้สร้างงาน ไม่ใช่ EMP_NO แรกที่เจอข้ามบริษัท
+    private static async Task<long?> SubjectOrgIdAsync(HRMContext db, job_master job, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(job.empid)) return null;
+        var companyCode = job.createuserid is long cu
+            ? await db.sc_users.Where(u => u.userid == cu)
+                .Join(db.com_companies, u => u.company_id, c => c.id, (u, c) => c.code).FirstOrDefaultAsync(ct)
+            : null;
+        return await db.Hremployee
+            .Where(e => e.EmpNo == job.empid && e.OrganizationId != null && (companyCode == null || e.companyid == companyCode))
+            .Select(e => e.OrganizationId).FirstOrDefaultAsync(ct);
     }
 
     // ผังองค์กร: หน่วยงานตั้งต้น -> ผู้อนุมัติ (approver_hremployee_id) ยังไม่ตั้งก็ไต่ parentID ขึ้นไป (id ล้วน 22 ก.ย. 2569)

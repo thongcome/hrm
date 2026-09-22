@@ -112,16 +112,16 @@
 
             if (_job is not null)
             {
-                // Drill-down: resolve each approver row's userid -> sc_user.empid
+                // Drill-down: resolve each approver row's userid -> sc_user.hremployee_id
                 // -> Hremployee, so the table links to the employee record
                 // instead of showing a raw internal userid.
                 var userIds = _job.job_user_lists.Where(a => a.userid != null).Select(a => a.userid!.Value).Distinct().ToList();
-                var scUsers = await context.sc_users.Where(u => userIds.Contains(u.userid) && u.empid != null).ToListAsync();
-                var empNos = scUsers.Select(u => u.empid!).Distinct().ToList();
-                var employees = await context.Hremployee.Where(e => empNos.Contains(e.EmpNo)).ToListAsync();
+                var scUsers = await context.sc_users.Where(u => userIds.Contains(u.userid) && u.hremployee_id != null).ToListAsync();
+                var employeeIds = scUsers.Select(u => u.hremployee_id!.Value).Distinct().ToList();
+                var employees = await context.Hremployee.Where(e => employeeIds.Contains(e.id)).ToListAsync();
                 foreach (var su in scUsers)
                 {
-                    var emp = employees.FirstOrDefault(e => e.EmpNo == su.empid);
+                    var emp = employees.FirstOrDefault(e => e.id == su.hremployee_id);
                     if (emp is not null)
                         _approverEmployeeIds[su.userid] = (emp.id, $"{emp.EmpName} {emp.EmpSurname}");
                 }

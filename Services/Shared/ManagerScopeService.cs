@@ -26,14 +26,10 @@ public static class ManagerScopeService
         public IEnumerable<OrgNode> HeadedNodes => Nodes.Where(n => n.IsHeadedByMe);
     }
 
-    /// <summary>node ที่พนักงานคนนี้เป็นหัวหน้า (approver_hremployee_id) — เฉพาะหน่วยงานที่ยังใช้งาน ในบริษัทของเขา</summary>
-    public static async Task<List<long>> FindHeadedNodeIdsAsync(HRMContext context, string? empNo, string? companyCode, CancellationToken ct = default)
+    /// <summary>node ที่พนักงานคนนี้เป็นผู้อนุมัติ (approver_hremployee_id) — เฉพาะหน่วยงานที่ยังใช้งาน</summary>
+    public static async Task<List<long>> FindHeadedNodeIdsAsync(HRMContext context, long? employeeId, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(empNo)) return new();
-        // รหัสพนักงาน (จาก login) แปลงเป็น id ครั้งเดียวที่ขอบระบบ แล้วเทียบกับผู้อนุมัติของหน่วยงานด้วย id
-        var employeeId = await context.Hremployee
-            .Where(e => e.EmpNo == empNo && (companyCode == null || e.companyid == companyCode))
-            .Select(e => (long?)e.id).FirstOrDefaultAsync(ct);
+        // พนักงานของบัญชีมาจาก sc_user.hremployee_id (FK) — ไม่ต้องแปลงรหัสอีกแล้ว
         if (employeeId is null) return new();
         return await context.com_organizations
             .Where(o => o.isActive && o.approver_hremployee_id == employeeId)
@@ -87,9 +83,9 @@ public static class ManagerScopeService
             Walk(root, 0);
 
         var orgIds = nodes.Select(n => n.Id).ToList();
-        var myEmpNo = user.FindFirst("empno")?.Value;
+        var myId = HRM.Services.Ess.EssEmployeeResolver.EmployeeId(user);
         var team = await context.Hremployee
-            .Where(e => e.ResignDate == null && e.IsActive && e.OrganizationId != null && orgIds.Contains(e.OrganizationId!.Value) && e.EmpNo != myEmpNo)
+            .Where(e => e.ResignDate == null && e.IsActive && e.OrganizationId != null && orgIds.Contains(e.OrganizationId!.Value) && e.id != myId)
             .OrderBy(e => e.EmpNo)
             .ToListAsync(ct);
         return new Scope(nodes, team);

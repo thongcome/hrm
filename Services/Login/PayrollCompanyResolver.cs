@@ -26,10 +26,9 @@ public static class PayrollCompanyResolver
                 return code;
         }
 
-        if (string.IsNullOrWhiteSpace(scUser.empid))
+        if (scUser.hremployee_id is not long employeeId)
             return null;
 
-        var employee = await context.Hremployee.FirstOrDefaultAsync(e => e.EmpNo == scUser.empid, ct);
-        return employee?.companyid;
+        return await context.Hremployee.Where(e => e.id == employeeId).Select(e => e.companyid).FirstOrDefaultAsync(ct);
     }
 }

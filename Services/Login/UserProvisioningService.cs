@@ -97,13 +97,12 @@ public class UserProvisioningService
                 .AnyAsync(ur => ur.userid == scUser.userid, ct);
             if (hasAnyRole) return;
 
-            // sc_user.empid = Hremployee.EmpNo (same linkage
-            // ScUserClaimsPrincipalFactory resolves the empno claim through).
+            // บัญชี → พนักงาน ผูกด้วย sc_user.hremployee_id (FK)
             string? emptypeCode = null;
-            if (!string.IsNullOrWhiteSpace(scUser.empid))
+            if (scUser.hremployee_id is long employeeId)
             {
                 emptypeCode = await context.Hremployee
-                    .Where(e => e.EmpNo == scUser.empid)
+                    .Where(e => e.id == employeeId)
                     .Select(e => e.EmptypeCode)
                     .FirstOrDefaultAsync(ct);
             }

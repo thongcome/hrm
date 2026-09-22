@@ -104,15 +104,13 @@ else
             var customUsers = await db.wf_custom_users.Where(c => c.isactive)
                 .Select(c => new { c.workflowid, c.wlevel, c.userid }).ToListAsync();
             // AD.Workflow ข้อ 20: เตือนตอน config เท่านั้น ไม่บังคับ — ผู้อนุมัติที่ระบุชื่อ ถ้าไม่ใช่หัวหน้าหน่วยงานใดในผัง
-            // หัวหน้าตามผัง = ผู้อนุมัติของหน่วยงาน (id) → รหัสพนักงาน เพื่อเทียบกับ sc_user.empid (ผูกด้วยรหัสอยู่ — งานแปลงถัดไป)
-            var orgApproverEmpIds = (await db.com_organizations.Where(o => o.isActive && o.approver_hremployee_id != null)
-                    .Join(db.Hremployee, o => o.approver_hremployee_id, e => (long?)e.id, (o, e) => e.EmpNo)
-                    .ToListAsync())
-                .Where(e => e != null).Select(e => e!).Distinct()
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // หัวหน้าตามผัง = ผู้อนุมัติของหน่วยงาน — เทียบ id ของพนักงานทั้งสองฝั่ง (sc_user.hremployee_id, approver_hremployee_id)
+            var orgApproverEmployeeIds = (await db.com_organizations.Where(o => o.isActive && o.approver_hremployee_id != null)
+                    .Select(o => o.approver_hremployee_id!.Value).ToListAsync())
+                .ToHashSet();
             var namedUserIds = customUsers.Select(c => c.userid).Distinct().ToList();
             var userInfo = await db.sc_users.Where(u => namedUserIds.Contains(u.userid))
-                .Select(u => new { u.userid, u.empid, u.firstname, u.lastname }).ToDictionaryAsync(u => u.userid);
+                .Select(u => new { u.userid, u.hremployee_id, u.firstname, u.lastname }).ToDictionaryAsync(u => u.userid);
             var customRoles = await db.wf_custom_roles.Where(c => c.isactive != false)
                 .Select(c => new { c.workflowid, c.wlevel, c.roleid }).ToListAsync();
             var loaBands = await db.wf_loas.Select(l => l.wfid).ToListAsync();
@@ -193,12 +191,12 @@ else
                 {
                     var at = $"{name} ขั้น {s.wlevel}";
 
-                    // ผู้อนุมัติที่ระบุชื่อ แต่ไม่ได้เป็นหัวหน้า (approver_empid) ของหน่วยงานใดในผังองค์กร
+                    // ผู้อนุมัติที่ระบุชื่อ แต่ไม่ได้เป็นหัวหน้า (approver_hremployee_id) ของหน่วยงานใดในผังองค์กร
                     foreach (var cu in customUsers.Where(c => c.workflowid == s.workflowid && c.wlevel == s.wlevel))
                     {
                         if (!userInfo.TryGetValue(cu.userid, out var ui)) continue;
                         var approverName = (ui.firstname + " " + ui.lastname).Trim();
-                        if (string.IsNullOrWhiteSpace(ui.empid) || !orgApproverEmpIds.Contains(ui.empid))
+                        if (ui.hremployee_id is not long approverEmployeeId || !orgApproverEmployeeIds.Contains(approverEmployeeId))
                             found.Add(new(Sev.Warning, at,
                                 approverName + " ไม่ได้เป็นหัวหน้าหน่วยงานใดในผังองค์กร",
                                 "ตั้งไว้ได้ตามปกติ ระบบยังทำตาม config — เตือนเผื่อเลือกผิดคน",

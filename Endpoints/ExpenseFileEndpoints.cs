@@ -28,8 +28,8 @@ public static class ExpenseFileEndpoints
             if (header is null) return Results.NotFound();
 
             var isAdmin = httpContext.User.HasClaim("menu", "EXP_ADMIN");
-            var empno = httpContext.User.FindFirst("empno")?.Value;
-            var isOwner = !string.IsNullOrWhiteSpace(empno) && header.EmpNo == empno;
+            var myEmployeeId = HRM.Services.Ess.EssEmployeeResolver.EmployeeId(httpContext.User);
+            var isOwner = myEmployeeId is not null && header.HremployeeId == myEmployeeId;
             if (!isAdmin && !isOwner) return Results.Forbid();
 
             var doc = await context.doc_centers.FirstOrDefaultAsync(d => d.id == docCenterId);

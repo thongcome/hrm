@@ -666,17 +666,17 @@ public class WorkflowEngineService
         var userIds = customUsers.Select(u => u.userid).Distinct().ToList();
         var users = await context.sc_users
             .Where(u => userIds.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid, u.loginname })
+            .Select(u => new { u.userid, u.hremployee_id, u.loginname })
             .ToListAsync(ct);
-        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var empIds = users.Where(u => u.hremployee_id != null).Select(u => u.hremployee_id!.Value).Distinct().ToList();   // บัญชี → พนักงาน ด้วย id (FK)
         var emps = await context.Hremployee
-            .Where(e => empIds.Contains(e.EmpNo))
-            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .Where(e => empIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname })
             .ToListAsync(ct);
-        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        var nameByEmployeeId = emps.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
         var nameByUserId = users.ToDictionary(
             u => u.userid,
-            u => u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+            u => u.hremployee_id is long hid && nameByEmployeeId.TryGetValue(hid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
                 : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
 
@@ -742,16 +742,16 @@ public class WorkflowEngineService
         var userIds = pending.Where(p => p.userid.HasValue).Select(p => p.userid!.Value).Distinct().ToList();
         var users = await context.sc_users
             .Where(u => userIds.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid, u.loginname })
+            .Select(u => new { u.userid, u.hremployee_id, u.loginname })
             .ToListAsync(ct);
-        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
-        var nameByEmpNo = (await context.Hremployee
-            .Where(e => empIds.Contains(e.EmpNo))
-            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+        var empIds = users.Where(u => u.hremployee_id != null).Select(u => u.hremployee_id!.Value).Distinct().ToList();   // บัญชี → พนักงาน ด้วย id (FK)
+        var nameByEmployeeId = (await context.Hremployee
+            .Where(e => empIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname })
             .ToListAsync(ct))
-            .ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+            .ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
         var nameByUser = users.ToDictionary(u => u.userid, u =>
-            u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+            u.hremployee_id is long hid && nameByEmployeeId.TryGetValue(hid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
                 : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
 
@@ -783,17 +783,17 @@ public class WorkflowEngineService
 
         var users = await context.sc_users
             .Where(u => userIds.Contains(u.userid))
-            .Select(u => new { u.userid, u.empid, u.loginname })
+            .Select(u => new { u.userid, u.hremployee_id, u.loginname })
             .ToListAsync(ct);
-        var empIds = users.Where(u => u.empid != null).Select(u => u.empid!).Distinct().ToList();
+        var empIds = users.Where(u => u.hremployee_id != null).Select(u => u.hremployee_id!.Value).Distinct().ToList();   // บัญชี → พนักงาน ด้วย id (FK)
         var emps = await context.Hremployee
-            .Where(e => empIds.Contains(e.EmpNo))
-            .Select(e => new { e.EmpNo, e.EmpName, e.EmpSurname })
+            .Where(e => empIds.Contains(e.id))
+            .Select(e => new { e.id, e.EmpName, e.EmpSurname })
             .ToListAsync(ct);
-        var nameByEmpNo = emps.ToDictionary(e => e.EmpNo, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+        var nameByEmployeeId = emps.ToDictionary(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
 
         var names = users.Select(u =>
-            u.empid != null && nameByEmpNo.TryGetValue(u.empid, out var n) && !string.IsNullOrWhiteSpace(n)
+            u.hremployee_id is long hid && nameByEmployeeId.TryGetValue(hid, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
                 : (!string.IsNullOrWhiteSpace(u.loginname) ? u.loginname! : $"#{u.userid}"));
         return string.Join(" / ", names.Distinct());

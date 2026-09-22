@@ -216,10 +216,10 @@ public class EmployeeImportService(IDbContextFactory<HRMContext> dbFactory, ISer
             {
                 var org = byCode[row.Code];
                 var approver = await db.Hremployee.FirstAsync(e => e.companyid == companyCode && e.EmpNo == row.ApproverEmpNo, ct);
-                org.approver_empid = approver.EmpNo;
+                org.approver_hremployee_id = approver.id;   // id คือความจริง — approver_empid ตามมาเอง (HRMContext.OrgParent.cs)
                 org.approver_name = $"{approver.EmpName} {approver.EmpSurname}".Trim();
-                org.approver_userid = await db.sc_users.Where(u => u.empid == approver.EmpNo && u.company_id == company.id)
-                    .Select(u => (long?)u.userid).FirstOrDefaultAsync(ct);
+                org.approver_userid = await db.sc_users.Where(u => u.hremployee_id == approver.id && u.isdisable != true)
+                    .OrderBy(u => u.userid).Select(u => (long?)u.userid).FirstOrDefaultAsync(ct);
             }
 
             var batch = new Hr_EmployeeImportBatch
