@@ -27,6 +27,7 @@ public class Hr_EmployeeImportBatch
     public int EmployeesAdded { get; set; }
     public int EmployeesUpdated { get; set; }
     public int LoginsCreated { get; set; }
+    public int OpeningBalancesImported { get; set; }
 
     [StringLength(2000)]
     public string? Warnings { get; set; }

@@ -106,18 +106,36 @@ public static class Por1DataService
                 && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
             .ToListAsync(ct);
 
-        if (payEmployees.Count == 0) return null;
-
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();
         var nonTaxableByPayEmployee = await GetNonTaxableByPayEmployeeAsync(context, payEmployeeIds, ct);
 
         // ยอดยกมาของบริษัทนี้เองก่อนเริ่มใช้ระบบกลางปี — ภ.ง.ด.1ก เป็นแบบสรุปทั้งปีของบริษัทนี้ จึงต้องรวมด้วย
-        // (ภ.ง.ด.1 รายเดือนไม่รวม เพราะเดือนเหล่านั้นยื่นไปแล้วในระบบเดิม)
+        // (ภ.ง.ด.1 รายเดือนไม่รวม เพราะเดือนเหล่านั้นยื่นไปแล้วในระบบเดิม) — สองแหล่ง: แถว
+        // Pay_EmployeePriorEmployerIncome แบบเดิม (IsSameEmployer=true) และตาราง Pay_EmployeeOpeningBalance
+        // แบบใหม่ที่พอร์ตมาจาก Advance.Payroll (CEO order 22 ก.ย. 2569: mirror the payroll domain) — รวมกัน
         var opening = (await context.Pay_EmployeePriorEmployerIncomes
                 .Where(p => p.TaxYear == taxYear && p.IsActive && p.IsSameEmployer && p.Hremployee.companyid == companyId)
                 .ToListAsync(ct))
             .GroupBy(p => p.HremployeeId)
             .ToDictionary(g => g.Key, g => (Income: g.Sum(p => p.IncomeAmount), Tax: g.Sum(p => p.TaxWithheldAmount)));
+        var newOpenings = await context.Pay_EmployeeOpeningBalances
+            .Where(o => o.CompanyId == companyId && o.TaxYear == taxYear && o.IsActive)
+            .GroupBy(o => o.HremployeeId)
+            .Select(g => new { HremployeeId = g.Key, Taxable = g.Sum(o => o.TaxableIncome), Tax = g.Sum(o => o.TaxWithheld) })
+            .ToDictionaryAsync(x => x.HremployeeId, ct);
+        foreach (var (id, add) in newOpenings)
+        {
+            var cur = opening.GetValueOrDefault(id);
+            opening[id] = (cur.Income + add.Taxable, cur.Tax + add.Tax);
+        }
+
+        if (payEmployees.Count == 0 && opening.Count == 0) return null;
+
+        // employees whose only pay this year was an opening balance (no real run yet) still need a line
+        var openingOnlyIds = opening.Keys.Except(payEmployees.Select(pe => pe.HremployeeId)).ToList();
+        var openingOnlyPeople = openingOnlyIds.Count == 0 ? []
+            : await context.Hremployee.Where(e => openingOnlyIds.Contains(e.id))
+                .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.IdCard }).ToListAsync(ct);
 
         var lines = payEmployees
             .GroupBy(pe => pe.HremployeeId)
@@ -134,6 +152,11 @@ public static class Por1DataService
                     taxableTotal,
                     g.Sum(pe => pe.TaxAmount) + open.Tax);
             })
+            .Concat(openingOnlyPeople.Select(p =>
+            {
+                var open = opening[p.id];
+                return new Por1KorLineItem(p.id, p.EmpNo, $"{p.EmpName} {p.EmpSurname}", p.IdCard, open.Income, open.Tax);
+            }))
             .OrderBy(l => l.EmpNo)
             .ToList();
 

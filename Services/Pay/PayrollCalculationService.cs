@@ -165,6 +165,9 @@ public class PayrollCalculationService
         if (taxBrackets.Count == 0)
             throw new InvalidOperationException(
                 $"ไม่มีตารางอัตราภาษีปี {run.PeriodStart.Year} (Pay_TaxBracket) — เพิ่มตารางของปีนี้ก่อนจึงคำนวณได้");
+        var paidByOldSystem = await OpeningBalanceGuard.OverlappingEmpNosAsync(context, run, ct);
+        if (paidByOldSystem.Count > 0)
+            throw new InvalidOperationException(OpeningBalanceGuard.Message(run, paidByOldSystem));
 
         // Standard/mandatory deduction parameters for this tax year — falls
         // back to the current legal defaults (60,000 personal allowance,
@@ -1049,11 +1052,26 @@ public class PayrollCalculationService
             .ToListAsync(ct);
         // ยอดสะสมใช้ "เงินได้พึงประเมิน" ของแต่ละงวด (TaxableIncome) ไม่ใช่รายรับรวม (GrossEarnings) — พบจากเทสทั้งปี 2568:
         // รายรับรวมยังไม่หักขาดงาน/มาสาย และรวมรายการที่ไม่ต้องเสียภาษี (เช่น เบิกคืนค่าใช้จ่าย) ทำให้ประมาณการทั้งปีสูงเกินจริง
-        return rows
+        var result = rows
             .GroupBy(r => r.HremployeeId)
             .ToDictionary(g => g.Key, g => g
                 .Select(r => new YtdRow(r.PeriodStart, r.TaxableIncome, r.SocialSecurityAmount + r.ProvidentFundEmployeeAmount, r.TaxAmount, r.ProvidentFundEmployeeAmount))
                 .ToList());
+
+        // ยอดยกมา: months this company paid from its previous system before going live mid-year are
+        // this employer's own pay, so they count exactly like a paid run of that month
+        // (ported from Advance.Payroll, CEO order 22 ก.ย. 2569: mirror the payroll domain)
+        var openings = await context.Pay_EmployeeOpeningBalances
+            .Where(o => o.CompanyId == run.CompanyId && o.IsActive
+                        && o.TaxYear == run.PeriodStart.Year && o.Month <= run.PeriodStart.Month)
+            .Select(o => new { o.HremployeeId, o.TaxYear, o.Month, o.TaxableIncome, o.SsoEmployee, o.PvdEmployee, o.TaxWithheld })
+            .ToListAsync(ct);
+        foreach (var o in openings)
+        {
+            if (!result.TryGetValue(o.HremployeeId, out var list)) result[o.HremployeeId] = list = [];
+            list.Add(new YtdRow(new DateOnly(o.TaxYear, o.Month, 1), o.TaxableIncome, o.SsoEmployee + o.PvdEmployee, o.TaxWithheld, o.PvdEmployee));
+        }
+        return result;
     }
 
     // includeSamePeriod = รอบเสริม (โบนัส) ต้องนับรอบปกติของงวดเดียวกันด้วย — pure, ทดสอบได้

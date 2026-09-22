@@ -19,8 +19,13 @@ public sealed record ParsedEmployee(
 public sealed record ParsedAddress(string? No, string? Moo, string? Village, string? Soi, string? Road,
     string? Subdistrict, string? District, string? Province, string? Postcode);
 
+// one month already paid by the customer's previous system; TaxYear is Christian era
+public sealed record ParsedOpeningBalance(
+    int Row, string EmpNo, int TaxYear, int Month, decimal GrossIncome, decimal TaxableIncome, decimal TaxWithheld,
+    decimal SsoEmployee, decimal SsoEmployer, decimal PvdEmployee, decimal PvdEmployer, decimal? NetPay);
+
 public sealed record ParsedFile(
-    IReadOnlyList<ParsedOrg> Orgs, IReadOnlyList<ParsedEmployee> Employees,
+    IReadOnlyList<ParsedOrg> Orgs, IReadOnlyList<ParsedEmployee> Employees, IReadOnlyList<ParsedOpeningBalance> OpeningBalances,
     IReadOnlyList<ImportIssue> Issues)
 {
     public bool HasErrors => Issues.Count > 0;
@@ -44,14 +49,15 @@ public static class EmployeeImportParser
         catch (Exception)
         {
             issues.Add(new("ไฟล์", 0, "", "เปิดไฟล์ไม่ได้ — ต้องเป็นไฟล์ Excel (.xlsx) ที่ดาวน์โหลดจากแบบฟอร์มของระบบ"));
-            return new ParsedFile([], [], issues);
+            return new ParsedFile([], [], [], issues);
         }
         using (wb)
         {
             var orgs = ReadOrgs(wb, issues);
             var employees = ReadEmployees(wb, refs, orgs, issues);
             CheckOrgReferences(orgs, employees, refs, issues);
-            return new ParsedFile(orgs, employees, issues);
+            var opening = ReadOpeningBalances(wb, issues);
+            return new ParsedFile(orgs, employees, opening, issues);
         }
     }
 
@@ -172,6 +178,47 @@ public static class EmployeeImportParser
                 cur = parent.ParentCode;
             }
         }
+    }
+
+    // Whether the employee exists, and whether the month was already paid by THIS system, needs the
+    // database — EmployeeImportService checks those. Here: shape, ranges and duplicates in the file.
+    // Ported from Advance.Payroll (CEO order, 22 ก.ย. 2569: mirror the payroll domain).
+    private static List<ParsedOpeningBalance> ReadOpeningBalances(XLWorkbook wb, List<ImportIssue> issues)
+    {
+        var sheet = EmployeeImportSchema.OpeningBalance;
+        var result = new List<ParsedOpeningBalance>();
+        var seen = new HashSet<(string, int, int)>();
+        foreach (var (row, get) in Rows(wb, sheet, issues))
+        {
+            var r = new RowReader(sheet.Name, row, get, issues);
+            var before = issues.Count;
+
+            var empNo = r.Code("EmpNo", required: true);
+            var year = r.WholeNumber("TaxYear", required: true);
+            // the sheet asks for พ.ศ.; a Christian-era year is accepted too
+            if (year is > 2400) year -= 543;
+            if (year is not null && (year < 2000 || year > 2200)) { r.Error("TaxYear", "ปีไม่ถูกต้อง (ใส่ปี พ.ศ. เช่น 2569)"); year = null; }
+            var month = r.WholeNumber("Month", required: true);
+            if (month is not null && (month < 1 || month > 12)) r.Error("Month", "เดือนต้องเป็น 1–12");
+            var gross = r.Money("GrossIncome", required: true);
+            var taxable = r.Money("TaxableIncome", required: true);
+            var tax = r.Money("TaxWithheld", required: true);
+            var ssoEmp = r.Money("SsoEmployee");
+            var ssoCo = r.Money("SsoEmployer");
+            var pvdEmp = r.Money("PvdEmployee");
+            var pvdCo = r.Money("PvdEmployer");
+            var net = r.Money("NetPay");
+            if (tax is not null && taxable is not null && tax > taxable)
+                r.Error("TaxWithheld", "ภาษีหัก ณ ที่จ่ายมากกว่าเงินได้ที่ต้องเสียภาษี — ตรวจว่ากรอกสลับช่องหรือไม่");
+
+            if (empNo is not null && year is not null && month is not null && !seen.Add((empNo.ToUpperInvariant(), year.Value, month.Value)))
+                r.Error("Month", $"{empNo} เดือน {month}/{year + 543} ซ้ำกับแถวอื่นในไฟล์ — หนึ่งแถวต่อคนต่อเดือน");
+            if (issues.Count > before) continue;
+
+            result.Add(new ParsedOpeningBalance(row, empNo!, year!.Value, month!.Value, gross!.Value, taxable!.Value, tax!.Value,
+                ssoEmp ?? 0m, ssoCo ?? 0m, pvdEmp ?? 0m, pvdCo ?? 0m, net));
+        }
+        return result;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

@@ -70,6 +70,11 @@
             <MudChip T="string" Color="Color.Info">พนักงานเดิม (อัปเดต) @_preview.ExistingEmployees</MudChip>
             <MudChip T="string" Color="Color.Primary">หน่วยงานใหม่ @_preview.NewOrgs</MudChip>
             <MudChip T="string" Color="Color.Info">หน่วยงานเดิม (อัปเดต) @_preview.ExistingOrgs</MudChip>
+            @if (_preview.NewOpeningBalances + _preview.ReplacedOpeningBalances > 0)
+            {
+                <MudChip T="string" Color="Color.Primary">ยอดยกมาใหม่ @_preview.NewOpeningBalances เดือน</MudChip>
+                <MudChip T="string" Color="Color.Info">ยอดยกมาแทนที่ของเดิม @_preview.ReplacedOpeningBalances เดือน</MudChip>
+            }
             <MudChip T="string" Color="@(_preview.Issues.Count == 0 ? Color.Success : Color.Error)">ข้อผิดพลาด @_preview.Issues.Count</MudChip>
         </MudStack>
 
@@ -115,7 +120,7 @@
     {
         <MudAlert Severity="Severity.Success" Class="mt-4">
             นำเข้าแล้ว — หน่วยงานใหม่ @_result.OrgsAdded · อัปเดต @_result.OrgsUpdated ·
-            พนักงานใหม่ @_result.EmployeesAdded · อัปเดต @_result.EmployeesUpdated · สร้าง user ESS @_result.LoginsCreated
+            พนักงานใหม่ @_result.EmployeesAdded · อัปเดต @_result.EmployeesUpdated · สร้าง user ESS @_result.LoginsCreated · ยอดยกมา @_result.OpeningBalancesImported เดือน
         </MudAlert>
         @foreach (var w in _result.Warnings)
         {
@@ -128,7 +133,7 @@
     <MudText Typo="Typo.h6">ประวัติการนำเข้า</MudText>
     <MudTable Items="_history" Dense="true" Hover="true" Class="mt-2">
         <HeaderContent>
-            <MudTh>วันที่</MudTh><MudTh>ไฟล์</MudTh><MudTh>หน่วยงาน ใหม่/อัปเดต</MudTh><MudTh>พนักงาน ใหม่/อัปเดต</MudTh><MudTh>user ESS</MudTh>
+            <MudTh>วันที่</MudTh><MudTh>ไฟล์</MudTh><MudTh>หน่วยงาน ใหม่/อัปเดต</MudTh><MudTh>พนักงาน ใหม่/อัปเดต</MudTh><MudTh>user ESS</MudTh><MudTh>ยอดยกมา</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.ImportedAt.ToString("dd/MM/yyyy HH:mm")</MudTd>
@@ -136,6 +141,7 @@
             <MudTd>@context.OrgsAdded / @context.OrgsUpdated</MudTd>
             <MudTd>@context.EmployeesAdded / @context.EmployeesUpdated</MudTd>
             <MudTd>@context.LoginsCreated</MudTd>
+            <MudTd>@context.OpeningBalancesImported</MudTd>
         </RowTemplate>
         <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่เคยนำเข้า</MudText></NoRecordsContent>
     </MudTable>

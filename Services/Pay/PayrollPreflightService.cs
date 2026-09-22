@@ -80,6 +80,9 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var missingCodes = RequiredPayItemCodes.Where(c => !codes.Contains(c)).ToList();
         if (missingCodes.Count > 0)
             configErrors.Add("ไม่มีประเภทรายการเงินได้/เงินหักที่เครื่องคำนวณต้องใช้: " + string.Join(", ", missingCodes));
+        var paidByOldSystem = await OpeningBalanceGuard.OverlappingEmpNosAsync(ctx, run, ct);
+        if (paidByOldSystem.Count > 0)
+            configErrors.Add(OpeningBalanceGuard.Message(run, paidByOldSystem));
 
         // ---- eligible employees (same predicate as the engine) minus holds ----
         var holdsRaw = await ctx.Pay_PayrollRunHolds.Where(h => h.PayrollRunId == runId && h.IsActive).ToListAsync(ct);

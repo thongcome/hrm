@@ -202,6 +202,9 @@ public static class ScMenuNavCatalog
         new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/tax-deduction-config", "ตั้งค่าค่าลดหย่อนภาษี", "ตั้งค่าค่าลดหย่อนภาษี", "Icons.Material.Filled.RequestQuote", 120), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/employee-tax-deductions", "ค่าลดหย่อนภาษีพนักงาน", "ค่าลดหย่อนภาษีพนักงาน", "Icons.Material.Filled.PersonSearch", 10), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/prior-employer-income", "เงินได้จากนายจ้างเดิม", "เงินได้จากนายจ้างเดิม", "Icons.Material.Filled.MoveToInbox", 20), // literal Thai label
+        // ported from Advance.Payroll (CEO 18-19 ก.ย. 2569): mid-year go-live months already paid by
+        // the customer's OLD system — distinct from a different prior employer above
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/opening-balances", "ยอดยกมาจากระบบเดิม", "ยอดยกมาจากระบบเดิม", "Icons.Material.Filled.History", 25), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-rate-requests", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "Icons.Material.Filled.SwapHoriz", 30), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-exit-cases", "ปิดสมาชิกภาพกองทุนสำรอง", "ปิดสมาชิกภาพกองทุนสำรอง", "Icons.Material.Filled.ExitToApp", 40), // literal Thai label
         new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/document-expiry", "เอกสารใกล้หมดอายุ", "Expiring Documents", "Icons.Material.Filled.EventBusy", 130),

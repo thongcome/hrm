@@ -33,8 +33,6 @@ public static class WithholdingCertificateDataService
                 && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
             .ToListAsync(ct);
 
-        if (payEmployees.Count == 0) return null;
-
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();
 
         var nonTaxableAdhocTotal = await TaxableIncomeHelper.GetNonTaxableAdhocTotalAsync(context, payEmployeeIds, ct);
@@ -53,6 +51,17 @@ public static class WithholdingCertificateDataService
         totalTaxWithheld += opening.Sum(p => p.TaxWithheldAmount);
         totalSsf += opening.Sum(p => p.SocialSecurityAmount);
         totalPf += opening.Sum(p => p.ProvidentFundAmount);
+
+        // เดียวกัน แต่จากตาราง Pay_EmployeeOpeningBalance (พอร์ตมาจาก Advance.Payroll, CEO order
+        // 22 ก.ย. 2569: mirror the payroll domain) — นำเข้าจาก Excel ชีต "ยอดยกมา" แยกจากแถวที่กรอกเองข้างบน
+        var newOpenings = await context.Pay_EmployeeOpeningBalances
+            .Where(o => o.HremployeeId == hremployeeId && o.TaxYear == taxYear && o.IsActive)
+            .ToListAsync(ct);
+        if (payEmployees.Count == 0 && opening.Count == 0 && newOpenings.Count == 0) return null;
+        totalTaxableIncome += newOpenings.Sum(o => o.TaxableIncome);
+        totalTaxWithheld += newOpenings.Sum(o => o.TaxWithheld);
+        totalSsf += newOpenings.Sum(o => o.SsoEmployee);
+        totalPf += newOpenings.Sum(o => o.PvdEmployee);
 
         var regAddr = await context.addresses
             .Where(a => a.hremployeeid == hremployeeId && a.address_type_id == 1 && a.isactive)

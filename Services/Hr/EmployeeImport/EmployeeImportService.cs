@@ -9,14 +9,14 @@ namespace HRM.Services.Hr.EmployeeImport;
 
 public sealed record ImportPreview(
     string FileName, string FileSha256, ParsedFile Parsed,
-    int NewEmployees, int ExistingEmployees, int NewOrgs, int ExistingOrgs,
+    int NewEmployees, int ExistingEmployees, int NewOrgs, int ExistingOrgs, int NewOpeningBalances, int ReplacedOpeningBalances,
     Hr_EmployeeImportBatch? SameFileImportedBefore, IReadOnlyList<ImportIssue> Issues, IReadOnlyList<string> Notes)
 {
-    public bool CanImport => Issues.Count == 0 && (Parsed.Employees.Count + Parsed.Orgs.Count) > 0;
+    public bool CanImport => Issues.Count == 0 && (Parsed.Employees.Count + Parsed.Orgs.Count + Parsed.OpeningBalances.Count) > 0;
 }
 
 public sealed record ImportResult(long BatchId, int OrgsAdded, int OrgsUpdated, int EmployeesAdded, int EmployeesUpdated,
-    int LoginsCreated, IReadOnlyList<string> Warnings);
+    int LoginsCreated, int OpeningBalancesImported, IReadOnlyList<string> Warnings);
 
 // Onboards a customer's organisation units and employees from the Excel template
 // (EmployeeImportSchema). Two steps, matching the page: PreviewAsync validates everything and
@@ -72,6 +72,8 @@ public class EmployeeImportService(IDbContextFactory<HRMContext> dbFactory, ISer
             .Select(e => e.EmpNo).ToListAsync(ct)).Concat(empNos).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var o in parsed.Orgs.Where(o => o.ApproverEmpNo is not null && !knownApprovers.Contains(o.ApproverEmpNo!)))
             issues.Add(new(EmployeeImportSchema.Org.Name, o.Row, "รหัสพนักงานผู้อนุมัติ", $"ไม่พบพนักงาน {o.ApproverEmpNo} ทั้งในไฟล์และในระบบ"));
+
+        var (newOpening, replacedOpening) = await CheckOpeningBalancesAsync(db, parsed, companyCode, issues, ct);
         if (parsed.Employees.Any(e => e.CreateLogin) && await DefaultPasswordAsync(db, companyCode, ct) is null)
             notes.Add("ยังไม่ได้ตั้งรหัสผ่านตั้งต้นของพนักงาน (ตั้งค่าสลิปเงินเดือน) — จะนำเข้าพนักงานได้ แต่ยังไม่สร้าง user ESS ให้");
 
@@ -83,7 +85,59 @@ public class EmployeeImportService(IDbContextFactory<HRMContext> dbFactory, ISer
         return new ImportPreview(fileName, sha, parsed,
             parsed.Employees.Count - existing.Count, existing.Count,
             parsed.Orgs.Count - existingOrgs, existingOrgs,
+            newOpening, replacedOpening,
             before, issues, notes);
+    }
+
+    // ยอดยกมา rows: the employee must be in the file or already in the system; the month must be in
+    // the past; and it must not be a month this system already calculated for that employee — the
+    // same pay would then count twice in YTD tax, 50 ทวิ and ภ.ง.ด.1ก. Returns (new, replaced).
+    // Ported from Advance.Payroll (CEO order, 22 ก.ย. 2569: mirror the payroll domain).
+    private static async Task<(int New, int Replaced)> CheckOpeningBalancesAsync(
+        HRMContext db, ParsedFile parsed, string companyCode, List<ImportIssue> issues, CancellationToken ct)
+    {
+        if (parsed.OpeningBalances.Count == 0) return (0, 0);
+        var sheet = EmployeeImportSchema.OpeningBalance.Name;
+        var inFile = parsed.Employees.Select(e => e.EmpNo).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var nos = parsed.OpeningBalances.Select(o => o.EmpNo).Distinct().ToList();
+        var inSystem = (await db.Hremployee.Where(e => e.companyid == companyCode && nos.Contains(e.EmpNo))
+            .Select(e => new { e.id, e.EmpNo }).ToListAsync(ct))
+            .ToDictionary(e => e.EmpNo, e => e.id, StringComparer.OrdinalIgnoreCase);
+        var ids = inSystem.Values.ToList();
+        var years = parsed.OpeningBalances.Select(o => o.TaxYear).Distinct().ToList();
+
+        var calculated = (await db.Pay_PayrollEmployees
+                .Where(pe => ids.Contains(pe.HremployeeId) && !pe.IsExcluded
+                             && pe.Pay_PayrollRun.Status != PayrollRunStatus.Cancelled
+                             && years.Contains(pe.Pay_PayrollRun.PeriodStart.Year))
+                .Select(pe => new { pe.HremployeeId, pe.Pay_PayrollRun.PeriodStart.Year, pe.Pay_PayrollRun.PeriodStart.Month, pe.Pay_PayrollRun.PayrollPeriod })
+                .ToListAsync(ct))
+            .ToLookup(x => (x.HremployeeId, x.Year, x.Month));
+        var existing = (await db.Pay_EmployeeOpeningBalances
+                .Where(o => ids.Contains(o.HremployeeId) && years.Contains(o.TaxYear))
+                .Select(o => new { o.HremployeeId, o.TaxYear, o.Month }).ToListAsync(ct))
+            .Select(o => (o.HremployeeId, o.TaxYear, o.Month)).ToHashSet();
+
+        var thisMonth = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1);
+        int added = 0, replaced = 0;
+        foreach (var o in parsed.OpeningBalances)
+        {
+            var label = $"{o.Month}/{o.TaxYear + 543}";
+            if (new DateOnly(o.TaxYear, o.Month, 1) > thisMonth)
+            { issues.Add(new(sheet, o.Row, "เดือน", $"เดือน {label} ยังมาไม่ถึง — ยอดยกมาคือเดือนที่จ่ายจากระบบเดิมไปแล้ว")); continue; }
+            if (!inSystem.TryGetValue(o.EmpNo, out var id))
+            {
+                if (!inFile.Contains(o.EmpNo))
+                    issues.Add(new(sheet, o.Row, "รหัสพนักงาน", $"ไม่พบพนักงาน {o.EmpNo} ทั้งในชีตพนักงานและในระบบ"));
+                else added++;
+                continue;
+            }
+            var run = calculated[(id, o.TaxYear, o.Month)].FirstOrDefault();
+            if (run is not null)
+            { issues.Add(new(sheet, o.Row, "เดือน", $"{o.EmpNo} เดือน {label} คำนวณในระบบนี้แล้ว (รอบ {run.PayrollPeriod}) — ใส่ยอดยกมาซ้ำจะนับเงินได้/ภาษีสองครั้ง")); continue; }
+            if (existing.Contains((id, o.TaxYear, o.Month))) replaced++; else added++;
+        }
+        return (added, replaced);
     }
 
     public async Task<ImportResult> ImportAsync(ImportPreview preview, string companyCode, long actorUserId, CancellationToken ct = default)
@@ -231,6 +285,17 @@ public class EmployeeImportService(IDbContextFactory<HRMContext> dbFactory, ISer
             db.Hr_EmployeeImportBatches.Add(batch);
             await db.SaveChangesAsync(ct);
 
+            // ── ยอดยกมา: one row per employee per month, a re-import REPLACES ──────
+            if (parsed.OpeningBalances.Count > 0)
+            {
+                // re-checked inside the lock: a payroll run may have been calculated since the preview
+                var recheck = new List<ImportIssue>();
+                await CheckOpeningBalancesAsync(db, parsed, companyCode, recheck, ct);
+                if (recheck.Count > 0)
+                    throw new InvalidOperationException("ยอดยกมาขัดกับข้อมูลในระบบแล้ว — ตรวจไฟล์ใหม่อีกครั้ง: " + recheck[0].Message);
+                batch.OpeningBalancesImported = await UpsertOpeningBalancesAsync(db, parsed.OpeningBalances, companyCode, batch.Id, actorUserId, ct);
+                await db.SaveChangesAsync(ct);
+            }
             await tx.CommitAsync(ct);
 
             var wanted = parsed.Employees.Where(e => e.CreateLogin).Select(e => e.EmpNo).ToList();
@@ -241,8 +306,47 @@ public class EmployeeImportService(IDbContextFactory<HRMContext> dbFactory, ISer
             var joined = string.Join(" | ", warnings);
             batch.Warnings = joined.Length == 0 ? null : joined[..Math.Min(2000, joined.Length)];
             await db.SaveChangesAsync(ct);
-            return new ImportResult(batch.Id, orgsAdded, orgsUpdated, empAdded, empUpdated, logins, warnings);
+            return new ImportResult(batch.Id, orgsAdded, orgsUpdated, empAdded, empUpdated, logins, batch.OpeningBalancesImported, warnings);
         }
+    }
+
+    // Ported from Advance.Payroll (CEO order, 22 ก.ย. 2569: mirror the payroll domain).
+    private static async Task<int> UpsertOpeningBalancesAsync(HRMContext db, IReadOnlyList<ParsedOpeningBalance> rows,
+        string companyCode, long batchId, long actorUserId, CancellationToken ct)
+    {
+        var nos = rows.Select(r => r.EmpNo).Distinct().ToList();
+        var empIds = (await db.Hremployee.Where(e => e.companyid == companyCode && nos.Contains(e.EmpNo))
+                .Select(e => new { e.id, e.EmpNo }).ToListAsync(ct))
+            .ToDictionary(e => e.EmpNo, e => (Id: e.id, EmpNo: e.EmpNo), StringComparer.OrdinalIgnoreCase);
+        var ids = empIds.Values.Select(v => v.Id).ToList();
+        var years = rows.Select(r => r.TaxYear).Distinct().ToList();
+        var current = (await db.Pay_EmployeeOpeningBalances.Where(o => ids.Contains(o.HremployeeId) && years.Contains(o.TaxYear)).ToListAsync(ct))
+            .ToDictionary(o => (o.HremployeeId, o.TaxYear, o.Month));
+
+        foreach (var r in rows)
+        {
+            var (id, empNo) = empIds[r.EmpNo];
+            if (!current.TryGetValue((id, r.TaxYear, r.Month), out var o))
+            {
+                o = new Pay_EmployeeOpeningBalance { CompanyId = companyCode, HremployeeId = id, TaxYear = r.TaxYear, Month = r.Month };
+                db.Pay_EmployeeOpeningBalances.Add(o);
+                current[(id, r.TaxYear, r.Month)] = o;
+            }
+            o.EmpNo = empNo;
+            o.GrossIncome = r.GrossIncome;
+            o.TaxableIncome = r.TaxableIncome;
+            o.TaxWithheld = r.TaxWithheld;
+            o.SsoEmployee = r.SsoEmployee;
+            o.SsoEmployer = r.SsoEmployer;
+            o.PvdEmployee = r.PvdEmployee;
+            o.PvdEmployer = r.PvdEmployer;
+            o.NetPay = r.NetPay;
+            o.ImportBatchId = batchId;
+            o.IsActive = true;
+            o.UpdatedByUserId = actorUserId;
+            o.UpdatedAt = DateTime.Now;
+        }
+        return rows.Count;
     }
 
     public async Task<List<Hr_EmployeeImportBatch>> HistoryAsync(string companyCode, CancellationToken ct = default)

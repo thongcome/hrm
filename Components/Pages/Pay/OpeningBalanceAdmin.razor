@@ -1,0 +1,155 @@
+@page "/pay/admin/opening-balances"
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Security
+@using HRM.Services.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@inject ProgramRoleService ProgramRoles
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+@* ยอดยกมา — ported from Advance.Payroll (CEO order, 22 ก.ย. 2569: mirror the payroll domain).
+   Months this company paid from its previous system before going live mid-year.
+   Rows come only from the Excel import (/hr/employee-import, sheet "ยอดยกมา"); a wrong month is
+   corrected by importing it again (replaces) or switched off here. See Pay_EmployeeOpeningBalance. *@
+
+<PageTitle>ยอดยกมา</PageTitle>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">ยอดยกมาจากระบบเดิม</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        เดือนที่บริษัทจ่ายเงินเดือนจากระบบเดิมก่อนเริ่มใช้ระบบนี้ (เริ่มกลางปี) — ใช้คำนวณภาษีหัก ณ ที่จ่ายสะสม
+        และรวมอยู่ใน 50 ทวิ / ภ.ง.ด.1ก ของปีนั้น · เพิ่มหรือแก้ไขผ่าน
+        <MudLink Href="/hr/employee-import">นำเข้าจาก Excel</MudLink> ชีต "ยอดยกมา" (นำเข้าซ้ำ = แทนที่ของเดิม ไม่บวกเพิ่ม)
+    </MudText>
+
+    @if (_rights is not null && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int" Label="ปีภาษี" Value="_year" ValueChanged="OnYearChangedAsync">
+                @foreach (var y in _years)
+                {
+                    <MudSelectItem Value="y">@(y + 543)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="5">
+            <MudTextField T="string" @bind-Value="_search" @bind-Value:after="LoadAsync" DebounceInterval="400"
+                          Label="ค้นหารหัสพนักงาน" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSwitch T="bool" @bind-Value="_showInactive" @bind-Value:after="LoadAsync" Color="Color.Primary" Label="แสดงรายการที่ปิดแล้ว" />
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row="true" Spacing="2" Class="mt-2" Wrap="Wrap.Wrap">
+        <MudChip T="string" Color="Color.Primary">พนักงาน @_rows.Where(r => r.IsActive).Select(r => r.HremployeeId).Distinct().Count() คน</MudChip>
+        <MudChip T="string" Color="Color.Info">เงินได้ที่ต้องเสียภาษี @_rows.Where(r => r.IsActive).Sum(r => r.TaxableIncome).ToString("N2")</MudChip>
+        <MudChip T="string" Color="Color.Info">ภาษีหัก ณ ที่จ่าย @_rows.Where(r => r.IsActive).Sum(r => r.TaxWithheld).ToString("N2")</MudChip>
+    </MudStack>
+
+    <MudTable Items="_rows" Dense="true" Hover="true" Class="mt-3" RowsPerPage="50">
+        <HeaderContent>
+            <MudTh>รหัสพนักงาน</MudTh><MudTh>ชื่อ</MudTh><MudTh>เดือน</MudTh>
+            <MudTh Style="text-align:right">เงินได้ทั้งหมด</MudTh><MudTh Style="text-align:right">เงินได้ที่ต้องเสียภาษี</MudTh>
+            <MudTh Style="text-align:right">ภาษี</MudTh><MudTh Style="text-align:right">ประกันสังคม (ลูกจ้าง)</MudTh>
+            <MudTh Style="text-align:right">กองทุนฯ (ลูกจ้าง)</MudTh><MudTh>สถานะ</MudTh><MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo</MudTd>
+            <MudTd>@_names.GetValueOrDefault(context.HremployeeId)</MudTd>
+            <MudTd>@context.Month/@(context.TaxYear + 543)</MudTd>
+            <MudTd Style="text-align:right">@context.GrossIncome.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.TaxableIncome.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.TaxWithheld.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.SsoEmployee.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.PvdEmployee.ToString("N2")</MudTd>
+            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดแล้ว")</MudTd>
+            <MudTd>
+                @if (context.IsActive && _rights?.CanDelete == true)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(context))">ปิด</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">ไม่มียอดยกมาของปีนี้</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager PageSizeOptions="new[] { 50, 100, 500 }" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private const string ProgramPath = "/pay/admin/opening-balances";
+    private ProgramRoleService.ProgramRights? _rights;
+    private string? _companyId;
+    private long _userId;
+    private int _year = DateTime.Today.Year;
+    private List<int> _years = [DateTime.Today.Year];
+    private string? _search;
+    private bool _showInactive;
+    private List<Pay_EmployeeOpeningBalance> _rows = [];
+    private Dictionary<long, string> _names = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+        _userId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _years = await db.Pay_EmployeeOpeningBalances.Where(o => o.CompanyId == _companyId)
+            .Select(o => o.TaxYear).Distinct().OrderByDescending(y => y).ToListAsync();
+        if (_years.Count == 0) _years = [DateTime.Today.Year];
+        _year = _years[0];
+        await LoadAsync();
+        await AuditLogger.LogAccessAsync("Pay_EmployeeOpeningBalance", $"{_companyId}:{_year}", isSensitive: true, note: "view");
+    }
+
+    private async Task OnYearChangedAsync(int year)
+    {
+        _year = year;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Pay_EmployeeOpeningBalances.Where(o => o.CompanyId == _companyId && o.TaxYear == _year);
+        if (!_showInactive) query = query.Where(o => o.IsActive);
+        query = EntitySearchHelper.ApplyTextSearch(query, _search, nameof(Pay_EmployeeOpeningBalance.EmpNo));
+        _rows = await query.OrderBy(o => o.EmpNo).ThenBy(o => o.Month).ToListAsync();
+        var ids = _rows.Select(r => r.HremployeeId).Distinct().ToList();
+        _names = await db.Hremployee.Where(e => ids.Contains(e.id))
+            .ToDictionaryAsync(e => e.id, e => $"{e.EmpName} {e.EmpSurname}".Trim());
+    }
+
+    private async Task DeactivateAsync(Pay_EmployeeOpeningBalance row)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, ProgramRoleService.ProgramAction.Delete); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var o = await db.Pay_EmployeeOpeningBalances.FirstOrDefaultAsync(x => x.Id == row.Id && x.CompanyId == _companyId);
+        if (o is null) return;
+        o.IsActive = false;
+        o.UpdatedByUserId = _userId;
+        o.UpdatedAt = DateTime.Now;
+        await db.SaveChangesAsync();
+        Snackbar.Add($"ปิดยอดยกมา {o.EmpNo} เดือน {o.Month}/{o.TaxYear + 543} แล้ว — มีผลกับการคำนวณรอบถัดไป", Severity.Success);
+        await LoadAsync();
+    }
+}

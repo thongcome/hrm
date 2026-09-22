@@ -110,5 +110,25 @@ public static class EmployeeImportSchema
                 "ว่าง = ใช่ (ชื่อผู้ใช้ = รหัสพนักงาน ต้องเปลี่ยนรหัสผ่านครั้งแรก)", Yes, ListYesNo),
         ], MaxRows: 2000);
 
-    public static readonly IReadOnlyList<ImportSheet> DataSheets = [Org, Employee];
+    // One row per employee per month already paid by the customer's previous system this tax
+    // year, so withholding, 50 ทวิ and ภ.ง.ด.1ก see the whole year, not only months paid here.
+    // Ported from Advance.Payroll (CEO order, 22 ก.ย. 2569: mirror the payroll domain).
+    public static readonly ImportSheet OpeningBalance = new("ยอดยกมา",
+        "ใช้เมื่อเริ่มใช้ระบบกลางปี — ยอดของแต่ละเดือนที่จ่ายจากระบบเดิมแล้ว หนึ่งแถวต่อพนักงานต่อเดือน",
+        [
+            // free text, not a dropdown of the "พนักงาน" sheet: opening balances may be imported later for employees already in the system
+            new("EmpNo", "รหัสพนักงาน*", true, ImportColumnKind.Code, 14, "รหัสในชีต \"พนักงาน\" หรือที่มีในระบบแล้ว", "E0001"),
+            new("TaxYear", "ปีภาษี (พ.ศ.)*", true, ImportColumnKind.WholeNumber, 12, "", "2569"),
+            new("Month", "เดือน*", true, ImportColumnKind.WholeNumber, 8, "1–12", "1"),
+            new("GrossIncome", "เงินได้ทั้งหมด*", true, ImportColumnKind.Money, 15, "รวมทุกประเภทก่อนหัก", "27,000.00"),
+            new("TaxableIncome", "เงินได้ที่ต้องเสียภาษี*", true, ImportColumnKind.Money, 16, "ยอดที่ขึ้นใน 50 ทวิ", "27,000.00"),
+            new("TaxWithheld", "ภาษีหัก ณ ที่จ่าย*", true, ImportColumnKind.Money, 15, "", "450.00"),
+            new("SsoEmployee", "ประกันสังคม (ลูกจ้าง)", false, ImportColumnKind.Money, 15, "", "750.00"),
+            new("SsoEmployer", "ประกันสังคม (นายจ้าง)", false, ImportColumnKind.Money, 15, "", "750.00"),
+            new("PvdEmployee", "กองทุนสำรองฯ (ลูกจ้าง)", false, ImportColumnKind.Money, 15, "", "1,250.00"),
+            new("PvdEmployer", "กองทุนสำรองฯ (นายจ้าง)", false, ImportColumnKind.Money, 15, "", "1,250.00"),
+            new("NetPay", "เงินได้สุทธิที่จ่าย", false, ImportColumnKind.Money, 15, "", "24,550.00"),
+        ], MaxRows: 24000);
+
+    public static readonly IReadOnlyList<ImportSheet> DataSheets = [Org, Employee, OpeningBalance];
 }
