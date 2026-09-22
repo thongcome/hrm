@@ -216,7 +216,12 @@ else
                             <RowTemplate>
                                 <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Severity switch { PayrollPreflightService.Severity.Error => Color.Error, PayrollPreflightService.Severity.Warning => Color.Warning, _ => Color.Info })">@(context.Severity switch { PayrollPreflightService.Severity.Error => "ผิดพลาด", PayrollPreflightService.Severity.Warning => "เตือน", _ => "ไม่อยู่ในรอบ" })</MudChip></MudTd>
                                 <MudTd>@context.EmpNo</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Message</MudTd>
-                                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info" OnClick="@(() => HoldEmployeeAsync(context.HremployeeId))" Disabled="_calcRunning">hold คนนี้</MudButton></MudTd>
+                                <MudTd>
+                                    @if (!NotInRunCodes.Contains(context.Code))
+                                    {
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info" OnClick="@(() => HoldEmployeeAsync(context.HremployeeId))" Disabled="_calcRunning">hold คนนี้</MudButton>
+                                    }
+                                </MudTd>
                             </RowTemplate>
                             <PagerContent><MudTablePager PageSizeOptions="new[] { 20, 50, 100 }" /></PagerContent>
                         </MudTable>
@@ -277,9 +282,12 @@ else
             @if (_canGenerateDocuments)
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GeneratePayslipsAsync" Disabled="_busy">@L.Translate("GeneratePayslipsButton")</MudButton>
-                <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateBankFileAsync" Disabled="_busy">@L.Translate("GenerateBankFileButton")</MudButton>
+                @if (!_bankFileBatches.Any(BankFileExportService.IsActive))
+                {
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateBankFileAsync" Disabled="_busy">@L.Translate("GenerateBankFileButton")</MudButton>
+                }
             }
-            @if (_canGenerateGL)
+            @if (_canGenerateGL && _glExportBatches.Count == 0)
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Outlined" OnClick="GenerateGLExportAsync" Disabled="_busy">@L.Translate("GenerateGLButton")</MudButton>
             }
@@ -573,6 +581,7 @@ else
     private bool _preflightBusy;
     private string _holdReason = "";
     private string _holdEmpNo = "";
+    private static readonly HashSet<string> NotInRunCodes = ["NOT_PAYROLL_TYPE", "NO_HIRE_DATE", "RESIGN_BEFORE_HIRE", "INACTIVE"];
 
     private int _negativeCount;
     private int _pendingAdhocCount;
