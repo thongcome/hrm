@@ -39,13 +39,11 @@ public class EmployeeSlotBackfillService(IDbContextFactory<HRMContext> dbFactory
             aligned++;
         }
         if (aligned > 0) await context.SaveChangesAsync(ct);
-        var empTypeIdByCode = posEmpTypes.Where(p => p.Code != null)
-            .GroupBy(p => p.Code!).ToDictionary(g => g.Key, g => g.First().Id);
 
-        // 2) Position lookup — POS_CODE → the employee's existing Pos_ExecType.
-        var execByCode = await context.Pos_ExecTypes
+        // 2) Position lookup — the employee's Pos_ExecType via Hremployee.PosExecTypeId (FK, 22 ก.ย. 2569)
+        var execById = await context.Pos_ExecTypes
             .Where(t => t.CompanyId == companyId)
-            .ToDictionaryAsync(t => t.Code, t => t, ct);
+            .ToDictionaryAsync(t => t.Id, t => t, ct);
 
         // 3) Active employees in this company not yet occupying an active slot.
         var occupied = (await context.Pos_PositionSlots
@@ -54,17 +52,16 @@ public class EmployeeSlotBackfillService(IDbContextFactory<HRMContext> dbFactory
 
         var employees = await context.Hremployee
             .Where(e => e.companyid == companyId && e.ResignDate == null
-                        && e.OrganizationId != null && e.PosCode != null)
+                        && e.OrganizationId != null && e.PosExecTypeId != null)
             .ToListAsync(ct);
 
         int created = 0, skipped = 0, noPos = 0;
         foreach (var e in employees)
         {
             if (occupied.Contains(e.id)) { skipped++; continue; }
-            if (!execByCode.TryGetValue(e.PosCode!, out var exec)) { noPos++; continue; }
+            if (!execById.TryGetValue(e.PosExecTypeId!.Value, out var exec)) { noPos++; continue; }
 
-            long? empTypeId = e.EmptypeCode != null && empTypeIdByCode.TryGetValue(e.EmptypeCode, out var etid)
-                ? etid : (long?)null;
+            long? empTypeId = e.EmployeeTypeId;
 
             context.Pos_PositionSlots.Add(new Pos_PositionSlot
             {

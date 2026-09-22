@@ -32,7 +32,7 @@ public class PromotionService(IDbContextFactory<HRMContext> dbFactory)
             .ToDictionaryAsync(l => l.code!, l => l.plevel, ct);
         var orgNames = await context.com_organizations.ToDictionaryAsync(o => o.id, o => o.name, ct);
         var execNames = await context.Pos_ExecTypes.Where(t => t.CompanyId == companyId)
-            .ToDictionaryAsync(t => t.Code, t => t.Name, ct);
+            .ToDictionaryAsync(t => t.Id, t => t.Name, ct);   // พนักงาน → ระดับ ด้วย PosExecTypeId (FK)
 
         var q = context.Hremployee.Where(e => e.companyid == companyId && e.ResignDate == null);
         if (organizationId is long oid) q = q.Where(e => e.OrganizationId == oid);
@@ -41,7 +41,7 @@ public class PromotionService(IDbContextFactory<HRMContext> dbFactory)
         return emps.Select(e => new Candidate(
                 e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(),
                 e.OrganizationId is long o && orgNames.TryGetValue(o, out var on) ? on : null,
-                e.PosCode != null && execNames.TryGetValue(e.PosCode, out var pn) ? pn : e.PosCode,
+                e.PosExecTypeId is long px && execNames.TryGetValue(px, out var pn) ? pn : e.PosCode,
                 e.EmplevelCode,
                 e.EmplevelCode != null && plevelByCode.TryGetValue(e.EmplevelCode, out var pl) ? pl : null))
             // Grade 1 = highest (CEO); higher grade (lower plevel) = promotion

@@ -85,13 +85,13 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var holdsRaw = await ctx.Pay_PayrollRunHolds.Where(h => h.PayrollRunId == runId && h.IsActive).ToListAsync(ct);
         var heldIds = holdsRaw.Select(h => h.HremployeeId).ToHashSet();
 
-        var nonPayrollTypes = await PayrollEligibility.LoadNonPayrollTypeCodesAsync(ctx, run.CompanyId, ct);
+        var nonPayrollTypes = await PayrollEligibility.LoadNonPayrollTypeIdsAsync(ctx, run.CompanyId, ct);
         var typeNames = await ctx.Pos_EmployeeTypes
-            .Where(t => t.CompanyId == run.CompanyId && t.Code != null)
-            .ToDictionaryAsync(t => t.Code!, t => t.Name, ct);
+            .Where(t => t.CompanyId == run.CompanyId)
+            .ToDictionaryAsync(t => t.Id, t => t.Name ?? t.Code ?? $"#{t.Id}", ct);
         var eligible = await ctx.Hremployee
             .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
-            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosCode })
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosExecTypeId })
             .ToListAsync(ct);
 
         var issues = new List<Issue>();
@@ -122,16 +122,16 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var excluded = await ctx.Hremployee
             .Where(PayrollEligibility.ExcludedButRelevant(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
             .Where(e => !isFinalPay)
-            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.IsActive, e.WorkDate, e.ResignDate, e.EmptypeCode })
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.IsActive, e.WorkDate, e.ResignDate, e.EmployeeTypeId })
             .ToListAsync(ct);
         foreach (var e in excluded)
         {
             var name = $"{e.EmpName} {e.EmpSurname}".Trim();
-            switch (PayrollEligibility.WhyExcluded(e.IsActive, e.WorkDate, e.ResignDate, e.EmptypeCode, nonPayrollTypes))
+            switch (PayrollEligibility.WhyExcluded(e.IsActive, e.WorkDate, e.ResignDate, e.EmployeeTypeId, nonPayrollTypes))
             {
                 case PayrollEligibility.Reason.NotPayrollType:
                     issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Info, "NOT_PAYROLL_TYPE",
-                        $"ประเภท \"{typeNames.GetValueOrDefault(e.EmptypeCode!, e.EmptypeCode!)}\" ไม่รับเงินเดือนผ่านระบบ — ไม่อยู่ในรอบนี้ (ตั้งค่าที่ประเภทพนักงาน)"));
+                        $"ประเภท \"{typeNames.GetValueOrDefault(e.EmployeeTypeId!.Value, "?")}\" ไม่รับเงินเดือนผ่านระบบ — ไม่อยู่ในรอบนี้ (ตั้งค่าที่ประเภทพนักงาน)"));
                     break;
                 case PayrollEligibility.Reason.NoHireDate:
                     issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Error, "NO_HIRE_DATE", "ไม่มีวันเริ่มงาน — จะไม่ถูกจ่ายเงินเดือนในรอบนี้"));
@@ -167,7 +167,7 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_BANK_CODE", "มีเลขบัญชีแต่ไม่ระบุธนาคาร"));
             if (string.IsNullOrWhiteSpace(e.CostCenterCode))
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_COST_CENTER", "ไม่มีศูนย์ต้นทุน — GL/รายงานต้นทุนจะไม่มีที่ลง"));
-            if (string.IsNullOrWhiteSpace(e.PosCode))
+            if (e.PosExecTypeId is null)
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_POSITION", "ไม่มีตำแหน่ง — เบี้ยตามตำแหน่งจะไม่ถูกจ่าย"));
         }
 

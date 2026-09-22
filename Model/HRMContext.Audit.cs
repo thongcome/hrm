@@ -37,6 +37,7 @@ public partial class HRMContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SyncUserEmployees();                                   // ผู้ใช้ ↔ พนักงาน: id คือความจริง (HRMContext.UserEmployee.cs)
+        SyncEmployeeTypes();                                   // ระดับตำแหน่ง/ประเภทพนักงาน: id คือความจริง (HRMContext.EmployeeTypes.cs)
         // ผังองค์กร: parentID คือความจริง parent_code เป็นสำเนา (HRMContext.OrgParent.cs) — ทำก่อนเก็บ audit ให้ log เห็นค่าที่ sync แล้ว
         var deferredOrgParents = SyncOrganizationParents();
         var pending = CapturePendingAudits();
@@ -58,6 +59,7 @@ public partial class HRMContext
     {
         // hook ที่เติมค่าให้ตรงกันรันก่อนจับ audit — audit จะได้เห็นค่าที่บันทึกจริง
         SyncUserEmployees();                                   // ผู้ใช้ ↔ พนักงาน: id คือความจริง (HRMContext.UserEmployee.cs)
+        SyncEmployeeTypes();                                   // ระดับตำแหน่ง/ประเภทพนักงาน: id คือความจริง (HRMContext.EmployeeTypes.cs)
         // ผังองค์กร: parentID คือความจริง parent_code เป็นสำเนา (HRMContext.OrgParent.cs)
         var deferredOrgParents = SyncOrganizationParents();
         var pending = CapturePendingAudits();

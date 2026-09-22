@@ -257,12 +257,11 @@ public class PayrollCalculationService
             .OrderBy(r => r.SortOrder).ThenBy(r => r.Id)
             .ToListAsync(ct);
         // วิธีนับวันของค่าจ้างรายวันตั้งทับรายประเภทพนักงานได้ (รายวันแบบประจำ 22 วัน vs รายวันทั่วไป)
-        var dailyWageByEmpType = (await context.Pos_EmployeeTypes
-                .Where(x => x.CompanyId == run.CompanyId && x.IsActive && x.Code != null && x.DailyWageMode != null)
-                .Select(x => new { x.Code, x.DailyWageMode, x.DailyWageFixedDays })
-                .ToListAsync(ct))
-            .GroupBy(x => x.Code!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        // พนักงาน → ประเภท ด้วย Hremployee.EmployeeTypeId (FK)
+        var dailyWageByEmpType = await context.Pos_EmployeeTypes
+            .Where(x => x.CompanyId == run.CompanyId && x.IsActive && x.DailyWageMode != null)
+            .Select(x => new { x.Id, x.DailyWageMode, x.DailyWageFixedDays })
+            .ToDictionaryAsync(x => x.Id, ct);
         var attendanceByEmployee = (await context.Att_DailyAttendances
                 .Where(a => a.CompanyId == run.CompanyId && a.WorkDate >= attFrom && a.WorkDate <= attTo)
                 .Select(a => new { a.HremployeeId, a.IsAbsent, a.LateMinutes })
@@ -288,9 +287,9 @@ public class PayrollCalculationService
         var periodEndDt = run.PeriodEnd.ToDateTime(TimeOnly.MaxValue);
         var periodStartDt = run.PeriodStart.ToDateTime(TimeOnly.MinValue);
 
-        var nonPayrollTypeCodes = await PayrollEligibility.LoadNonPayrollTypeCodesAsync(context, run.CompanyId, ct);
+        var nonPayrollTypeIds = await PayrollEligibility.LoadNonPayrollTypeIdsAsync(context, run.CompanyId, ct);
         var eligibleEmployees = await context.Hremployee
-            .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypeCodes))
+            .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypeIds))
             .ToListAsync(ct);
 
         // รอบเสริม: เฉพาะคนที่มีรายการเฉพาะกิจของงวดนี้ (ไม่สร้างแถวศูนย์ให้ทั้งบริษัท)
@@ -515,7 +514,7 @@ public class PayrollCalculationService
             {
                 // นับวันจ่ายตามนโยบาย (audit M6): ค่าเริ่มต้น = วันทำงานจริงของบริษัท (ไม่นับเสาร์-อาทิตย์/วันหยุดบริษัท)
                 // ไม่ใช่วันตามปฏิทินซึ่งจ่ายเกินให้พนักงานรายวัน — วันตามปฏิทินยังเลือกได้ถ้าบริษัทจ่ายแบบนั้นจริง
-                var typeOverride = emp.EmptypeCode is not null && dailyWageByEmpType.TryGetValue(emp.EmptypeCode, out var dwo) ? dwo : null;
+                var typeOverride = emp.EmployeeTypeId is long etid && dailyWageByEmpType.TryGetValue(etid, out var dwo) ? dwo : null;
                 var dailyMode = typeOverride?.DailyWageMode ?? attendancePolicy?.DailyWageMode ?? PayDailyWageDaysMode.WorkingDays;
                 var fixedDays = typeOverride?.DailyWageFixedDays ?? attendancePolicy?.DailyWageFixedDays;
                 var useAttendance = dailyMode == PayDailyWageDaysMode.AttendanceDays && empAttendance is { Count: > 0 };

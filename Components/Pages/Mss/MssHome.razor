@@ -75,7 +75,7 @@
                                     <MudLink Href="@($"/employee/personnel-profile/{emp.id}")">
                                         @emp.EmpNo — @emp.EmpName @emp.EmpSurname
                                     </MudLink>
-                                    <MudText Typo="Typo.caption" Style="opacity:.7;">@PositionLabel(emp.PosCode)</MudText>
+                                    <MudText Typo="Typo.caption" Style="opacity:.7;">@PositionLabel(emp)</MudText>
                                 </div>
                             }
                         </MudStack>
@@ -190,7 +190,7 @@
     private List<Hremployee> _directReports = new();
     private List<job_user_list> _inbox = new();
     private List<TeamLeaveRow> _teamLeaves = new();
-    private Dictionary<string, string> _positionNames = new();
+    private Dictionary<long, string> _positionNames = new();
 
     private record TeamLeaveRow(string EmployeeName, string LeaveTypeName, DateOnly StartDate, DateOnly EndDate);
     private record TeamAttendanceRow(string EmployeeName, DateTime? FirstIn, DateTime? LastOut, bool IsLate, bool Wfh, bool OnLeave);
@@ -260,24 +260,19 @@
 
     private async Task LoadPositionNamesAsync(HRMContext context)
     {
-        var posCodes = _directReports
-            .Select(e => e.PosCode)
-            .Where(c => !string.IsNullOrWhiteSpace(c))
+        // ระดับของลูกทีมผ่าน Hremployee.PosExecTypeId (FK → Pos_ExecType) — เดิมหาชื่อจาก com_positions
+        // ซึ่งไม่ใช่ตารางที่ POS_CODE ชี้ จึงแสดงเป็นรหัสดิบ (22 ก.ย. 2569)
+        var posIds = _directReports
+            .Where(e => e.PosExecTypeId != null)
+            .Select(e => e.PosExecTypeId!.Value)
             .Distinct()
             .ToList();
-        if (posCodes.Count == 0)
+        if (posIds.Count == 0)
             return;
 
-        // Cheap code → name lookup on the position master; unknown codes
-        // fall back to showing the raw code (PositionLabel below). De-dup
-        // in memory — the fetched set is at most a few dozen rows.
-        var positions = await context.com_positions
-            .Where(p => p.code != null && posCodes.Contains(p.code) && p.name != null)
-            .Select(p => new { p.code, p.name })
-            .ToListAsync();
-        _positionNames = positions
-            .GroupBy(p => p.code!)
-            .ToDictionary(g => g.Key, g => g.First().name!);
+        _positionNames = await context.Pos_ExecTypes
+            .Where(p => posIds.Contains(p.Id) && p.Name != null)
+            .ToDictionaryAsync(p => p.Id, p => p.Name!);
     }
 
     private async Task LoadTeamLeavesAsync(HRMContext context)
@@ -325,10 +320,10 @@
             .ToList();
     }
 
-    private string PositionLabel(string? posCode)
+    private string PositionLabel(Hremployee emp)
     {
-        if (string.IsNullOrWhiteSpace(posCode))
-            return "-";
-        return _positionNames.TryGetValue(posCode, out var name) ? name : posCode;
+        if (emp.PosExecTypeId is long id && _positionNames.TryGetValue(id, out var name))
+            return name;
+        return string.IsNullOrWhiteSpace(emp.PosCode) ? "-" : emp.PosCode;
     }
 }

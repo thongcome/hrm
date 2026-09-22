@@ -69,17 +69,17 @@ public partial class Hremployee
     public string? PhotoStoragePath { get; set; }
 
     [Column("EMPTYPE_CODE")]
-    [StringLength(2)]
-    
+    [StringLength(50)]
+
     public string? EmptypeCode { get; set; }
 
     [Column("DEPTGRP_CODE")]
     [StringLength(5)]
-    
+
     public string? DeptgrpCode { get; set; }
 
     [Column("POS_CODE")]
-    [StringLength(3)]
+    [StringLength(50)]
 
     public string? PosCode { get; set; }
 

@@ -45,9 +45,11 @@ public static class DerivedRoleSyncService
             .ToListAsync();
         if (posRoles.Count > 0)
         {
+            // ระดับของพนักงานผ่าน Hremployee.PosExecTypeId (FK) · sc_role.pos_exec_code เป็นรหัสขั้นบันไดที่ตั้งใจให้ใช้ร่วมทุกบริษัท
             var empByPosCode = (await context.Hremployee
-                    .Where(e => e.IsActive && e.PosCode != null)
-                    .Select(e => new { e.id, e.PosCode })
+                    .Where(e => e.IsActive && e.PosExecTypeId != null)
+                    .Join(context.Pos_ExecTypes, e => e.PosExecTypeId, p => (long?)p.Id, (e, p) => new { e.id, PosCode = p.Code })
+                    .Where(x => x.PosCode != null)
                     .ToListAsync())
                 .GroupBy(e => e.PosCode!, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.id).ToList(), StringComparer.OrdinalIgnoreCase);

@@ -34,16 +34,27 @@
     </MudItem>
 
     <MudItem xs="12" sm="4">
-        <MudSelect T="string" @bind-Value="Employee.EmptypeCode" Label="@L.Translate("EmployeeTypeFieldLabel")">
-            <MudSelectItem T="string" Value="@("01")">@L.Translate("RegularEmployeeCheckbox")</MudSelectItem>
-            <MudSelectItem T="string" Value="@("02")">@L.Translate("TemporaryEmployeeCheckbox")</MudSelectItem>
+        @* the company's own types (อัตรากำลัง → ประเภทพนักงาน), bound by id (Hremployee.EmployeeTypeId, FK) —
+           payroll eligibility and the daily-wage rule read that id; EMPTYPE_CODE follows on save *@
+        <MudSelect T="long?" @bind-Value="Employee.EmployeeTypeId" Label="@L.Translate("EmployeeTypeFieldLabel")" Clearable="true"
+            HelperText="@(_employeeTypes.Count == 0 ? "ยังไม่ได้ตั้งประเภทพนักงานของบริษัทนี้ (อัตรากำลัง → ประเภทพนักงาน)" : null)">
+            @foreach (var t in _employeeTypes)
+            {
+                <MudSelectItem T="long?" Value="@((long?)t.Id)">@t.Code — @t.Name@(t.IsPaidByPayroll ? "" : " (ไม่รับเงินเดือนผ่านระบบ)")</MudSelectItem>
+            }
         </MudSelect>
     </MudItem>
     <MudItem xs="12" sm="4">
         <MudTextField @bind-Value="Employee.DeptgrpCode" Label="@L.Translate("DepartmentLabel")" />
     </MudItem>
     <MudItem xs="12" sm="4">
-        <MudTextField @bind-Value="Employee.PosCode" Label="@L.Translate("PositionLabel")" />
+        @* ระดับตำแหน่ง (Pos_ExecType) ผูกด้วย id — เดิมเป็นช่องพิมพ์รหัสเอง พิมพ์ผิดก็บันทึกได้ *@
+        <MudSelect T="long?" @bind-Value="Employee.PosExecTypeId" Label="@L.Translate("PositionLabel")" Clearable="true">
+            @foreach (var p in _execTypes)
+            {
+                <MudSelectItem T="long?" Value="@((long?)p.Id)">@p.Code — @p.Name</MudSelectItem>
+            }
+        </MudSelect>
     </MudItem>
     <MudItem xs="12" sm="4">
         <MudAutocomplete T="Com_ChartOfAccount" Label="@L.Translate("CostCenterFieldLabel")" Value="SelectedCostCenter" ValueChanged="OnCostCenterSelected"
@@ -131,6 +142,20 @@
     [Parameter, EditorRequired] public string CompanyId { get; set; } = null!;
     [Parameter] public Pos_PositionSlot? CurrentSlot { get; set; }
     [Parameter] public string? CurrentOrgLabel { get; set; }
+
+    private List<Pos_EmployeeType> _employeeTypes = new();
+    private List<Pos_ExecType> _execTypes = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employeeTypes = await context.Pos_EmployeeTypes
+            .Where(t => t.CompanyId == CompanyId && t.IsActive && t.Code != null)
+            .OrderBy(t => t.Code).ToListAsync();
+        _execTypes = await context.Pos_ExecTypes
+            .Where(p => p.CompanyId == CompanyId && p.IsActive && p.Code != null)
+            .OrderBy(p => p.Code).ToListAsync();
+    }
 
     private async Task OnCostCenterSelected(Com_ChartOfAccount? account)
     {

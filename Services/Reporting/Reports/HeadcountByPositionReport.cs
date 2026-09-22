@@ -20,26 +20,21 @@ public class HeadcountByPositionReport(IDbContextFactory<HRMContext> dbFactory) 
 
         var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
         query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
-        var emps = await query
-            .Select(e => e.PosCode)
-            .ToListAsync(ct);
 
-        var posNames = await context.pos_positions
-            .Select(p => new { p.pos_code, p.name })
-            .ToListAsync(ct);
-        var nameByCode = posNames.Where(p => p.pos_code != null)
-            .GroupBy(p => p.pos_code!).ToDictionary(g => g.Key, g => g.First().name ?? g.Key, StringComparer.OrdinalIgnoreCase);
-
-        var grouped = emps
-            .GroupBy(c => c ?? "(ไม่ระบุ)")
-            .Select(g => new { Code = g.Key, Count = g.Count() })
+        // ระดับของพนักงานผ่าน Hremployee.PosExecTypeId (FK → Pos_ExecType) — เดิมหาชื่อจาก pos_positions
+        // ซึ่งไม่ใช่ตารางที่ POS_CODE ชี้ จึงได้ "—" ทุกแถว (22 ก.ย. 2569)
+        var grouped = await query
+            .GroupJoin(context.Pos_ExecTypes, e => e.PosExecTypeId, p => (long?)p.Id, (e, ps) => new { e, ps })
+            .SelectMany(x => x.ps.DefaultIfEmpty(), (x, p) => new { Code = p != null ? p.Code : null, Name = p != null ? p.Name : null })
+            .GroupBy(x => new { x.Code, x.Name })
+            .Select(g => new { g.Key.Code, g.Key.Name, Count = g.Count() })
             .OrderByDescending(x => x.Count)
-            .ToList();
+            .ToListAsync(ct);
 
         var rows = grouped.Select(g => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>
         {
-            ["code"] = g.Code,
-            ["name"] = nameByCode.TryGetValue(g.Code, out var n) ? n : "—",
+            ["code"] = g.Code ?? "(ไม่ระบุ)",
+            ["name"] = g.Name ?? "—",
             ["count"] = g.Count,
         }).ToList();
 

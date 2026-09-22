@@ -14,9 +14,10 @@ namespace HRM.Services.Pay;
 //  · Dates sane  ResignDate on/after WorkDate — a leave date before the hire date is bad data.
 //  · Status      IsActive — HR's own switch for people who must not be paid right now
 //                (suspension, unpaid leave, secondment). It is never flipped by resignation.
-//  · Type        EMPTYPE_CODE whose Pos_EmployeeType row says IsPaidByPayroll = false (e.g.
-//                directors) is not a payroll person at all. An unknown/blank type IS paid —
-//                dropping someone because a lookup is missing would be the worse mistake.
+//  · Type        EmployeeTypeId (FK → Pos_EmployeeType, 22 ก.ย. 2569 — was matched by EMPTYPE_CODE text)
+//                whose row says IsPaidByPayroll = false (e.g. directors) is not a payroll person
+//                at all. A blank type IS paid — dropping someone because a lookup is missing
+//                would be the worse mistake.
 //
 // Hremployee.EMP_STATUS is NOT used: a legacy column that nothing writes, empty on every row,
 // and typed decimal(2,2) so it could not hold a status code anyway.
@@ -24,29 +25,29 @@ public static class PayrollEligibility
 {
     public enum Reason { NoHireDate, ResignBeforeHire, Inactive, NotPayrollType }
 
-    public static async Task<List<string>> LoadNonPayrollTypeCodesAsync(HRMContext context, string companyId, CancellationToken ct = default) =>
+    public static async Task<List<long>> LoadNonPayrollTypeIdsAsync(HRMContext context, string companyId, CancellationToken ct = default) =>
         await context.Pos_EmployeeTypes
-            .Where(t => t.CompanyId == companyId && t.IsActive && !t.IsPaidByPayroll && t.Code != null)
-            .Select(t => t.Code!)
+            .Where(t => t.CompanyId == companyId && t.IsActive && !t.IsPaidByPayroll)
+            .Select(t => t.Id)
             .ToListAsync(ct);
 
     public static Expression<Func<Hremployee, bool>> InPeriod(string companyId, DateTime periodStart, DateTime periodEnd,
-        IReadOnlyCollection<string> nonPayrollTypeCodes) =>
+        IReadOnlyCollection<long> nonPayrollTypeIds) =>
         e => e.companyid == companyId
              && e.IsActive
-             && (e.EmptypeCode == null || !nonPayrollTypeCodes.Contains(e.EmptypeCode))
+             && (e.EmployeeTypeId == null || !nonPayrollTypeIds.Contains(e.EmployeeTypeId.Value))
              && e.WorkDate != null && e.WorkDate <= periodEnd
              && (e.ResignDate == null || (e.ResignDate >= periodStart && e.ResignDate >= e.WorkDate));
 
     // Company employees whose dates touch the period but who are left out — the pre-flight
     // lists every one of them with its reason, so nobody is dropped from a run silently.
     public static Expression<Func<Hremployee, bool>> ExcludedButRelevant(string companyId, DateTime periodStart, DateTime periodEnd,
-        IReadOnlyCollection<string> nonPayrollTypeCodes) =>
+        IReadOnlyCollection<long> nonPayrollTypeIds) =>
         e => e.companyid == companyId
              && (e.ResignDate == null || e.ResignDate >= periodStart)
              && (e.WorkDate == null || e.WorkDate <= periodEnd)
              && (!e.IsActive || e.WorkDate == null || (e.ResignDate != null && e.ResignDate < e.WorkDate)
-                 || (e.EmptypeCode != null && nonPayrollTypeCodes.Contains(e.EmptypeCode)));
+                 || (e.EmployeeTypeId != null && nonPayrollTypeIds.Contains(e.EmployeeTypeId.Value)));
 
     // Leavers already settled in a leaver final-pay run (PayrollRunType.FinalPay) of this period —
     // the regular run of the same period and term leaves them out (they must not be paid twice).
@@ -64,10 +65,10 @@ public static class PayrollEligibility
             .GroupBy(x => x.HremployeeId).ToDictionary(g => g.Key, g => g.First().Id);
     }
 
-    public static Reason? WhyExcluded(bool isActive, DateTime? workDate, DateTime? resignDate, string? empTypeCode,
-        IReadOnlyCollection<string> nonPayrollTypeCodes)
+    public static Reason? WhyExcluded(bool isActive, DateTime? workDate, DateTime? resignDate, long? employeeTypeId,
+        IReadOnlyCollection<long> nonPayrollTypeIds)
     {
-        if (empTypeCode is not null && nonPayrollTypeCodes.Contains(empTypeCode)) return Reason.NotPayrollType;
+        if (employeeTypeId is long tid && nonPayrollTypeIds.Contains(tid)) return Reason.NotPayrollType;
         if (workDate is null) return Reason.NoHireDate;
         if (resignDate is not null && resignDate < workDate) return Reason.ResignBeforeHire;
         if (!isActive) return Reason.Inactive;

@@ -21,27 +21,20 @@ public class HeadcountByEmploymentTypeReport(IDbContextFactory<HRMContext> dbFac
 
         var query = context.Hremployee.Where(e => e.companyid == ctx.CompanyId);
         query = await ReportCriteria.ApplyEmployeeAsync(context, query, args, ct);
-        var emps = await query
-            .Select(e => e.EmptypeCode)
-            .ToListAsync(ct);
 
-        var typeNames = await context.Pos_EmployeeTypes
-            .Where(t => t.CompanyId == ctx.CompanyId)
-            .Select(t => new { t.Code, t.Name })
-            .ToListAsync(ct);
-        var nameByCode = typeNames.Where(t => t.Code != null)
-            .GroupBy(t => t.Code!).ToDictionary(g => g.Key, g => g.First().Name ?? g.Key, StringComparer.OrdinalIgnoreCase);
-
-        var grouped = emps
-            .GroupBy(c => c ?? "(ไม่ระบุ)")
-            .Select(g => new { Code = g.Key, Count = g.Count() })
+        // ประเภทของพนักงานผ่าน Hremployee.EmployeeTypeId (FK → Pos_EmployeeType)
+        var grouped = await query
+            .GroupJoin(context.Pos_EmployeeTypes, e => e.EmployeeTypeId, t => (long?)t.Id, (e, ts) => new { e, ts })
+            .SelectMany(x => x.ts.DefaultIfEmpty(), (x, t) => new { Code = t != null ? t.Code : null, Name = t != null ? t.Name : null })
+            .GroupBy(x => new { x.Code, x.Name })
+            .Select(g => new { g.Key.Code, g.Key.Name, Count = g.Count() })
             .OrderByDescending(x => x.Count)
-            .ToList();
+            .ToListAsync(ct);
 
         var rows = grouped.Select(g => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>
         {
-            ["code"] = g.Code,
-            ["name"] = nameByCode.TryGetValue(g.Code, out var n) ? n : "—",
+            ["code"] = g.Code ?? "(ไม่ระบุ)",
+            ["name"] = g.Name ?? "—",
             ["count"] = g.Count,
         }).ToList();
 
