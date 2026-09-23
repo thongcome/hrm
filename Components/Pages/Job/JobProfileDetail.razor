@@ -2,6 +2,7 @@
 @using HRM.Models
 @using HRM.Services.Job
 @using HRM.Services.Security
+@using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -465,7 +466,9 @@ else
         var categoryIds = await context.Comp_Categories.Where(c => c.CompanyId == _execType.CompanyId).Select(c => c.Id).ToListAsync();
         _allCompetencies = await context.Comp_Competencies.Where(c => categoryIds.Contains(c.CategoryId) && c.IsActive).ToListAsync();
         var competencyIds = _allCompetencies.Select(c => c.Id).ToList();
-        _allLevels = await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync();
+        _allLevels = ProficiencyLevelResolver.CurrentOnly(
+            await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync(),
+            DateOnly.FromDateTime(DateTime.Today));
 
         _reportingRows = await JobReportingLineHelper.ResolveAsync(context, PosExecTypeId);
     }

@@ -81,8 +81,35 @@
                                 <MudTextField T="string" Value="@GetLevelDraft(comp.Id, lvl)" ValueChanged="@(v => SetLevelDraft(comp.Id, lvl, v))"
                                     Label="@($"ระดับ {lvl}")" Lines="2" Class="mt-2" />
                             }
-                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
-                                OnClick="@(() => SaveLevelsAsync(comp.Id))">บันทึกคำอธิบายระดับ</MudButton>
+                            <MudStack Row="true" Spacing="2" Class="mt-2">
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                    OnClick="@(() => SaveLevelsAsync(comp.Id))">บันทึกคำอธิบายระดับ</MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.History"
+                                    OnClick="@(() => ToggleHistoryAsync(comp.Id))">@(_historyOpenFor == comp.Id ? "ซ่อนประวัติ" : "ดูประวัติการแก้ไข")</MudButton>
+                            </MudStack>
+
+                            @if (_historyOpenFor == comp.Id)
+                            {
+                                @if (_history.Count == 0)
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-2">ยังไม่เคยแก้ไขคำอธิบายระดับใดของสมรรถนะนี้เลย</MudText>
+                                }
+                                else
+                                {
+                                    <MudTable Items="_history" Dense="true" Hover="true" Class="mt-2">
+                                        <HeaderContent>
+                                            <MudTh>ระดับ</MudTh><MudTh>คำอธิบาย</MudTh><MudTh>มีผลตั้งแต่</MudTh><MudTh>มีผลถึง</MudTh><MudTh>สถานะ</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd>@context.Level</MudTd>
+                                            <MudTd>@context.Description</MudTd>
+                                            <MudTd>@context.EffectiveFrom.ToString("dd/MM/yyyy")</MudTd>
+                                            <MudTd>@(context.EffectiveTo?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                                            <MudTd>@(context.IsActive ? "ใช้งาน" : "ปิดแล้ว")</MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                            }
                         </MudPaper>
                     }
                 </ChildContent>
@@ -104,6 +131,19 @@
     private string _newCompName = "";
     private string _newCompDescription = "";
 
+    private long? _historyOpenFor;
+    private List<Comp_ProficiencyLevel> _history = new();
+
+    private async Task ToggleHistoryAsync(long competencyId)
+    {
+        if (_historyOpenFor == competencyId) { _historyOpenFor = null; return; }
+        await using var context = await DbFactory.CreateDbContextAsync();
+        // ทุกเวอร์ชัน (ทั้งที่ใช้งานอยู่และปิดแล้ว) เรียงระดับแล้วเวอร์ชันใหม่สุดก่อน — ไม่ใช่แค่รุ่นปัจจุบัน
+        _history = await context.Comp_ProficiencyLevels.Where(l => l.CompetencyId == competencyId)
+            .OrderBy(l => l.Level).ThenByDescending(l => l.EffectiveFrom).ToListAsync();
+        _historyOpenFor = competencyId;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -124,7 +164,11 @@
         _competencies = await compQuery.OrderBy(c => c.SortOrder).ToListAsync();
 
         var competencyIds = _competencies.Select(c => c.Id).ToList();
-        _levels = await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync();
+        // effective-dated (Model/Comp_ProficiencyLevel.cs) — the draft box starts from whichever
+        // row is in force today; saving a changed box appends a new version, see SaveLevelsAsync.
+        _levels = ProficiencyLevelResolver.CurrentOnly(
+            await context.Comp_ProficiencyLevels.Where(l => competencyIds.Contains(l.CompetencyId)).ToListAsync(),
+            DateOnly.FromDateTime(DateTime.Today));
 
         _levelDrafts = new Dictionary<long, string[]>();
         foreach (var comp in _competencies)
@@ -196,23 +240,32 @@
         if (!_levelDrafts.TryGetValue(competencyId, out var draft)) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
+        // ALL history, not just current — need it to close out the row being superseded
         var existing = await context.Comp_ProficiencyLevels.Where(l => l.CompetencyId == competencyId).ToListAsync();
+        var today = DateOnly.FromDateTime(DateTime.Today);
 
         for (var level = 1; level <= 5; level++)
         {
             var text = draft[level - 1];
-            var row = existing.FirstOrDefault(l => l.Level == level);
+            var current = ProficiencyLevelResolver.Current(existing, competencyId, level, today);
             if (string.IsNullOrWhiteSpace(text))
             {
-                if (row is not null) context.Comp_ProficiencyLevels.Remove(row);
+                // ปิดใช้งาน ไม่ลบ — คำอธิบายเก่าอาจยังถูกอ้างอิงจากการประเมินที่ผ่านมา
+                if (current is not null) { current.IsActive = false; current.EffectiveTo = today; }
             }
-            else if (row is not null)
+            else if (current is not null && current.Description == text)
             {
-                row.Description = text;
+                // ไม่เปลี่ยนแปลง — ไม่ต้องสร้างเวอร์ชันใหม่เปล่าๆ
             }
             else
             {
-                context.Comp_ProficiencyLevels.Add(new Comp_ProficiencyLevel { CompetencyId = competencyId, Level = level, Description = text });
+                // เปลี่ยนคำอธิบาย = รุ่นใหม่เสมอ (ไม่แก้ทับของเดิม) เพื่อให้การประเมินเก่ายังอ้างอิงคำอธิบายที่ผู้ประเมินเห็นจริงตอนให้คะแนนได้
+                if (current is not null) current.EffectiveTo = today;
+                context.Comp_ProficiencyLevels.Add(new Comp_ProficiencyLevel
+                {
+                    CompetencyId = competencyId, Level = level, Description = text,
+                    EffectiveFrom = today, IsActive = true,
+                });
             }
         }
 

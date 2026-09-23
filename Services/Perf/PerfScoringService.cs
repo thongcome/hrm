@@ -1,4 +1,5 @@
 using HRM.Models;
+using HRM.Services.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace HRM.Services.Perf;
@@ -99,10 +100,13 @@ public class PerfScoringService(IDbContextFactory<HRMContext> dbFactory)
         var competencyIds = indicators.Where(i => i.CompetencyId is not null).Select(i => i.CompetencyId!.Value).Distinct().ToList();
         var competencyNames = await context.Comp_Competencies.Where(c => competencyIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
-        var proficiencyLevels = await context.Comp_ProficiencyLevels
-            .Where(p => competencyIds.Contains(p.CompetencyId))
-            .OrderBy(p => p.Level)
-            .ToListAsync(ct);
+        // effective-dated (Model/Comp_ProficiencyLevel.cs) — a rater must see the anchor wording
+        // in force today, not a stale/superseded version; ProficiencyLevelResolver picks the one
+        // current row per (CompetencyId, Level) out of every historical row loaded here.
+        var proficiencyLevels = ProficiencyLevelResolver.CurrentOnly(
+            await context.Comp_ProficiencyLevels.Where(p => competencyIds.Contains(p.CompetencyId)).ToListAsync(ct),
+            DateOnly.FromDateTime(DateTime.Today))
+            .OrderBy(p => p.Level).ToList();
 
         var rows = new List<IndicatorForScoring>();
         foreach (var ind in indicators)
