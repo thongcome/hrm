@@ -29,11 +29,24 @@ public class KmArticleService
 
         query = EntitySearchHelper.ApplyTextSearch(query, term, nameof(Km_Article.Title), nameof(Km_Article.Content), nameof(Km_Article.Tags));
 
-        query = sortByMostViewed
-            ? query.OrderByDescending(a => a.ViewCount).ThenByDescending(a => a.CreatedDate)
-            : query.OrderByDescending(a => a.CreatedDate);
+        // LIKE finds candidates; if there's a search term, rank by relevance (title match beats
+        // an incidental body mention), falling back to the caller's chosen recency/popularity
+        // sort as a tiebreak — same idea as "ล่าสุด"/"ยอดนิยม" buttons still meaning something
+        // when several articles match the term equally well. No term = those buttons alone decide.
+        if (string.IsNullOrWhiteSpace(term))
+        {
+            query = sortByMostViewed
+                ? query.OrderByDescending(a => a.ViewCount).ThenByDescending(a => a.CreatedDate)
+                : query.OrderByDescending(a => a.CreatedDate);
+            return await query.ToListAsync(ct);
+        }
 
-        return await query.ToListAsync(ct);
+        var candidates = await query.ToListAsync(ct);
+        return sortByMostViewed
+            ? candidates.OrderByDescending(a => KmSearchRelevance.Score(a.Title, a.Tags, a.Content, term, a.ViewCount))
+                .ThenByDescending(a => a.ViewCount).ThenByDescending(a => a.CreatedDate).ToList()
+            : candidates.OrderByDescending(a => KmSearchRelevance.Score(a.Title, a.Tags, a.Content, term, a.ViewCount))
+                .ThenByDescending(a => a.CreatedDate).ToList();
     }
 
     public async Task<List<Km_Article>> GetAllForAdminAsync(string companyId, string? term, CancellationToken ct = default)
@@ -41,7 +54,15 @@ public class KmArticleService
         await using var context = await _dbFactory.CreateDbContextAsync(ct);
         var query = context.Km_Articles.Where(a => a.CompanyId == companyId);
         query = EntitySearchHelper.ApplyTextSearch(query, term, nameof(Km_Article.Title), nameof(Km_Article.Content), nameof(Km_Article.Tags));
-        return await query.OrderByDescending(a => a.CreatedDate).ToListAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(term))
+            return await query.OrderByDescending(a => a.CreatedDate).ToListAsync(ct);
+
+        var candidates = await query.ToListAsync(ct);
+        return candidates
+            .OrderByDescending(a => KmSearchRelevance.Score(a.Title, a.Tags, a.Content, term, a.ViewCount))
+            .ThenByDescending(a => a.CreatedDate)
+            .ToList();
     }
 
     public async Task<Km_Article?> GetByIdAsync(long id, string companyId, CancellationToken ct = default)
