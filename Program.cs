@@ -973,7 +973,11 @@ using (var oidcSeedScope = app.Services.CreateScope())
 // Guarantees a known dev login — see Services/Dev/DevAuthSeeder.cs. Never
 // runs outside Development, and does nothing at all in Production (the
 // account isn't even seeded there): safe to leave in place permanently.
-if (app.Environment.IsDevelopment())
+// Demo data only when asked for (CEO, 19 ก.ย. 2569: a customer's database starts WITHOUT demo data).
+// DemoCompanySeeder skips only "when ADVD exists" — a clean customer database (company renamed at
+// install) opened in Development would otherwise get 7,000 demo employees seeded back in. On in
+// appsettings.Development.json for our own demo; set Demo__SeedDemoData=false to test an install.
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Demo:SeedDemoData"))
 {
     await HRM.Services.Dev.DevAuthSeeder.EnsureKnownDevPasswordAsync(app.Services);
     // CEO demo dataset: company AdvanceDigital (ADVD), 7,000 fictitious
@@ -1041,7 +1045,7 @@ await HRM.Services.Login.DerivedRoleSyncService.SyncAsync(app.Services);
 await HRM.Services.Welfare.WelfareWorkflowSeeder.EnsureAsync(app.Services);
 await HRM.Services.Workflow.WorkflowStateChangeSeeder.EnsureAsync(app.Services);
 await HRM.Services.Engagement.EngRedeemWorkflowSeeder.EnsureAsync(app.Services);
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Demo:SeedDemoData"))
 {
     // Dev-only demo config: make the business workflows RUN real approval
     // routing (auto-approve OFF) and repoint the leftover test_payroll approver
@@ -1054,7 +1058,7 @@ if (app.Environment.IsDevelopment())
     // until an admin maps buttons per level in wf_button.
     await HRM.Services.Dev.WorkflowButtonSeeder.SeedAsync(app.Services);
 }
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Demo:SeedDemoData"))
 {
     // Dev-only end-to-end proof of the auto-role above: a committee-type
     // fixture (KB0001/Dev@12345) provisioned through the real
