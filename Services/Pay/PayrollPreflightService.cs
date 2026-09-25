@@ -74,8 +74,8 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
         var configErrors = new List<string>();
         if (!await ctx.Hrucfsecuritys.AnyAsync(x => x.companyid == run.CompanyId && x.SecurityCode == HrucfsecurityRateProvider.CurrentEmployeeSecurityCode, ct))
             configErrors.Add($"ยังไม่ได้ตั้งค่าอัตราประกันสังคม (Hrucfsecurity code 01) ของบริษัท {run.CompanyId} — คำนวณจะล้มเหลวทันที");
-        if (!await ctx.Pay_TaxBrackets.AnyAsync(b => b.EffectiveYear == run.PeriodStart.Year && b.IsActive, ct))
-            configErrors.Add($"ไม่มีตารางอัตราภาษีปี {run.PeriodStart.Year} (Pay_TaxBracket) — ภาษีหัก ณ ที่จ่ายจะคำนวณไม่ได้");
+        if (!await ctx.Pay_TaxBrackets.AnyAsync(b => b.EffectiveYear == run.PayDate.Year && b.IsActive, ct))
+            configErrors.Add($"ไม่มีตารางอัตราภาษีปี {run.PayDate.Year} (Pay_TaxBracket) — ภาษีหัก ณ ที่จ่ายจะคำนวณไม่ได้");
         var codes = await ctx.Pay_PayItemTypes.Select(t => t.Code).ToListAsync(ct);
         var missingCodes = RequiredPayItemCodes.Where(c => !codes.Contains(c)).ToList();
         if (missingCodes.Count > 0)

@@ -22,10 +22,13 @@ public static class EFilingExportService
         var data = await Por1DataService.BuildMonthlyAsync(context, companyId, payrollPeriod, ct);
         if (data is null) return null;
         var people = await LoadPeopleAsync(context, data.Lines.Select(l => l.HremployeeId), ct);
+        // runs paid in the filing month (cash basis, same rule as Por1DataService.BuildMonthlyAsync)
+        var filingMonth = new DateOnly(int.Parse(payrollPeriod[..4]), int.Parse(payrollPeriod.Substring(4, 2)), 1);
+        var nextMonth = filingMonth.AddMonths(1);
         var payDate = await context.Pay_PayrollRuns
             .Where(PayrollRunFilters.RunIsFinal)
-            .Where(r => r.CompanyId == companyId && r.PayrollPeriod == payrollPeriod)
-            .MaxAsync(r => (DateOnly?)r.PayDate, ct) ?? data.PeriodStart.AddMonths(1).AddDays(-1);
+            .Where(r => r.CompanyId == companyId && r.PayDate >= filingMonth && r.PayDate < nextMonth)
+            .MaxAsync(r => (DateOnly?)r.PayDate, ct) ?? nextMonth.AddDays(-1);
 
         var warnings = new List<string>();
         var sb = new StringBuilder();

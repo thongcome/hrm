@@ -30,7 +30,7 @@ public static class WithholdingCertificateDataService
             // 50 ทวิ = only pay actually made: no cancelled runs (C-04), no excluded rows (C-05)
             .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.HremployeeId == hremployeeId
-                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
+                && pe.Pay_PayrollRun.PayDate.Year == taxYear)   // ปีภาษีตามวันจ่าย (เกณฑ์เงินสด, audit M-01)
             .ToListAsync(ct);
 
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();

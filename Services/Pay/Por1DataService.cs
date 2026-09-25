@@ -49,12 +49,15 @@ public static class Por1DataService
 {
     public static async Task<Por1MonthlyData?> BuildMonthlyAsync(HRMContext context, string companyId, string payrollPeriod, CancellationToken ct = default)
     {
+        // ภ.ง.ด.1 ยื่นตามเดือนที่จ่ายเงินและหักภาษีจริง (เกณฑ์เงินสด, audit M-01) — งวด ธ.ค. ที่จ่าย ม.ค. ยื่นในแบบเดือน ม.ค.
+        var filingMonth = new DateOnly(int.Parse(payrollPeriod[..4]), int.Parse(payrollPeriod.Substring(4, 2)), 1);
+        var nextMonth = filingMonth.AddMonths(1);
         var payEmployees = await context.Pay_PayrollEmployees
             .Include(pe => pe.Pay_PayrollRun)
             .Include(pe => pe.Hremployee)
             .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.CompanyId == companyId
-                && pe.Pay_PayrollRun.PayrollPeriod == payrollPeriod)
+                && pe.Pay_PayrollRun.PayDate >= filingMonth && pe.Pay_PayrollRun.PayDate < nextMonth)
             .ToListAsync(ct);
         // กรอง "มีภาษี" หลังรวมทุกรอบของงวดต่อคน ไม่ใช่ต่อแถว (audit M4)
         var withTax = payEmployees.GroupBy(pe => pe.HremployeeId).Where(g => g.Sum(x => x.TaxAmount) > 0).Select(g => g.Key).ToHashSet();
@@ -103,7 +106,7 @@ public static class Por1DataService
             .Include(pe => pe.Hremployee)
             .Where(PayrollRunFilters.RowWasPaid)
             .Where(pe => pe.CompanyId == companyId
-                && pe.Pay_PayrollRun.PeriodStart.Year == taxYear)
+                && pe.Pay_PayrollRun.PayDate.Year == taxYear)   // ปีภาษีตามวันจ่าย (เกณฑ์เงินสด, audit M-01)
             .ToListAsync(ct);
 
         var payEmployeeIds = payEmployees.Select(pe => pe.Id).ToList();

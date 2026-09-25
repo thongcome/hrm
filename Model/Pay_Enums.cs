@@ -121,6 +121,7 @@ public enum PayrollAnomalyType
     MissingStandardDeduction = 4,
     PeriodTotalAbnormal = 5,
     BankAccountChanged = 6,
+    DeductionsAboveSection76Limit = 7,
 }
 
 public enum PayrollAnomalySeverity

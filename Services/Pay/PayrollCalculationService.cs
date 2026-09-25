@@ -80,11 +80,14 @@ public class PayrollCalculationService
         // ลำดับงวดต้องถูก (audit H3): ภาษีสะสมของงวดนี้อ่านจากงวดก่อนหน้าที่ "อนุมัติแล้ว" เท่านั้น
         // ดังนั้นงวดก่อนหน้าในปีเดียวกันต้องอนุมัติ/ยกเลิกให้หมดก่อน และห้ามคำนวณงวดเก่าซ้ำ
         // เมื่อมีงวดหลังจากนั้นอนุมัติไปแล้ว (ยอดสะสมที่งวดหลังใช้ไปจะไม่ตรงกับความจริง)
-        var yearStartForOrder = new DateOnly(run.PeriodStart.Year, 1, 1);
+        // ภาษีเงินเดือนเป็นเกณฑ์เงินสด (ปีภาษี = ปีที่จ่ายจริง) — ปี ยอดสะสม และลำดับงวดอิงวันจ่าย ไม่ใช่วันเริ่มงวด (audit M-01)
+        // (งวด ธ.ค. ที่จ่ายเดือน ม.ค. เป็นเงินได้ของปีใหม่) · งวดที่จ่ายในเดือนเดียวกับงวด ผลเท่าเดิมทุกประการ
+        var taxYear = run.PayDate.Year;
+        var yearStartForOrder = new DateOnly(taxYear, 1, 1);
         var openEarlier = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == run.CompanyId && r.Id != run.Id
                         && (r.RunType == PayrollRunType.Regular || r.RunType == PayrollRunType.Bonus || r.RunType == PayrollRunType.FinalPay)
-                        && r.PeriodStart >= yearStartForOrder && r.PeriodStart < run.PeriodStart
+                        && r.PayDate >= yearStartForOrder && (r.PayDate < run.PayDate || (r.PayDate == run.PayDate && r.PeriodStart < run.PeriodStart))
                         && r.Status != PayrollRunStatus.Cancelled && r.Status < PayrollRunStatus.Approved)
             .Select(r => r.PayrollPeriod).Distinct().OrderBy(p => p).ToListAsync(ct);
         if (openEarlier.Count > 0)
@@ -92,7 +95,7 @@ public class PayrollCalculationService
                 $"งวด {string.Join(", ", openEarlier)} ยังไม่ได้อนุมัติ — ต้องอนุมัติหรือยกเลิกงวดก่อนหน้าให้ครบก่อน ไม่งั้นภาษีสะสมของงวดนี้จะขาด");
         var approvedLater = await context.Pay_PayrollRuns
             .Where(r => r.CompanyId == run.CompanyId && r.Id != run.Id
-                        && r.PeriodStart > run.PeriodStart && r.PeriodStart.Year == run.PeriodStart.Year
+                        && (r.PayDate > run.PayDate || (r.PayDate == run.PayDate && r.PeriodStart > run.PeriodStart)) && r.PayDate.Year == taxYear
                         && (r.Status == PayrollRunStatus.Approved || r.Status == PayrollRunStatus.Posted || r.Status == PayrollRunStatus.Paid))
             .Select(r => r.PayrollPeriod).Distinct().OrderBy(p => p).ToListAsync(ct);
         if (run.RunType == PayrollRunType.Regular && approvedLater.Count > 0)
@@ -162,12 +165,12 @@ public class PayrollCalculationService
 
         var payItemTypes = await context.Pay_PayItemTypes.ToDictionaryAsync(t => t.Code, ct);
         var taxBrackets = await context.Pay_TaxBrackets
-            .Where(b => b.EffectiveYear == run.PeriodStart.Year && b.IsActive)
+            .Where(b => b.EffectiveYear == taxYear && b.IsActive)
             .ToListAsync(ct);
         // ตารางว่าง = ภาษี 0 ทุกคนเงียบ ๆ (audit H4) — ต้องหยุด ไม่ใช่เดาว่าไม่มีภาษี
         if (taxBrackets.Count == 0)
             throw new InvalidOperationException(
-                $"ไม่มีตารางอัตราภาษีปี {run.PeriodStart.Year} (Pay_TaxBracket) — เพิ่มตารางของปีนี้ก่อนจึงคำนวณได้");
+                $"ไม่มีตารางอัตราภาษีปี {taxYear} (Pay_TaxBracket) — เพิ่มตารางของปีนี้ก่อนจึงคำนวณได้");
         var paidByOldSystem = await OpeningBalanceGuard.OverlappingEmpNosAsync(context, run, ct);
         if (paidByOldSystem.Count > 0)
             throw new InvalidOperationException(OpeningBalanceGuard.Message(run, paidByOldSystem));
@@ -178,7 +181,7 @@ public class PayrollCalculationService
         // year yet, so calculation never silently reverts to the old
         // zero-deduction bug just because a year's row is missing.
         var taxDeductionSetting = await context.Pay_TaxDeductionSettings
-            .FirstOrDefaultAsync(s => s.EffectiveYear == run.PeriodStart.Year && s.IsActive, ct);
+            .FirstOrDefaultAsync(s => s.EffectiveYear == taxYear && s.IsActive, ct);
         var personalAllowancePerYear = taxDeductionSetting?.PersonalAllowancePerYear ?? 60000m;
         var expenseDeductionRate = taxDeductionSetting?.ExpenseDeductionRate ?? 0.50m;
         var expenseDeductionCap = taxDeductionSetting?.ExpenseDeductionCap ?? 100000m;
@@ -190,13 +193,13 @@ public class PayrollCalculationService
         // records only.
         var monthlyTaxElections = await context.Pay_EmployeeTaxDeductionElections
             .Include(e => e.Pay_TaxDeductionType)
-            .Where(e => e.IsActive && e.ApplyMonthly && e.Pay_TaxDeductionType.EffectiveYear == run.PeriodStart.Year)
+            .Where(e => e.IsActive && e.ApplyMonthly && e.Pay_TaxDeductionType.EffectiveYear == taxYear)
             .ToListAsync(ct);
 
         // Mid-year hires only — see Pay_EmployeePriorEmployerIncome.cs and
         // GetYtdAccumulatorsAsync/FoldPriorEmployerIncome below.
         var priorEmployerIncomes = await context.Pay_EmployeePriorEmployerIncomes
-            .Where(p => p.IsActive && p.TaxYear == run.PeriodStart.Year)
+            .Where(p => p.IsActive && p.TaxYear == taxYear)
             .ToListAsync(ct);
 
         // รอบจ่าย (audit M8, CEO 11 ก.ย. 2569): กี่งวดต่อเดือนเป็น config ต่อกลุ่มพนักงาน ทับรายคนได้ เปลี่ยนกลางปีได้
@@ -217,8 +220,10 @@ public class PayrollCalculationService
                         && e.Pay_PayrollRun.CompanyId == run.CompanyId
                         && e.Pay_PayrollRun.RunType == PayrollRunType.Regular
                         && e.Pay_PayrollRun.PeriodStart >= monthStart && e.Pay_PayrollRun.PeriodStart <= monthEnd)
-            .Select(e => new { e.Id, e.HremployeeId, e.SocialSecurityAmount, e.SocialSecurityCompanyAmount })
+            .Select(e => new { e.Id, e.HremployeeId, e.SocialSecurityAmount, e.SocialSecurityCompanyAmount, e.WelfareFundEmployeeAmount, e.WelfareFundCompanyAmount })
             .ToListAsync(ct);
+        var sameMonthWfByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.WelfareFundEmployeeAmount));
+        var sameMonthWfCompanyByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.WelfareFundCompanyAmount));
         var sameMonthSsoByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.SocialSecurityAmount));
         var sameMonthSsoCompanyByEmp = sameMonthRows.GroupBy(r => r.HremployeeId).ToDictionary(g => g.Key, g => g.Sum(r => r.SocialSecurityCompanyAmount));
         var sameMonthIds = sameMonthRows.Select(r => r.Id).ToList();
@@ -510,6 +515,20 @@ public class PayrollCalculationService
             var leavesThisPeriod = resignDate is DateOnly lastDay && lastDay <= run.PeriodEnd && !supplementary;
             if (leavesThisPeriod)
                 schedule = schedule with { RemainingMonthsIncludingThis = schedule.MonthFraction, RemainingPeriodsIncludingThis = 1 };
+            // เกณฑ์เงินสด (audit M-01): เดือนที่เหลือในปีภาษีนับจากเดือนที่จ่ายจริง — งวด ธ.ค. ที่จ่าย ม.ค. คืองวดแรกของปีใหม่
+            // ใช้เฉพาะตัวเลขประมาณการภาษี (Remaining*) · ส่วนของเดือน/งวดที่ของเงินเดือนยังอิงงวดเดิม
+            var payMonthShift = (run.PayDate.Year * 12 + run.PayDate.Month) - (run.PeriodStart.Year * 12 + run.PeriodStart.Month);
+            if (payMonthShift > 0 && !leavesThisPeriod)
+            {
+                var byPayMonth = PayScheduleResolver.Resolve(emp.id,
+                    isDailyWage ? PayScheduleGroup.DailyWage : PayScheduleGroup.MonthlySalaried,
+                    run.PeriodStart.AddMonths(payMonthShift), paySchedules, payScheduleOverrides);
+                schedule = schedule with
+                {
+                    RemainingMonthsIncludingThis = byPayMonth.RemainingMonthsIncludingThis,
+                    RemainingPeriodsIncludingThis = byPayMonth.RemainingPeriodsIncludingThis,
+                };
+            }
             var proration = ProrationCalculator.Calculate(run.PeriodStart, run.PeriodEnd, joinDate, resignDate, prorationDivisor, schedule.MonthFraction);
 
             var payEmp = new Pay_PayrollEmployee
@@ -832,17 +851,19 @@ public class PayrollCalculationService
 
             var welfareFundEmployeeAmount = 0m;
             var welfareFundCompanyAmount = 0m;
-            // มาตรา 130: an active provident fund exempts the company from
-            // the mandatory welfare fund — skip entirely rather than
-            // stacking both deductions.
-            if (welfareFundPolicy is not null && providentFundPolicy is null)
+            // กองทุนสงเคราะห์ลูกจ้าง (audit M-07): ยกเว้นเฉพาะคนที่เป็นสมาชิกกองทุนสำรองเลี้ยงชีพจริง (สะสมอยู่) ไม่ใช่ยกเว้นทั้งบริษัท
+            // ที่มีกองทุน · ฐาน = ค่าจ้าง นิยามเดียวกับประกันสังคม (ไม่รวม OT/โบนัส หลังหักขาด/สาย) · เพดานเป็นรายเดือน
+            // (งวดที่ 2 ของเดือนหักเฉพาะส่วนที่ยังไม่ถึงเพดาน) · ไม่คิดในรอบเสริม/โบนัส
+            var isPvdMember = providentFundPolicy is not null && pfEmployeeRate > 0m;
+            if (welfareFundPolicy is not null && !isPvdMember && !supplementary)
             {
-                var wf = WelfareFundCalculator.Calculate(grossEarnings, welfareFundPolicy.EmployeeContributionRate, welfareFundPolicy.CompanyContributionRate, welfareFundPolicy.WageCapPerMonth);
-                welfareFundEmployeeAmount = wf.EmployeeAmount;
-                welfareFundCompanyAmount = wf.CompanyAmount;
+                var wfMonthBase = ssoWageBase + priorMonthSsoBase;
+                var wf = WelfareFundCalculator.Calculate(wfMonthBase, welfareFundPolicy.EmployeeContributionRate, welfareFundPolicy.CompanyContributionRate, welfareFundPolicy.WageCapPerMonth);
+                welfareFundEmployeeAmount = Math.Max(0m, wf.EmployeeAmount - sameMonthWfByEmp.GetValueOrDefault(emp.id));
+                welfareFundCompanyAmount = Math.Max(0m, wf.CompanyAmount - sameMonthWfCompanyByEmp.GetValueOrDefault(emp.id));
                 if (welfareFundEmployeeAmount != 0)
                     lineItems.Add(NewLine(payItemTypes["WELFAREFUND"], PayLineSourceType.WelfareFund, welfareFundEmployeeAmount, -1, ++seq, "Pay_WelfareFundPolicy", welfareFundPolicy.Id,
-                        $"อัตราสะสมพนักงาน {welfareFundPolicy.EmployeeContributionRate:0.##}% ของเงินได้ {grossEarnings:N2} (เพดาน {welfareFundPolicy.WageCapPerMonth?.ToString("N2") ?? "ไม่กำหนด"}) = {welfareFundEmployeeAmount:N2}"));
+                        $"อัตราสะสมพนักงาน {welfareFundPolicy.EmployeeContributionRate:0.##}% ของค่าจ้างทั้งเดือน {wfMonthBase:N2} (เพดาน {welfareFundPolicy.WageCapPerMonth?.ToString("N2") ?? "ไม่กำหนด"}) = {welfareFundEmployeeAmount:N2}"));
             }
 
             var loanAmount = 0m;
@@ -918,7 +939,7 @@ public class PayrollCalculationService
 
             // หนึ่งคนมีได้หลายแถวต่อปี (นายจ้างเดิม + ยอดยกมาของบริษัทนี้) — ต้องรวมทั้งหมด ห้ามเลือกแค่แถวเดียว
             var priorEmployerIncome = CombinePriorIncome(priorEmployerIncomes.Where(p => p.HremployeeId == emp.id).ToList());
-            var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = FoldYtd(ytdByEmployee.GetValueOrDefault(emp.id), run.PeriodStart, includeSamePeriod: supplementary, priorEmployerIncome);
+            var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = FoldYtd(ytdByEmployee.GetValueOrDefault(emp.id), run.PeriodStart, includeSamePeriod: supplementary, priorEmployerIncome, run.PayDate);
 
             // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 15% ของค่าจ้าง และรวมกับ RMF/SSF/ประกันบำนาญที่แจ้งไว้ไม่เกิน 500,000 บาท/ปี
             // (audit M-02) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
@@ -1123,28 +1144,30 @@ public class PayrollCalculationService
     // separate running-accumulator table.
     // ยอดสะสมนับเฉพาะรอบที่ "อนุมัติแล้ว" (audit H3) — รอบที่ยังแก้ได้ไม่ใช่ข้อเท็จจริง
     // includeSamePeriod = รอบเสริม (โบนัส) ต้องนับรอบปกติของงวดเดียวกันด้วย
-    public sealed record YtdRow(DateOnly PeriodStart, decimal Income, decimal FlatDeduction, decimal Tax, decimal ProvidentFund);
+    // PayDate = วันที่จ่ายจริง (ลำดับตามเกณฑ์เงินสด) · null = ใช้ PeriodStart แทน (ผลเหมือนก่อนมีเกณฑ์วันจ่าย)
+    public sealed record YtdRow(DateOnly PeriodStart, decimal Income, decimal FlatDeduction, decimal Tax, decimal ProvidentFund, DateOnly? PayDate = null);
 
     // (audit M14) หนึ่ง query ต่อรอบ: แถวเงินเดือนที่อนุมัติแล้วของทุกคนในบริษัทตั้งแต่ต้นปีถึงงวดนี้ แล้วค่อยพับต่อคนในลูป
     // ยอดสะสมนับเฉพาะรอบที่ "อนุมัติแล้ว" (audit H3) — รอบที่ยังแก้ได้ไม่ใช่ข้อเท็จจริง
     private static async Task<Dictionary<long, List<YtdRow>>> LoadYtdRowsAsync(HRMContext context, Pay_PayrollRun run, CancellationToken ct)
     {
-        var yearStart = new DateOnly(run.PeriodStart.Year, 1, 1);
+        // ปีภาษีตามวันจ่าย (audit M-01) — FoldYtd คัดว่าแถวไหนจ่ายก่อนงวดนี้
+        var yearStart = new DateOnly(run.PayDate.Year, 1, 1);
         // YTD = only money actually paid: final runs, excluded employees left out (audit C-05)
         var rows = await context.Pay_PayrollEmployees
             .Where(PayrollRunFilters.RowWasPaid)
             .Where(e => e.CompanyId == run.CompanyId
                         && e.PayrollRunId != run.Id
-                        && e.Pay_PayrollRun.PeriodStart >= yearStart
-                        && e.Pay_PayrollRun.PeriodStart <= run.PeriodStart)
-            .Select(e => new { e.HremployeeId, e.Pay_PayrollRun.PeriodStart, e.TaxableIncome, e.SocialSecurityAmount, e.ProvidentFundEmployeeAmount, e.TaxAmount })
+                        && e.Pay_PayrollRun.PayDate >= yearStart
+                        && e.Pay_PayrollRun.PayDate <= run.PayDate)
+            .Select(e => new { e.HremployeeId, e.Pay_PayrollRun.PeriodStart, e.Pay_PayrollRun.PayDate, e.TaxableIncome, e.SocialSecurityAmount, e.ProvidentFundEmployeeAmount, e.TaxAmount })
             .ToListAsync(ct);
         // ยอดสะสมใช้ "เงินได้พึงประเมิน" ของแต่ละงวด (TaxableIncome) ไม่ใช่รายรับรวม (GrossEarnings) — พบจากเทสทั้งปี 2568:
         // รายรับรวมยังไม่หักขาดงาน/มาสาย และรวมรายการที่ไม่ต้องเสียภาษี (เช่น เบิกคืนค่าใช้จ่าย) ทำให้ประมาณการทั้งปีสูงเกินจริง
         var result = rows
             .GroupBy(r => r.HremployeeId)
             .ToDictionary(g => g.Key, g => g
-                .Select(r => new YtdRow(r.PeriodStart, r.TaxableIncome, r.SocialSecurityAmount + r.ProvidentFundEmployeeAmount, r.TaxAmount, r.ProvidentFundEmployeeAmount))
+                .Select(r => new YtdRow(r.PeriodStart, r.TaxableIncome, r.SocialSecurityAmount + r.ProvidentFundEmployeeAmount, r.TaxAmount, r.ProvidentFundEmployeeAmount, r.PayDate))
                 .ToList());
 
         // ยอดยกมา: months this company paid from its previous system before going live mid-year are
@@ -1152,24 +1175,32 @@ public class PayrollCalculationService
         // (ported from Advance.Payroll, CEO order 22 ก.ย. 2569: mirror the payroll domain)
         var openings = await context.Pay_EmployeeOpeningBalances
             .Where(o => o.CompanyId == run.CompanyId && o.IsActive
-                        && o.TaxYear == run.PeriodStart.Year && o.Month <= run.PeriodStart.Month)
+                        && o.TaxYear == run.PayDate.Year && o.Month <= run.PayDate.Month)
             .Select(o => new { o.HremployeeId, o.TaxYear, o.Month, o.TaxableIncome, o.SsoEmployee, o.PvdEmployee, o.TaxWithheld })
             .ToListAsync(ct);
         foreach (var o in openings)
         {
             if (!result.TryGetValue(o.HremployeeId, out var list)) result[o.HremployeeId] = list = [];
-            list.Add(new YtdRow(new DateOnly(o.TaxYear, o.Month, 1), o.TaxableIncome, o.SsoEmployee + o.PvdEmployee, o.TaxWithheld, o.PvdEmployee));
+            var openingMonth = new DateOnly(o.TaxYear, o.Month, 1);
+            list.Add(new YtdRow(openingMonth, o.TaxableIncome, o.SsoEmployee + o.PvdEmployee, o.TaxWithheld, o.PvdEmployee, openingMonth.AddMonths(1).AddDays(-1)));
         }
         return result;
     }
 
     // includeSamePeriod = รอบเสริม (โบนัส) ต้องนับรอบปกติของงวดเดียวกันด้วย — pure, ทดสอบได้
     public static (decimal YtdIncome, decimal YtdDeduction, decimal YtdTax, decimal YtdProvidentFund) FoldYtd(
-        IReadOnlyList<YtdRow>? rows, DateOnly periodStart, bool includeSamePeriod, Pay_EmployeePriorEmployerIncome? priorEmployerIncome)
+        IReadOnlyList<YtdRow>? rows, DateOnly periodStart, bool includeSamePeriod, Pay_EmployeePriorEmployerIncome? priorEmployerIncome,
+        DateOnly? payDate = null)
     {
-        var prior = (rows ?? Array.Empty<YtdRow>())
-            .Where(r => includeSamePeriod ? r.PeriodStart <= periodStart : r.PeriodStart < periodStart)
-            .ToList();
+        // จ่ายก่อนงวดนี้ = วันจ่ายก่อนหน้า · วันจ่ายเดียวกัน = ตัดสินด้วยงวด (รอบเสริมนับรอบปกติของงวดเดียวกันด้วย)
+        var anchorPay = payDate ?? periodStart;
+        bool PaidBefore(YtdRow r)
+        {
+            var rp = r.PayDate ?? r.PeriodStart;
+            if (rp != anchorPay) return rp < anchorPay;
+            return includeSamePeriod ? r.PeriodStart <= periodStart : r.PeriodStart < periodStart;
+        }
+        var prior = (rows ?? Array.Empty<YtdRow>()).Where(PaidBefore).ToList();
         var folded = FoldPriorEmployerIncome(prior.Sum(r => r.Income), prior.Sum(r => r.FlatDeduction), prior.Sum(r => r.Tax), priorEmployerIncome);
         return (folded.YtdIncome, folded.YtdDeduction, folded.YtdTax, prior.Sum(r => r.ProvidentFund));
     }

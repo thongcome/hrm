@@ -23,6 +23,18 @@ public class PayrollAnomalyDetectionService
     // employee has a loan, so its absence is normal, not anomalous.
     private static readonly int[] ExpectedDeductionTypeIds = { 4, 5, 6 };
 
+    // ม.76 (1) ภาษีและเงินที่กฎหมายกำหนด — ไม่อยู่ในเพดาน · ค่าจ้างของเวลาที่ไม่ได้ทำงานไม่ใช่ "การหัก"
+    private static readonly string[] Section76Excluded = { "TAX", "SSO", "WELFAREFUND", "LATE", "ABSENT", "LEAVE_UNPAID" };
+    private static readonly string[] WageReductionCodes = { "LATE", "ABSENT", "LEAVE_UNPAID" };
+
+    private static string Section76Category(string code) => code switch
+    {
+        "PF" => "กองทุนสำรองเลี้ยงชีพ",
+        "LOAN" or "SAL_ADVANCE" => "หนี้/เงินกู้/เงินเบิกล่วงหน้า",
+        "INSURANCE" => "สวัสดิการ (เบี้ยประกันกลุ่ม)",
+        _ => "หักอื่น ๆ",
+    };
+
     public PayrollAnomalyDetectionService(IDbContextFactory<HRMContext> dbFactory)
     {
         _dbFactory = dbFactory;
@@ -119,6 +131,20 @@ public class PayrollAnomalyDetectionService
             .GroupBy(x => x.PayrollEmployeeId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.PayItemTypeId).ToHashSet());
 
+        // ม.76: รายการหักที่ต้องมีความยินยอม แยกตามหมวด (ภาษี/ประกันสังคม/กองทุนสงเคราะห์ และค่าจ้างที่ไม่ได้ทำงานไม่นับ)
+        var deductionLines = await context.Pay_PayrollLineItems
+            .Where(li => thisRunRowIds.Contains(li.PayrollEmployeeId) && li.SignFlag < 0)
+            .Join(context.Pay_PayItemTypes, li => li.PayItemTypeId, t => t.Id, (li, t) => new { li.PayrollEmployeeId, t.Code, li.Amount })
+            .ToListAsync(ct);
+        var section76ByRow = deductionLines
+            .Where(x => !Section76Excluded.Contains(x.Code))
+            .GroupBy(x => x.PayrollEmployeeId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyDictionary<string, decimal>)g
+                .GroupBy(x => Section76Category(x.Code)).ToDictionary(c => c.Key, c => c.Sum(x => x.Amount)));
+        var wageReductionByRow = deductionLines
+            .Where(x => WageReductionCodes.Contains(x.Code))
+            .GroupBy(x => x.PayrollEmployeeId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
         var typeNames = await context.Pay_PayItemTypes
             .Where(t => ExpectedDeductionTypeIds.Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => t.NameTh, ct);
@@ -141,6 +167,25 @@ public class PayrollAnomalyDetectionService
                         : $"เงินสุทธิของ {emp.EmpNo} เท่ากับ {emp.NetPay:N2} บาท (ติดลบหรือเป็นศูนย์)",
                     DetectedValue = emp.NetPay,
                 });
+            }
+
+            if (section76ByRow.TryGetValue(emp.Id, out var byCategory))
+            {
+                var entitled = emp.GrossEarnings - wageReductionByRow.GetValueOrDefault(emp.Id);
+                if (Section76Check.Evaluate(entitled, byCategory) is { } s76)
+                {
+                    newRows.Add(new Pay_PayrollAnomaly
+                    {
+                        PayrollRunId = run.Id,
+                        PayrollEmployeeId = emp.Id,
+                        AnomalyType = PayrollAnomalyType.DeductionsAboveSection76Limit,
+                        Severity = PayrollAnomalySeverity.Warning,
+                        Description = $"{emp.EmpNo} หักรายการที่ต้องมีความยินยอมรวม {s76.Total:N2} บาท จากค่าจ้างที่มีสิทธิได้ {entitled:N2} (เพดาน 1/5 = {s76.Limit:N2})"
+                            + (s76.CategoriesOverTenPercent.Count > 0 ? $" · เกิน 10% ต่อหมวด: {string.Join(", ", s76.CategoriesOverTenPercent)}" : "")
+                            + " — ม.76 ทำได้เฉพาะเมื่อลูกจ้างยินยอมเป็นหนังสือ ตรวจเอกสารยินยอมก่อนอนุมัติ",
+                        DetectedValue = s76.Total,
+                    });
+                }
             }
 
             if (!historyByEmployee.TryGetValue(emp.HremployeeId, out var history) || history.Count == 0)

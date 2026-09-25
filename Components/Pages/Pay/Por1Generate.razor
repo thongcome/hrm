@@ -224,10 +224,12 @@
         var runs = await context.Pay_PayrollRuns
             .Where(PayrollRunFilters.RunIsFinal)
             .Where(r => r.CompanyId == _companyId)
-            .Select(r => new { r.PayrollPeriod, Year = r.PeriodStart.Year })
+            .Select(r => new { r.PayDate, Year = r.PayDate.Year })
             .ToListAsync();
 
-        _availablePeriods = runs.Select(r => r.PayrollPeriod).Distinct().OrderByDescending(p => p).ToList();
+        // ภ.ง.ด.1 ยื่นตามเดือนที่จ่ายจริง (เกณฑ์เงินสด) — รายการเดือนมาจากวันจ่าย ไม่ใช่งวด
+        _availablePeriods = runs.Select(r => r.PayDate.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture))
+            .Distinct().OrderByDescending(p => p).ToList();
         _availableYears = runs.Select(r => r.Year).Distinct().OrderByDescending(y => y).ToList();
 
         _selectedPeriod = _availablePeriods.FirstOrDefault();
