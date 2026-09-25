@@ -10,8 +10,13 @@
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("LifecycleChecklistPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
     <MudText Typo="Typo.h5">@L.Translate("LifecycleChecklistHeading")</MudText>
@@ -29,7 +34,7 @@
 
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewTaskHeading") : string.Format(L.Translate("EditTaskHeadingTemplate"), _form.Title))</MudText>
-        @if (!_showForm)
+        @if (!_showForm && _rights?.CanCreate == true)
         {
             <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddTaskButton")</MudButton>
         }
@@ -105,9 +110,20 @@
 
     private TemplateForm _form = new();
 
+    private const string ProgramPath = "/pay/admin/lifecycle-task-templates";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
@@ -157,6 +173,9 @@
 
     private async Task SaveAsync()
     {
+        if (!await RequireRightAsync(_editingId is null
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Create
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
 
         if (string.IsNullOrWhiteSpace(_form.Code) || string.IsNullOrWhiteSpace(_form.Title))
@@ -213,6 +232,9 @@
 
     private async Task ToggleActiveAsync(Hrd_LifecycleTaskTemplate template)
     {
+        if (!await RequireRightAsync(template.IsActive
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Delete
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Hrd_LifecycleTaskTemplates.FirstOrDefaultAsync(t => t.Id == template.Id && t.CompanyId == _companyId);
         if (existing is null) return;
@@ -239,10 +261,16 @@
                 <MudTd>@row.DefaultAssigneeRole</MudTd>
                 <MudTd>@(row.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row))">@L.Translate("EditButton")</MudButton>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(row))">
-                        @(row.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
-                    </MudButton>
+                    @if (_rights?.CanEdit == true)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(row))">@L.Translate("EditButton")</MudButton>
+                    }
+                    @if ((row.IsActive ? _rights?.CanDelete : _rights?.CanEdit) == true)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(row))">
+                            @(row.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
+                        </MudButton>
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>

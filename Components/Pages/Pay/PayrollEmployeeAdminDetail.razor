@@ -20,8 +20,13 @@
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("PayrollEmployeeDetailPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="ma-4">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 @if (_notFound)
 {
@@ -128,7 +133,7 @@ else
                         <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("BranchCodeLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalexpBranch ?? "—")</MudText></MudItem>
                         <MudItem xs="12" sm="4"><MudText Typo="Typo.caption" Class="mud-text-secondary">@L.Translate("AccountNoLabel")</MudText><MudText Typo="Typo.body1">@(_employee.SalexpAccid ?? "—")</MudText></MudItem>
                     </MudGrid>
-                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Class="mt-4" OnClick="@(() => _editingCore = true)">@L.Translate("EditButton")</MudButton>
+                    <MudButton Color="Color.Primary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" Class="mt-4" Disabled="@(_rights?.CanEdit != true)" OnClick="@(() => _editingCore = true)">@L.Translate("EditButton")</MudButton>
                 }
             </MudPaper>
 
@@ -499,9 +504,21 @@ else
     private IBrowserFile? _uploadFile;
     private string? _docError;
 
+    // Route has a parameter, so its sc_program_role row is keyed by the prefix before it.
+    private const string ProgramPath = "/pay/employees";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights ??= await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) { _notFound = true; return; }
 
@@ -599,6 +616,7 @@ else
 
     private async Task SaveEmployeeAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _formError = null;
 
         if (_employee is null || string.IsNullOrWhiteSpace(_employee.EmpName) || string.IsNullOrWhiteSpace(_employee.EmpSurname)
@@ -712,6 +730,7 @@ else
 
     private async Task SubmitSeparationAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _separationError = null;
 
         if (_employee is null || _separationEffectiveDate is null)
@@ -742,6 +761,7 @@ else
 
     private async Task SubmitRescheduleAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _rescheduleError = null;
 
         if (_employee is null || _rescheduleNewDate is null)
@@ -781,6 +801,7 @@ else
 
     private async Task SubmitSeveranceAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _severanceError = null;
 
         if (_employee is null || _severanceTargetMonth is null || _severanceAmount <= 0 || string.IsNullOrWhiteSpace(_severanceReason))
@@ -841,6 +862,7 @@ else
 
     private async Task CreateSettlementItemsAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         if (_employee is null || _settlementBusy) return;
         _settlementBusy = true; _settlementError = null;
         try
@@ -855,6 +877,7 @@ else
 
     private async Task CreateFinalPayRunAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         if (_employee is null || _settlementBusy) return;
         _settlementBusy = true; _settlementError = null;
         try
@@ -879,6 +902,7 @@ else
 
     private async Task OnPhotoSelected(IBrowserFile file)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _photoError = null;
         if (_employee is null) return;
 
@@ -914,6 +938,7 @@ else
 
     private async Task UploadDocAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _docError = null;
         if (_employee is null || _uploadFile is null) return;
 

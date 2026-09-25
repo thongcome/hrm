@@ -6,8 +6,14 @@
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthProvider
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>ตั้งค่าค่าลดหย่อนภาษี</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
     <MudText Typo="Typo.h5">ตั้งค่าค่าลดหย่อนภาษี (Tax Deduction Config)</MudText>
@@ -38,7 +44,7 @@
             <MudNumericField T="decimal" @bind-Value="_pfCap" Label="เพดานลดหย่อนเงินสะสมกองทุนสำรองเลี้ยงชีพ (บาท/ปี)" Format="N2" Min="0" />
         </MudItem>
         <MudItem xs="12">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettingAsync">บันทึกค่าลดหย่อนมาตรฐานปี @_selectedYear</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettingAsync" Disabled="@(_rights?.CanEdit != true)">บันทึกค่าลดหย่อนมาตรฐานปี @_selectedYear</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -96,7 +102,7 @@
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveTypeAsync">บันทึก</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CancelEditType">ยกเลิก</MudButton>
                 }
-                else
+                else if (_rights?.CanEdit == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEditType(context))">แก้ไข</MudButton>
                 }
@@ -115,7 +121,7 @@
         <MudItem xs="12" sm="4"><MudTextField T="string" @bind-Value="_newNameEn" Label="Name (English)" /></MudItem>
         <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_newMaxAmount" Label="เพดาน/ปี (บาท)" Format="N2" Min="0" /></MudItem>
         <MudItem xs="12">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddTypeAsync">+ เพิ่มประเภทลดหย่อน</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddTypeAsync" Disabled="@(_rights?.CanCreate != true)">+ เพิ่มประเภทลดหย่อน</MudButton>
         </MudItem>
     </MudGrid>
 
@@ -147,7 +153,22 @@
 
     private string? _error;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private const string ProgramPath = "/pay/admin/tax-deduction-config";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -182,6 +203,7 @@
 
     private async Task SaveSettingAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_TaxDeductionSettings.FirstOrDefaultAsync(s => s.EffectiveYear == _selectedYear);
@@ -227,6 +249,7 @@
 
     private async Task SaveTypeAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         if (_editingTypeId is not long id) return;
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -249,6 +272,7 @@
 
     private async Task AddTypeAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _error = null;
         if (string.IsNullOrWhiteSpace(_newCode) || string.IsNullOrWhiteSpace(_newNameTh) || string.IsNullOrWhiteSpace(_newNameEn))
         {

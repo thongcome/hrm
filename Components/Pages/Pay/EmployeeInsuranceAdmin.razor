@@ -12,8 +12,13 @@
 @inject NavigationManager Nav
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("EmployeeInsurancePageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 @if (_notFound)
 {
@@ -28,7 +33,7 @@ else
     <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h6">@L.Translate("EnrollNewPlanHeading")</MudText>
-            @if (!_showForm)
+            @if (!_showForm && _rights?.CanCreate == true)
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("EnrollButton")</MudButton>
             }
@@ -132,13 +137,13 @@ else
                                 }
                             </td>
                             <td>
-                                @if (enrollment.NeedsReview)
+                                @if (enrollment.NeedsReview && _rights?.CanEdit == true)
                                 {
                                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => MarkReviewedAsync(enrollment.Id))">@L.Translate("MarkReviewedButton")</MudButton>
                                 }
                             </td>
                             <td>
-                                @if (enrollment.IsActive)
+                                @if (enrollment.IsActive && _rights?.CanDelete == true)
                                 {
                                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" OnClick="@(() => EndEnrollmentAsync(enrollment.Id))">@L.Translate("EndCoverageButton")</MudButton>
                                 }
@@ -173,9 +178,21 @@ else
     private string? _error;
     private bool _showForm;
 
+    // Route has a parameter, so its sc_program_role row is keyed by the prefix before it.
+    private const string ProgramPath = "/pay/employees";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -235,6 +252,7 @@ else
 
     private async Task EnrollAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _error = null;
 
         if (_selectedPlanId is null)
@@ -297,6 +315,7 @@ else
 
     private async Task EndEnrollmentAsync(long enrollmentId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Delete)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_EmployeeInsuranceEnrollments
             .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.HremployeeId == HremployeeId);
@@ -311,6 +330,7 @@ else
 
     private async Task MarkReviewedAsync(long enrollmentId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_EmployeeInsuranceEnrollments
             .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.HremployeeId == HremployeeId);

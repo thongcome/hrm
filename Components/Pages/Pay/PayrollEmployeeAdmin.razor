@@ -20,8 +20,13 @@
 @inject JsonLocalizationService L
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("EmpAdminPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
@@ -34,7 +39,10 @@
         @if (!string.IsNullOrEmpty(_companyId))
         {
             <MudStack Row="true" Spacing="2">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate">+ @L.Translate("EmpAdminAddButton")</MudButton>
+                @if (_rights?.CanCreate == true)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenCreate">+ @L.Translate("EmpAdminAddButton")</MudButton>
+                }
                 <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/pay/employees/rehire">รับพนักงานเก่ากลับเข้างาน</MudButton>
             </MudStack>
         }
@@ -81,9 +89,12 @@
                 @if (_linkedUsers.TryGetValue(context.id, out var linkedUser))
                 {
                     <MudChip T="string" Color="@(linkedUser.isdisable ? Color.Default : Color.Success)" Size="Size.Small">@linkedUser.loginname</MudChip>
-                    <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="@L.Translate("ResetPasswordLabel")" OnClick="@(() => OpenResetPasswordAsync(context))" />
+                    @if (_rights?.CanEdit == true)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Title="@L.Translate("ResetPasswordLabel")" OnClick="@(() => OpenResetPasswordAsync(context))" />
+                    }
                 }
-                else
+                else if (_rights?.CanCreate == true)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenUserAccount(context))">@L.Translate("CreateUserAccountButton")</MudButton>
                 }
@@ -236,9 +247,20 @@
     private Pos_PositionSlot? _currentSlot;
     private string? _currentOrgLabel;
 
+    private const string ProgramPath = "/pay/employees";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
@@ -318,6 +340,7 @@
 
     private async Task SaveEmployeeAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _formError = null;
 
         if (_formEmployee is null || string.IsNullOrWhiteSpace(_formEmployee.EmpNo)
@@ -441,6 +464,7 @@
 
     private async Task ConfirmResetPasswordAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _resetPasswordError = null;
         if (_resetPasswordEmployee is null) return;
 
@@ -487,6 +511,7 @@
 
     private async Task CreateUserAccountAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _userAccountError = null;
         if (_userAccountEmployee is null) return;
 

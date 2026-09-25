@@ -14,8 +14,13 @@
 @inject JsonLocalizationService L
 @inject HRM.Services.Audit.IAuditLogger AuditLogger
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("PayrollEmployeeDetailHeaderPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 @if (_forbidden)
 {
@@ -99,7 +104,7 @@ else
                             <MudText Typo="Typo.caption" Class="d-block">@string.Format(L.Translate("AcknowledgedAtTemplate"), anomaly.AcknowledgedDate?.ToString("dd/MM/yyyy HH:mm"))</MudText>
                         }
                     </div>
-                    @if (!anomaly.IsAcknowledged)
+                    @if (!anomaly.IsAcknowledged && _rights?.CanEdit == true)
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => AcknowledgeAnomalyAsync(anomaly.Id))">@L.Translate("AcknowledgeButton")</MudButton>
                     }
@@ -132,8 +137,25 @@ else
     private List<Pay_PayrollAnomaly> _anomalies = new();
     private string? _taxDetailJson;
 
+    // Route has a parameter, so its sc_program_role row is keyed by the prefix before it.
+    private const string ProgramPath = "/pay/runs";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        if (_rights is null)
+        {
+            var rightsState = await AuthProvider.GetAuthenticationStateAsync();
+            _rights = await ProgramRoles.GetRightsAsync(rightsState.User, ProgramPath);
+        }
+
         await using var context = await DbFactory.CreateDbContextAsync();
 
         _employee = await context.Pay_PayrollEmployees
@@ -175,8 +197,9 @@ else
 
     private async Task AcknowledgeAnomalyAsync(long anomalyId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId);
+        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId && a.PayrollRunId == RunId);
         if (anomaly is null) return;
 
         var state = await AuthProvider.GetAuthenticationStateAsync();

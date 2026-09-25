@@ -14,6 +14,8 @@
 @inject NavigationManager Nav
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADHOC")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 <PageTitle>@L.Translate("AdhocListPageTitle")</PageTitle>
 
@@ -24,10 +26,17 @@
             <MudText Typo="Typo.body2" Class="mt-1">
                 @L.Translate("AdhocListDesc")
             </MudText>
+            @if (_rights is not null && !_rights.CanEdit)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+            }
         </div>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ToggleCreateForm">
-            @(_showCreate ? L.Translate("AdhocCloseFormButton") : L.Translate("AdhocAddNewButton"))
-        </MudButton>
+        @if (_rights?.CanCreate == true)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ToggleCreateForm">
+                @(_showCreate ? L.Translate("AdhocCloseFormButton") : L.Translate("AdhocAddNewButton"))
+            </MudButton>
+        }
     </MudStack>
 
     <MudDivider Class="my-3" />
@@ -170,12 +179,12 @@
                     <MudTd>@context.Reason</MudTd>
                     <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)">@context.Status</MudChip></MudTd>
                     <MudTd>
-                        @if (context.Status == PayAdhocItemStatus.Pending)
+                        @if (context.Status == PayAdhocItemStatus.Pending && _rights?.CanEdit == true)
                         {
                             <MudButton Size="Size.Small" Color="Color.Success" OnClick="@(() => ApproveAsync(context.Id))">@L.Translate("ApproveButton")</MudButton>
                             <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => RejectAsync(context.Id))">@L.Translate("RejectButton")</MudButton>
                         }
-                        @if (context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved)
+                        @if ((context.Status is PayAdhocItemStatus.Pending or PayAdhocItemStatus.Approved) && _rights?.CanEdit == true)
                         {
                             <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => CancelItemAsync(context.Id))">@L.Translate("CancelButton")</MudButton>
                         }
@@ -274,8 +283,23 @@
            && int.TryParse(period.AsSpan(4, 2), out var month) && month is >= 1 and <= 12;
     private static string CurrentPeriodCode() => DateTime.Today.ToString("yyyyMM", CultureInfo.InvariantCulture);
 
+    private const string ProgramPath = "/pay/adhoc";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireEditAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, HRM.Services.Security.ProgramRoleService.ProgramAction.Edit); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        if (_rights is null)
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        }
         _periodMonth = ViewingAll ? null : ParsePeriodToDate(EffectivePeriod);
         await LoadAsync();
     }
@@ -333,7 +357,7 @@
         var effectivePeriod = EffectivePeriod;
 
         await using var context = await DbFactory.CreateDbContextAsync();
-        _payItemTypes = await context.Pay_PayItemTypes.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ToListAsync();
+        _payItemTypes = await context.Pay_PayItemTypes.Where(HRM.Services.Pay.PayItemKeying.ManuallyKeyable).OrderBy(t => t.SortOrder).ToListAsync();
         var query = context.Pay_AdhocPayItems
             .Include(a => a.Hremployee)
             .Include(a => a.Pay_PayItemType)
@@ -412,10 +436,18 @@
     private async Task SubmitAsync()
     {
         _error = null;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, HRM.Services.Security.ProgramRoleService.ProgramAction.Create); }
+        catch (InvalidOperationException ex) { _error = ex.Message; return; }
         if (_form.SelectedEmployee is null || _form.TargetMonth is null
             || string.IsNullOrWhiteSpace(_form.Reason) || _form.Amount <= 0 || _form.PayItemTypeId == 0)
         {
             _error = L.Translate("FillAllFieldsError");
+            return;
+        }
+        if (!_payItemTypes.Any(t => t.Id == _form.PayItemTypeId))
+        {
+            _error = HRM.Services.Pay.PayItemKeying.NotKeyableMessage;
             return;
         }
 
@@ -485,42 +517,30 @@
             .FirstOrDefaultAsync(a => a.Id == id && a.Hremployee.companyid == companyId);
     }
 
-    private async Task ApproveAsync(long id)
+    private async Task DecideAsync(long id, Action<Pay_AdhocPayItem, long> decide, string successMessage, Severity severity)
     {
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var item = await LoadOwnCompanyItemAsync(context, id);
-        if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
-        item.Status = PayAdhocItemStatus.Approved;
-        item.ApprovedByUserId = await GetCurrentUserIdAsync();
-        item.ApprovedDate = DateTime.Now;
-        await context.SaveChangesAsync();
-        Snackbar.Add(L.Translate("ApprovedSuccess"), Severity.Success);
-        await LoadAsync();
-    }
-
-    private async Task RejectAsync(long id)
-    {
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var item = await LoadOwnCompanyItemAsync(context, id);
-        if (item is null || item.Status != PayAdhocItemStatus.Pending) return;
-        item.Status = PayAdhocItemStatus.Rejected;
-        item.ApprovedByUserId = await GetCurrentUserIdAsync();
-        item.ApprovedDate = DateTime.Now;
-        await context.SaveChangesAsync();
-        Snackbar.Add(L.Translate("RejectedSuccess"), Severity.Warning);
-        await LoadAsync();
-    }
-
-    private async Task CancelItemAsync(long id)
-    {
+        if (!await RequireEditAsync()) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var item = await LoadOwnCompanyItemAsync(context, id);
         if (item is null) return;
-        item.Status = PayAdhocItemStatus.Cancelled;
+        try { decide(item, await GetCurrentUserIdAsync()); }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return; }
         await context.SaveChangesAsync();
-        Snackbar.Add(L.Translate("CancelledSuccess"), Severity.Info);
+        Snackbar.Add(successMessage, severity);
         await LoadAsync();
     }
+
+    private Task ApproveAsync(long id) => DecideAsync(id,
+        (item, actor) => HRM.Services.Pay.AdhocItemDecision.Approve(item, actor, HRM.Services.Pay.PayrollSeparationOfDuties.IsRequired(Configuration), DateTime.Now),
+        L.Translate("ApprovedSuccess"), Severity.Success);
+
+    private Task RejectAsync(long id) => DecideAsync(id,
+        (item, actor) => HRM.Services.Pay.AdhocItemDecision.Reject(item, actor, DateTime.Now),
+        L.Translate("RejectedSuccess"), Severity.Warning);
+
+    private Task CancelItemAsync(long id) => DecideAsync(id,
+        (item, _) => HRM.Services.Pay.AdhocItemDecision.Cancel(item),
+        L.Translate("CancelledSuccess"), Severity.Info);
 
     private static Color StatusColor(PayAdhocItemStatus status) => status switch
     {

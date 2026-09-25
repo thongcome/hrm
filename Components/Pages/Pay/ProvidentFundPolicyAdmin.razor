@@ -10,9 +10,14 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>@L.Translate("ProvidentFundSettingsPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
     <MudText Typo="Typo.h5">@L.Translate("ProvidentFundHeading")</MudText>
@@ -30,7 +35,7 @@
 
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h6">@(_editingId is null ? L.Translate("AddNewPolicyRangeHeading") : L.Translate("EditPolicyRangeHeading"))</MudText>
-        @if (!_showForm)
+        @if (!_showForm && _rights?.CanCreate == true)
         {
             <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddPolicyRangeButton")</MudButton>
         }
@@ -97,7 +102,7 @@
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))">@L.Translate("EditButton")</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => StartEdit(context))" Disabled="@(_rights?.CanEdit != true)">@L.Translate("EditButton")</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => SelectPolicyForTiersAsync(context))">@L.Translate("VestingTierButton")</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => SelectPolicyForWindowsAsync(context))">ช่วงเปลี่ยนอัตรา</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Tertiary" OnClick="@(() => SelectPolicyForMatrixAsync(context))">ตารางอัตราสมทบ</MudButton>
@@ -120,7 +125,7 @@
 
         @if (!_showTierForm)
         {
-            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showTierForm = true)">+ @L.Translate("AddTierButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showTierForm = true)" Disabled="@(_rights?.CanCreate != true)">+ @L.Translate("AddTierButton")</MudButton>
         }
         else
         {
@@ -146,7 +151,7 @@
                 <MudTd>@context.MinYearsOfService - @(context.MaxYearsOfService?.ToString() ?? L.Translate("NoCapText"))</MudTd>
                 <MudTd>@context.VestingPercent.ToString("0.00")%</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveTierAsync(context.Id))">@L.Translate("DeleteButton")</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveTierAsync(context.Id))" Disabled="@(_rights?.CanDelete != true)">@L.Translate("DeleteButton")</MudButton>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
@@ -164,7 +169,7 @@
 
         @if (!_showWindowForm)
         {
-            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showWindowForm = true)">+ เพิ่มช่วงเวลา</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showWindowForm = true)" Disabled="@(_rights?.CanCreate != true)">+ เพิ่มช่วงเวลา</MudButton>
         }
         else
         {
@@ -204,7 +209,7 @@
                 <MudTd>@context.OpenFromDay.ToString("00")/@context.OpenFromMonth.ToString("00") - @context.OpenToDay.ToString("00")/@context.OpenToMonth.ToString("00")</MudTd>
                 <MudTd>@context.EffectiveDay.ToString("00")/@context.EffectiveMonth.ToString("00")</MudTd>
                 <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "เปิดใช้งาน" : "ปิดใช้งาน")</MudChip></MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleWindowActiveAsync(context))">@(context.IsActive ? "ปิด" : "เปิด")</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleWindowActiveAsync(context))" Disabled="@(context.IsActive ? _rights?.CanDelete != true : _rights?.CanEdit != true)">@(context.IsActive ? "ปิด" : "เปิด")</MudButton></MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีช่วงเวลาที่ตั้งค่า</MudText></NoRecordsContent>
         </MudTable>
@@ -219,7 +224,7 @@
 
         @if (!_showMatrixForm)
         {
-            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showMatrixForm = true)">+ เพิ่มแถว</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showMatrixForm = true)" Disabled="@(_rights?.CanCreate != true)">+ เพิ่มแถว</MudButton>
         }
         else
         {
@@ -253,7 +258,7 @@
                 <MudTd>@context.MinYearsOfService - @(context.MaxYearsOfService?.ToString() ?? "ไม่จำกัด") ปี</MudTd>
                 <MudTd>@context.EmployeeRateMin.ToString("0.0")-@context.EmployeeRateMax.ToString("0.0")%</MudTd>
                 <MudTd>@(context.ResultType == ProvidentFundMatrixResultType.MatchEmployeeRate ? "เท่ากับเงินสะสม" : $"{context.FixedCompanyRate:0.00}%")</MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveMatrixRuleAsync(context.Id))">@L.Translate("DeleteButton")</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveMatrixRuleAsync(context.Id))" Disabled="@(_rights?.CanDelete != true)">@L.Translate("DeleteButton")</MudButton></MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีตารางที่ตั้งค่า — ระบบจะไม่แนะนำอัตราให้ ต้องกรอกเอง</MudText></NoRecordsContent>
         </MudTable>
@@ -268,7 +273,7 @@
 
         @if (!_showExitReasonForm)
         {
-            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showExitReasonForm = true)">+ เพิ่มเหตุผล</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showExitReasonForm = true)" Disabled="@(_rights?.CanCreate != true)">+ เพิ่มเหตุผล</MudButton>
         }
         else
         {
@@ -316,7 +321,7 @@
                     })
                 </MudTd>
                 <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "เปิดใช้งาน" : "ปิดใช้งาน")</MudChip></MudTd>
-                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleExitReasonActiveAsync(context))">@(context.IsActive ? "ปิด" : "เปิด")</MudButton></MudTd>
+                <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleExitReasonActiveAsync(context))" Disabled="@(context.IsActive ? _rights?.CanDelete != true : _rights?.CanEdit != true)">@(context.IsActive ? "ปิด" : "เปิด")</MudButton></MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่มีเหตุผลที่ตั้งค่า</MudText></NoRecordsContent>
         </MudTable>
@@ -331,7 +336,7 @@
 
     @if (!_showInvestmentForm)
     {
-        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showInvestmentForm = true)">+ @L.Translate("AddInvestmentPolicyButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Text" Class="mt-2" OnClick="@(() => _showInvestmentForm = true)" Disabled="@(_rights?.CanCreate != true)">+ @L.Translate("AddInvestmentPolicyButton")</MudButton>
     }
     else
     {
@@ -364,7 +369,7 @@
                 </MudChip>
             </MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleInvestmentPolicyActiveAsync(context))">
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleInvestmentPolicyActiveAsync(context))" Disabled="@(context.IsActive ? _rights?.CanDelete != true : _rights?.CanEdit != true)">
                     @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
                 </MudButton>
             </MudTd>
@@ -482,10 +487,21 @@
     private (ProvidentFundCalculator.ProvidentFundResult Pf, ProvidentFundVestingCalculator.VestingResult Vesting)? _previewResult;
     private string? _previewPolicyNote;
 
+    private const string ProgramPath = "/pay/admin/provident-fund-policy";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await LoadAsync();
@@ -552,6 +568,9 @@
 
     private async Task SaveAsync()
     {
+        if (!await RequireRightAsync(_editingId is null
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Create
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
 
         if (_effectiveFrom is null)
@@ -643,6 +662,7 @@
     private async Task AddTierAsync()
     {
         if (_tierPolicyId is null) return;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Pay_ProvidentFundVestingTiers.Add(new Pay_ProvidentFundVestingTier
         {
@@ -660,6 +680,7 @@
 
     private async Task RemoveTierAsync(long tierId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Delete)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var tier = await context.Pay_ProvidentFundVestingTiers.FirstOrDefaultAsync(t => t.Id == tierId);
         if (tier is null) return;
@@ -685,6 +706,7 @@
     private async Task AddWindowAsync()
     {
         if (_windowPolicyId is null || string.IsNullOrWhiteSpace(_winName)) return;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Pay_ProvidentFundRateChangeWindows.Add(new Pay_ProvidentFundRateChangeWindow
         {
@@ -707,6 +729,9 @@
 
     private async Task ToggleWindowActiveAsync(Pay_ProvidentFundRateChangeWindow window)
     {
+        if (!await RequireRightAsync(window.IsActive
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Delete
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_ProvidentFundRateChangeWindows.FirstOrDefaultAsync(w => w.Id == window.Id);
         if (existing is null) return;
@@ -732,6 +757,7 @@
     private async Task AddMatrixRuleAsync()
     {
         if (_matrixPolicyId is null) return;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Pay_ProvidentFundRateMatrixRules.Add(new Pay_ProvidentFundRateMatrixRule
         {
@@ -752,6 +778,7 @@
 
     private async Task RemoveMatrixRuleAsync(long ruleId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Delete)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var rule = await context.Pay_ProvidentFundRateMatrixRules.FirstOrDefaultAsync(r => r.Id == ruleId);
         if (rule is null) return;
@@ -777,6 +804,7 @@
     private async Task AddExitReasonAsync()
     {
         if (_exitReasonPolicyId is null || string.IsNullOrWhiteSpace(_erCode) || string.IsNullOrWhiteSpace(_erName)) return;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         context.Pay_ProvidentFundExitReasonRules.Add(new Pay_ProvidentFundExitReasonRule
         {
@@ -799,6 +827,9 @@
 
     private async Task ToggleExitReasonActiveAsync(Pay_ProvidentFundExitReasonRule reason)
     {
+        if (!await RequireRightAsync(reason.IsActive
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Delete
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_ProvidentFundExitReasonRules.FirstOrDefaultAsync(r => r.Id == reason.Id);
         if (existing is null) return;
@@ -809,6 +840,7 @@
 
     private async Task AddInvestmentPolicyAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         if (string.IsNullOrWhiteSpace(_invCode) || string.IsNullOrWhiteSpace(_invName))
         {
             Snackbar.Add(L.Translate("FillInvCodeNameError"), Severity.Warning);
@@ -834,6 +866,9 @@
 
     private async Task ToggleInvestmentPolicyActiveAsync(Pay_ProvidentFundInvestmentPolicy policy)
     {
+        if (!await RequireRightAsync(policy.IsActive
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Delete
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_ProvidentFundInvestmentPolicies.FirstOrDefaultAsync(p => p.Id == policy.Id);
         if (existing is null) return;

@@ -16,8 +16,13 @@
 @inject IAuditLogger AuditLogger
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("OnboardingOffboardingNavLabel")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 @if (_notFound)
 {
@@ -59,7 +64,7 @@ else
                         Label="@L.Translate("ProbationEndDateLabel")" Editable="true" DateFormat="dd/MM/yyyy" />
                 </MudItem>
                 <MudItem xs="12" sm="4" Class="d-flex align-center">
-                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmProbationAsync">@L.Translate("ConfirmProbationButton")</MudButton>
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmProbationAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("ConfirmProbationButton")</MudButton>
                 </MudItem>
             </MudGrid>
         }
@@ -97,7 +102,7 @@ else
                         {
                             <tr>
                                 <td><b>@a.assetNo</b></td><td>@a.description @a.brand @a.model</td><td>@a.tag @a.serial</td><td>@a.currentCost</td>
-                                <td><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => ReturnAssetAsync(a))">รับคืน</MudButton></td>
+                                <td><MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => ReturnAssetAsync(a))" Disabled="@(_rights?.CanEdit != true)">รับคืน</MudButton></td>
                             </tr>
                         }
                     </tbody>
@@ -139,7 +144,7 @@ else
                 </MudItem>
             </MudGrid>
 
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveExitInterviewAsync">@L.Translate("SaveInterviewResultButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveExitInterviewAsync" Disabled="@(_rights?.CanCreate != true)">@L.Translate("SaveInterviewResultButton")</MudButton>
         </MudPaper>
     }
 }
@@ -166,9 +171,21 @@ else
 
     private readonly Dictionary<long, string> _newAdHocTitle = new();
 
+    // Route has a parameter, so its sc_program_role row is keyed by the prefix before it.
+    private const string ProgramPath = "/pay/employees";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
 
         await using var context = await DbFactory.CreateDbContextAsync();
@@ -214,6 +231,7 @@ else
 
     private async Task ReturnAssetAsync(asset_owner a)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         try
         {
             var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -234,6 +252,7 @@ else
 
     private async Task ConfirmProbationAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         if (_probationEndDate is null)
         {
             Snackbar.Add(L.Translate("SpecifyProbationEndDateError"), Severity.Warning);
@@ -249,6 +268,7 @@ else
 
     private async Task StartAsync(LifecycleTaskDirection direction)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         var actorUserId = await GetActorUserIdAsync();
         if (direction == LifecycleTaskDirection.Onboarding)
             await LifecycleService.StartOnboardingAsync(HremployeeId, actorUserId);
@@ -261,6 +281,7 @@ else
 
     private async Task CompleteAsync(long taskId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         var actorUserId = await GetActorUserIdAsync();
         await LifecycleService.CompleteTaskAsync(taskId, actorUserId, null);
         await LoadTasksAsync();
@@ -268,6 +289,7 @@ else
 
     private async Task SkipAsync(long taskId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         var actorUserId = await GetActorUserIdAsync();
         await LifecycleService.SkipTaskAsync(taskId, actorUserId, null);
         await LoadTasksAsync();
@@ -275,12 +297,14 @@ else
 
     private async Task ReopenAsync(long taskId)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await LifecycleService.ReopenTaskAsync(taskId);
         await LoadTasksAsync();
     }
 
     private async Task AddAdHocAsync(LifecycleTaskDirection direction)
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         var key = (long)direction;
         if (!_newAdHocTitle.TryGetValue(key, out var title) || string.IsNullOrWhiteSpace(title))
         {
@@ -296,6 +320,7 @@ else
 
     private async Task SaveExitInterviewAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         if (_interviewDate is null)
         {
             Snackbar.Add(L.Translate("SpecifyInterviewDateError"), Severity.Warning);
@@ -329,7 +354,7 @@ else
         @if (tasks.Count == 0)
         {
             <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-2"
-                OnClick="@(() => StartAsync(direction))">
+                OnClick="@(() => StartAsync(direction))" Disabled="@(_rights?.CanCreate != true)">
                 @(direction == LifecycleTaskDirection.Onboarding ? L.Translate("StartOnboardingButton") : L.Translate("StartOffboardingButton"))
             </MudButton>
         }
@@ -355,12 +380,12 @@ else
                             <td>
                                 @if (task.Status == LifecycleTaskStatus.Pending)
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => CompleteAsync(task.Id))">@L.Translate("CompleteButton")</MudButton>
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SkipAsync(task.Id))">@L.Translate("SkipButton")</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => CompleteAsync(task.Id))" Disabled="@(_rights?.CanEdit != true)">@L.Translate("CompleteButton")</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SkipAsync(task.Id))" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SkipButton")</MudButton>
                                 }
                                 else
                                 {
-                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ReopenAsync(task.Id))">@L.Translate("ReopenButton")</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ReopenAsync(task.Id))" Disabled="@(_rights?.CanEdit != true)">@L.Translate("ReopenButton")</MudButton>
                                 }
                             </td>
                         </tr>
@@ -370,7 +395,7 @@ else
 
             <MudStack Row="true" Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
                 <MudTextField T="string" Value="@GetAdHocTitle(direction)" ValueChanged="@(v => _newAdHocTitle[(long)direction] = v)" Label="@L.Translate("AddOwnTaskLabel")" Class="flex-grow-1" />
-                <MudButton Variant="Variant.Outlined" OnClick="@(() => AddAdHocAsync(direction))">@L.Translate("AddButtonPlain")</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="@(() => AddAdHocAsync(direction))" Disabled="@(_rights?.CanCreate != true)">@L.Translate("AddButtonPlain")</MudButton>
             </MudStack>
         }
     </text>;

@@ -42,7 +42,7 @@ public class AdhocBulkEntryService(IDbContextFactory<HRMContext> dbFactory)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         return await context.Pay_PayItemTypes
-            .Where(t => t.IsActive && t.Category != PayItemCategory.Informational)
+            .Where(PayItemKeying.ManuallyKeyable)
             .OrderBy(t => t.Category).ThenBy(t => t.SortOrder).ThenBy(t => t.Code)
             .ToListAsync(ct);
     }
@@ -51,7 +51,7 @@ public class AdhocBulkEntryService(IDbContextFactory<HRMContext> dbFactory)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var types = await context.Pay_PayItemTypes
-            .Where(t => t.IsActive && t.Category != PayItemCategory.Informational)
+            .Where(PayItemKeying.ManuallyKeyable)
             .Select(t => new { t.Id, t.Code, t.NameTh })
             .ToListAsync(ct);
         var employees = await context.Hremployee
@@ -79,6 +79,8 @@ public class AdhocBulkEntryService(IDbContextFactory<HRMContext> dbFactory)
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var typeIds = rows.Select(r => r.PayItemTypeId).Distinct().ToList();
         var empIds = rows.Select(r => r.HremployeeId).Distinct().ToList();
+        var keyableCount = await context.Pay_PayItemTypes.Where(PayItemKeying.ManuallyKeyable).CountAsync(t => typeIds.Contains(t.Id), ct);
+        if (keyableCount != typeIds.Count) throw new InvalidOperationException(PayItemKeying.NotKeyableMessage);
 
         var existing = await context.Pay_AdhocPayItems
             .Where(a => a.TargetPeriod == targetPeriod && a.TargetRunType == targetRunType
@@ -186,6 +188,7 @@ public class AdhocBulkEntryService(IDbContextFactory<HRMContext> dbFactory)
     {
         await using var context = await dbFactory.CreateDbContextAsync(ct);
         var types = await context.Pay_PayItemTypes
+            .Where(PayItemKeying.ManuallyKeyable)
             .Where(t => payItemTypeIds.Contains(t.Id))
             .OrderBy(t => t.Category).ThenBy(t => t.SortOrder)
             .Select(t => new { t.Code, t.NameTh, t.Category, t.GLAccountCode })

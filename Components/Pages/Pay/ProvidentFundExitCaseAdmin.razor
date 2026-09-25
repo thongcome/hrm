@@ -9,9 +9,14 @@
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
 @inject HRM.Services.Pay.ProvidentFundExitCaseService ExitCaseService
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
 
 <PageTitle>ปิดสมาชิกภาพกองทุนสำรองเลี้ยงชีพ</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
     <MudText Typo="Typo.h5">ปิดสมาชิกภาพกองทุนสำรองเลี้ยงชีพ</MudText>
@@ -30,7 +35,7 @@
 
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudText Typo="Typo.h6">เปิดเคสใหม่</MudText>
-        @if (!_showForm)
+        @if (!_showForm && _rights?.CanCreate == true)
         {
             <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => _showForm = true)">+ เปิดเคสใหม่</MudButton>
         }
@@ -117,7 +122,7 @@
                 <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_amtCompanyToEmployee" Label="เงินสมทบที่จ่ายพนักงาน (บาท)" Format="N2" /></MudItem>
                 <MudItem xs="12" sm="4"><MudNumericField T="decimal?" @bind-Value="_amtCompanyReturned" Label="เงินสมทบที่ริบคืนนายจ้าง (บาท)" Format="N2" /></MudItem>
             </MudGrid>
-            <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-2" OnClick="SaveAmountsAsync">บันทึกยอดเงิน</MudButton>
+            <MudButton Color="Color.Secondary" Variant="Variant.Filled" Class="mt-2" OnClick="SaveAmountsAsync" Disabled="@(_rights?.CanEdit != true)">บันทึกยอดเงิน</MudButton>
         }
     }
 </MudPaper>
@@ -142,10 +147,21 @@
     private decimal? _amtCompanyToEmployee;
     private decimal? _amtCompanyReturned;
 
+    private const string ProgramPath = "/pay/admin/provident-fund-exit-cases";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _companyId = state.User.FindFirstValue("payroll_company");
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
         await LoadAsync();
@@ -215,6 +231,7 @@
 
     private async Task SubmitAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _error = null;
         if (_selectedEmployee is null || _selectedReasonId is null || _exitDate is null)
         {
@@ -256,6 +273,7 @@
     private async Task SaveAmountsAsync()
     {
         if (_detailCase is null) return;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await ExitCaseService.SaveActualAmountsAsync(_detailCase.Id, _amtEmployee, _amtCompanyToEmployee, _amtCompanyReturned);
         Snackbar.Add("บันทึกยอดเงินแล้ว", Severity.Success);
         await LoadAsync();

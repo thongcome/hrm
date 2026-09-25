@@ -11,8 +11,13 @@
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("PayslipSettingsPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="700px">
     <MudText Typo="Typo.h5">@L.Translate("PayslipSettingsHeading")</MudText>
@@ -54,7 +59,7 @@
             <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
         }
 
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync">@L.Translate("Save")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("Save")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -88,7 +93,7 @@
                     HelperText="สำนักงานใหญ่ = 000000" />
             </MudItem>
         </MudGrid>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync">@L.Translate("SaveCompanyInfoButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveCompanyInfoAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SaveCompanyInfoButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -107,7 +112,7 @@
                 <MudSelectItem T="int" Value="@month">@ThaiMonthName(month)</MudSelectItem>
             }
         </MudSelect>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync">@L.Translate("SaveFiscalYearButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveFiscalYearAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SaveFiscalYearButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -116,7 +121,7 @@
             @L.Translate("ProbationSectionDesc")
         </MudText>
         <MudNumericField @bind-Value="_settings.DefaultProbationDays" Label="@L.Translate("DefaultProbationDaysLabel")" Min="0" Style="max-width: 300px;" />
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProbationSettingsAsync">@L.Translate("SaveProbationButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveProbationSettingsAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SaveProbationButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -126,7 +131,7 @@
         </MudText>
         <MudSwitch T="bool" @bind-Value="_settings.BlockOverBudgetCreation" Color="Color.Warning" Label="@L.Translate("BlockOverBudgetLabel")" />
         <br />
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveHeadcountBudgetSettingsAsync">@L.Translate("SaveHeadcountBudgetButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveHeadcountBudgetSettingsAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SaveHeadcountBudgetButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -153,7 +158,7 @@
                 <MudAlert Severity="Severity.Error" Class="mt-3">@string.Format(L.Translate("ResultingPasswordErrorTemplate"), CombinedDefaultPassword, DefaultPasswordPolicyError)</MudAlert>
             }
         }
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveDefaultPasswordAsync">@L.Translate("SaveDefaultPasswordButton")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-3" OnClick="SaveDefaultPasswordAsync" Disabled="@(_rights?.CanEdit != true)">@L.Translate("SaveDefaultPasswordButton")</MudButton>
 
         <MudDivider Class="my-5" />
 
@@ -191,9 +196,20 @@
     private string? _error;
     private string? _companyId;
 
+    private const string ProgramPath = "/pay/admin/payslip-settings";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId))
         {
@@ -239,6 +255,7 @@
 
     private async Task SaveAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null || string.IsNullOrWhiteSpace(_settings.PasswordTemplate))
         {
@@ -279,6 +296,7 @@
 
     private async Task SaveDefaultPasswordAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null) return;
 
@@ -312,6 +330,7 @@
 
     private async Task SaveCompanyInfoAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null) return;
 
@@ -339,6 +358,7 @@
 
     private async Task SaveFiscalYearAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null) return;
 
@@ -362,6 +382,7 @@
 
     private async Task SaveProbationSettingsAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null) return;
 
@@ -383,6 +404,7 @@
 
     private async Task SaveHeadcountBudgetSettingsAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         _error = null;
         if (_settings is null) return;
 

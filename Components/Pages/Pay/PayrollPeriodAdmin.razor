@@ -10,8 +10,13 @@
 @inject ISnackbar Snackbar
 @inject JsonLocalizationService L
 @attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("PeriodAdminPageTitle")</PageTitle>
+@if (_rights is not null && !_rights.CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4 mb-4" MaxWidth="900px">
     <MudText Typo="Typo.h5">@L.Translate("PeriodAdminHeading")</MudText>
@@ -29,7 +34,7 @@
 
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
             <MudText Typo="Typo.h6">@L.Translate("PeriodAdminHeading")</MudText>
-            @if (!_showForm)
+            @if (!_showForm && _rights?.CanCreate == true)
             {
                 <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OpenCreate">+ @L.Translate("AddPeriodButton")</MudButton>
             }
@@ -96,9 +101,12 @@
                 <MudTd>@context.PeriodStart.ToString("dd/MM/yyyy") - @context.PeriodEnd.ToString("dd/MM/yyyy")</MudTd>
                 <MudTd>@(context.IsActive ? L.Translate("PeriodActiveStatus") : L.Translate("PeriodInactiveStatus"))</MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
-                        @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
-                    </MudButton>
+                    @if (context.IsActive ? _rights?.CanDelete == true : _rights?.CanEdit == true)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleActiveAsync(context))">
+                            @(context.IsActive ? L.Translate("DeactivateButton") : L.Translate("ActivateButton"))
+                        </MudButton>
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -123,9 +131,20 @@
 
     private NewPeriodModel _newModel = new();
 
+    private const string ProgramPath = "/pay/admin/periods";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { Snackbar.Add(ex.Message, Severity.Warning); return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _companyId = state.User.FindFirstValue("payroll_company");
         if (string.IsNullOrWhiteSpace(_companyId)) return;
 
@@ -155,6 +174,7 @@
 
     private async Task AddPeriodAsync()
     {
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
         _error = null;
 
         if (_newPeriodStart is null || _newPeriodEnd is null || _newPeriodEnd < _newPeriodStart)
@@ -201,6 +221,10 @@
 
     private async Task ToggleActiveAsync(Pay_PayrollPeriod period)
     {
+        // Deactivating is the soft delete; reactivating is an edit.
+        if (!await RequireRightAsync(period.IsActive
+            ? HRM.Services.Security.ProgramRoleService.ProgramAction.Delete
+            : HRM.Services.Security.ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
         var existing = await context.Pay_PayrollPeriods.FirstOrDefaultAsync(p => p.Id == period.Id && p.CompanyId == _companyId);
         if (existing is null) return;

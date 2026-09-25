@@ -602,6 +602,7 @@ else
     // self-send so both stay identical (file name, audit, email resolution).
     private async Task SendPayslipToEmployeeAsync(long payslipId)
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         _sendingPayslipIds.Add(payslipId);
         try
         {
@@ -728,6 +729,7 @@ else
 
     private async Task RerunAnomalyDetectionAsync()
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         _busy = true;
         try
         {
@@ -747,8 +749,9 @@ else
 
     private async Task AcknowledgeAnomalyAsync(long anomalyId)
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         await using var context = await DbFactory.CreateDbContextAsync();
-        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId);
+        var anomaly = await context.Pay_PayrollAnomalies.FirstOrDefaultAsync(a => a.Id == anomalyId && a.PayrollRunId == RunId);
         if (anomaly is null) return;
 
         anomaly.IsAcknowledged = true;
@@ -764,6 +767,7 @@ else
 
     private async Task RemoveMemberAsync(long hremployeeId)
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         try
         {
             await FinalPay.RemoveMemberAsync(RunId, hremployeeId, await GetCurrentUserIdAsync());
@@ -852,6 +856,7 @@ else
 
     private async Task HoldEmployeeAsync(long hremployeeId)
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         if (string.IsNullOrWhiteSpace(_holdReason)) { Snackbar.Add("กรุณาใส่เหตุผลการ hold ก่อน", Severity.Warning); return; }
         try
         {
@@ -865,6 +870,7 @@ else
     private async Task HoldByEmpNoAsync()
     {
         if (_run is null) return;
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         if (string.IsNullOrWhiteSpace(_holdEmpNo) || string.IsNullOrWhiteSpace(_holdReason)) { Snackbar.Add("ใส่รหัสพนักงานและเหตุผล", Severity.Warning); return; }
         try
         {
@@ -877,6 +883,7 @@ else
 
     private async Task ReleaseHoldAsync(long holdId)
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         try { await Preflight.ReleaseAsync(holdId, await GetCurrentUserIdAsync()); Snackbar.Add("ปล่อย hold แล้ว", Severity.Success); await RunPreflightAsync(); }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
@@ -1002,6 +1009,7 @@ else
 
     private async Task GeneratePayslipsAsync()
     {
+        if (!await RequireRightAsync(ProgramRoleService.ProgramAction.Edit)) return;
         _busy = true;
         try
         {

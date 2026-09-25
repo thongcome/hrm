@@ -28,7 +28,7 @@ public class PayrollAnomalyDetectionService
         _dbFactory = dbFactory;
     }
 
-    private sealed record HistoryRow(long Id, long HremployeeId, DateOnly PeriodStart, decimal NetPay);
+    private sealed record HistoryRow(long Id, long HremployeeId, DateOnly PeriodStart, decimal NetPay, string? BankCode, string? BankAccountNo);
 
     // compareAsOfPeriodStart lets HR pin the "จากงวดก่อน" comparison baseline
     // to a specific period, overriding the automatic default. Automatic mode
@@ -69,7 +69,7 @@ public class PayrollAnomalyDetectionService
             ? historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart <= cutoff)
             : historyQuery.Where(pe => pe.Pay_PayrollRun.PeriodStart < run.PeriodStart);
         var historyByEmployee = (await historyQuery
-                .Select(pe => new HistoryRow(pe.Id, pe.HremployeeId, pe.Pay_PayrollRun.PeriodStart, pe.NetPay))
+                .Select(pe => new HistoryRow(pe.Id, pe.HremployeeId, pe.Pay_PayrollRun.PeriodStart, pe.NetPay, pe.BankCode, pe.BankAccountNo))
                 .ToListAsync(ct))
             .GroupBy(h => h.HremployeeId)
             .ToDictionary(g => g.Key, g => g.OrderBy(h => h.PeriodStart).ToList());
@@ -150,6 +150,19 @@ public class PayrollAnomalyDetectionService
                 continue;
             }
 
+            var bankChange = DescribeBankAccountChange(history[^1].BankCode, history[^1].BankAccountNo, emp.BankCode, emp.BankAccountNo);
+            if (bankChange is not null)
+            {
+                newRows.Add(new Pay_PayrollAnomaly
+                {
+                    PayrollRunId = run.Id,
+                    PayrollEmployeeId = emp.Id,
+                    AnomalyType = PayrollAnomalyType.BankAccountChanged,
+                    Severity = PayrollAnomalySeverity.Critical,
+                    Description = $"{emp.EmpNo} {bankChange} — ตรวจเอกสารยืนยันจากพนักงานก่อนอนุมัติ",
+                });
+            }
+
             salaryChangeByEmployee.TryGetValue(emp.HremployeeId, out var salaryChange);
             CheckNetPaySpike(emp, history, run, periodStart, periodEnd,
                 salaryChange is null ? null : (salaryChange.ChangedDate, salaryChange.OrderNo), newRows);
@@ -164,6 +177,23 @@ public class PayrollAnomalyDetectionService
         await context.SaveChangesAsync(ct);
         return newRows.Count;
     }
+
+    // บัญชีรับเงินเปลี่ยนจากงวดที่จ่ายล่าสุด — ช่องทางทุจริตที่ผู้อนุมัติมองไม่เห็นจากยอดรวม (แก้เลขบัญชีได้โดยคนเดียว)
+    // จึงขึ้นเป็น Critical ให้ผู้อนุมัติเห็นทุกครั้ง · แสดงแค่ 4 ตัวท้าย (PDPA) · งวดก่อนไม่มีเลขบัญชี = ตั้งครั้งแรก ไม่เตือน
+    public static string? DescribeBankAccountChange(string? prevBankCode, string? prevAccountNo, string? bankCode, string? accountNo)
+    {
+        var prevAcc = Digits(prevAccountNo);
+        if (prevAcc.Length == 0) return null;
+        var acc = Digits(accountNo);
+        var sameBank = string.Equals((prevBankCode ?? "").Trim(), (bankCode ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+        if (prevAcc == acc && sameBank) return null;
+        return $"บัญชีรับเงินเปลี่ยนจากงวดก่อน: {Masked(prevBankCode, prevAcc)} → {Masked(bankCode, acc)}";
+    }
+
+    private static string Digits(string? s) => new((s ?? "").Where(char.IsDigit).ToArray());
+
+    private static string Masked(string? bankCode, string digits) =>
+        (string.IsNullOrWhiteSpace(bankCode) ? "" : bankCode.Trim() + " ") + (digits.Length == 0 ? "(ไม่มีเลขบัญชี)" : "xxx" + digits[^Math.Min(4, digits.Length)..]);
 
     // (ก) พนักงานใหม่ — งวดนี้เป็นรายการเงินเดือนงวดแรก ตรวจสอบว่า onboarding
     // เริ่มไปหรือยัง และวันเริ่มงานสอดคล้องกับการที่เพิ่งมีเงินเดือนงวดแรกหรือไม่

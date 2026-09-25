@@ -11,8 +11,14 @@
 @inject JsonLocalizationService L
 @inject HRM.Services.Pay.PayDateService PayDates
 @attribute [Authorize(Policy = "Menu:PAY_RUNS")]
+@inject HRM.Services.Security.ProgramRoleService ProgramRoles
 
 <PageTitle>@L.Translate("PayRunCreatePageTitle")</PageTitle>
+@* Create-only page, so the read-only notice keys off CanCreate rather than CanEdit. *@
+@if (_rights is not null && !_rights.CanCreate)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ — ดูได้อย่างเดียว</MudAlert>
+}
 
 <MudPaper Class="pa-4" MaxWidth="600px">
     <MudText Typo="Typo.h5" Class="mb-4">@L.Translate("PayRunCreateHeading")</MudText>
@@ -47,7 +53,7 @@
 
         <MudStack Row="true" Class="mt-4" Justify="Justify.FlexEnd">
             <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("/pay/runs"))">@L.Translate("CancelButton")</MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">@L.Translate("PayRunCreateSubmitButton")</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@(_rights?.CanCreate != true)">@L.Translate("PayRunCreateSubmitButton")</MudButton>
         </MudStack>
     </MudForm>
 </MudPaper>
@@ -68,9 +74,20 @@
         public PayrollRunType RunType { get; set; } = PayrollRunType.Regular;
     }
 
+    private const string ProgramPath = "/pay/runs/create";
+    private HRM.Services.Security.ProgramRoleService.ProgramRights? _rights;
+
+    private async Task<bool> RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try { await ProgramRoles.RequireAsync(state.User, ProgramPath, action); return true; }
+        catch (InvalidOperationException ex) { _error = ex.Message; return false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
         _model.CompanyId = state.User.FindFirstValue("payroll_company") ?? "";
         // Pay date used to default to "today", which is meaningless for the
         // period being created (and produced dates like 30/09 for a January
@@ -109,6 +126,7 @@
     private async Task SaveAsync()
     {
         _error = null;
+        if (!await RequireRightAsync(HRM.Services.Security.ProgramRoleService.ProgramAction.Create)) return;
 
         if (string.IsNullOrWhiteSpace(_model.CompanyId) || _periodMonth is null || _payDate is null)
         {
