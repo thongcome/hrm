@@ -75,9 +75,9 @@
                 </MudTable>
             }
 
-            @if (_isAdmin && !_isPaidLeaveType && _request.AdhocPayItemId is null && _job.isJobClosed == true && _job.status == WorkflowEngineService.StatusCompleted)
+            @if (!_isPaidLeaveType && _request.AdhocPayItemId is null && _job.isJobClosed == true && _job.status == WorkflowEngineService.StatusCompleted)
             {
-                <MudButton Class="mt-3" Variant="Variant.Filled" Color="Color.Warning" OnClick="PushToPayrollAsync">ผลักเข้าระบบเงินเดือน (หักเงินลาไม่รับค่าจ้าง)</MudButton>
+                <MudAlert Class="mt-3" Severity="Severity.Info" Dense="true">ลาไม่รับค่าจ้าง — ระบบเงินเดือนหักให้อัตโนมัติในงวดที่วันลาอยู่ (ก่อนคำนวณภาษีและประกันสังคม) ไม่ต้องส่งเข้าระบบเงินเดือนเอง</MudAlert>
             }
             @if (_request.AdhocPayItemId is not null)
             {

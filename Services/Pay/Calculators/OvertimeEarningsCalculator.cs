@@ -8,11 +8,10 @@ using Microsoft.EntityFrameworkCore;
 // filter at all, so every OT record ever entered for the employee was re-added as
 // income on every subsequent payroll run. This scopes strictly to the pay period.
 //
-// Note: HrwOt.ApvOtStatus exists but its "approved" value convention is not
-// documented anywhere in the legacy code (the legacy query didn't check it
-// either) — deliberately NOT filtering on it here to avoid silently excluding
-// all OT records on a wrong guess. Confirm the real convention with the
-// business before adding an approval-status filter.
+// Only approved OT is paid (BA audit 25 ก.ย. 2569): a row counts when it is marked approved
+// (ApvOtStatus "A" — the legacy convention, now also stamped when an approved OT request is sent to
+// payroll) or when it is linked to an OT request whose approval job COMPLETED. Before this, any row
+// in HRW_OT was paid, and the legacy /hrwot pages let any signed-in user insert one.
 public class OvertimeEarningsCalculator
 {
     private readonly IDbContextFactory<HRMContext> _dbFactory;
@@ -29,6 +28,7 @@ public class OvertimeEarningsCalculator
         var end = periodEnd.ToDateTime(TimeOnly.MaxValue);
 
         return await context.HrwOts
+            .Where(IsApproved(context))
             .Where(x => x.companyid == companyId
                         && x.EmpNo == empNo
                         && x.DateWork != null
@@ -44,9 +44,20 @@ public class OvertimeEarningsCalculator
         var start = periodStart.ToDateTime(TimeOnly.MinValue);
         var end = periodEnd.ToDateTime(TimeOnly.MaxValue);
         var rows = await context.HrwOts
+            .Where(IsApproved(context))
             .Where(x => x.companyid == companyId && x.EmpNo != null && x.DateWork != null && x.DateWork >= start && x.DateWork <= end)
             .ToListAsync(ct);
         return rows.GroupBy(x => x.EmpNo!).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    public const string ApprovedStatus = "A";
+
+    private static System.Linq.Expressions.Expression<Func<HrwOt, bool>> IsApproved(HRMContext context)
+    {
+        var completed = HRM.Services.Workflow.WorkflowEngineService.StatusCompleted;
+        return x => x.ApvOtStatus == ApprovedStatus
+            || context.emp_overtime_requests.Any(r => r.hrwOtId == x.ID && r.jobmasterid != null
+                && context.job_masters.Any(j => j.jobmasterid == r.jobmasterid && j.status == completed));
     }
 
     public static decimal SumAmount(IEnumerable<HrwOt> otRecords) => otRecords.Sum(x => x.OtAmt ?? 0m);

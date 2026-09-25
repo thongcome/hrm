@@ -27,6 +27,9 @@ public class PayrollCalculationService
     private readonly PayrollAnomalyDetectionService _anomalyDetectionService;
     private readonly ILogger<PayrollCalculationService> _logger;
 
+    // Wages not earned that the engine itself deducts before tax/SSO/PF (late, absence, unpaid leave)
+    private static readonly string[] WageReductionCodes = { "LATE", "ABSENT", "LEAVE_UNPAID" };
+
     public PayrollCalculationService(
         IDbContextFactory<HRMContext> dbFactory,
         ISocialSecurityRateProvider socialSecurityRateProvider,
@@ -225,10 +228,16 @@ public class PayrollCalculationService
         var sameMonthSsoBaseByEmp = new Dictionary<long, decimal>();
         if (sameMonthIds.Count > 0)
         {
+            // นิยามเดียวกับงวดนี้: รายการได้ที่ตั้งธงค่าจ้าง ลบค่าจ้างที่ไม่ได้ทำงาน (สาย/ขาด/ลาไม่รับค่าจ้าง) ถ้าเงินเดือนเป็นฐาน
+            // — เดิมงวดก่อนนับเงินเดือนเต็มก่อนหักขาด/สาย ฐานเดือนจึงสูงกว่าที่งวดนั้นหักจริง (audit M-05)
+            var baseCountsForSso = payItemTypes["BASE"].IsSsoWageBase;
             var ssoBaseLines = await context.Pay_PayrollLineItems
-                .Where(li => sameMonthIds.Contains(li.PayrollEmployeeId) && li.SignFlag > 0)
-                .Join(context.Pay_PayItemTypes.Where(t => t.IsSsoWageBase), li => li.PayItemTypeId, t => t.Id,
-                    (li, t) => new { li.PayrollEmployeeId, li.Amount })
+                .Where(li => sameMonthIds.Contains(li.PayrollEmployeeId))
+                .Join(context.Pay_PayItemTypes, li => li.PayItemTypeId, t => t.Id,
+                    (li, t) => new { li.PayrollEmployeeId, li.Amount, li.SignFlag, li.SourceRefTable, t.IsSsoWageBase, t.Code })
+                .Where(x => (x.SignFlag > 0 && x.IsSsoWageBase)
+                            || (baseCountsForSso && x.SignFlag < 0 && WageReductionCodes.Contains(x.Code) && x.SourceRefTable != "Pay_AdhocPayItem"))
+                .Select(x => new { x.PayrollEmployeeId, Amount = x.SignFlag > 0 ? x.Amount : -x.Amount })
                 .ToListAsync(ct);
             var empByRow = sameMonthRows.ToDictionary(r => r.Id, r => r.HremployeeId);
             foreach (var line in ssoBaseLines)
@@ -267,10 +276,32 @@ public class PayrollCalculationService
             .ToDictionaryAsync(x => x.Id, ct);
         var attendanceByEmployee = (await context.Att_DailyAttendances
                 .Where(a => a.CompanyId == run.CompanyId && a.WorkDate >= attFrom && a.WorkDate <= attTo)
-                .Select(a => new { a.HremployeeId, a.IsAbsent, a.LateMinutes })
+                .Select(a => new { a.HremployeeId, a.WorkDate, a.IsAbsent, a.LateMinutes })
                 .ToListAsync(ct))
             .GroupBy(a => a.HremployeeId)
             .ToDictionary(g => g.Key, g => g.ToList());
+
+        // ลาที่อนุมัติแล้วในรอบตัดเวลา: ได้ค่าจ้างหรือไม่ตาม Lve_LeavePolicy.IsPaid ของบริษัท (ไม่มี policy = ได้ค่าจ้าง
+        // แบบเดียวกับหน้าคำขอลา) · คำขอที่เคยถูก "ผลักเข้าระบบเงินเดือน" เป็นรายการเฉพาะกิจแล้วไม่นับซ้ำ
+        var windowHolidays = (await context.Lve_CompanyHolidays
+                .Where(h => h.CompanyId == run.CompanyId && h.IsActive && h.HolidayDate >= attFrom && h.HolidayDate <= attTo)
+                .Select(h => h.HolidayDate).ToListAsync(ct))
+            .ToHashSet();
+        var unpaidLeaveTypeIds = (await context.Lve_LeavePolicies
+                .Where(p => p.CompanyId == run.CompanyId && !p.IsPaid)
+                .Select(p => p.LeaveTypeId).ToListAsync(ct))
+            .ToHashSet();
+        var leaveCompleted = HRM.Services.Workflow.WorkflowEngineService.StatusCompleted;
+        var leaveDaysByEmployee = (await context.Lve_LeaveRequests
+                .Where(l => l.Hremployee.companyid == run.CompanyId && l.JobMasterId != null && l.AdhocPayItemId == null
+                            && l.StartDate <= attTo && l.EndDate >= attFrom
+                            && context.job_masters.Any(j => j.jobmasterid == l.JobMasterId && j.status == leaveCompleted))
+                .Select(l => new { l.HremployeeId, l.StartDate, l.EndDate, l.IsHalfDay, l.LeaveTypeId })
+                .ToListAsync(ct))
+            .GroupBy(l => l.HremployeeId)
+            .ToDictionary(g => g.Key, g => LeavePayCalculator.DaysInWindow(
+                g.Select(l => new LeavePayCalculator.ApprovedLeave(l.HremployeeId, l.StartDate, l.EndDate, l.IsHalfDay, !unpaidLeaveTypeIds.Contains(l.LeaveTypeId))),
+                attFrom, attTo, windowHolidays, companyWorkDaysMask));
 
         // Salary advances recovered in this period: Approved/Paid ones, plus those
         // already consumed by THIS run so a recalculation re-picks them idempotently.
@@ -521,8 +552,13 @@ public class PayrollCalculationService
                 var dailyMode = typeOverride?.DailyWageMode ?? attendancePolicy?.DailyWageMode ?? PayDailyWageDaysMode.WorkingDays;
                 var fixedDays = typeOverride?.DailyWageFixedDays ?? attendancePolicy?.DailyWageFixedDays;
                 var useAttendance = dailyMode == PayDailyWageDaysMode.AttendanceDays && empAttendance is { Count: > 0 };
-                int paidDays;
+                decimal paidDays;
                 string paidDaysNote;
+                // ลาที่อนุมัติแล้ว: วันลาแบบได้ค่าจ้างเป็นวันที่ได้เงินแม้ไม่มีการลงเวลา (ม.57 ป่วย · ม.30 พักร้อน · ม.34 กิจ)
+                // วันลาไม่รับค่าจ้างไม่ได้เงิน — เดิมโหมดวันทำงาน/จำนวนวันคงที่จ่ายเต็ม ส่วนโหมดวันลงเวลาไม่จ่ายวันลาป่วย
+                var empLeaveDaysD = leaveDaysByEmployee.GetValueOrDefault(emp.id) ?? new List<LeavePayCalculator.LeaveDay>();
+                var unpaidLeaveD = empLeaveDaysD.Sum(d => d.UnpaidFraction);
+                var unpaidLeaveNote = unpaidLeaveD > 0 ? $" หักลาไม่รับค่าจ้าง {unpaidLeaveD:0.#} วัน" : "";
                 var spanStartD = joinDate is DateOnly jd && jd > run.PeriodStart ? jd : run.PeriodStart;
                 var spanEndD = resignDate is DateOnly rd && rd < run.PeriodEnd ? rd : run.PeriodEnd;
                 // ม.56 (audit H-09): วันหยุดตามประเพณีจ่ายค่าจ้างให้ลูกจ้างรายวันด้วย — นับเฉพาะที่ตรงกับวันทำงานของบริษัท
@@ -531,8 +567,10 @@ public class PayrollCalculationService
                     && HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(h, h, new HashSet<DateOnly>(), companyWorkDaysMask) > 0);
                 if (useAttendance)
                 {
-                    paidDays = empAttendance!.Count(a => !a.IsAbsent) + paidHolidays;
-                    paidDaysNote = $"วันที่มีการลงเวลา + วันหยุดตามประเพณี {paidHolidays} วัน";
+                    var workedDates = empAttendance!.Where(a => !a.IsAbsent).Select(a => a.WorkDate).ToHashSet();
+                    var paidLeaveD = empLeaveDaysD.Where(d => !workedDates.Contains(d.Date)).Sum(d => d.PaidFraction);
+                    paidDays = workedDates.Count + paidHolidays + paidLeaveD;
+                    paidDaysNote = $"วันที่มีการลงเวลา + วันหยุดตามประเพณี {paidHolidays} วัน{(paidLeaveD > 0 ? $" + วันลาที่ได้ค่าจ้าง {paidLeaveD:0.#} วัน" : "")}";
                 }
                 else if (dailyMode == PayDailyWageDaysMode.FixedDaysPerMonth && fixedDays is int fd && fd > 0)
                 {
@@ -543,13 +581,13 @@ public class PayrollCalculationService
                         : (int)HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(spanStartD, spanEndD, new HashSet<DateOnly>(), companyWorkDaysMask);
                     var entitled = fullPeriod ? (int)Math.Round(fd * schedule.MonthFraction, MidpointRounding.AwayFromZero) : Math.Min(fd, spanWorkdays);
                     var absentFixed = empAttendance?.Count(a => a.IsAbsent) ?? 0;
-                    paidDays = Math.Max(0, entitled - absentFixed);
-                    paidDaysNote = $"จำนวนวันคงที่ {fd} วัน/เดือน{(fullPeriod ? "" : $" — อยู่ไม่เต็มงวด จ่าย {entitled} วัน")}{(absentFixed > 0 ? $" หักขาดงาน {absentFixed} วัน" : "")}{attendanceWindowNote}";
+                    paidDays = Math.Max(0m, entitled - absentFixed - unpaidLeaveD);
+                    paidDaysNote = $"จำนวนวันคงที่ {fd} วัน/เดือน{(fullPeriod ? "" : $" — อยู่ไม่เต็มงวด จ่าย {entitled} วัน")}{(absentFixed > 0 ? $" หักขาดงาน {absentFixed} วัน" : "")}{unpaidLeaveNote}{attendanceWindowNote}";
                 }
                 else if (dailyMode == PayDailyWageDaysMode.CalendarDays)
                 {
-                    paidDays = proration.ActualWorkingDays;
-                    paidDaysNote = "วันตามปฏิทินในงวด";
+                    paidDays = Math.Max(0m, proration.ActualWorkingDays - unpaidLeaveD);
+                    paidDaysNote = $"วันตามปฏิทินในงวด{unpaidLeaveNote}";
                 }
                 else
                 {
@@ -558,12 +596,12 @@ public class PayrollCalculationService
                     var workdays = spanEndD < spanStartD ? 0
                         : (int)HRM.Services.Leave.LeaveDayCalculator.CalculateWorkingDays(spanStartD, spanEndD, new HashSet<DateOnly>(), companyWorkDaysMask);
                     var absentDays = empAttendance?.Count(a => a.IsAbsent) ?? 0;
-                    paidDays = Math.Max(0, workdays - absentDays);
-                    paidDaysNote = $"วันทำงานของบริษัทในงวด รวมวันหยุดตามประเพณี {paidHolidays} วัน{(absentDays > 0 ? $" หักขาดงาน {absentDays} วัน" : "")}";
+                    paidDays = Math.Max(0m, workdays - absentDays - unpaidLeaveD);
+                    paidDaysNote = $"วันทำงานของบริษัทในงวด รวมวันหยุดตามประเพณี {paidHolidays} วัน{(absentDays > 0 ? $" หักขาดงาน {absentDays} วัน" : "")}{unpaidLeaveNote}";
                 }
                 baseSalary = Math.Round(emp.DailyWage!.Value * paidDays, 2, MidpointRounding.AwayFromZero);
                 lineItems.Add(NewLine(payItemTypes["BASE"], PayLineSourceType.Base, baseSalary, 1, ++seq, "HREMPLOYEE", emp.id,
-                    $"ค่าจ้างรายวัน {emp.DailyWage.Value:N2} × {paidDays} วัน ({paidDaysNote}) = {baseSalary:N2}"));
+                    $"ค่าจ้างรายวัน {emp.DailyWage.Value:N2} × {paidDays:0.#} วัน ({paidDaysNote}) = {baseSalary:N2}"));
             }
             else
             {
@@ -645,6 +683,26 @@ public class PayrollCalculationService
                 }
             }
 
+            // ลาไม่รับค่าจ้าง (รายเดือน): ค่าจ้างที่ไม่ได้ทำงาน อัตราต่อวันเดียวกับขาดงาน หักก่อนภาษีและก่อนฐานประกันสังคม/กองทุน
+            // (เดิมต้องกด "ผลักเข้าระบบเงินเดือน" เป็นรายการหักหลังภาษี ÷ วันในเดือน — พนักงานเสียภาษีและประกันสังคมจากเงินที่ไม่ได้รับ)
+            if (!supplementary && !isDailyWage)
+            {
+                var unpaidLeaveDays = (leaveDaysByEmployee.GetValueOrDefault(emp.id) ?? new List<LeavePayCalculator.LeaveDay>()).Sum(d => d.UnpaidFraction);
+                if (unpaidLeaveDays > 0)
+                {
+                    var divisor = attendancePolicy is { DaysPerMonthDivisor: > 0 } ? attendancePolicy.DaysPerMonthDivisor : 30;
+                    var leaveDayRate = (emp.SalaryAmt ?? 0m) / divisor;
+                    var unpaidLeaveAmount = Math.Min(Math.Round(unpaidLeaveDays * leaveDayRate, 2, MidpointRounding.AwayFromZero),
+                        Math.Max(0m, baseSalary - attendanceDeduction));
+                    if (unpaidLeaveAmount > 0)
+                    {
+                        lineItems.Add(NewLine(payItemTypes["LEAVE_UNPAID"], PayLineSourceType.Adjustment, unpaidLeaveAmount, -1, ++seq, "Lve_LeaveRequest", null,
+                            $"ลาไม่รับค่าจ้าง {unpaidLeaveDays:0.#} วัน × ค่าจ้างรายวัน {leaveDayRate:N2} (เงินเดือน {(emp.SalaryAmt ?? 0m):N2} ÷ {divisor}) = {unpaidLeaveAmount:N2}{attendanceWindowNote}"));
+                        attendanceDeduction += unpaidLeaveAmount;
+                    }
+                }
+            }
+
             var otAmount = 0m;
             if (!supplementary)
             {
@@ -710,9 +768,14 @@ public class PayrollCalculationService
             // Social-security wage base follows the Pay Element catalog flags: only
             // elements marked IsSsoWageBase count (base salary + regular allowances by
             // default; OT and one-off items are excluded, as Thai SSO defines ค่าจ้าง).
+            // รายการเฉพาะกิจที่ตั้งธงเป็นค่าจ้าง (เช่น ค่าคอมมิชชั่น) นับเข้าฐานด้วย — เดิมไม่นับในงวดนี้ แต่งวดถัดไปของเดือน
+            // นับจากบรรทัดที่บันทึกไว้ ฐานสองงวดจึงนิยามไม่ตรงกัน (audit M-05/M-14)
+            var adhocForBase = supplementary ? new List<Pay_AdhocPayItem>() : adhocByEmployee.GetValueOrDefault(emp.id) ?? new List<Pay_AdhocPayItem>();
+            var adhocSsoWage = adhocForBase.Where(a => a.Pay_PayItemType.DefaultSignFlag > 0 && a.Pay_PayItemType.IsSsoWageBase).Sum(a => a.Amount);
+            var adhocPfWage = adhocForBase.Where(a => a.Pay_PayItemType.DefaultSignFlag > 0 && a.Pay_PayItemType.IsProvidentFundWageBase).Sum(a => a.Amount);
             var ssoWageBase = (payItemTypes["BASE"].IsSsoWageBase ? baseSalary - attendanceDeduction : 0m)
                             + (payItemTypes["OT"].IsSsoWageBase ? otAmount : 0m)
-                            + ssoWageBaseAllowance;
+                            + ssoWageBaseAllowance + adhocSsoWage;
             // เพดานประกันสังคมเป็นรายเดือน (audit M8): คิดจากฐานทั้งเดือน (งวดก่อนของเดือนนี้ที่อนุมัติแล้ว + งวดนี้)
             // แล้วหักส่วนที่งวดก่อนหักไปแล้ว — บริษัทจ่ายเดือนละงวดตัวเลขทั้งสองเป็น 0 ผลเท่าเดิม
             var priorMonthSsoBase = sameMonthSsoBaseByEmp.GetValueOrDefault(emp.id);
@@ -726,14 +789,16 @@ public class PayrollCalculationService
                 lineItems.Add(NewLine(payItemTypes["SSO"], PayLineSourceType.SocialSecurity, ssoAmount, -1, ++seq, null, null,
                     $"{ssoRate:0.##}% ของฐานค่าจ้างประกันสังคม {ssoWageBase:N2} (เฉพาะรายการที่ตั้งธง \"ฐาน SSO\" ในแค็ตตาล็อก; เพดาน {ssoCap:N2}) = {ssoAmount:N2}"));
 
-            var election = pfElections.FirstOrDefault(pe => pe.HremployeeId == emp.id);
+            // เปลี่ยนอัตรากลางงวด: ใช้แถวที่มีผลล่าสุด ไม่ใช่แถวแรกที่ฐานข้อมูลคืนมา (audit M-08)
+            var election = pfElections.Where(pe => pe.HremployeeId == emp.id)
+                .OrderByDescending(pe => pe.EffectiveFrom).ThenByDescending(pe => pe.Id).FirstOrDefault();
             var pfEmployeeRate = election?.EmployeeContributionRate ?? emp.ProvfEmprate ?? 0m;
             var pfCompanyRate = election?.CompanyContributionRate ?? emp.ProvfCorprate ?? 0m;
             // ฐานกองทุนสำรองเลี้ยงชีพ = "ค่าจ้าง" ตามธง IsProvidentFundWageBase ในแค็ตตาล็อก (ค่าเริ่มต้น: เงินเดือน/ค่าจ้างรายวัน)
             // ไม่ใช่เงินได้รวม OT/สวัสดิการ (audit M2) — เดิมเดือนที่มี OT หักสะสมพนักงานและสมทบบริษัทเกิน
             var pfWageBase = (payItemTypes["BASE"].IsProvidentFundWageBase ? Math.Max(0m, baseSalary - attendanceDeduction) : 0m)
                            + (payItemTypes["OT"].IsProvidentFundWageBase ? otAmount : 0m)
-                           + pfWageBaseAllowance;
+                           + pfWageBaseAllowance + adhocPfWage;
             var pf = ProvidentFundCalculator.Calculate(pfWageBase, pfEmployeeRate, pfCompanyRate);
             if (pf.EmployeeAmount != 0)
                 lineItems.Add(NewLine(payItemTypes["PF"], PayLineSourceType.ProvidentFund, pf.EmployeeAmount, -1, ++seq, "Pay_ProvidentFundElection", election?.Id,
