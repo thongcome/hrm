@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     ตั้งฐานข้อมูลลูกค้าใหม่จากแม่แบบสะอาด แล้วเปิดระบบให้ลูกค้าดูได้จากเครื่องของเขาเอง
 
@@ -32,6 +32,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 
+# คืนผลเป็นแถว — PowerShell คลี่ผลลัพธ์แถวเดียวออกเป็น DataRow ตัวเดียว ดังนั้นทุกจุดที่เรียกต้องครอบด้วย @(...) ก่อน [0]
 function Invoke-Sql([string]$sql, [string]$db = 'master') {
     $conn = New-Object System.Data.SqlClient.SqlConnection "Server=$Server;Database=$db;Integrated Security=true;TrustServerCertificate=true"
     $conn.Open()
@@ -52,19 +53,19 @@ function Invoke-Sql([string]$sql, [string]$db = 'master') {
 Write-Host "== 1/3 restore แม่แบบเป็นฐาน $Database ==" -ForegroundColor Cyan
 
 if (-not $Backup) {
-    $dir = (Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS nvarchar(4000)) p")[0].p
+    $dir = @(Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS nvarchar(4000)) p")[0].p
     $Backup = (Get-ChildItem (Join-Path $dir 'hrm_template_v*.bak') | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
     if (-not $Backup) { throw "ไม่พบไฟล์แม่แบบ hrm_template_v*.bak ใน $dir — สร้างก่อนตาม README ข้อ 1" }
 }
 Write-Host "   ใช้แม่แบบ: $Backup"
 
-$existing = Invoke-Sql "SELECT DB_ID('$Database') id"
+$existing = @(Invoke-Sql "SELECT DB_ID('$Database') id")
 if ($null -ne $existing[0].id -and $existing[0].id -isnot [System.DBNull]) {
-    $count = (Invoke-Sql "SELECT COUNT(*) n FROM HREMPLOYEE" $Database)[0].n
+    $count = @(Invoke-Sql "SELECT COUNT(*) n FROM HREMPLOYEE" $Database)[0].n
     if ($count -gt 0) { throw "ฐาน $Database มีอยู่แล้วและมีพนักงาน $count คน — ปฏิเสธการทับ ถ้าตั้งใจจริงให้ลบฐานเองก่อน" }
 }
 
-$data = (Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(4000)) p")[0].p
+$data = @(Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(4000)) p")[0].p
 Invoke-Sql @"
 IF DB_ID('$Database') IS NOT NULL
 BEGIN
