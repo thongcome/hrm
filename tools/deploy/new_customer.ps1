@@ -30,7 +30,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+# ตัวโปรแกรมที่ใช้รัน --init-admin และเปิดเซิร์ฟเวอร์ — หาได้ทั้งสองแบบ:
+#   · ในชุดติดตั้งของลูกค้า  <kit>\โปรแกรม\HRM.dll   (publish แล้ว เครื่องปลายทางไม่มี .NET SDK)
+#   · ในเครื่องพัฒนา         <repo>\bin\{Release,Debug}\net10.0\HRM.dll
+# เรียกด้วย dotnet <dll> ไม่ใช่ dotnet run: repo นี้ build ด้วย -p:UseAppHost=false และเครื่องลูกค้าไม่มี SDK
+$candidates = @(
+    (Join-Path $PSScriptRoot '..\โปรแกรม\HRM.dll'),
+    (Join-Path $PSScriptRoot '..\..\bin\Release\net10.0\HRM.dll'),
+    (Join-Path $PSScriptRoot '..\..\bin\Debug\net10.0\HRM.dll')
+)
+$appDll = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $appDll) { throw "ไม่พบ HRM.dll — ในชุดติดตั้งต้องมีโฟลเดอร์ 'โปรแกรม', ในเครื่องพัฒนาให้ build ก่อน (dotnet build -p:UseAppHost=false)" }
+$appDll = (Resolve-Path $appDll).Path
 
 # คืนผลเป็นแถว — PowerShell คลี่ผลลัพธ์แถวเดียวออกเป็น DataRow ตัวเดียว ดังนั้นทุกจุดที่เรียกต้องครอบด้วย @(...) ก่อน [0]
 function Invoke-Sql([string]$sql, [string]$db = 'master') {
@@ -44,7 +55,7 @@ function Invoke-Sql([string]$sql, [string]$db = 'master') {
             $da = New-Object System.Data.SqlClient.SqlDataAdapter $cmd
             $ds = New-Object System.Data.DataSet
             [void]$da.Fill($ds)
-            foreach ($t in $ds.Tables) { $out += $t }
+            foreach ($t in $ds.Tables) { foreach ($row in $t.Rows) { $out += $row } }
         }
         return $out
     } finally { $conn.Close() }
@@ -65,6 +76,10 @@ if ($null -ne $existing[0].id -and $existing[0].id -isnot [System.DBNull]) {
     if ($count -gt 0) { throw "ฐาน $Database มีอยู่แล้วและมีพนักงาน $count คน — ปฏิเสธการทับ ถ้าตั้งใจจริงให้ลบฐานเองก่อน" }
 }
 
+# ชื่อไฟล์ตรรกะอ่านจากตัว backup เอง ไม่ hardcode — แม่แบบรุ่นหน้าอาจสร้างจากฐานที่ชื่อไฟล์ต่างไป
+$files = @(Invoke-Sql "RESTORE FILELISTONLY FROM DISK = N'$Backup'")
+$dataLogical = ($files | Where-Object Type -eq 'D' | Select-Object -First 1).LogicalName
+$logLogical  = ($files | Where-Object Type -eq 'L' | Select-Object -First 1).LogicalName
 $data = @(Invoke-Sql "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(4000)) p")[0].p
 Invoke-Sql @"
 IF DB_ID('$Database') IS NOT NULL
@@ -73,7 +88,7 @@ BEGIN
     DROP DATABASE [$Database];
 END
 RESTORE DATABASE [$Database] FROM DISK = N'$Backup'
-    WITH MOVE 'hrm' TO N'$data$Database.mdf', MOVE 'hrm_log' TO N'${data}${Database}_log.ldf', RECOVERY;
+    WITH MOVE '$dataLogical' TO N'$data$Database.mdf', MOVE '$logLogical' TO N'${data}${Database}_log.ldf', RECOVERY;
 ALTER DATABASE [$Database] SET RECOVERY SIMPLE;
 "@ | Out-Null
 Write-Host "   restore เรียบร้อย" -ForegroundColor Green
@@ -81,7 +96,7 @@ Write-Host "   restore เรียบร้อย" -ForegroundColor Green
 Write-Host "== 2/3 ตั้งชื่อบริษัทเป็นของลูกค้า ($Code) ==" -ForegroundColor Cyan
 $sql = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '20_new_customer.sql')
 $sql = $sql.Replace('$(CODE)', $Code).Replace('$(NAME)', $Name).Replace('$(NAME_EN)', $NameEn).Replace('$(TAXID)', $TaxId)
-$rows = Invoke-Sql $sql $Database
+$rows = @(Invoke-Sql $sql $Database)
 $rows | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
 
 Write-Host "== 3/3 ตั้งรหัสผ่าน advadmin ครั้งแรก ==" -ForegroundColor Cyan
@@ -89,11 +104,12 @@ Write-Host "   (รหัสจะแสดงครั้งเดียว จ
 $cs = "Server=$Server;Database=$Database;Integrated Security=true;TrustServerCertificate=true"
 # --init-admin อ่าน connection string จาก config ปกติของแอป จึงส่งผ่าน environment variable
 $env:ConnectionStrings__DefaultConnection = $cs
-& dotnet run --project (Join-Path $repoRoot 'HRM.csproj') --no-build -- --init-admin
+& dotnet $appDll --init-admin
+if ($LASTEXITCODE -ne 0) { throw "--init-admin ไม่สำเร็จ (exit $LASTEXITCODE) — ดูข้อความข้างบน" }
 
 Write-Host ""
 Write-Host "เสร็จแล้ว — เปิดระบบให้ลูกค้าดูด้วยคำสั่งนี้:" -ForegroundColor Green
-$run = "dotnet run --project `"$repoRoot\HRM.csproj`" --no-build --urls http://0.0.0.0:$Port"
+$run = "dotnet `"$appDll`" --urls http://0.0.0.0:$Port"
 Write-Host "   `$env:ConnectionStrings__DefaultConnection = '$cs'"
 Write-Host "   $run"
 $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notlike '169.*' } | Select-Object -First 1).IPAddress
@@ -101,5 +117,5 @@ Write-Host "   ลูกค้าเปิดจากเครื่องเ�
 
 if ($Serve) {
     $env:ConnectionStrings__DefaultConnection = $cs
-    & dotnet run --project (Join-Path $repoRoot 'HRM.csproj') --no-build --urls "http://0.0.0.0:$Port"
+    & dotnet $appDll --urls "http://0.0.0.0:$Port"
 }
