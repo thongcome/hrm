@@ -84,4 +84,27 @@ public static class AttendanceRuleCalculator
         var deduction = Math.Min(remainingTarget, Math.Round(Math.Max(0m, raw), 2, MidpointRounding.AwayFromZero));
         return deduction <= 0m ? new Outcome(0m, "") : new Outcome(deduction, $"{rule.Name}: {what} {how} = −{deduction:N2}");
     }
+
+    // ── ค่าจ้างตาม ม.76 ─────────────────────────────────────────────────────────
+    // นายจ้างหักค่าจ้างได้เฉพาะรายการที่ ม.76 อนุญาต — การปรับเงินเพราะมาสาย/ขาดงานไม่อยู่ในนั้น สิ่งที่ทำได้คือ "ไม่จ่ายค่าจ้าง
+    // ของเวลาที่ไม่ได้ทำงาน" ดังนั้นยอดที่ตัดจากเงินเดือน (ทุกกติการวมกัน) ต้องไม่เกินค่าจ้างของนาทีที่สาย/วันที่ขาดจริง
+    // ส่วนรายได้ที่มีเงื่อนไข (เช่น เบี้ยขยัน: สายแล้วไม่ได้ทั้งก้อน) เป็นเงื่อนไขการได้รับ ไม่ใช่การหักค่าจ้าง จึงไม่ถูกจำกัดตรงนี้
+
+    /// <summary>ค่าจ้างของเวลาที่ไม่ได้ทำงาน = เพดานที่ตัดจากเงินเดือนได้ (สาย: นาทีจริงไม่หักผ่อนผัน · ขาด: วัน × ค่าจ้างรายวัน)</summary>
+    public static (decimal LateCap, decimal AbsentCap) TimeNotWorkedValue(decimal monthlySalary, int daysPerMonthDivisor, decimal hoursPerDay,
+        int totalLateMinutes, int absentDays)
+    {
+        var divisor = daysPerMonthDivisor > 0 ? daysPerMonthDivisor : 30;
+        var hours = hoursPerDay > 0 ? hoursPerDay : 8m;
+        var dailyRate = monthlySalary / divisor;
+        var perMinute = dailyRate / hours / 60m;
+        return (Math.Round(totalLateMinutes * perMinute, 2, MidpointRounding.AwayFromZero),
+                Math.Round(absentDays * dailyRate, 2, MidpointRounding.AwayFromZero));
+    }
+
+    /// <summary>ยอดที่ยังตัดจากเงินเดือนได้ภายใต้เพดาน (ไม่ติดลบ)</summary>
+    public static decimal CapToTimeNotWorked(decimal requested, decimal cap, decimal alreadyTaken)
+        => Math.Max(0m, Math.Min(requested, cap - alreadyTaken));
+
+    public const string CappedNote = " (จำกัดไม่เกินค่าจ้างของเวลาที่ไม่ได้ทำงาน ตาม ม.76)";
 }

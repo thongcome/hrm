@@ -620,6 +620,13 @@ public class PayrollCalculationService
             // Late / absence deductions from Att_DailyAttendance per policy. Monthly
             // staff only — a daily-wage employee's absent day is simply not paid above.
             var attendanceDeduction = 0m;
+            // ม.76: สิ่งที่ตัดจากเงินเดือนได้คือค่าจ้างของเวลาที่ไม่ได้ทำงาน ไม่ใช่ค่าปรับ — ทุกกติกา (นโยบายเดิม + กติกาตั้งค่าได้)
+            // รวมกันต้องไม่เกินค่าจ้างของนาทีที่สาย/วันที่ขาดจริง (AttendanceRuleCalculator.TimeNotWorkedValue)
+            decimal lateTaken = 0m, absentTaken = 0m;
+            var (lateCap, absentCap) = !supplementary && !isDailyWage && empAttendance is { Count: > 0 }
+                ? AttendanceRuleCalculator.TimeNotWorkedValue(emp.SalaryAmt ?? 0m, attendancePolicy?.DaysPerMonthDivisor ?? 30, attendancePolicy?.HoursPerDay ?? 8m,
+                    empAttendance.Where(a => !a.IsAbsent).Sum(a => a.LateMinutes), empAttendance.Count(a => a.IsAbsent))
+                : (0m, 0m);
             if (!supplementary && !isDailyWage && attendancePolicy is not null && empAttendance is { Count: > 0 })
             {
                 var monthly = emp.SalaryAmt ?? 0m;
@@ -644,10 +651,14 @@ public class PayrollCalculationService
                             lateAmount = Math.Round(lateDays.Count * attendancePolicy.LateAmountPerOccurrence, 2, MidpointRounding.AwayFromZero);
                             lateNote = $"มาสาย {lateDays.Count} วัน × {attendancePolicy.LateAmountPerOccurrence:N2} บาท/ครั้ง = {lateAmount:N2}";
                         }
+                        var cappedLate = AttendanceRuleCalculator.CapToTimeNotWorked(lateAmount, lateCap, lateTaken);
+                        if (cappedLate < lateAmount) lateNote += $"{AttendanceRuleCalculator.CappedNote} เหลือ {cappedLate:N2}";
+                        lateAmount = cappedLate;
                         if (lateAmount > 0)
                         {
                             lineItems.Add(NewLine(payItemTypes["LATE"], PayLineSourceType.Adjustment, lateAmount, -1, ++seq, "Att_DailyAttendance", null, lateNote));
                             attendanceDeduction += lateAmount;
+                            lateTaken += lateAmount;
                         }
                     }
                 }
@@ -657,7 +668,8 @@ public class PayrollCalculationService
                     var absentDays = empAttendance.Count(a => a.IsAbsent);
                     if (absentDays > 0)
                     {
-                        var absentAmount = Math.Round(absentDays * dailyRate, 2, MidpointRounding.AwayFromZero);
+                        var absentAmount = AttendanceRuleCalculator.CapToTimeNotWorked(Math.Round(absentDays * dailyRate, 2, MidpointRounding.AwayFromZero), absentCap, absentTaken);
+                        absentTaken += absentAmount;
                         lineItems.Add(NewLine(payItemTypes["ABSENT"], PayLineSourceType.Adjustment, absentAmount, -1, ++seq, "Att_DailyAttendance", null,
                             $"ขาดงาน {absentDays} วัน × ค่าจ้างรายวัน {dailyRate:N2} (เงินเดือน {monthly:N2} ÷ {attendancePolicy.DaysPerMonthDivisor}) = {absentAmount:N2}"));
                         attendanceDeduction += absentAmount;
@@ -677,9 +689,14 @@ public class PayrollCalculationService
                 {
                     var outcome = AttendanceRuleCalculator.Apply(rule, ruleFacts, baseSalary, baseSalary - attendanceDeduction);
                     if (outcome.Deduction <= 0m) continue;
-                    lineItems.Add(NewLine(payItemTypes[rule.Trigger == PayAttendanceTrigger.Late ? "LATE" : "ABSENT"], PayLineSourceType.Adjustment,
-                        outcome.Deduction, -1, ++seq, "Pay_AttendanceRule", rule.Id, outcome.Note + attendanceWindowNote));
-                    attendanceDeduction += outcome.Deduction;
+                    var isLate = rule.Trigger == PayAttendanceTrigger.Late;
+                    var allowed = AttendanceRuleCalculator.CapToTimeNotWorked(outcome.Deduction, isLate ? lateCap : absentCap, isLate ? lateTaken : absentTaken);
+                    if (allowed <= 0m) continue;
+                    var ruleLineNote = outcome.Note + (allowed < outcome.Deduction ? $"{AttendanceRuleCalculator.CappedNote} เหลือ {allowed:N2}" : "");
+                    lineItems.Add(NewLine(payItemTypes[isLate ? "LATE" : "ABSENT"], PayLineSourceType.Adjustment,
+                        allowed, -1, ++seq, "Pay_AttendanceRule", rule.Id, ruleLineNote + attendanceWindowNote));
+                    attendanceDeduction += allowed;
+                    if (isLate) lateTaken += allowed; else absentTaken += allowed;
                 }
             }
 
@@ -903,8 +920,13 @@ public class PayrollCalculationService
             var priorEmployerIncome = CombinePriorIncome(priorEmployerIncomes.Where(p => p.HremployeeId == emp.id).ToList());
             var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = FoldYtd(ytdByEmployee.GetValueOrDefault(emp.id), run.PeriodStart, includeSamePeriod: supplementary, priorEmployerIncome);
 
-            // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 500,000 บาท/ปี (audit M2) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
-            var pfDeductible = Math.Min(pf.EmployeeAmount, Math.Max(0m, providentFundDeductionCap - ytdProvidentFund));
+            // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 15% ของค่าจ้าง และรวมกับ RMF/SSF/ประกันบำนาญที่แจ้งไว้ไม่เกิน 500,000 บาท/ปี
+            // (audit M-02) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
+            var retirementElected = empMonthlyElections
+                .Where(e => ProvidentFundTaxDeduction.RetirementGroupCodes.Contains(e.Pay_TaxDeductionType.Code))
+                .Sum(e => e.AnnualAmount);
+            var pvdRoom = ProvidentFundTaxDeduction.AnnualRoom(providentFundDeductionCap, retirementElected, ytdProvidentFund);
+            var pfDeductible = ProvidentFundTaxDeduction.Deductible(pf.EmployeeAmount, pfWageBase, pvdRoom);
             var thisPeriodFlatDeduction = ssoAmount + pfDeductible;
             decimal monthlyTax;
             TaxBracketCalculator.TaxCalculationResult annualCalc;
@@ -932,12 +954,14 @@ public class PayrollCalculationService
                     : ssoWageBase;
                 var ssoMonthlyProjected = SocialSecurityCalculator.Calculate(monthBaseProjected, ssoRate, ssoCap);
                 var termsLeftThisMonth = schedule.PeriodsPerMonth - schedule.TermNo;
-                var restOfMonthFlat = Math.Max(0m, ssoMonthlyProjected - priorMonthSso - ssoAmount) + pfDeductible * termsLeftThisMonth;
                 var monthsAfterThis = Math.Max(0m, schedule.RemainingMonthsIncludingThis - (termsLeftThisMonth + 1) * schedule.MonthFraction);
+                var restOfMonthSso = Math.Max(0m, ssoMonthlyProjected - priorMonthSso - ssoAmount);
+                // กองทุนที่ประมาณการต่อถึงสิ้นปีก็ต้องไม่เกินเพดานที่เหลือ — เดิมคูณงวดที่เหลือตรง ๆ ต้นปีภาษีจึงหักขาดสำหรับคนเงินเดือนสูง
+                var futurePvd = Math.Min(pfDeductible * (termsLeftThisMonth + schedule.PeriodsPerMonth * monthsAfterThis),
+                    Math.Max(0m, pvdRoom - pfDeductible));
                 var projectedRemainingFlat = leavesThisPeriod
                     ? thisPeriodFlatDeduction   // no later periods for a leaver
-                    : thisPeriodFlatDeduction + restOfMonthFlat
-                      + (ssoMonthlyProjected + pfDeductible * schedule.PeriodsPerMonth) * monthsAfterThis;
+                    : thisPeriodFlatDeduction + restOfMonthSso + ssoMonthlyProjected * monthsAfterThis + futurePvd;
 
                 // รายการเฉพาะกิจที่ต้องเสียภาษี (ค่าคอมฯ/โบนัสที่จ่ายในรอบปกติ) = เงินได้ครั้งเดียว คิดภาษีแบบส่วนต่าง ไม่คูณเดือนที่เหลือ
                 (monthlyTax, annualCalc) = TaxBracketCalculator.CalculatePeriodWithholding(

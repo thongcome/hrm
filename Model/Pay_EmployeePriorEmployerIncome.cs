@@ -32,9 +32,9 @@ public class Pay_EmployeePriorEmployerIncome
     [Column(TypeName = "decimal(15,2)")]
     public decimal IncomeAmount { get; set; }
 
-    // Optional — the prior employer's own month-by-month deduction split
-    // (personal allowance/SSO/PF portions) usually isn't disclosed on the
-    // certificate the employee actually has; leave at 0 if unknown.
+    // SSO + provident fund the prior employer withheld (both on the 50 ทวิ). NOT the personal
+    // allowance or the 50% expense deduction: the engine already counts those once for the whole
+    // year, so including them here counts them twice and under-withholds (audit M-04). 0 if unknown.
     [Column(TypeName = "decimal(15,2)")]
     public decimal DeductionAmount { get; set; }
 

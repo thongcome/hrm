@@ -335,8 +335,22 @@
             if (jobStatus != "COMPLETED")
                 throw new InvalidOperationException("คำขอ OT นี้ยังไม่ได้รับอนุมัติครบ — ส่งเข้า payroll ไม่ได้");
 
-            var amount = (request.workhour ?? 0) * (request.ot_rate ?? 0);
             var companyId = request.companyid ?? "";
+            // เงิน OT คิดตามกฎหมาย (ม.61–63) จากค่าจ้างจริงของพนักงาน × ตัวคูณตามประเภทวัน — ไม่ใช่อัตราที่พิมพ์ในฟอร์มคำขอ
+            var otEmp = await context.Hremployee.FirstOrDefaultAsync(e =>
+                    request.hremployeeid != null ? e.id == request.hremployeeid : (e.EmpNo == request.empid && e.companyid == companyId))
+                ?? throw new InvalidOperationException("ไม่พบพนักงานของคำขอนี้");
+            var otDay = DateOnly.FromDateTime(request.starttime);
+            var otIsHoliday = await context.Lve_CompanyHolidays.AnyAsync(h => h.CompanyId == companyId && h.IsActive && h.HolidayDate == otDay);
+            var otDayType = HRM.Services.Att.Calculators.OtRateCalculator.ClassifyDayType(otDay, otIsHoliday);
+            var otRule = await context.Att_OtRules.FirstOrDefaultAsync(r => r.CompanyId == companyId && r.DayType == otDayType && r.IsActive);
+            var normalHours = await context.Pay_AttendanceDeductionPolicies
+                .Where(p => p.CompanyId == companyId && p.IsActive).Select(p => (decimal?)p.HoursPerDay).FirstOrDefaultAsync() ?? 8m;
+            var otPay = HRM.Services.Att.Calculators.OtRateCalculator.CalculatePay(otEmp.SalaryAmt, otEmp.DailyWage,
+                request.workhour ?? 0m, otDayType, otRule?.Multiplier, normalHours);
+            if (otPay.Amount <= 0m)
+                throw new InvalidOperationException("คำนวณเงิน OT ไม่ได้ — " + otPay.Note);
+            var amount = otPay.Amount;
             var otPeriod = request.starttime.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
             var periodClosed = await context.Pay_PayrollRuns
                 .Where(HRM.Services.Pay.PayrollRunFilters.RunIsFinal)
