@@ -33,12 +33,12 @@ public static class SsoCoverage
     {
         if (InForce(overrides, asOf) is { } o)
             return new Result(o.IsInsured, true,
-                $"HR กำหนดให้{(o.IsInsured ? "เป็น" : "ไม่เป็น")}ผู้ประกันตน ตั้งแต่ {o.EffectiveFrom:yyyy-MM-dd}"
+                $"HR กำหนดให้{(o.IsInsured ? "เป็น" : "ไม่เป็น")}ผู้ประกันตน ตั้งแต่ {o.EffectiveFrom:dd/MM/yyyy}"
                 + (string.IsNullOrWhiteSpace(o.Reason) ? "" : $" — {o.Reason.Trim()}"));
 
         if (StartedOverAge(birthDate, workDate, maxEntryAge))
             return new Result(false, false,
-                $"เริ่มงาน {workDate:yyyy-MM-dd} อายุเกิน {maxEntryAge} ปีบริบูรณ์แล้ว (ครบ {birthDate!.Value.AddYears(maxEntryAge):yyyy-MM-dd}) "
+                $"เริ่มงาน {workDate:dd/MM/yyyy} อายุเกิน {maxEntryAge} ปีบริบูรณ์แล้ว (ครบ {birthDate!.Value.AddYears(maxEntryAge):dd/MM/yyyy}) "
                 + "ไม่เป็นผู้ประกันตน ม.33 — ถ้าเคยเป็นผู้ประกันตนมาก่อน ให้ HR กำหนดที่หน้าสถานะผู้ประกันตน");
 
         return new Result(true, false, "ผู้ประกันตน ม.33");

@@ -117,7 +117,15 @@ else
         <MudText Typo="Typo.h6" Class="mb-2">@L.Translate("TaxAuditTrailHeading")</MudText>
         @if (_taxDetailJson is not null)
         {
-            <MudTextField Value="@_taxDetailJson" T="string" Lines="12" ReadOnly="true" Variant="Variant.Outlined" />
+            @* อ่านได้ก่อน (ตัวเลขจริงของงวดนี้) — JSON ดิบพับไว้สำหรับผู้ตรวจ แสดงภาษาไทยเป็นตัวอักษร ไม่ใช่รหัส escape *@
+            @if (_taxNarrativeHtml is not null)
+            {
+                <div class="mb-3">@((MarkupString)_taxNarrativeHtml)</div>
+            }
+            <details>
+                <summary>@L.Translate("TaxAuditTrailRawJson")</summary>
+                <MudTextField Value="@_taxDetailPretty" T="string" Lines="12" ReadOnly="true" Variant="Variant.Outlined" Class="mt-2" />
+            </details>
         }
         else
         {
@@ -136,6 +144,8 @@ else
     private List<PayrollLineItemDisplayHelper.DisplayRow> _displayRows = new();
     private List<Pay_PayrollAnomaly> _anomalies = new();
     private string? _taxDetailJson;
+    private string? _taxDetailPretty;
+    private string? _taxNarrativeHtml;
 
     // Route has a parameter, so its sc_program_role row is keyed by the prefix before it.
     private const string ProgramPath = "/pay/runs";
@@ -188,6 +198,8 @@ else
             .OrderByDescending(a => a.EventDate)
             .Select(a => a.DetailJson)
             .FirstOrDefaultAsync();
+        _taxDetailPretty = _taxDetailJson is null ? null : PrettyJson(_taxDetailJson);
+        _taxNarrativeHtml = TaxCalculationNarrative.TryBuild(_taxDetailJson, out var narrative) ? narrative : null;
 
         _anomalies = await context.Pay_PayrollAnomalies
             .Where(a => a.PayrollEmployeeId == EmployeeId)
@@ -220,9 +232,9 @@ else
 
         // ภาษีหัก ณ ที่จ่าย: กางตัวเลขจริงในกล่อง (เงินได้ทั้งปี → หัก → ฐานภาษี → ขั้นบันได → เฉลี่ยงวด)
         // แทนการชี้ไป JSON ดิบด้านล่าง ซึ่งคนทำเงินเดือนอ่านไม่ออก
-        if (row.IsCalculated && row.LineItem.Pay_PayItemType.Code == "TAX"
-            && TaxCalculationNarrative.TryBuild(_taxDetailJson, out var taxHtml))
-            return DialogService.ShowMessageBox(typeName, (MarkupString)taxHtml, yesText: L.Translate("CloseButton"));
+        // ภาษีที่ได้ 0 ไม่มีบรรทัดภาษี แต่คำนวณแล้ว — แสดงเหตุผลว่าทำไมได้ 0 ไม่ใช่ "ยังไม่ได้คำนวณ" (ทดสอบหน้าจอ 26 ก.ย. 2569)
+        if (row.LineItem.Pay_PayItemType.Code == "TAX" && _taxNarrativeHtml is not null)
+            return DialogService.ShowMessageBox(typeName, (MarkupString)_taxNarrativeHtml, yesText: L.Translate("CloseButton"));
 
         var message = row.IsCalculated
             ? (string.IsNullOrWhiteSpace(row.LineItem.Description)
@@ -231,6 +243,23 @@ else
             : L.Translate("CalculationDetailNotCalculatedNote");
 
         return DialogService.ShowMessageBox(typeName, message, yesText: L.Translate("CloseButton"));
+    }
+
+    private static string PrettyJson(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return System.Text.Json.JsonSerializer.Serialize(doc.RootElement, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return json;
+        }
     }
 
     private static Color AnomalySeverityColor(PayrollAnomalySeverity severity) => severity switch

@@ -985,13 +985,24 @@ else
         await RunActionAsync(async uid => await WorkflowService.ApproveAsync(RunId, uid, null), L.Translate("ApprovedSuccess"));
     }
 
-    private Task PostAsync() => RunActionAsync(
-        async uid => await WorkflowService.PostAsync(RunId, uid),
-        L.Translate("PostedSuccess"));
+    // บันทึกบัญชีและยืนยันจ่ายย้อนกลับไม่ได้ — ถามก่อนทุกครั้ง (พบจากการทดสอบหน้าจอ 26 ก.ย. 2569: คลิกเดียวไปเลย)
+    private async Task PostAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L.Translate("ConfirmPostTitle"), L.Translate("ConfirmPostMessage"),
+            yesText: L.Translate("PostButton"), cancelText: L.Translate("BackButton"));
+        if (confirmed != true) return;
+        await RunActionAsync(async uid => await WorkflowService.PostAsync(RunId, uid), L.Translate("PostedSuccess"));
+    }
 
-    private Task MarkPaidAsync() => RunActionAsync(
-        async uid => await WorkflowService.MarkPaidAsync(RunId, uid),
-        L.Translate("MarkedPaidSuccess"));
+    private async Task MarkPaidAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L.Translate("ConfirmMarkPaidTitle"), L.Translate("ConfirmMarkPaidMessage"),
+            yesText: L.Translate("MarkPaidButton"), cancelText: L.Translate("BackButton"));
+        if (confirmed != true) return;
+        await RunActionAsync(async uid => await WorkflowService.MarkPaidAsync(RunId, uid), L.Translate("MarkedPaidSuccess"));
+    }
 
     private async Task CancelAsync()
     {

@@ -94,7 +94,7 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
             .ToDictionaryAsync(t => t.Id, t => t.Name ?? t.Code ?? $"#{t.Id}", ct);
         var eligible = await ctx.Hremployee
             .Where(PayrollEligibility.InPeriod(run.CompanyId, periodStartDt, periodEndDt, nonPayrollTypes))
-            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosExecTypeId })
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.SalaryAmt, e.DailyWage, e.SalexpAccid, e.SalexpBank, e.CostCenterCode, e.PosExecTypeId, e.WorkDate })
             .ToListAsync(ct);
 
         var issues = new List<Issue>();
@@ -174,6 +174,36 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
                 issues.Add(new Issue(e.id, e.EmpNo, name, Severity.Warning, "NO_POSITION", "ไม่มีตำแหน่ง — เบี้ยตามตำแหน่งจะไม่ถูกจ่าย"));
         }
 
+        // ---- เงินได้ก่อนงวดนี้ของปีภาษี (เริ่มใช้ระบบกลางปี) ----
+        // ภาษีเกณฑ์เงินสด: ประมาณการทั้งปี = เงินได้ที่จ่ายไปแล้วในปี + งวดที่เหลือ เงินได้ที่จ่ายไปแล้วมาจาก 3 แหล่ง —
+        // รอบที่จ่ายแล้วในระบบนี้, ยอดยกมาจากระบบเดิม, เงินได้จากนายจ้างเดิม คนที่ทำงานมาก่อนงวดนี้แต่ไม่มีสักแหล่ง
+        // ระบบจะเห็นแค่งวดที่เหลือของปี แล้วหักภาษีขาด (พบจากการทดสอบหน้าจอ 26 ก.ย. 2569: รอบแรกเดือน ต.ค. ภาษี 0)
+        if (run.RunType == PayrollRunType.Regular)
+        {
+            var taxYear = run.PayDate.Year;
+            var withEarlierIncome = (await ctx.Pay_PayrollEmployees.AsNoTracking()
+                    .Where(PayrollRunFilters.RowWasPaid)
+                    .Where(pe => pe.Pay_PayrollRun.CompanyId == run.CompanyId && pe.Pay_PayrollRun.Id != run.Id
+                                 && pe.Pay_PayrollRun.PayDate.Year == taxYear
+                                 && (pe.Pay_PayrollRun.PayDate < run.PayDate
+                                     || (pe.Pay_PayrollRun.PayDate == run.PayDate && pe.Pay_PayrollRun.PeriodStart < run.PeriodStart)))
+                    .Select(pe => pe.HremployeeId).Distinct().ToListAsync(ct))
+                .Concat(await ctx.Pay_EmployeeOpeningBalances.AsNoTracking()
+                    .Where(o => o.CompanyId == run.CompanyId && o.TaxYear == taxYear && o.IsActive)
+                    .Select(o => o.HremployeeId).Distinct().ToListAsync(ct))
+                .Concat(await ctx.Pay_EmployeePriorEmployerIncomes.AsNoTracking()
+                    .Where(p => p.TaxYear == taxYear && p.IsActive)
+                    .Select(p => p.HremployeeId).Distinct().ToListAsync(ct))
+                .ToHashSet();
+            foreach (var e in eligible.Where(e => !heldIds.Contains(e.id)))
+            {
+                if (EarlierIncomeMissingSince(e.WorkDate, run.PeriodStart, taxYear, withEarlierIncome.Contains(e.id)) is not DateOnly since) continue;
+                issues.Add(new Issue(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(), Severity.Warning, "NO_EARLIER_INCOME",
+                    $"ทำงานตั้งแต่ {since:dd/MM/yyyy} แต่ระบบไม่มีเงินได้ของปีภาษี {taxYear} ก่อนงวดนี้ (ไม่มีรอบที่จ่ายแล้ว ยอดยกมา หรือเงินได้จากนายจ้างเดิม) "
+                    + "— ภาษีจะประมาณจากงวดที่เหลือของปีเท่านั้นและหักขาด ถ้าเดือนก่อน ๆ จ่ายด้วยระบบเดิม ให้กรอกที่ ยอดยกมาจากระบบเดิม ก่อนคำนวณ"));
+            }
+        }
+
         var nameById = eligible.ToDictionary(e => e.id, e => (e.EmpNo, Name: $"{e.EmpName} {e.EmpSurname}".Trim()));
 
         // ---- approval checklist: exists for the period but NOT yet approved ----
@@ -224,6 +254,19 @@ public class PayrollPreflightService(IDbContextFactory<HRMContext> dbFactory)
             issues.OrderBy(i => i.Severity).ThenBy(i => i.EmpNo).ToList(),
             pending.OrderBy(p => p.Kind).ThenBy(p => p.EmpNo).ToList(),
             holds);
+    }
+
+    /// <summary>
+    /// The first day this employee worked in <paramref name="taxYear"/> when that is at least a month before this
+    /// period and none of their earlier income for the year is known to the system; otherwise null (nothing to warn).
+    /// </summary>
+    public static DateOnly? EarlierIncomeMissingSince(DateTime? workDate, DateOnly periodStart, int taxYear, bool hasEarlierIncome)
+    {
+        if (hasEarlierIncome || workDate is null) return null;
+        var yearStart = new DateOnly(taxYear, 1, 1);
+        var started = DateOnly.FromDateTime(workDate.Value);
+        var since = started > yearStart ? started : yearStart;
+        return since.AddMonths(1) <= periodStart ? since : null;
     }
 
     public async Task HoldAsync(long runId, long hremployeeId, string reason, long actorUserId, CancellationToken ct = default)
