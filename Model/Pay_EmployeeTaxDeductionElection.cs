@@ -31,6 +31,12 @@ public class Pay_EmployeeTaxDeductionElection
 
     public bool ApplyMonthly { get; set; }
 
+    // PerPerson types only: how many people (children, parents…) the employee declares
+    public int? PersonCount { get; set; }
+
+    // true = the employee filed it themselves (ล.ย.01 self-service); false = keyed by HR
+    public bool DeclaredByEmployee { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     [StringLength(500)]

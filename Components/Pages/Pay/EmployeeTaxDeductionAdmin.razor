@@ -61,7 +61,20 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.Pay_TaxDeductionType.NameTh</MudTd>
-                <MudTd>@context.AnnualAmount.ToString("N2") <MudText Typo="Typo.caption" Color="Color.Secondary">(เพดาน @context.Pay_TaxDeductionType.MaxAmountPerYear.ToString("N2"))</MudText></MudTd>
+                <MudTd>
+                    @if (context.PersonCount is int pc)
+                    {
+                        @($"{pc} คน × {context.Pay_TaxDeductionType.AmountPerPerson:N0} = {context.AnnualAmount:N2}")
+                    }
+                    else
+                    {
+                        @context.AnnualAmount.ToString("N2")
+                    }
+                    @if (context.DeclaredByEmployee)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">พนักงานแจ้งเอง (ล.ย.01)</MudChip>
+                    }
+                </MudTd>
                 <MudTd>
                     @if (context.ApplyMonthly)
                     {
@@ -95,13 +108,23 @@
                 <MudSelect T="int?" @bind-Value="_newTypeId" Label="ประเภทลดหย่อน">
                     @foreach (var type in _availableTypes)
                     {
-                        <MudSelectItem T="int?" Value="type.Id">@type.NameTh (เพดาน @type.MaxAmountPerYear.ToString("N0"))</MudSelectItem>
+                        <MudSelectItem T="int?" Value="type.Id">@type.NameTh</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField T="decimal" @bind-Value="_newAmount" Label="จำนวนที่ใช้สิทธิ (บาท/ปี)" Format="N2" Min="0" />
-            </MudItem>
+            @if (SelectedType?.CalcMethod == TaxDeductionCalcMethod.PerPerson)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="int?" @bind-Value="_newPersonCount" Label="@($"จำนวนคน (คนละ {SelectedType.AmountPerPerson:N0})")" Min="1" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_newAmount" Label="จำนวนที่จ่ายจริง (บาท/ปี)" Format="N2" Min="0"
+                        HelperText="ระบบคิดเพดาน % ของเงินได้และเพดานรวมกลุ่มให้ตอนคำนวณเงินเดือน" />
+                </MudItem>
+            }
             <MudItem xs="12">
                 <MudText Typo="Typo.body2" Class="mb-1">วิธีการ</MudText>
                 <MudRadioGroup T="bool" @bind-Value="_newApplyMonthly">
@@ -131,6 +154,8 @@
 
     private int? _newTypeId;
     private decimal _newAmount;
+    private int? _newPersonCount;
+    private Pay_TaxDeductionType? SelectedType => _availableTypes.FirstOrDefault(t => t.Id == _newTypeId);
     private bool _newApplyMonthly = true;
     private string? _newNote;
 
@@ -216,12 +241,6 @@
             _error = "กรุณาเลือกพนักงานและประเภทลดหย่อน";
             return;
         }
-        if (_newAmount <= 0)
-        {
-            _error = "กรุณาระบุจำนวนที่ใช้สิทธิ";
-            return;
-        }
-
         var type = _availableTypes.FirstOrDefault(t => t.Id == _newTypeId);
         if (type is null)
         {
@@ -229,32 +248,19 @@
             return;
         }
         await using var context = await DbFactory.CreateDbContextAsync();
-        // เพดานคิดต่อประเภทต่อปี ไม่ใช่ต่อแถว (audit M13) — สองแถวประเภทเดียวกันรวมกันต้องไม่เกิน
-        var alreadyElected = await context.Pay_EmployeeTaxDeductionElections
-            .Where(e => e.HremployeeId == _selectedEmployee.id && e.DeductionTypeId == type.Id && e.IsActive)
-            .SumAsync(e => e.AnnualAmount);
-        if (alreadyElected + _newAmount > type.MaxAmountPerYear)
+        // เพดานคิดต่อประเภทต่อปี ไม่ใช่ต่อแถว (audit M13) — กติกาเดียวกับหน้าที่พนักงานแจ้งเอง (TaxDeclaration)
+        if (await HRM.Services.Pay.TaxDeclaration.AddAsync(context, _selectedEmployee.id, type, _newAmount, _newPersonCount,
+                _newApplyMonthly, _newNote, _actorUserId, declaredByEmployee: false) is string problem)
         {
-            _error = alreadyElected > 0
-                ? $"ประเภทนี้ใช้สิทธิไปแล้ว {alreadyElected:N2} บาท รวมกับรายการใหม่จะเกินเพดาน ({type.MaxAmountPerYear:N2} บาท/ปี)"
-                : $"จำนวนที่ใช้สิทธิเกินเพดานของประเภทนี้ ({type.MaxAmountPerYear:N2} บาท/ปี)";
+            _error = problem;
             return;
         }
-
-        context.Pay_EmployeeTaxDeductionElections.Add(new Pay_EmployeeTaxDeductionElection
-        {
-            HremployeeId = _selectedEmployee.id,
-            DeductionTypeId = type.Id,
-            AnnualAmount = _newAmount,
-            ApplyMonthly = _newApplyMonthly,
-            Note = _newNote,
-            ElectedByUserId = _actorUserId,
-        });
         await context.SaveChangesAsync();
 
         _info = "บันทึกการใช้สิทธิลดหย่อนเรียบร้อย";
         Snackbar.Add(_info, Severity.Success);
         _newAmount = 0;
+        _newPersonCount = null;
         _newNote = null;
         await LoadAsync();
     }

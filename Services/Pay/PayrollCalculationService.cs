@@ -930,25 +930,40 @@ public class PayrollCalculationService
             // income (and the SSO base above) rather than being after-tax deductions.
             var taxableGrossThisPeriod = Math.Max(0m, baseSalary - attendanceDeduction) + otAmount + adhocTaxableEarnings + welfareTaxableAllowance;
 
-            var empMonthlyElections = monthlyTaxElections.Where(e => e.HremployeeId == emp.id).ToList();
-            var electedAnnualDeduction = empMonthlyElections.Sum(e => e.AnnualAmount);
-            // รายการหักรายเดือนที่คูณเดือนที่เหลือ = เฉพาะประกันสังคม+กองทุน (audit M1) ส่วนลดหย่อนส่วนตัว
-            // และรายการที่พนักงานแจ้งเป็น "รายปี" ได้เต็มไม่ว่าเข้างานเดือนไหน — นับครั้งเดียวใน annualFixedDeduction
-            // (รอบเสริมทั้งสองเป็น 0 อยู่แล้ว เพราะ SSO/PF ไม่คิดในรอบเสริม และลดหย่อนรายปีถูกใช้ผ่านฐานรอบปกติ)
-            var annualFixedDeduction = supplementary ? 0m : personalAllowancePerYear + electedAnnualDeduction;
-
             // หนึ่งคนมีได้หลายแถวต่อปี (นายจ้างเดิม + ยอดยกมาของบริษัทนี้) — ต้องรวมทั้งหมด ห้ามเลือกแค่แถวเดียว
             var priorEmployerIncome = CombinePriorIncome(priorEmployerIncomes.Where(p => p.HremployeeId == emp.id).ToList());
             var (ytdIncome, ytdDeduction, ytdTax, ytdProvidentFund) = FoldYtd(ytdByEmployee.GetValueOrDefault(emp.id), run.PeriodStart, includeSamePeriod: supplementary, priorEmployerIncome, run.PayDate);
 
+            // ลดหย่อนที่พนักงานแจ้ง (ล.ย.01) คิดตามวิธีของแต่ละรายการในปีนั้น (TaxDeductionRules): จำนวนตายตัว / ต่อคน / % ของเงินได้
+            // + เพดานกลุ่ม — เงินได้ทั้งปีที่ใช้คิด % = สะสม + งวดนี้ × งวดที่เหลือ (เงินได้ครั้งเดียวนับครั้งเดียว)
+            regularRowsThisPeriod.TryGetValue(emp.id, out var regularForProjection);
+            var projectedAnnualIncome = supplementary
+                ? ytdIncome + taxableGrossThisPeriod + regularForProjection.Gross * ((decimal)schedule.PeriodsPerMonth / Math.Max(1, regularForProjection.Terms)) * schedule.RemainingMonthsAfterThis
+                : ytdIncome + (taxableGrossThisPeriod - adhocTaxableEarnings) * schedule.RemainingPeriodsIncludingThis + adhocTaxableEarnings;
+            var empElections = monthlyTaxElections.Where(e => e.HremployeeId == emp.id)
+                .Select(e => new TaxDeductionRules.Election(e.Pay_TaxDeductionType.SortOrder, e.Pay_TaxDeductionType.Code, e.Pay_TaxDeductionType.NameTh,
+                    e.Pay_TaxDeductionType.CalcMethod, e.AnnualAmount, e.PersonCount, e.Pay_TaxDeductionType.MaxAmountPerYear,
+                    e.Pay_TaxDeductionType.AmountPerPerson, e.Pay_TaxDeductionType.MaxPersons, e.Pay_TaxDeductionType.PercentCap,
+                    e.Pay_TaxDeductionType.PercentBase, e.Pay_TaxDeductionType.CapGroup, e.Pay_TaxDeductionType.GroupCapPerYear))
+                .ToList();
+            var (incomeBasedItems, retirementElected) = TaxDeductionRules.ResolveIncomeBased(empElections, projectedAnnualIncome);
+
             // เงินสะสมกองทุนลดหย่อนภาษีได้ไม่เกิน 15% ของค่าจ้าง และรวมกับ RMF/SSF/ประกันบำนาญที่แจ้งไว้ไม่เกิน 500,000 บาท/ปี
             // (audit M-02) — ส่วนเกินยังหักเข้ากองทุน แต่ไม่ลดฐานภาษี
-            var retirementElected = empMonthlyElections
-                .Where(e => ProvidentFundTaxDeduction.RetirementGroupCodes.Contains(e.Pay_TaxDeductionType.Code))
-                .Sum(e => e.AnnualAmount);
             var pvdRoom = ProvidentFundTaxDeduction.AnnualRoom(providentFundDeductionCap, retirementElected, ytdProvidentFund);
             var pfDeductible = ProvidentFundTaxDeduction.Deductible(pf.EmployeeAmount, pfWageBase, pvdRoom);
             var thisPeriodFlatDeduction = ssoAmount + pfDeductible;
+
+            // เงินบริจาค: ไม่เกิน 10% ของเงินได้หลังหักค่าใช้จ่ายและลดหย่อนอื่นทั้งหมด (ประมาณการทั้งปี)
+            var projectedExpense = Math.Min(Math.Round(projectedAnnualIncome * expenseDeductionRate, 2, MidpointRounding.AwayFromZero), expenseDeductionCap);
+            var projectedFlat = ytdDeduction + thisPeriodFlatDeduction * Math.Max(1, schedule.RemainingPeriodsIncludingThis);
+            var netBasedItems = TaxDeductionRules.ResolveNetBased(empElections,
+                projectedAnnualIncome - projectedExpense - personalAllowancePerYear - incomeBasedItems.Sum(i => i.Amount) - projectedFlat);
+            var electedAnnualDeduction = incomeBasedItems.Sum(i => i.Amount) + netBasedItems.Sum(i => i.Amount);
+            // รายการหักรายเดือนที่คูณเดือนที่เหลือ = เฉพาะประกันสังคม+กองทุน (audit M1) ส่วนลดหย่อนส่วนตัว
+            // และรายการที่พนักงานแจ้งเป็น "รายปี" ได้เต็มไม่ว่าเข้างานเดือนไหน — นับครั้งเดียวใน annualFixedDeduction
+            // (รอบเสริมทั้งสองเป็น 0 อยู่แล้ว เพราะ SSO/PF ไม่คิดในรอบเสริม และลดหย่อนรายปีถูกใช้ผ่านฐานรอบปกติ)
+            var annualFixedDeduction = supplementary ? 0m : personalAllowancePerYear + electedAnnualDeduction;
             decimal monthlyTax;
             TaxBracketCalculator.TaxCalculationResult annualCalc;
             if (supplementary)
@@ -1066,6 +1081,8 @@ public class PayrollCalculationService
                         SocialSecurityCompany = ssoCompanyAmount,
                         ProvidentFund = pf.EmployeeAmount,
                         ElectedAnnualDeductions = electedAnnualDeduction,
+                        ElectedDeductionItems = incomeBasedItems.Concat(netBasedItems).Select(i => i.Note).ToList(),
+                        ProjectedAnnualIncomeForDeductions = projectedAnnualIncome,
                         ThisPeriodFlatDeductionTotal = thisPeriodFlatDeduction,
                         ExpenseDeductionRate = expenseDeductionRate,
                         ExpenseDeductionCap = expenseDeductionCap,

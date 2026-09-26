@@ -1,0 +1,205 @@
+@page "/ess/tax-declaration"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Ess
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject HRM.Services.Audit.IAuditLogger AuditLogger
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:ESS_ACCESS")]
+
+<PageTitle>แจ้งค่าลดหย่อนภาษี (ล.ย.01)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="900px">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">แจ้งค่าลดหย่อนภาษี (แบบ ล.ย.01)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        แจ้งรายการลดหย่อนของปีภาษีนี้ให้บริษัทนำไปคิดภาษีหัก ณ ที่จ่ายรายเดือน — เลือก "หักรายเดือน" ถ้าต้องการให้ภาษีที่ถูกหักลดลงตั้งแต่งวดถัดไป
+        หรือ "ขอคืนเอง" ถ้าจะไปขอคืนตอนยื่น ภ.ง.ด.90/91 · เก็บหลักฐานไว้ให้ครบ (ใบเสร็จ หนังสือรับรอง) กรมสรรพากรอาจขอตรวจ
+    </MudText>
+
+    @if (!_loaded)
+    {
+        <MudProgressCircular Indeterminate="true" Class="mt-4" />
+    }
+    else if (_employee is null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">บัญชีนี้ยังไม่ได้ผูกกับข้อมูลพนักงาน ติดต่อ HR</MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mt-3">
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int" @bind-Value="_year" @bind-Value:after="LoadAsync" Label="ปีภาษี (ค.ศ.)" Min="2020" Max="2100" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+        }
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">รายการที่แจ้งไว้แล้ว</MudText>
+        <MudTable Items="_elections" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>รายการ</MudTh>
+                <MudTh>จำนวน</MudTh>
+                <MudTh>วิธี</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Pay_TaxDeductionType.NameTh</MudTd>
+                <MudTd>@(context.PersonCount is int pc ? $"{pc} คน" : context.AnnualAmount.ToString("N2"))</MudTd>
+                <MudTd>@(context.ApplyMonthly ? "หักรายเดือน" : "ขอคืนเอง")</MudTd>
+                <MudTd>
+                    @if (context.DeclaredByEmployee)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => WithdrawAsync(context.Id))">ยกเลิก</MudButton>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption">HR บันทึกให้</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Typo="Typo.body2">ยังไม่ได้แจ้งรายการลดหย่อนของปีนี้</MudText></NoRecordsContent>
+        </MudTable>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-2">แจ้งรายการใหม่</MudText>
+        @if (_types.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">ปีนี้ HR ยังไม่ได้ตั้งค่ารายการลดหย่อน</MudAlert>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int?" @bind-Value="_typeId" Label="รายการลดหย่อน">
+                        @foreach (var t in _types)
+                        {
+                            <MudSelectItem T="int?" Value="t.Id">@t.NameTh</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                @if (SelectedType?.CalcMethod == TaxDeductionCalcMethod.PerPerson)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField T="int?" @bind-Value="_personCount" Label="@($"จำนวนคน (คนละ {SelectedType.AmountPerPerson:N0})")" Min="1" />
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField T="decimal" @bind-Value="_amount" Label="จำนวนเงินที่จ่ายจริงทั้งปี (บาท)" Format="N2" Min="0" />
+                    </MudItem>
+                }
+                <MudItem xs="12">
+                    <MudRadioGroup T="bool" @bind-Value="_applyMonthly">
+                        <MudRadio T="bool" Value="true" Color="Color.Success">หักรายเดือน — ภาษีที่ถูกหักลดลงตั้งแต่งวดถัดไป</MudRadio>
+                        <MudRadio T="bool" Value="false">ขอคืนเอง — บันทึกไว้ ไปขอคืนตอนยื่นภาษีประจำปี</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+                <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (เช่น ชื่อบุตร ชื่อผู้รับประกัน)" Lines="2" MaxLength="500" /></MudItem>
+                <MudItem xs="12">
+                    <MudCheckBox T="bool" @bind-Value="_certify" Label="ข้าพเจ้าขอรับรองว่ารายการที่แจ้งเป็นความจริง" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="@(!_certify)">แจ้งรายการ</MudButton>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+</MudPaper>
+
+@code {
+    private bool _loaded;
+    private Hremployee? _employee;
+    private long _userId;
+    private int _year = DateTime.Today.Year;
+    private List<Pay_TaxDeductionType> _types = new();
+    private List<Pay_EmployeeTaxDeductionElection> _elections = new();
+    private int? _typeId;
+    private decimal _amount;
+    private int? _personCount;
+    private bool _applyMonthly = true;
+    private string? _note;
+    private bool _certify;
+    private string? _error;
+
+    private Pay_TaxDeductionType? SelectedType => _types.FirstOrDefault(t => t.Id == _typeId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _userId = long.TryParse(state.User.FindFirstValue("sc_userid"), out var uid) ? uid : 0;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _employee = await EssEmployeeResolver.ResolveAsync(context, state.User);
+        if (_employee is not null)
+        {
+            await AuditLogger.LogAccessAsync("Pay_EmployeeTaxDeductionElection", _employee.id.ToString(), isSensitive: true, note: "ess tax declaration view");
+            await LoadAsync();
+        }
+        _loaded = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        if (_employee is null) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _types = await context.Pay_TaxDeductionTypes
+            .Where(t => t.EffectiveYear == _year && t.IsActive)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Code)
+            .ToListAsync();
+        _elections = await context.Pay_EmployeeTaxDeductionElections
+            .Include(e => e.Pay_TaxDeductionType)
+            .Where(e => e.HremployeeId == _employee.id && e.IsActive && e.Pay_TaxDeductionType.EffectiveYear == _year)
+            .OrderBy(e => e.Pay_TaxDeductionType.SortOrder)
+            .ToListAsync();
+        _typeId ??= _types.FirstOrDefault()?.Id;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (_employee is null || !_certify) return;
+        var type = SelectedType;
+        if (type is null) { _error = "กรุณาเลือกรายการลดหย่อน"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        if (await HRM.Services.Pay.TaxDeclaration.AddAsync(context, _employee.id, type, _amount, _personCount,
+                _applyMonthly, _note, _userId, declaredByEmployee: true) is string problem)
+        {
+            _error = problem;
+            return;
+        }
+        await context.SaveChangesAsync();
+        Snackbar.Add("แจ้งรายการลดหย่อนเรียบร้อย", Severity.Success);
+        _amount = 0;
+        _personCount = null;
+        _note = null;
+        _certify = false;
+        await LoadAsync();
+    }
+
+    // an employee may withdraw only what they filed themselves, and only their own
+    private async Task WithdrawAsync(long electionId)
+    {
+        if (_employee is null) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Pay_EmployeeTaxDeductionElections
+            .FirstOrDefaultAsync(e => e.Id == electionId && e.HremployeeId == _employee.id && e.DeclaredByEmployee && e.IsActive);
+        if (row is null) return;
+        row.IsActive = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ยกเลิกรายการแล้ว", Severity.Info);
+        await LoadAsync();
+    }
+}

@@ -53,6 +53,10 @@ public static class TaxCalculationNarrative
                 sb.Append(Row("ลดหย่อนส่วนตัวและอื่น ๆ (ต่อปี)", Num(ded, "PersonalAllowancePerYear")));
                 var elected = Num(ded, "ElectedAnnualDeductions");
                 if (elected != 0m) sb.Append(Row("ลดหย่อนที่พนักงานแจ้งไว้ (ต่อปี)", elected));
+                if (ded.TryGetProperty("ElectedDeductionItems", out var items) && items.ValueKind == JsonValueKind.Array)
+                    foreach (var item in items.EnumerateArray())
+                        if (item.GetString() is { Length: > 0 } text)
+                            sb.Append($"<div style=\"color:#666;padding-left:1rem\">· {System.Net.WebUtility.HtmlEncode(text)}</div>");
                 sb.Append(Row("ประกันสังคมงวดนี้", Num(ded, "SocialSecurity")));
                 var pf = Num(ded, "ProvidentFund");
                 if (pf != 0m) sb.Append(Row("กองทุนสำรองเลี้ยงชีพงวดนี้", pf));

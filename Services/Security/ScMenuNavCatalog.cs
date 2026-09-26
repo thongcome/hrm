@@ -85,6 +85,7 @@ public static class ScMenuNavCatalog
         new("GRP_ESS", "ESS_ACCESS", "/ess/my-profile", "ข้อมูลบุคลากรของฉัน", "My Personnel Profile", "Icons.Material.Filled.PermContactCalendar", 30),
         new("GRP_ESS", "ESS_ACCESS", "/ess/payslips", "สลิปเงินเดือน", "Payslips", "Icons.Material.Filled.Receipt", 40),
         new("GRP_ESS", "ESS_ACCESS", "/ess/my-recurring-items", "เงินได้เงินหักประจำของฉัน", "My Recurring Pay Items", "Icons.Material.Filled.Repeat", 50),
+        new("GRP_ESS", "ESS_ACCESS", "/ess/tax-declaration", "แจ้งค่าลดหย่อนภาษี (ล.ย.01)", "Tax Allowance Declaration", "Icons.Material.Filled.RequestQuote", 52),
         new("GRP_ESS", "ESS_ACCESS", "/welfare/my-claims", "เบิกสวัสดิการของฉัน", "My Welfare Claims", "Icons.Material.Filled.VolunteerActivism", 55),
         new("GRP_ESS", "ESS_ACCESS", "/ess/attendance-checkin", "เช็คอิน/เช็คเอาท์ (GPS)", "Check-in/Check-out (GPS)", "Icons.Material.Filled.MyLocation", 60),
         new("GRP_ESS", "ESS_ACCESS", "/att/my-timesheet", "Timesheet ของฉัน", "My Timesheet", "Icons.Material.Filled.Schedule", 70),

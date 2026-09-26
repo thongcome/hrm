@@ -27,13 +27,46 @@ public class Pay_TaxDeductionType
     [Required, StringLength(200)]
     public string NameEn { get; set; } = null!;
 
-    // Cap per employee per year for this category — an election's
-    // AnnualAmount must not exceed this (validated at save time).
+    // Cap per employee per year for this category (0 = no baht cap, e.g. a per-person item whose
+    // limit is AmountPerPerson × MaxPersons). For FixedCap the election's AnnualAmount may not exceed it.
     [Column(TypeName = "decimal(15,2)")]
     public decimal MaxAmountPerYear { get; set; }
+
+    // How the deductible amount is worked out (ม.47 ประมวลรัษฎากร) — see Services/Pay/Calculators/TaxDeductionRules.
+    public TaxDeductionCalcMethod CalcMethod { get; set; } = TaxDeductionCalcMethod.FixedCap;
+
+    // PerPerson: baht per person (spouse, child, parent, disabled dependent) and how many people count
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal? AmountPerPerson { get; set; }
+    public int? MaxPersons { get; set; }
+
+    // PercentOfIncome: at most this % of the base (RMF/SSF 30% of assessable income, donation 10% of net income)
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? PercentCap { get; set; }
+    public TaxDeductionPercentBase? PercentBase { get; set; }
+
+    // Items sharing one legal cap (RETIREMENT: RMF+SSF+pension insurance+PVD 500,000;
+    // LIFE_HEALTH: life + health insurance 100,000). Every row of a group carries the same GroupCapPerYear.
+    [StringLength(50)]
+    public string? CapGroup { get; set; }
+    [Column(TypeName = "decimal(15,2)")]
+    public decimal? GroupCapPerYear { get; set; }
 
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
 
     public virtual ICollection<Pay_EmployeeTaxDeductionElection> Elections { get; set; } = new List<Pay_EmployeeTaxDeductionElection>();
+}
+
+public enum TaxDeductionCalcMethod
+{
+    FixedCap = 0,         // amount paid, up to MaxAmountPerYear (life insurance, home-loan interest, prenatal)
+    PerPerson = 1,        // AmountPerPerson × persons, persons ≤ MaxPersons (spouse, child, parent)
+    PercentOfIncome = 2,  // amount paid, up to PercentCap % of the base and MaxAmountPerYear (RMF, SSF, donation)
+}
+
+public enum TaxDeductionPercentBase
+{
+    AssessableIncome = 0,          // เงินได้พึงประเมินทั้งปี (RMF/SSF/ประกันบำนาญ)
+    NetIncomeAfterDeductions = 1,  // เงินได้หลังหักค่าใช้จ่ายและลดหย่อนอื่น (เงินบริจาค)
 }

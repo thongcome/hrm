@@ -7,10 +7,9 @@ namespace HRM.Services.Pay.Calculators;
 // ignored RMF/SSF the employee had elected, so high earners were under-withheld (audit M-02).
 public static class ProvidentFundTaxDeduction
 {
+    // Which elections share the cap is configured per year (Pay_TaxDeductionType.CapGroup = RETIREMENT);
+    // TaxDeductionRules reports how much of it the elections used.
     public const decimal WageShareCap = 0.15m;
-
-    // Tax-deduction election codes that share the 500,000 retirement-savings cap with PVD
-    public static readonly string[] RetirementGroupCodes = { "RMF_SSF", "RMF", "SSF", "PENSION_INSURANCE" };
 
     /// <summary>Room left in the retirement-savings cap for PVD this year.</summary>
     public static decimal AnnualRoom(decimal groupCapPerYear, decimal retirementGroupElected, decimal ytdPvdDeducted)
