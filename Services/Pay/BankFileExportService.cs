@@ -18,7 +18,7 @@ public class BankFileExportService
     {
         _dbFactory = dbFactory;
         _fileStorage = fileStorage;
-        _requireSeparateDuties = PayrollSeparationOfDuties.IsRequired(configuration);
+        _requireSeparateDuties = PayrollSeparationOfDuties.IsRequiredAfterApproval(configuration);
     }
 
     // One live bank file per run (audit H-18): a second file for the same run is the classic

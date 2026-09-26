@@ -17,6 +17,7 @@ public class PayrollWorkflowService
     // แยกหน้าที่ (audit H6): คนส่งตรวจกับคนอนุมัติต้องเป็นคนละคน — ปิดได้ใน appsettings
     // ("Payroll:RequireSeparateApprover": false) สำหรับ dev/demo ที่มีผู้ใช้คนเดียว
     private readonly bool _requireSeparateApprover;
+    private readonly bool _requireSeparateFinalizer;
     private readonly HRM.Services.Workflow.WorkflowEngineService? _engine;
 
     // อนุมัติผ่าน workflow engine (CEO, 18 ก.ย. 2569): เมื่อ workflow PAYROLL_RUN_APPROVAL เปิดอยู่
@@ -34,6 +35,7 @@ public class PayrollWorkflowService
         _dbFactory = dbFactory;
         _calculationService = calculationService;
         _requireSeparateApprover = PayrollSeparationOfDuties.IsRequired(configuration);
+        _requireSeparateFinalizer = PayrollSeparationOfDuties.IsRequiredAfterApproval(configuration);
         _engine = engine;
     }
 
@@ -245,7 +247,7 @@ public class PayrollWorkflowService
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.Post);
         await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Post, ct);
-        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การบันทึกบัญชี (Post)", _requireSeparateApprover);
+        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การบันทึกบัญชี (Post)", _requireSeparateFinalizer);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Posted;
@@ -262,7 +264,7 @@ public class PayrollWorkflowService
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         EnsureAllowed(run, PayrollAction.MarkPaid);
         await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.MarkPaid, ct);
-        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การยืนยันว่าจ่ายเงินแล้ว", _requireSeparateApprover);
+        PayrollSeparationOfDuties.EnsureNotPreparer(run, actorUserId, "การยืนยันว่าจ่ายเงินแล้ว", _requireSeparateFinalizer);
 
         var fromStatus = run.Status;
         run.Status = PayrollRunStatus.Paid;

@@ -405,9 +405,18 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
         var firstMonth = label == $"{Year}01";
         if (firstMonth)
         {
-            // แยกหน้าที่ (H-19): ผู้คำนวณสร้างไฟล์ธนาคารเองไม่ได้
-            try { await bank.ExportAsync(runId, Calc); Fail("SOD", "ผู้คำนวณสร้างไฟล์ธนาคารต้องถูกปฏิเสธ", "สร้างผ่าน"); }
-            catch (InvalidOperationException ex) { Pass("SOD", "ผู้คำนวณสร้างไฟล์ธนาคารถูกปฏิเสธ", ex.Message); }
+            // แยกหน้าที่ (H-19) หลัง CEO 18 ก.ย. 2569: ขั้นตอนหลังอนุมัติ (ลง GL / ไฟล์ธนาคาร / ยืนยันจ่าย) ผู้คำนวณทำเองได้
+            // ตามค่าตั้งต้น — ตัวการอนุมัติเองยังแยกอยู่ · ตั้ง "Payroll:SeparateFinalizer": true แล้วขั้นนี้จะถูกปฏิเสธ
+            var byPreparer = await bank.ExportAsync(runId, Calc);
+            Pass("SOD", "ผู้คำนวณปล่อยไฟล์ธนาคารของรอบที่อนุมัติแล้วได้ (ค่าตั้งต้น)", $"batch #{byPreparer}");
+            await bank.VoidAsync(byPreparer, Co, Approver, "ทดสอบ: ยกเลิกไฟล์ของผู้คำนวณเพื่อเดินเรื่องต่อ");
+            try
+            {
+                PayrollSeparationOfDuties.EnsureNotPreparer(
+                    await ctx.Pay_PayrollRuns.AsNoTracking().FirstAsync(r => r.Id == runId), Calc, "การสร้างไฟล์ธนาคาร", required: true);
+                Fail("SOD", "เปิด SeparateFinalizer แล้วผู้คำนวณต้องถูกปฏิเสธ", "ผ่าน");
+            }
+            catch (InvalidOperationException ex) { Pass("SOD", "เปิด SeparateFinalizer แล้วผู้คำนวณถูกปฏิเสธ", ex.Message); }
         }
 
         var bankId = await bank.ExportAsync(runId, Approver);

@@ -11,6 +11,13 @@ public static class PayrollSeparationOfDuties
     public static bool IsRequired(IConfiguration? configuration) =>
         configuration?.GetValue<bool?>("Payroll:RequireSeparateApprover") ?? true;
 
+    // ขั้นตอนหลังอนุมัติ — บันทึกบัญชี (Post) / ไฟล์ธนาคาร / ยืนยันจ่าย (CEO, 18 ก.ย. 2569; พอร์ตจาก Advance.Payroll):
+    // บริษัทเล็กมีผู้ทำหนึ่งคน + ผู้อนุมัติหนึ่งคน ผู้ทำจึงปิดงานรอบที่อนุมัติแล้วเองได้ตามค่าตั้งต้น ไม่ต้องมีคนที่สาม
+    // ตัวการอนุมัติยังแยกหน้าที่เหมือนเดิม (IsRequired) และการโอนจริงยังมี maker/authorizer ของธนาคารคุมอีกชั้น
+    // ลูกค้าที่ต้องการให้การเงินเป็นคนปล่อยไฟล์ ตั้ง "Payroll:SeparateFinalizer": true
+    public static bool IsRequiredAfterApproval(IConfiguration? configuration) =>
+        IsRequired(configuration) && (configuration?.GetValue<bool?>("Payroll:SeparateFinalizer") ?? false);
+
     public static void EnsureNotPreparer(Pay_PayrollRun run, long actorUserId, string step, bool required)
     {
         if (required && (run.CalculatedByUserId == actorUserId || run.ReviewedByUserId == actorUserId))
