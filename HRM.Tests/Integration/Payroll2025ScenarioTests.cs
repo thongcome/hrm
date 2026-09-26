@@ -24,6 +24,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
 {
     private const string Co = "PTEST";      // จ่ายเดือนละงวด
     private const string Co2 = "PTEST2";    // จ่ายเดือนละ 2 งวด
+    private const string Co4 = "PTEST4";    // ลดหย่อนตามกฎหมาย (ล.ย.01) + ผู้ประกันตน ม.33 อายุเกิน 60
     private const string Co3 = "PTEST3";    // ปฏิทินผสม: รายเดือนจ่ายเดือนละงวด รายวันจ่าย 2 งวด (+ รายคนที่ทับเป็น 2 งวด)
     private const long Calc = 13;           // ผู้คำนวณ/ผู้ส่งตรวจ (admin)
     private const long Approver = 7034;     // ผู้อนุมัติ (advadmin) — ต้องคนละคนกับผู้คำนวณ
@@ -66,6 +67,9 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
 
             var emps3 = await SeedMixedCompanyAsync(factory);
             await RunMixedCompanyAsync(sp, factory, emps3);
+
+            var emps4 = await SeedDeductionCompanyAsync(factory);
+            await RunDeductionCompanyAsync(sp, factory, emps4);
         }
         catch (Exception ex)
         {
@@ -86,7 +90,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
     private static async Task ResetAsync(IDbContextFactory<HRMContext> factory)
     {
         await using var ctx = await factory.CreateDbContextAsync();
-        var cos = new[] { Co, Co2, Co3 };
+        var cos = new[] { Co, Co2, Co3, Co4 };
 
         var empIds = await ctx.Hremployee.Where(e => cos.Contains(e.companyid)).Select(e => e.id).ToListAsync();
         if (empIds.Count > 0)
@@ -96,6 +100,7 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
             await ctx.Pay_EmployeeTaxDeductionElections.Where(a => empIds.Contains(a.HremployeeId)).ExecuteDeleteAsync();
             await ctx.Pay_EmployeePriorEmployerIncomes.Where(a => empIds.Contains(a.HremployeeId)).ExecuteDeleteAsync();
             await ctx.Pay_EmployeePayScheduleOverrides.Where(a => empIds.Contains(a.HremployeeId)).ExecuteDeleteAsync();
+            await ctx.Pay_EmployeeSsoCoverages.Where(a => empIds.Contains(a.HremployeeId)).ExecuteDeleteAsync();
             await ctx.Pay_EmployeeInsuranceEnrollments.Where(a => empIds.Contains(a.HremployeeId)).ExecuteDeleteAsync();
             await ctx.Att_DailyAttendances.Where(a => cos.Contains(a.CompanyId)).ExecuteDeleteAsync();
             await ctx.HrwOts.Where(a => cos.Contains(a.companyid)).ExecuteDeleteAsync();
@@ -1101,6 +1106,162 @@ public class Payroll2025ScenarioTests(ITestOutputHelper output)
     }
 
     // ═════════════════════════════════════════════════════════════════════════════
+    // ═════════════════════════════════════════════════════════════════════════════
+    // บริษัท PTEST4 — ลดหย่อนตามกฎหมาย (ต่อคน / % / เพดานกลุ่ม / บริจาค) ที่พนักงานแจ้งเองผ่าน ล.ย.01
+    // และผู้ประกันตน ม.33 (เข้าใหม่อายุเกิน 60) — เดิน ม.ค.–มี.ค. ครบวงจร (26 ก.ย. 2569)
+    //   F001 100,000 PF 10%: คู่สมรส + บุตร 2 + บิดามารดา 2 (ต่อคน) + ประกันชีวิต 80,000 + สุขภาพ 25,000 (เพดานกลุ่ม 100,000) + RMF 200,000
+    //   G001 50,000: บริจาค 100,000 → ได้แค่ 10% ของเงินได้หลังหักค่าใช้จ่ายและลดหย่อน
+    //   O001 30,000 เกิด 1 มิ.ย. 2506 เริ่มงาน 1 ธ.ค. 2567 (อายุ 61) → ไม่เป็นผู้ประกันตน ไม่หักทั้งสองฝั่ง ไม่อยู่ใน สปส.1-10
+    //   O002 เหมือน O001 แต่ HR กำหนดว่าเคยเป็นผู้ประกันตน ม.33 มาก่อน → หักปกติ
+    //   O003 30,000 เกิดปี 2503 เริ่มงานปี 2558 (อายุ 55) ตอนนี้อายุเกิน 60 → ยังเป็นผู้ประกันตน
+    private async Task<Dictionary<string, long>> SeedDeductionCompanyAsync(IDbContextFactory<HRMContext> factory)
+    {
+        await using var ctx = await factory.CreateDbContextAsync();
+        await SeedCompanyConfigAsync(ctx, Co4, "บริษัท ทดสอบลดหย่อนและประกันสังคม จำกัด", 1);
+        var dec1 = new DateOnly(2024, 12, 1);
+        var e = new Dictionary<string, Hremployee>
+        {
+            ["F001"] = NewEmp(Co4, "F001", "ฟ้า", "ครอบครัว", 100000m, null, new(2020, 1, 1), sex: "F"),
+            ["G001"] = NewEmp(Co4, "G001", "ใจดี", "บริจาค", 50000m, null, new(2020, 1, 1)),
+            ["O001"] = NewEmp(Co4, "O001", "อาวุโส", "เข้าใหม่", 30000m, null, dec1),
+            ["O002"] = NewEmp(Co4, "O002", "อาวุโส", "เคยประกันตน", 30000m, null, dec1),
+            ["O003"] = NewEmp(Co4, "O003", "อาวุโส", "อยู่มานาน", 30000m, null, new(2015, 1, 1)),
+        };
+        e["O001"].BirthDate = e["O002"].BirthDate = new DateTime(1963, 6, 1);
+        e["O003"].BirthDate = new DateTime(1960, 1, 1);
+        ctx.Hremployee.AddRange(e.Values);
+        await ctx.SaveChangesAsync();
+        var ids = e.ToDictionary(k => k.Key, k => k.Value.id);
+
+        ctx.Pay_ProvidentFundElections.Add(new Pay_ProvidentFundElection { HremployeeId = ids["F001"], EmployeeContributionRate = 10, CompanyContributionRate = 10, EffectiveFrom = new DateOnly(Year, 1, 1), IsActive = true, ElectedByUserId = Calc, ElectedDate = DateTime.Now });
+        ctx.Pay_EmployeeSsoCoverages.Add(new Pay_EmployeeSsoCoverage { HremployeeId = ids["O002"], IsInsured = true, EffectiveFrom = dec1, Reason = "เคยเป็นผู้ประกันตน ม.33 มาก่อนอายุ 60", IsActive = true, EnteredByUserId = Calc, EnteredDate = DateTime.Now });
+        await ctx.SaveChangesAsync();
+
+        // ล.ย.01 ผ่านกติกาเดียวกับหน้า ESS (TaxDeclaration.AddAsync, declaredByEmployee: true)
+        var types = await ctx.Pay_TaxDeductionTypes.Where(t => t.EffectiveYear == Year && t.IsActive).ToDictionaryAsync(t => t.Code);
+        foreach (var code in new[] { "SPOUSE", "CHILD", "PARENT", "LIFE_INSURANCE", "HEALTH_INSURANCE", "RMF", "DONATION" })
+            Expect("DEDUCT", $"มีประเภทลดหย่อน {code} ปี {Year} (ค่าเริ่มต้นจาก migration)", types.ContainsKey(code), "");
+        if (!new[] { "SPOUSE", "CHILD", "PARENT", "LIFE_INSURANCE", "HEALTH_INSURANCE", "RMF", "DONATION" }.All(types.ContainsKey))
+            return ids;
+
+        async Task Declare(string emp, string code, decimal amount, int? persons)
+        {
+            var problem = await TaxDeclaration.AddAsync(ctx, ids[emp], types[code], amount, persons, applyMonthly: true, note: "ทดสอบ ล.ย.01", actorUserId: Calc, declaredByEmployee: true);
+            Expect("DEDUCT", $"{emp} แจ้ง {code} ผ่าน", problem is null, problem ?? "");
+            await ctx.SaveChangesAsync();
+        }
+        await Declare("F001", "SPOUSE", 0m, 1);
+        await Declare("F001", "CHILD", 0m, 2);
+        await Declare("F001", "PARENT", 0m, 2);
+        await Declare("F001", "LIFE_INSURANCE", 80000m, null);
+        await Declare("F001", "HEALTH_INSURANCE", 25000m, null);
+        await Declare("F001", "RMF", 200000m, null);
+        await Declare("G001", "DONATION", 100000m, null);
+
+        // กติกาตอนแจ้ง: บิดามารดาไม่เกิน 4 คน (แจ้งไว้แล้ว 2 เพิ่มอีก 3 ต้องถูกปฏิเสธ), คู่สมรสไม่เกิน 1, ต่อคนต้องระบุจำนวนคน
+        Expect("DEDUCT", "แจ้งบิดามารดาเพิ่มจนเกิน 4 คนถูกปฏิเสธ",
+            await TaxDeclaration.AddAsync(ctx, ids["F001"], types["PARENT"], 0m, 3, true, null, Calc, true) is not null, "");
+        Expect("DEDUCT", "แจ้งคู่สมรสคนที่ 2 ถูกปฏิเสธ",
+            await TaxDeclaration.AddAsync(ctx, ids["F001"], types["SPOUSE"], 0m, 1, true, null, Calc, true) is not null, "");
+        Expect("DEDUCT", "ประเภทต่อคนที่ไม่ระบุจำนวนคนถูกปฏิเสธ",
+            TaxDeclaration.Validate(types["CHILD"], 0m, null, 0m, 0) is not null, "");
+        ctx.ChangeTracker.Clear();   // ที่ถูกปฏิเสธต้องไม่ถูกเพิ่มลงตาราง — ไม่ SaveChanges
+
+        var saved = await ctx.Pay_EmployeeTaxDeductionElections.AsNoTracking().Where(x => x.HremployeeId == ids["F001"] && x.IsActive).ToListAsync();
+        Expect("DEDUCT", "F001 มีรายการที่แจ้ง 6 รายการ ทุกรายการเป็น 'พนักงานแจ้งเอง'", saved.Count == 6 && saved.All(x => x.DeclaredByEmployee), $"{saved.Count} รายการ");
+        Near("DEDUCT", "F001 บุตร 2 คน × 30,000 บันทึกเป็น 60,000", saved.Where(x => x.DeductionTypeId == types["CHILD"].Id).Sum(x => x.AnnualAmount), 60000m, 0.001m);
+        return ids;
+    }
+
+    private async Task RunDeductionCompanyAsync(ServiceProvider sp, IDbContextFactory<HRMContext> factory, Dictionary<string, long> ids)
+    {
+        var wf = sp.GetRequiredService<PayrollWorkflowService>();
+        var bank = sp.GetRequiredService<BankFileExportService>();
+        var gl = sp.GetRequiredService<GLExportService>();
+        var slips = sp.GetRequiredService<PayslipGenerationService>();
+
+        await using var cfg = await factory.CreateDbContextAsync();
+        var brackets = await cfg.Pay_TaxBrackets.AsNoTracking().Where(b => b.EffectiveYear == Year && b.IsActive).ToListAsync();
+        decimal Tax(decimal taxable) => TaxBracketCalculator.CalculateProgressiveTax(Math.Max(0m, taxable), brackets).TotalAnnualTax;
+
+        for (var m = 1; m <= 3; m++)
+        {
+            var period = $"{Year}{m:00}";
+            var runId = await CreateRunAsync(factory, Co4, m, 1, 1, PayrollRunType.Regular);
+            _runs.Add(new RunLog { Id = runId, Period = period, Type = PayrollRunType.Regular, Month = m, Label = $"PTEST4 รอบปกติ {period}" });
+            try
+            {
+                await wf.CalculateAsync(runId, Calc);
+                await wf.SubmitForReviewAsync(runId, Calc);
+                await wf.ApproveAsync(runId, Approver, "ตรวจแล้ว");
+                await wf.PostAsync(runId, Approver);
+                await ExportAndCheckAsync(factory, bank, gl, slips, runId, $"PTEST4 {period}");
+                await wf.MarkPaidAsync(runId, Approver);
+            }
+            catch (Exception ex)
+            {
+                Fail("PTEST4", $"{period} เดินรอบไม่ผ่าน", ex.GetBaseException().Message);
+                return;
+            }
+
+            await using var ctx = await factory.CreateDbContextAsync();
+            var rows = await ctx.Pay_PayrollEmployees.AsNoTracking().Where(e => e.PayrollRunId == runId).ToListAsync();
+            var byNo = rows.ToDictionary(r => r.EmpNo!);
+            Expect("PTEST4", $"{period} ครบ 5 คน", rows.Count == 5, $"{rows.Count}");
+
+            // ── ผู้ประกันตน ม.33 ──
+            Near("SSO60", $"{period} O001 เข้าใหม่อายุ 61 ไม่หักประกันสังคม (ลูกจ้าง)", byNo["O001"].SocialSecurityAmount, 0m, 0.001m);
+            Near("SSO60", $"{period} O001 ไม่หักประกันสังคม (นายจ้าง)", byNo["O001"].SocialSecurityCompanyAmount, 0m, 0.001m);
+            Near("SSO60", $"{period} O002 HR กำหนดว่าเคยเป็นผู้ประกันตน → หัก 750", byNo["O002"].SocialSecurityAmount, 750m, 0.01m);
+            Near("SSO60", $"{period} O002 นายจ้างสมทบ 750", byNo["O002"].SocialSecurityCompanyAmount, 750m, 0.01m);
+            Near("SSO60", $"{period} O003 เริ่มงานก่อน 60 อายุเกิน 60 แล้วยังหัก 750", byNo["O003"].SocialSecurityAmount, 750m, 0.01m);
+
+            if (m == 1)
+            {
+                // เดือนแรก: ภาษีงวด = ภาษีทั้งปี ÷ 12 (ไม่มีเงินได้ครั้งเดียว) — คิดเองจากกฎหมาย ไม่ได้อ่านจากเอนจิน
+                // F001: 1,200,000 − ค่าใช้จ่าย 100,000 − ส่วนตัว 60,000 − คู่สมรส 60,000 − บุตร 60,000 − บิดามารดา 60,000
+                //       − ประกัน (80,000 + 25,000 ติดเพดานกลุ่ม 100,000) − RMF 200,000 − SSO 9,000 − PVD 120,000
+                var f001Taxable = 1200000m - 100000m - 60000m - 60000m - 60000m - 60000m - 100000m - 200000m - 9000m - 120000m;
+                Near("DEDUCT", "202501 F001 ภาษี = ภาษีทั้งปีหลังลดหย่อนครอบครัว/ประกัน(ติดเพดานกลุ่ม)/RMF ÷ 12", byNo["F001"].TaxAmount, Math.Round(Tax(f001Taxable) / 12m, 2), 0.01m, $"เงินได้สุทธิ {f001Taxable:N0}");
+                // G001: เงินได้หลังหักค่าใช้จ่ายและลดหย่อน = 600,000 − 100,000 − 60,000 − 9,000 = 431,000 → บริจาคได้ 43,100
+                var g001Net = 600000m - 100000m - 60000m - 9000m;
+                Near("DEDUCT", "202501 G001 บริจาค 100,000 ได้แค่ 10% ของเงินได้สุทธิ (43,100)", byNo["G001"].TaxAmount, Math.Round(Tax(g001Net - g001Net * 0.10m) / 12m, 2), 0.01m);
+                // O001: ไม่มีประกันสังคมให้หักลดหย่อนด้วย — 360,000 − 100,000 − 60,000 = 200,000
+                Near("SSO60", "202501 O001 ภาษีคิดโดยไม่มีประกันสังคมเป็นค่าลดหย่อน", byNo["O001"].TaxAmount, Math.Round(Tax(200000m) / 12m, 2), 0.01m);
+                Near("SSO60", "202501 O003 ภาษีหักประกันสังคม 9,000 ทั้งปีตามปกติ", byNo["O003"].TaxAmount, Math.Round(Tax(191000m) / 12m, 2), 0.01m);
+
+                var detail = await ctx.Pay_PayrollAuditLogs.AsNoTracking()
+                    .Where(a => a.PayrollRunId == runId && a.EventType == PayAuditEventType.TaxCalculationDetail && a.Pay_PayrollEmployee!.EmpNo == "O001")
+                    .Select(a => a.DetailJson).FirstOrDefaultAsync() ?? "";
+                var o001Ded = detail.Length > 0 ? System.Text.Json.JsonDocument.Parse(detail).RootElement.GetProperty("DeductionBreakdown") : default;
+                Expect("SSO60", "202501 O001 บันทึกการคำนวณบอกเหตุผลที่ไม่หัก (ม.33)",
+                    detail.Length > 0 && !o001Ded.GetProperty("SocialSecurityInsured").GetBoolean() && (o001Ded.GetProperty("SocialSecurityCoverage").GetString() ?? "").Contains("ม.33"),
+                    detail.Length > 0 ? o001Ded.GetProperty("SocialSecurityCoverage").GetString() ?? "" : "ไม่พบบันทึก");
+                var f001Detail = await ctx.Pay_PayrollAuditLogs.AsNoTracking()
+                    .Where(a => a.PayrollRunId == runId && a.EventType == PayAuditEventType.TaxCalculationDetail && a.Pay_PayrollEmployee!.EmpNo == "F001")
+                    .Select(a => a.DetailJson).FirstOrDefaultAsync() ?? "";
+                var items = f001Detail.Length > 0
+                    ? System.Text.Json.JsonDocument.Parse(f001Detail).RootElement.GetProperty("DeductionBreakdown").GetProperty("ElectedDeductionItems").EnumerateArray().Select(x => x.GetString() ?? "").ToList()
+                    : new List<string>();
+                Expect("DEDUCT", "202501 F001 บันทึกการคำนวณแสดงรายการลดหย่อน 6 รายการ และบอกว่าประกันติดเพดานกลุ่ม", items.Count == 6 && items.Any(i => i.Contains("เพดานรวมกลุ่ม")), string.Join(" | ", items));
+                Expect("DEDUCT", "202501 F001 คำอธิบายภาษีบนหน้าจอแสดงรายการลดหย่อน", TaxCalculationNarrative.TryBuild(f001Detail, out var html) && html.Contains("คู่สมรส"), "");
+            }
+            else
+            {
+                // เดือนถัดไปไม่มีอะไรเปลี่ยน → ภาษีคงเดิม (ประมาณการทั้งปีตรงตั้งแต่เดือนแรก)
+                var jan = _runs.First(r => r.Label == $"PTEST4 รอบปกติ {Year}01").Id;
+                var janRows = await ctx.Pay_PayrollEmployees.AsNoTracking().Where(e => e.PayrollRunId == jan).ToDictionaryAsync(r => r.EmpNo!);
+                foreach (var no in new[] { "F001", "G001", "O001", "O003" })
+                    Near("DEDUCT", $"{period} {no} ภาษีเท่าเดือน ม.ค. (ไม่มีอะไรเปลี่ยน)", byNo[no].TaxAmount, janRows[no].TaxAmount, 0.02m);
+            }
+
+            // สปส.1-10: คนที่ไม่เป็นผู้ประกันตนไม่ขึ้นในไฟล์
+            var sso = await EFilingExportService.BuildSso110Async(ctx, Co4, period);
+            Expect("SSO60", $"{period} สปส.1-10 มีผู้ประกันตน 4 คน (ไม่มี O001)", sso?.RowCount == 4, $"{sso?.RowCount}");
+            Near("SSO60", $"{period} สปส.1-10 เงินสมทบรวม = 4 คน × 750 × 2 ฝั่ง", sso?.Total2 ?? 0m, 6000m, 0.01m);
+        }
+    }
+
     private void WriteReport()
     {
         var sb = new StringBuilder();
