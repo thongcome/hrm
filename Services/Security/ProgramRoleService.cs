@@ -116,21 +116,35 @@ public class ProgramRoleService(IDbContextFactory<HRMContext> dbFactory, IMemory
             entry.AbsoluteExpirationRelativeToNow = CacheTtl;
             await using var context = await dbFactory.CreateDbContextAsync(ct);
             var rows = await context.sc_program_roles.Where(p => p.isactive).ToListAsync(ct);
-            var roleNameToId = await context.sc_roles.Where(r => r.isactive)
-                .ToDictionaryAsync(r => r.name!, r => r.roleid, StringComparer.OrdinalIgnoreCase, ct);
+            // ชื่อบทบาทซ้ำกันได้ในข้อมูลจริง (ไม่มี unique index บน sc_role.name — มีแต่ที่ rolecode)
+            // เดิมใช้ ToDictionary ตรง ๆ: ลูกค้าตั้งชื่อบทบาทซ้ำเมื่อไร ตัวนี้โยน ArgumentException แล้ว
+            // **ทุกหน้าที่เรียก GetRightsAsync พังหมดทั้งระบบ** (ADP.AI แจ้ง 26 ก.ย. 2569)
+            // ตอนนี้ชื่อหนึ่งชื่อชี้ได้หลาย roleid และสิทธิ์รวมกันแบบ union ตามหลัก RBAC ที่สิทธิ์เป็นบวกเสมอ
+            var roleNameToId = BuildRoleMap(await context.sc_roles.Where(r => r.isactive && r.name != null)
+                .Select(r => new RoleNameRow(r.name!, r.roleid)).ToListAsync(ct));
             cache.Set(CacheKey + ".rolemap", roleNameToId, CacheTtl);
             return rows.GroupBy(r => r.roleid).ToDictionary(g => g.Key, g => g.ToList());
         }))!;
     }
 
+    public sealed record RoleNameRow(string Name, long RoleId);
+
+    /// <summary>ชื่อบทบาท → roleid ทั้งหมดที่ใช้ชื่อนั้น · pure ทดสอบได้ (ดูเหตุผลที่ต้องเป็นหลาย id ในผู้เรียก)</summary>
+    public static Dictionary<string, List<long>> BuildRoleMap(IEnumerable<RoleNameRow> roles) =>
+        roles.Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.RoleId).Distinct().ToList(), StringComparer.OrdinalIgnoreCase);
+
     public async Task<ProgramRights> GetRightsAsync(ClaimsPrincipal user, string path, CancellationToken ct = default)
     {
         var rowsByRole = await GetRowsByRoleAsync(ct);
-        var roleMap = cache.Get<Dictionary<string, long>>(CacheKey + ".rolemap") ?? new(StringComparer.OrdinalIgnoreCase);
+        var roleMap = cache.Get<Dictionary<string, List<long>>>(CacheKey + ".rolemap") ?? new(StringComparer.OrdinalIgnoreCase);
 
         var perRoleRows = user.FindAll(ClaimTypes.Role).Select(x => x.Value)
-            .Where(roleName => roleMap.TryGetValue(roleName, out var roleId) && rowsByRole.ContainsKey(roleId))
-            .Select(roleName => (IReadOnlyList<sc_program_role>)rowsByRole[roleMap[roleName]]);
+            .SelectMany(roleName => roleMap.TryGetValue(roleName, out var ids) ? ids : Enumerable.Empty<long>())
+            .Distinct()
+            .Where(rowsByRole.ContainsKey)
+            .Select(roleId => (IReadOnlyList<sc_program_role>)rowsByRole[roleId]);
 
         return ResolveRights(perRoleRows, path);
     }

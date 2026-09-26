@@ -283,6 +283,11 @@ public class PayrollWorkflowService
         var run = await LoadRunOrThrowAsync(context, runId, ct);
         if (run.Status >= PayrollRunStatus.Approved)
             throw new InvalidOperationException("รอบที่อนุมัติแล้วแก้รายชื่อไม่ได้ — ถ้าต้องแก้ ให้บันทึกเงินได้/เงินหักรายครั้งในงวดถัดไป");
+        // กันออก = แก้เนื้อหาของรอบ เป็นงานของผู้ทำเงินเดือน (สิทธิ์เดียวกับคำนวณ) ผู้อนุมัติทำไม่ได้ และทำระหว่างรอบรออนุมัติไม่ได้
+        // เพราะผู้อนุมัติจะอนุมัติตัวเลขที่เปลี่ยนไปแล้ว (ทดสอบหน้าจอ 26 ก.ย. 2569: ผู้อนุมัติกดกันออกได้)
+        if (run.Status == PayrollRunStatus.Reviewed)
+            throw new InvalidOperationException("รอบนี้อยู่ระหว่างรออนุมัติ — แก้รายชื่อไม่ได้ ให้ผู้อนุมัติตีกลับก่อน");
+        await PayrollStepPermission.EnsureAsync(context, actorUserId, PayrollAction.Calculate, ct);
         if (excluded && string.IsNullOrWhiteSpace(reason))
             throw new InvalidOperationException("กรุณาระบุเหตุผลที่กันพนักงานออกจากรอบ");
 

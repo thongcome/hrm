@@ -442,8 +442,10 @@ else
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"/pay/runs/{RunId}/employee/{context.Employee.Id}"))">
                         @L.Translate("DescriptionLabel")
                     </MudButton>
-                    @* กันออก/เอากลับ — ก่อนอนุมัติเท่านั้น (audit M11: เดิม IsExcluded ไม่มีปุ่มเขียนเลย) *@
-                    @if (_run is not null && _run.Status < PayrollRunStatus.Approved && _rights?.CanEdit == true)
+                    @* กันออก/เอากลับ — งานของผู้ทำเงินเดือนก่อนส่งอนุมัติ (audit M11) · ผู้อนุมัติแก้เนื้อหารอบไม่ได้ และรอบที่อยู่ระหว่างอนุมัติ
+                       ห้ามเปลี่ยนรายชื่อ (ทดสอบหน้าจอ 26 ก.ย. 2569) — ใช้เงื่อนไขเดียวกับปุ่มคำนวณ ฝั่ง server ตรวจซ้ำ *@
+                    @if (_run is not null && _run.Status is PayrollRunStatus.Draft or PayrollRunStatus.Calculated
+                         && _allowed.Contains(PayrollAction.Calculate) && _rights?.CanEdit == true)
                     {
                         @if (context.Employee.IsExcluded)
                         {

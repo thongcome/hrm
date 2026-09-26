@@ -1,4 +1,4 @@
-@page "/admin/system/program-rights"
+﻿@page "/admin/system/program-rights"
 @using System.Security.Claims
 @using HRM.Models
 @using HRM.Services.Security
@@ -146,21 +146,25 @@ else
                 </MudTd>
                 <MudTd Style="text-align:center;">
                     <MudCheckBox T="bool" Value="@context.cancreate" Dense="true"
+                        @key="@($"{context.id}-Create-{_checkboxGeneration}")"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Create, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
                     <MudCheckBox T="bool" Value="@context.canread" Dense="true"
+                        @key="@($"{context.id}-Read-{_checkboxGeneration}")"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Read, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
                     <MudCheckBox T="bool" Value="@context.canedit" Dense="true"
+                        @key="@($"{context.id}-Edit-{_checkboxGeneration}")"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Edit, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
                     <MudCheckBox T="bool" Value="@context.candelete" Dense="true"
+                        @key="@($"{context.id}-Delete-{_checkboxGeneration}")"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Delete, v))" />
                 </MudTd>
@@ -287,7 +291,7 @@ else
         if (flag == RightFlag.Edit && !value && IsAdminLockRow(row))
         {
             Snackbar.Add(AdminLockMessage, Severity.Error);
-            StateHasChanged(); // revert the checkbox to the unchanged model value
+            RevertCheckboxes();
             return;
         }
 
@@ -300,6 +304,7 @@ else
             if (existing is null)
             {
                 Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                RevertCheckboxes();
                 return;
             }
 
@@ -329,7 +334,7 @@ else
         catch (InvalidOperationException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
-            StateHasChanged();
+            RevertCheckboxes();
         }
     }
 
@@ -341,6 +346,7 @@ else
         if (!manage && IsAdminLockRow(row))
         {
             Snackbar.Add(AdminLockMessage, Severity.Error);
+            RevertCheckboxes();
             return;
         }
 
@@ -353,6 +359,7 @@ else
             if (existing is null)
             {
                 Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                RevertCheckboxes();
                 return;
             }
 
@@ -377,6 +384,7 @@ else
         catch (InvalidOperationException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
+            RevertCheckboxes();
         }
     }
 
@@ -445,6 +453,17 @@ else
         catch (InvalidOperationException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
+            RevertCheckboxes();
         }
     }
-}
+
+    // ช่องติ๊กต้องเด้งกลับเมื่อการกดถูกปฏิเสธ (ADP.AI แจ้ง 26 ก.ย. 2569 · วิธีเดียวกับ ADP 9445083)
+    // StateHasChanged() อย่างเดียวไม่พอ: ค่าในโมเดลไม่เปลี่ยน Blazor จึงมองว่าไม่มีอะไรต่าง ไม่เขียนทับ DOM
+    // ที่ผู้ใช้ติ๊กไปแล้ว → หน้าจอโชว์สิทธิ์ที่ไม่ได้บันทึกจริง เปลี่ยนเลขรุ่นใน @key ทำให้ Blazor สร้างช่องใหม่จากค่าจริง
+    private int _checkboxGeneration;
+
+    private void RevertCheckboxes()
+    {
+        _checkboxGeneration++;
+        StateHasChanged();
+    }}

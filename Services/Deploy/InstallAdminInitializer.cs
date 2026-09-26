@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using HRM.Data;
 using HRM.Models;
 using HRM.Services.Login;

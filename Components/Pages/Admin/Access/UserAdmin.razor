@@ -186,7 +186,8 @@
 
 @code {
     private const long DefaultCompanyId = 1;
-    private const string DefaultPassword = "Abcd@2025";
+    // รหัสผ่านชั่วคราวสุ่มใหม่ทุกครั้ง (ADP.AI แจ้ง 26 ก.ย. 2569: ค่าคงที่ "Abcd@2025" เดิมคือรหัสเดียว
+    // ที่เปิดบัญชีใหม่ของทุกลูกค้าได้) — แสดงครั้งเดียวบนหน้าจอให้ผู้ดูแลคัดลอกส่งต่อ แล้วบังคับเปลี่ยนตอน login แรก
 
     private List<sc_user> _users = new();
     private List<sc_role> _roles = new();
@@ -376,20 +377,21 @@
             _editing.company_id = DefaultCompanyId;
             _editing.isforcechanged = true;
             _editing.iscancel = false;
-            _editing.password = PasswordHasher.HashPassword(_editing, DefaultPassword);
+            var newPassword = HRM.Services.Security.TemporaryPassword.New();
+            _editing.password = PasswordHasher.HashPassword(_editing, newPassword);
             _editing.moddate = DateTime.Now;
             _editing.modby = _actor;
             context.sc_users.Add(_editing);
             await context.SaveChangesAsync();
             userId = _editing.userid;
-            _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านเริ่มต้นคือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+            _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านชั่วคราวคือ {newPassword} — แสดงครั้งเดียว คัดลอกส่งให้เจ้าตัวทางช่องทางที่ปลอดภัย (ระบบบังคับเปลี่ยนตอน login ครั้งแรก)";
 
             // Without this, the account exists and looks complete here (roles
             // shown, "ใช้งานได้" chip green) but can't actually sign in —
             // LoginEndpoints.cs requires a linked ApplicationUser and falls
             // through to a generic "wrong password" error otherwise, with
             // nothing pointing an admin at the real cause.
-            var provisionResult = await UserProvisioning.EnsureIdentityLinkedAsync(_editing, DefaultPassword, _editing.email);
+            var provisionResult = await UserProvisioning.EnsureIdentityLinkedAsync(_editing, newPassword, _editing.email);
             if (!provisionResult.Succeeded)
             {
                 _editInfo += $" — แต่ผูกบัญชี Identity ไม่สำเร็จ ({provisionResult.Error}) กรุณาไปผูกที่หน้า \"ผูกบัญชี Identity\" ด้วยตนเอง";
@@ -471,7 +473,8 @@
         var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == _editing.userid);
         if (existing is null) return;
 
-        existing.password = PasswordHasher.HashPassword(existing, DefaultPassword);
+        var resetPassword = HRM.Services.Security.TemporaryPassword.New();
+        existing.password = PasswordHasher.HashPassword(existing, resetPassword);
         // isforcechanged + a fresh pwdexpdate, via the one service that
         // decides what an admin reset means — this is what actually makes the
         // "must change on first login" promise in the message below true
@@ -488,13 +491,13 @@
         if (appUser is not null)
         {
             await UserManager.RemovePasswordAsync(appUser);
-            await UserManager.AddPasswordAsync(appUser, DefaultPassword);
+            await UserManager.AddPasswordAsync(appUser, resetPassword);
             // An account is usually reset *because* the person locked
             // themselves out — handing them a new password while the lockout
             // is still running would just fail again for another 15 minutes.
             await UserManager.SetLockoutEndDateAsync(appUser, null);
             await UserManager.ResetAccessFailedCountAsync(appUser);
-            _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+            _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านชั่วคราวคือ {resetPassword} — แสดงครั้งเดียว คัดลอกส่งให้เจ้าตัวทางช่องทางที่ปลอดภัย (ระบบบังคับเปลี่ยนตอน login ครั้งแรก)";
         }
         else
         {

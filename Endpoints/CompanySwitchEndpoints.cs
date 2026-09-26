@@ -70,6 +70,9 @@ public static class CompanySwitchEndpoints
                 currentIdentity.Claims.Where(c => c.Type != "payroll_company"),
                 currentIdentity.AuthenticationType);
             newIdentity.AddClaim(new Claim("payroll_company", targetCode));
+            // cookie ที่ออกก่อนมี home_company: จำบริษัทที่ใช้อยู่ตอนนี้เป็นบ้านไว้ก่อนสลับออก
+            if (oldCode is not null && !newIdentity.HasClaim(c => c.Type == CompanySwitchService.HomeCompanyClaim))
+                newIdentity.AddClaim(new Claim(CompanySwitchService.HomeCompanyClaim, oldCode));
             var newPrincipal = new ClaimsPrincipal(newIdentity);
 
             await httpContext.SignInAsync(IdentityConstants.ApplicationScheme, newPrincipal, authenticateResult.Properties);

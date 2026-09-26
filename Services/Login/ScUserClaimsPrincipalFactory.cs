@@ -128,7 +128,11 @@ public class ScUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<Applicati
         // works inside its company — sc_user.company_id is the authority, see PayrollCompanyResolver.
         var companyId = await PayrollCompanyResolver.ResolveAsync(context, scUser);
         if (!string.IsNullOrWhiteSpace(companyId))
+        {
             identity.AddClaim(new Claim("payroll_company", companyId));
+            // บริษัทต้นสังกัดตอน login — ตัวสลับบริษัทเปลี่ยนแค่ payroll_company ไม่แตะตัวนี้ ผู้ใช้จึงสลับกลับบ้านได้เสมอ
+            identity.AddClaim(new Claim(HRM.Services.Security.CompanySwitchService.HomeCompanyClaim, companyId));
+        }
 
         foreach (var ur in scUser.sc_user_roles.Where(r => r.isactive))
         {
