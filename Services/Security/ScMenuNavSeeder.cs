@@ -60,7 +60,18 @@ public static class ScMenuNavSeeder
         // humans) keep their names forever.
         static bool SeederOwns(sc_menu m) => string.Equals(m.modby, "ScMenuNavSeeder", StringComparison.Ordinal);
 
-        // 1) Groups — level 1, no url, isfinal=false.
+        // ชั้นของกลุ่ม = ความลึกจริงในต้นไม้แคตตาล็อก (พ่อ + 1) — เมนูไม่จำกัดระดับ (CEO, 26 ก.ย. 2569) ไม่ใช่เพดาน 3/4 ชั้น
+        // กันแคตตาล็อกที่พ่อวนกลับมาหาตัวเอง: เจอซ้ำเมื่อไรหยุดนับ
+        static int GroupLevel(string groupCode)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var level = 0;
+            for (var code = groupCode; code is not null && seen.Add(code); level++)
+                code = ScMenuNavCatalog.Groups.FirstOrDefault(x => string.Equals(x.GroupCode, code, StringComparison.OrdinalIgnoreCase))?.ParentGroupCode;
+            return Math.Max(1, level);
+        }
+
+        // 1) Groups — no url, isfinal=false; level = depth in the catalog tree.
         foreach (var g in ScMenuNavCatalog.Groups)
         {
             if (byCode.TryGetValue(g.GroupCode, out var existing))
@@ -70,7 +81,7 @@ public static class ScMenuNavSeeder
                 existing.menuname_en = g.NameEn;
                 // ที่อยู่ของกลุ่มมาจากแคตตาล็อกเหมือนลิงก์ (กลุ่มย่อยในกลุ่ม)
                 existing.uppermenucode = g.ParentGroupCode;
-                existing.menulevel = g.ParentGroupCode is null ? 1 : 2;
+                existing.menulevel = GroupLevel(g.GroupCode);
                 existing.isshow = true;
                 if (SeederOwns(existing)) existing.menuname = g.NameTh;
                 continue;
@@ -80,7 +91,7 @@ public static class ScMenuNavSeeder
                 menucode = g.GroupCode,
                 menuname = g.NameTh,
                 menuname_en = g.NameEn,
-                menulevel = g.ParentGroupCode is null ? 1 : 2,
+                menulevel = GroupLevel(g.GroupCode),
                 uppermenucode = g.ParentGroupCode,
                 url = null,
                 icon = g.Icon,
@@ -102,15 +113,13 @@ public static class ScMenuNavSeeder
                      && m.menucode.StartsWith("GRP_", StringComparison.OrdinalIgnoreCase) && !liveGroups.Contains(m.menucode)))
             stale.isshow = false;
 
-        // ลิงก์อยู่ชั้นไหน: ไม่มีกลุ่ม = 1 · อยู่ในกลุ่มบนสุด = 2 · อยู่ในกลุ่มย่อย = 3
+        // ลิงก์อยู่ชั้นไหน: ไม่มีกลุ่ม = 1 · อยู่ในกลุ่ม = ชั้นของกลุ่ม + 1
         static int LevelFor(string? groupCode)
         {
-            if (groupCode is null) return 1;
-            var g = ScMenuNavCatalog.Groups.FirstOrDefault(x => string.Equals(x.GroupCode, groupCode, StringComparison.OrdinalIgnoreCase));
-            return g?.ParentGroupCode is null ? 2 : 3;
+            return groupCode is null ? 1 : GroupLevel(groupCode) + 1;
         }
 
-        // 2) Links — level 2 under a group, level 3 under a sub-group, level 1 when top-level.
+        // 2) Links — one level below their group (any depth), level 1 when top-level.
         foreach (var l in ScMenuNavCatalog.Links)
         {
             var candidates = byUrl.TryGetValue(l.Url, out var list) ? list : null;

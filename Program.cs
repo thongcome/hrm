@@ -1068,6 +1068,9 @@ if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("Demo:Se
     // Multi-company switcher fixture (adhtest / Dev@12345, linked to the
     // real ADHOLD employee ADH0001) — see DevAuthSeeder.EnsureAdHoldingFixtureAsync.
     await HRM.Services.Dev.DevAuthSeeder.EnsureAdHoldingFixtureAsync(app.Services);
+
+    // Payroll UI test company UITEST + uitest.maker / uitest.checker / uitest.ess — see UiTestPayrollFixture.
+    await HRM.Services.Dev.UiTestPayrollFixture.EnsureAsync(app.Services);
 }
 
 app.Run();

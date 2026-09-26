@@ -245,14 +245,14 @@
         if (_currentParent is null)
         {
             rows = await context.sc_menus
-                .Where(m => m.menulevel == 1 && (m.uppermenucode == null || m.uppermenucode == "") && m.isactive)
+                .Where(m => (m.uppermenucode == null || m.uppermenucode == "") && m.isactive)
                 .OrderBy(m => m.menuorder)
                 .ToListAsync();
         }
         else
         {
             rows = await context.sc_menus
-                .Where(m => m.menulevel == _currentParent.menulevel + 1 && m.uppermenucode == _currentParent.menucode && m.isactive)
+                .Where(m => m.uppermenucode == _currentParent.menucode && m.isactive)
                 .OrderBy(m => m.menuorder)
                 .ToListAsync();
         }
@@ -262,7 +262,7 @@
         {
             var childCount = string.IsNullOrWhiteSpace(m.menucode)
                 ? 0
-                : await context.sc_menus.CountAsync(x => x.menulevel == m.menulevel + 1 && x.uppermenucode == m.menucode && x.isactive);
+                : await context.sc_menus.CountAsync(x => x.uppermenucode == m.menucode && x.isactive);
             _children.Add((m, childCount));
         }
 
@@ -413,7 +413,7 @@
         await using var context = await DbFactory.CreateDbContextAsync();
 
         var hasActiveChildren = !string.IsNullOrWhiteSpace(menu.menucode)
-            && await context.sc_menus.AnyAsync(m => m.menulevel == menu.menulevel + 1 && m.uppermenucode == menu.menucode && m.isactive);
+            && await context.sc_menus.AnyAsync(m => m.uppermenucode == menu.menucode && m.isactive);
         if (hasActiveChildren)
         {
             _error = $"ลบเมนู '{menu.menuname}' ไม่ได้ เพราะยังมีเมนูย่อยที่ใช้งานอยู่ — ลบเมนูย่อยทั้งหมดก่อน";

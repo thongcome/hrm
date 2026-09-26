@@ -44,28 +44,10 @@
                              two tiers at a glance instead of one flat list; see
                              DbNavMenu.razor.css. Sub-items inside a group stay plain. -->
                         @* เงินเดือนคือหัวใจของผลิตภัณฑ์ (CEO, 20 ก.ย. 2569) จึงกางไว้ตั้งแต่เปิด กลุ่มอื่นพับไว้
-                           กลุ่มย่อยในกลุ่ม (เอกสาร/รายงาน, ตั้งค่า Master) วาดเป็นกลุ่มซ้อนอีกชั้น — รวม 3 ชั้น (AD.Menu) *@
+                           กลุ่มย่อยวาดซ้อนลงไปได้ไม่จำกัดชั้นตามต้นไม้ uppermenucode (CEO, 26 ก.ย. 2569) — จำนวนชั้นที่ควรใช้เป็นเรื่องของ AD.Menu ไม่ใช่ของตัววาด *@
                         <MudNavGroup Title="@DisplayName(node.Row)" Icon="@ResolveIcon(node.Row.icon)"
                                      Expanded="@IsPrimaryGroup(node.Row)" Class="hrm-nav-toplevel">
-                            @foreach (var child in node.Children)
-                            {
-                                @if (child.Children.Count > 0)
-                                {
-                                    @if (HasVisibleContent(child))
-                                    {
-                                        <MudNavGroup Title="@DisplayName(child.Row)" Icon="@ResolveIcon(child.Row.icon)" Expanded="false">
-                                            @foreach (var leaf in child.Children.Where(IsLeafVisible))
-                                            {
-                                                <MudNavLink Href="@leaf.Row.url" Icon="@ResolveIcon(leaf.Row.icon)">@DisplayName(leaf.Row)</MudNavLink>
-                                            }
-                                        </MudNavGroup>
-                                    }
-                                }
-                                else if (IsLeafVisible(child))
-                                {
-                                    <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
-                                }
-                            }
+                            @RenderChildren(node, 1)
                         </MudNavGroup>
                     }
                 }
@@ -145,8 +127,7 @@
                 continue;
             }
 
-            // ผูกกับพ่อโดยตรงถ้าหาเจอ (กลุ่มย่อยในกลุ่ม เช่น เงินเดือน → ตั้งค่า) — วาดได้ 3 ชั้น
-            // ลึกกว่านั้นยังถูกยุบขึ้นมาที่บรรพบุรุษระดับบนสุดเหมือนเดิม
+            // ผูกกับพ่อโดยตรงเสมอเมื่อหาเจอ — ลึกกี่ชั้นก็ได้ (เมนูไม่จำกัดระดับ, CEO 26 ก.ย. 2569)
             if (byCode.TryGetValue(node.Row.uppermenucode, out var parent) && !ReferenceEquals(parent, node))
             {
                 parent.Children.Add(node);
@@ -188,6 +169,29 @@
     // กลุ่มมีของให้เห็นไหม — นับทั้งเมนูตรง ๆ และเมนูในกลุ่มย่อย
     private bool HasVisibleContent(MenuNode node)
         => node.Children.Any(c => c.Children.Count > 0 ? HasVisibleContent(c) : IsLeafVisible(c));
+
+    // ลูกของกลุ่มหนึ่ง วาดซ้ำลงไปทีละชั้น — ต้นไม้ที่ผูกจาก uppermenucode ไม่มีวงวน (แต่ละแถวมีพ่อเดียว และแถวที่วนกันไม่มีทางถึงราก)
+    // MaxDepth เป็นแค่ราวกันตกของข้อมูลเสีย ไม่ใช่ขีดจำกัดของเมนู
+    private const int MaxDepth = 64;
+
+    private RenderFragment RenderChildren(MenuNode group, int depth) => @<text>
+        @foreach (var child in group.Children)
+        {
+            @if (child.Children.Count > 0)
+            {
+                @if (depth < MaxDepth && HasVisibleContent(child))
+                {
+                    <MudNavGroup Title="@DisplayName(child.Row)" Icon="@ResolveIcon(child.Row.icon)" Expanded="false">
+                        @RenderChildren(child, depth + 1)
+                    </MudNavGroup>
+                }
+            }
+            else if (IsLeafVisible(child))
+            {
+                <MudNavLink Href="@child.Row.url" Icon="@ResolveIcon(child.Row.icon)">@DisplayName(child.Row)</MudNavLink>
+            }
+        }
+    </text>;
 
     // กลุ่มหลักของผลิตภัณฑ์ — กางไว้ตั้งแต่เปิด ไม่ต้องกดหา
     private static bool IsPrimaryGroup(sc_menu row)
