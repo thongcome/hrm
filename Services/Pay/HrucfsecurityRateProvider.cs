@@ -1,6 +1,7 @@
 namespace HRM.Services.Pay;
 
 using HRM.Models;
+using HRM.Services.Pay.Calculators;
 using Microsoft.EntityFrameworkCore;
 
 // Wraps Hrucfsecurity so the "01" magic-string social-security code lookup
@@ -46,5 +47,11 @@ public class HrucfsecurityRateProvider : ISocialSecurityRateProvider
         var config = await LoadAsync(companyId, asOf, ct);
         var employee = config.PercenSecurity ?? 0m;
         return (employee, config.EmployerPercenSecurity ?? employee, config.SecurityMoney ?? 0m);
+    }
+
+    public async Task<int> GetMaxEntryAgeAsync(string companyId, DateOnly? asOf = null, CancellationToken ct = default)
+    {
+        var config = await LoadAsync(companyId, asOf, ct);
+        return config.MaxEntryAge is int age and > 0 ? age : SsoCoverage.DefaultMaxEntryAge;
     }
 }

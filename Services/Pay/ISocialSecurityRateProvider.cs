@@ -12,4 +12,8 @@ public interface ISocialSecurityRateProvider
         var (rate, cap) = await GetCurrentRateAsync(companyId, asOf, ct);
         return (rate, rate, cap);
     }
+
+    // ม.33: อายุวันเริ่มงานสูงสุดที่ยังเป็นผู้ประกันตน — ค่าเริ่มต้นตามกฎหมาย 60
+    Task<int> GetMaxEntryAgeAsync(string companyId, DateOnly? asOf = null, CancellationToken ct = default) =>
+        Task.FromResult(HRM.Services.Pay.Calculators.SsoCoverage.DefaultMaxEntryAge);
 }

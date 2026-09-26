@@ -1,0 +1,266 @@
+@page "/pay/admin/sso-coverage"
+@using System.Security.Claims
+@using HRM.Models
+@using HRM.Services.Audit
+@using HRM.Services.Pay
+@using HRM.Services.Pay.Calculators
+@using HRM.Services.Security
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@inject IDbContextFactory<HRMContext> DbFactory
+@inject AuthenticationStateProvider AuthProvider
+@inject IAuditLogger AuditLogger
+@inject ProgramRoleService ProgramRoles
+@inject ISocialSecurityRateProvider SsoRates
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "Menu:PAY_ADMIN")]
+
+<PageTitle>สถานะผู้ประกันตน (ประกันสังคม)</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" MaxWidth="1100px">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.h5">สถานะผู้ประกันตน ม.33 (ประกันสังคม)</MudText>
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small">PDPA</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.body2" Class="mt-1">
+        ลูกจ้างอายุ 15–60 ปีบริบูรณ์เป็นผู้ประกันตน และคนที่เป็นอยู่แล้วตอนอายุครบ 60 ยังเป็นต่อไป — ระบบจึงถือว่าคนที่
+        <b>เริ่มงานหลังวันครบอายุ @_maxEntryAge ปี</b> ไม่เป็นผู้ประกันตน และไม่หักประกันสังคมทั้งฝั่งลูกจ้างและนายจ้าง
+        (อายุนี้ตั้งได้ที่ Super Master › อัตราและเพดานประกันสังคม) · ถ้าพนักงานเคยเป็นผู้ประกันตน ม.33 มาก่อน หรือได้รับยกเว้นตาม ม.4
+        ให้กำหนดรายคนด้านล่าง — ที่ HR กำหนดชนะค่าที่ระบบคิดเสมอ มีผลกับงวดที่คำนวณหลังจากนี้
+    </MudText>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanEdit && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">พนักงานที่ต้องตรวจ / ที่ HR กำหนดไว้</MudText>
+    <MudTable Items="_rows" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>พนักงาน</MudTh>
+            <MudTh>วันเกิด</MudTh>
+            <MudTh>เริ่มงาน</MudTh>
+            <MudTh>สถานะวันนี้</MudTh>
+            <MudTh>ที่มา</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.EmpNo - @context.Name</MudTd>
+            <MudTd>@context.BirthDate?.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>@context.WorkDate?.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Now.IsInsured ? Color.Success : Color.Default)">
+                    @(context.Now.IsInsured ? "หักประกันสังคม" : "ไม่หัก")
+                </MudChip>
+            </MudTd>
+            <MudTd><MudText Typo="Typo.caption">@context.Now.Reason</MudText></MudTd>
+            <MudTd>
+                @foreach (var o in context.Overrides)
+                {
+                    <div>
+                        <MudText Typo="Typo.caption">
+                            @(o.IsInsured ? "เป็น" : "ไม่เป็น") ตั้งแต่ @o.EffectiveFrom.ToString("dd/MM/yyyy")@(o.EffectiveTo is DateOnly to ? $" ถึง {to:dd/MM/yyyy}" : "")
+                        </MudText>
+                        @if (_rights?.CanDelete == true)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateAsync(o.Id))">ปิดใช้งาน</MudButton>
+                        }
+                    </div>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">ไม่มีพนักงานที่เริ่มงานหลังอายุ @_maxEntryAge และยังไม่มีรายการที่ HR กำหนด — ทุกคนหักประกันสังคมตามปกติ</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (_rights?.CanCreate == true)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-2">กำหนดสถานะรายคน</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Hremployee" Label="พนักงาน" @bind-Value="_employee" SearchFunc="SearchEmployeesAsync"
+                    ToStringFunc="@(e => e is null ? "" : $"{e.EmpNo} - {e.EmpName} {e.EmpSurname}")" ResetValueOnEmptyText="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudRadioGroup T="bool" @bind-Value="_isInsured">
+                    <MudRadio T="bool" Value="true" Color="Color.Success">เป็นผู้ประกันตน (หัก)</MudRadio>
+                    <MudRadio T="bool" Value="false">ไม่เป็นผู้ประกันตน (ไม่หัก)</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker Label="มีผลตั้งแต่" @bind-Date="_from" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker Label="ถึง (ว่าง = ไม่มีกำหนด)" @bind-Date="_to" DateFormat="dd/MM/yyyy" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_reason" Label="เหตุผล">
+                    @foreach (var r in Reasons)
+                    {
+                        <MudSelectItem T="string" Value="r">@r</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><MudTextField T="string" @bind-Value="_note" Label="หมายเหตุ (เช่น เลขที่หนังสือจาก สปส.)" Lines="2" MaxLength="500" /></MudItem>
+            <MudItem xs="12">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">บันทึก</MudButton>
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    private sealed record Row(long Id, string EmpNo, string Name, DateTime? BirthDate, DateTime? WorkDate,
+        SsoCoverage.Result Now, List<Pay_EmployeeSsoCoverage> Overrides);
+
+    private static readonly string[] Reasons =
+    {
+        "เคยเป็นผู้ประกันตน ม.33 มาก่อนอายุ 60",
+        "ได้รับยกเว้นตาม ม.4 (เช่น ลูกจ้างส่วนราชการ/รัฐวิสาหกิจ, คนต่างด้าวเข้ามาทำงานชั่วคราว)",
+        "อื่น ๆ (ระบุในหมายเหตุ)",
+    };
+
+    private const string ProgramPath = "/pay/admin/sso-coverage";
+    private ProgramRoleService.ProgramRights? _rights;
+    private string? _companyId;
+    private long _actorUserId;
+    private int _maxEntryAge = SsoCoverage.DefaultMaxEntryAge;
+    private bool _loading = true;
+    private List<Row> _rows = new();
+    private string? _error;
+
+    private Hremployee? _employee;
+    private bool _isInsured = true;
+    private DateTime? _from = DateTime.Today;
+    private DateTime? _to;
+    private string _reason = Reasons[0];
+    private string? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        _actorUserId = long.TryParse(state.User.FindFirst("sc_userid")?.Value, out var uid) ? uid : 0;
+        _companyId = state.User.FindFirst("payroll_company")?.Value;
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+        if (_companyId is not null)
+        {
+            try { _maxEntryAge = await SsoRates.GetMaxEntryAgeAsync(_companyId); }
+            catch (InvalidOperationException) { /* no SSO rate row yet — the law's default applies */ }
+        }
+        await LoadAsync();
+        await AuditLogger.LogAccessAsync("Pay_EmployeeSsoCoverage", _companyId, isSensitive: true, note: "view");
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var today = DateTime.Today;
+        var todayD = DateOnly.FromDateTime(today);
+        var age = _maxEntryAge;
+
+        var overrides = await context.Pay_EmployeeSsoCoverages
+            .Where(o => o.IsActive && o.Hremployee.companyid == _companyId)
+            .ToListAsync();
+        var overrideIds = overrides.Select(o => o.HremployeeId).Distinct().ToList();
+
+        // current staff who started after the age limit, plus anyone HR has set a status for
+        var employees = await context.Hremployee
+            .Where(e => e.companyid == _companyId
+                        && (overrideIds.Contains(e.id)
+                            || (e.IsActive && (e.ResignDate == null || e.ResignDate >= today)
+                                && e.BirthDate != null && e.WorkDate != null && e.WorkDate > e.BirthDate.Value.AddYears(age))))
+            .Select(e => new { e.id, e.EmpNo, e.EmpName, e.EmpSurname, e.BirthDate, e.WorkDate })
+            .OrderBy(e => e.EmpNo)
+            .ToListAsync();
+
+        _rows = employees.Select(e =>
+        {
+            var mine = overrides.Where(o => o.HremployeeId == e.id).OrderByDescending(o => o.EffectiveFrom).ToList();
+            var now = SsoCoverage.Resolve(e.BirthDate, e.WorkDate, age,
+                mine.Select(o => new SsoCoverage.Override(o.Id, o.IsInsured, o.EffectiveFrom, o.EffectiveTo, o.Reason)), todayD);
+            return new Row(e.id, e.EmpNo, $"{e.EmpName} {e.EmpSurname}".Trim(), e.BirthDate, e.WorkDate, now, mine);
+        }).ToList();
+        _loading = false;
+    }
+
+    private async Task<IEnumerable<Hremployee>> SearchEmployeesAsync(string term, CancellationToken ct)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync(ct);
+        var query = context.Hremployee.Where(e => e.companyid == _companyId);
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(e => e.EmpNo.Contains(term) || (e.EmpName != null && e.EmpName.Contains(term)) || (e.EmpSurname != null && e.EmpSurname.Contains(term)));
+        return await query.OrderBy(e => e.EmpNo).Take(20).ToListAsync(ct);
+    }
+
+    private async Task<bool> AllowedAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+            return false;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _error = null;
+        if (!await AllowedAsync(ProgramRoleService.ProgramAction.Create)) return;
+        if (_employee is null) { _error = "กรุณาเลือกพนักงาน"; return; }
+        if (_from is null) { _error = "กรุณาระบุวันที่เริ่มมีผล"; return; }
+        if (_to is DateTime t && t < _from) { _error = "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มมีผล"; return; }
+        if (_reason == Reasons[^1] && string.IsNullOrWhiteSpace(_note)) { _error = "เหตุผล \"อื่น ๆ\" ต้องระบุหมายเหตุ"; return; }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        // server-side company check — the picker is scoped, but never trust the client alone
+        if (!await context.Hremployee.AnyAsync(e => e.id == _employee.id && e.companyid == _companyId))
+        {
+            _error = "ไม่พบพนักงานในบริษัทนี้";
+            return;
+        }
+        context.Pay_EmployeeSsoCoverages.Add(new Pay_EmployeeSsoCoverage
+        {
+            HremployeeId = _employee.id,
+            IsInsured = _isInsured,
+            EffectiveFrom = DateOnly.FromDateTime(_from.Value),
+            EffectiveTo = _to is DateTime to ? DateOnly.FromDateTime(to) : null,
+            Reason = _reason,
+            Note = _note,
+            EnteredByUserId = _actorUserId,
+        });
+        await context.SaveChangesAsync();
+        Snackbar.Add("บันทึกสถานะผู้ประกันตนแล้ว — มีผลกับงวดที่คำนวณหลังจากนี้", Severity.Success);
+        _employee = null;
+        _note = null;
+        _to = null;
+        await LoadAsync();
+    }
+
+    private async Task DeactivateAsync(long id)
+    {
+        _error = null;
+        if (!await AllowedAsync(ProgramRoleService.ProgramAction.Delete)) return;
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var row = await context.Pay_EmployeeSsoCoverages
+            .FirstOrDefaultAsync(o => o.Id == id && o.Hremployee.companyid == _companyId);
+        if (row is null) return;
+        row.IsActive = false;
+        await context.SaveChangesAsync();
+        Snackbar.Add("ปิดใช้งานแล้ว — กลับไปใช้ค่าที่ระบบคิดจากอายุวันเริ่มงาน", Severity.Info);
+        await LoadAsync();
+    }
+}

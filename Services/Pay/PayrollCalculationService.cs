@@ -209,6 +209,11 @@ public class PayrollCalculationService
         var payScheduleOverrides = await context.Pay_EmployeePayScheduleOverrides
             .Where(o => o.IsActive).ToListAsync(ct);
 
+        // ผู้ประกันตน ม.33 (อายุวันเริ่มงาน + ที่ HR กำหนดรายคน) — ไม่เป็นผู้ประกันตน = ไม่หักประกันสังคมทั้งสองฝั่ง
+        var ssoCoverageByEmp = (await context.Pay_EmployeeSsoCoverages.Where(o => o.IsActive).ToListAsync(ct))
+            .GroupBy(o => o.HremployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(o => new SsoCoverage.Override(o.Id, o.IsInsured, o.EffectiveFrom, o.EffectiveTo, o.Reason)).ToList());
+
         // เพดานประกันสังคมเป็นรายเดือน: งวดครึ่งเดือนต้องรู้ว่ารอบปกติที่อนุมัติแล้วในเดือนเดียวกันหักไปเท่าไร
         // จากฐานเท่าไร แล้วคิดจากฐานทั้งเดือนหักส่วนที่หักไปแล้ว — ไม่ใช่หักเต็มเพดานทั้งสองงวด
         var monthStart = new DateOnly(run.PeriodStart.Year, run.PeriodStart.Month, 1);
@@ -317,6 +322,7 @@ public class PayrollCalculationService
             .ToListAsync(ct);
 
         var (ssoRate, ssoEmployerRate, ssoCap) = await _socialSecurityRateProvider.GetCurrentRatesAsync(run.CompanyId, run.PeriodStart, ct);
+        var ssoMaxEntryAge = await _socialSecurityRateProvider.GetMaxEntryAgeAsync(run.CompanyId, run.PeriodStart, ct);
 
         // (audit M14) โหลดครั้งเดียวต่อรอบ แทนการยิงฐานข้อมูลรายคน: OT, เงินกู้สหกรณ์, ยอดสะสมทั้งปี
         var otByEmpNo = await _overtimeCalculator.GetOvertimeForPeriodByEmployeeAsync(run.CompanyId, run.PeriodStart, run.PeriodEnd, ct);
@@ -814,13 +820,18 @@ public class PayrollCalculationService
                             + ssoWageBaseAllowance + adhocSsoWage;
             // เพดานประกันสังคมเป็นรายเดือน (audit M8): คิดจากฐานทั้งเดือน (งวดก่อนของเดือนนี้ที่อนุมัติแล้ว + งวดนี้)
             // แล้วหักส่วนที่งวดก่อนหักไปแล้ว — บริษัทจ่ายเดือนละงวดตัวเลขทั้งสองเป็น 0 ผลเท่าเดิม
+            // สถานะผู้ประกันตน ณ วันสิ้นงวด — ไม่เป็นผู้ประกันตน: อัตราทั้งสองฝั่งเป็น 0 (ฐานยังคำนวณไว้ให้กองทุนสงเคราะห์ลูกจ้างใช้ ซึ่งไม่ผูกกับ ม.33)
+            var ssoCoverage = SsoCoverage.Resolve(emp.BirthDate, emp.WorkDate, ssoMaxEntryAge,
+                ssoCoverageByEmp.GetValueOrDefault(emp.id) ?? new List<SsoCoverage.Override>(), run.PeriodEnd);
+            var empSsoRate = ssoCoverage.IsInsured ? ssoRate : 0m;
+            var empSsoEmployerRate = ssoCoverage.IsInsured ? ssoEmployerRate : 0m;
             var priorMonthSsoBase = sameMonthSsoBaseByEmp.GetValueOrDefault(emp.id);
             var priorMonthSso = sameMonthSsoByEmp.GetValueOrDefault(emp.id);
             var ssoAmount = Math.Max(0m,
-                SocialSecurityCalculator.Calculate(ssoWageBase + priorMonthSsoBase, ssoRate, ssoCap) - priorMonthSso);
+                SocialSecurityCalculator.Calculate(ssoWageBase + priorMonthSsoBase, empSsoRate, ssoCap) - priorMonthSso);
             // ฝั่งนายจ้าง (audit M10): อัตรานายจ้างจาก config (ว่าง = เท่าลูกจ้าง) ฐานและเพดานเดือนเดียวกัน — ไม่ขึ้นสลิป แต่ลงบัญชีและนำส่ง
             var ssoCompanyAmount = Math.Max(0m,
-                SocialSecurityCalculator.Calculate(ssoWageBase + priorMonthSsoBase, ssoEmployerRate, ssoCap) - sameMonthSsoCompanyByEmp.GetValueOrDefault(emp.id));
+                SocialSecurityCalculator.Calculate(ssoWageBase + priorMonthSsoBase, empSsoEmployerRate, ssoCap) - sameMonthSsoCompanyByEmp.GetValueOrDefault(emp.id));
             if (ssoAmount != 0)
                 lineItems.Add(NewLine(payItemTypes["SSO"], PayLineSourceType.SocialSecurity, ssoAmount, -1, ++seq, null, null,
                     $"{ssoRate:0.##}% ของฐานค่าจ้างประกันสังคม {ssoWageBase:N2} (เฉพาะรายการที่ตั้งธง \"ฐาน SSO\" ในแค็ตตาล็อก; เพดาน {ssoCap:N2}) = {ssoAmount:N2}"));
@@ -988,7 +999,7 @@ public class PayrollCalculationService
                 var monthBaseProjected = schedule.PeriodsPerMonth > 1
                     ? (priorMonthSsoBase + ssoWageBase) * schedule.PeriodsPerMonth / schedule.TermNo
                     : ssoWageBase;
-                var ssoMonthlyProjected = SocialSecurityCalculator.Calculate(monthBaseProjected, ssoRate, ssoCap);
+                var ssoMonthlyProjected = SocialSecurityCalculator.Calculate(monthBaseProjected, empSsoRate, ssoCap);
                 var termsLeftThisMonth = schedule.PeriodsPerMonth - schedule.TermNo;
                 var monthsAfterThis = Math.Max(0m, schedule.RemainingMonthsIncludingThis - (termsLeftThisMonth + 1) * schedule.MonthFraction);
                 var restOfMonthSso = Math.Max(0m, ssoMonthlyProjected - priorMonthSso - ssoAmount);
@@ -1079,6 +1090,8 @@ public class PayrollCalculationService
                         PersonalAllowancePerYear = personalAllowancePerYear,
                         SocialSecurity = ssoAmount,
                         SocialSecurityCompany = ssoCompanyAmount,
+                        SocialSecurityInsured = ssoCoverage.IsInsured,
+                        SocialSecurityCoverage = ssoCoverage.Reason,
                         ProvidentFund = pf.EmployeeAmount,
                         ElectedAnnualDeductions = electedAnnualDeduction,
                         ElectedDeductionItems = incomeBasedItems.Concat(netBasedItems).Select(i => i.Note).ToList(),

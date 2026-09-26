@@ -58,6 +58,9 @@ public static class TaxCalculationNarrative
                         if (item.GetString() is { Length: > 0 } text)
                             sb.Append($"<div style=\"color:#666;padding-left:1rem\">· {System.Net.WebUtility.HtmlEncode(text)}</div>");
                 sb.Append(Row("ประกันสังคมงวดนี้", Num(ded, "SocialSecurity")));
+                if (ded.TryGetProperty("SocialSecurityInsured", out var insured) && insured.ValueKind == JsonValueKind.False
+                    && ded.TryGetProperty("SocialSecurityCoverage", out var why) && why.GetString() is { Length: > 0 } whyText)
+                    sb.Append($"<div style=\"color:#666;padding-left:1rem\">· {System.Net.WebUtility.HtmlEncode(whyText)}</div>");
                 var pf = Num(ded, "ProvidentFund");
                 if (pf != 0m) sb.Append(Row("กองทุนสำรองเลี้ยงชีพงวดนี้", pf));
             }

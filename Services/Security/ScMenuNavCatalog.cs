@@ -206,6 +206,7 @@ public static class ScMenuNavCatalog
         // ported from Advance.Payroll (CEO 18-19 ก.ย. 2569): mid-year go-live months already paid by
         // the customer's OLD system — distinct from a different prior employer above
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/opening-balances", "ยอดยกมาจากระบบเดิม", "ยอดยกมาจากระบบเดิม", "Icons.Material.Filled.History", 25), // literal Thai label
+        new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/sso-coverage", "สถานะผู้ประกันตน (ประกันสังคม)", "สถานะผู้ประกันตน (ประกันสังคม)", "Icons.Material.Filled.HealthAndSafety", 27), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-rate-requests", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "คำขอเปลี่ยนอัตรากองทุนสำรอง", "Icons.Material.Filled.SwapHoriz", 30), // literal Thai label
         new("GRP_EMP_TAXFUND", "PAY_ADMIN", "/pay/admin/provident-fund-exit-cases", "ปิดสมาชิกภาพกองทุนสำรอง", "ปิดสมาชิกภาพกองทุนสำรอง", "Icons.Material.Filled.ExitToApp", 40), // literal Thai label
         new("GRP_PAY_MASTER", "PAY_ADMIN", "/pay/admin/document-expiry", "เอกสารใกล้หมดอายุ", "Expiring Documents", "Icons.Material.Filled.EventBusy", 130),

@@ -51,6 +51,10 @@ public partial class Hrucfsecurity
     // NULL = ใช้ได้ตลอด (แถวเดิมก่อนมีคอลัมน์นี้) — แถวที่มีวันที่จะชนะแถว NULL เสมอเมื่อถึงวันนั้น
     public DateOnly? EffectiveFrom { get; set; }
 
+    // ม.33: ลูกจ้างที่เริ่มงานหลังวันครบอายุนี้ไม่เป็นผู้ประกันตน (ค่าเริ่มต้นตามกฎหมาย 60) — NULL = 60
+    // ทับรายคนได้ที่ /pay/admin/sso-coverage
+    public int? MaxEntryAge { get; set; }
+
 
     // add new
     //[Column("AreaCode")]
