@@ -275,8 +275,9 @@
     {
         try
         {
-            // รหัสผ่านเริ่มต้น
-            string defaultPassword = "Abcd@2025";
+            // รหัสผ่านเริ่มต้น — สุ่มต่อบัญชี ไม่ใช่ค่าคงที่ร่วม (หน้าระบบเดิม: ไม่ผูก Identity จึงล็อกอินไม่ได้อยู่แล้ว
+            // ใช้หน้า /admin/system/users ซึ่งแสดงรหัสชั่วคราวให้ผู้ดูแล)
+            string defaultPassword = HRM.Services.Security.TemporaryPassword.Generate();
 
             // ทำ Hash ตามมาตรฐาน .NET Identity
             sc_user.password = PasswordHasher.HashPassword(sc_user, defaultPassword);

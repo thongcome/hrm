@@ -161,7 +161,7 @@
         @if (_editing.userid != 0 && _rights?.CanEdit == true)
         {
             <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Warning" Class="mt-2" OnClick="ResetPasswordAsync">
-                รีเซ็ตรหัสผ่านเป็นค่าเริ่มต้น
+                รีเซ็ตรหัสผ่าน (สุ่มรหัสชั่วคราวใหม่)
             </MudButton>
         }
 
@@ -186,7 +186,9 @@
 
 @code {
     private const long DefaultCompanyId = 1;
-    private const string DefaultPassword = "Abcd@2025";
+    // Initial/reset passwords are random per account (TemporaryPassword), shown to the admin once
+    // in _editInfo and never stored in plain text — no longer one shared "Abcd@2025" (CEO 26 ก.ย. 2569).
+    private const string TempPasswordNote = "แจ้งผู้ใช้ตอนนี้ — ระบบไม่เก็บรหัสนี้ และจะไม่แสดงอีก (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
 
     private List<sc_user> _users = new();
     private List<sc_role> _roles = new();
@@ -376,20 +378,21 @@
             _editing.company_id = DefaultCompanyId;
             _editing.isforcechanged = true;
             _editing.iscancel = false;
-            _editing.password = PasswordHasher.HashPassword(_editing, DefaultPassword);
+            var tempPassword = TemporaryPassword.Generate();
+            _editing.password = PasswordHasher.HashPassword(_editing, tempPassword);
             _editing.moddate = DateTime.Now;
             _editing.modby = _actor;
             context.sc_users.Add(_editing);
             await context.SaveChangesAsync();
             userId = _editing.userid;
-            _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านเริ่มต้นคือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+            _editInfo = $"สร้างผู้ใช้เรียบร้อย รหัสผ่านชั่วคราวคือ {tempPassword} — {TempPasswordNote}";
 
             // Without this, the account exists and looks complete here (roles
             // shown, "ใช้งานได้" chip green) but can't actually sign in —
             // LoginEndpoints.cs requires a linked ApplicationUser and falls
             // through to a generic "wrong password" error otherwise, with
             // nothing pointing an admin at the real cause.
-            var provisionResult = await UserProvisioning.EnsureIdentityLinkedAsync(_editing, DefaultPassword, _editing.email);
+            var provisionResult = await UserProvisioning.EnsureIdentityLinkedAsync(_editing, tempPassword, _editing.email);
             if (!provisionResult.Succeeded)
             {
                 _editInfo += $" — แต่ผูกบัญชี Identity ไม่สำเร็จ ({provisionResult.Error}) กรุณาไปผูกที่หน้า \"ผูกบัญชี Identity\" ด้วยตนเอง";
@@ -471,7 +474,10 @@
         var existing = await context.sc_users.FirstOrDefaultAsync(u => u.userid == _editing.userid);
         if (existing is null) return;
 
-        existing.password = PasswordHasher.HashPassword(existing, DefaultPassword);
+        _editError = null;
+        _editInfo = null;
+        var tempPassword = TemporaryPassword.Generate();
+        existing.password = PasswordHasher.HashPassword(existing, tempPassword);
         // isforcechanged + a fresh pwdexpdate, via the one service that
         // decides what an admin reset means — this is what actually makes the
         // "must change on first login" promise in the message below true
@@ -488,13 +494,18 @@
         if (appUser is not null)
         {
             await UserManager.RemovePasswordAsync(appUser);
-            await UserManager.AddPasswordAsync(appUser, DefaultPassword);
+            var added = await UserManager.AddPasswordAsync(appUser, tempPassword);
+            if (!added.Succeeded)
+            {
+                _editError = "ตั้งรหัสผ่านใหม่ไม่สำเร็จ: " + string.Join(", ", added.Errors.Select(e => e.Description));
+                return;
+            }
             // An account is usually reset *because* the person locked
             // themselves out — handing them a new password while the lockout
             // is still running would just fail again for another 15 minutes.
             await UserManager.SetLockoutEndDateAsync(appUser, null);
             await UserManager.ResetAccessFailedCountAsync(appUser);
-            _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านใหม่คือ {DefaultPassword} (บังคับเปลี่ยนรหัสผ่านครั้งแรกที่ login)";
+            _editInfo = $"รีเซ็ตรหัสผ่านเรียบร้อย รหัสผ่านชั่วคราวคือ {tempPassword} — {TempPasswordNote}";
         }
         else
         {

@@ -145,22 +145,22 @@ else
                     }
                 </MudTd>
                 <MudTd Style="text-align:center;">
-                    <MudCheckBox T="bool" Value="@context.cancreate" Dense="true"
+                    <MudCheckBox T="bool" @key="@($"{context.id}-cancreate-{_checkboxGeneration}")" Value="@context.cancreate" Dense="true"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Create, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
-                    <MudCheckBox T="bool" Value="@context.canread" Dense="true"
+                    <MudCheckBox T="bool" @key="@($"{context.id}-canread-{_checkboxGeneration}")" Value="@context.canread" Dense="true"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Read, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
-                    <MudCheckBox T="bool" Value="@context.canedit" Dense="true"
+                    <MudCheckBox T="bool" @key="@($"{context.id}-canedit-{_checkboxGeneration}")" Value="@context.canedit" Dense="true"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Edit, v))" />
                 </MudTd>
                 <MudTd Style="text-align:center;">
-                    <MudCheckBox T="bool" Value="@context.candelete" Dense="true"
+                    <MudCheckBox T="bool" @key="@($"{context.id}-candelete-{_checkboxGeneration}")" Value="@context.candelete" Dense="true"
                         Disabled="@(_rights?.CanEdit != true)"
                         ValueChanged="@(v => SetFlagAsync(context, RightFlag.Delete, v))" />
                 </MudTd>
@@ -281,13 +281,26 @@ else
     private const string AdminLockMessage =
         "ไม่สามารถปิดสิทธิ์ \"แก้ไข\" ของกลุ่ม Admin บนหน้าจัดการสิทธิ์นี้ได้ — มิฉะนั้นจะไม่มีใครแก้ไขสิทธิ์ได้อีกเลย";
 
+    // A refused toggle leaves the model unchanged, so Value is re-rendered with the SAME
+    // value and MudCheckBox keeps showing its own clicked state — the screen said the right
+    // was removed while it was still granted. Bumping this changes every checkbox's @key,
+    // so Blazor rebuilds them from the real model values (fix ported from the ADP.AI
+    // Advance.SecurityCore master, CEO 26 ก.ย. 2569).
+    private int _checkboxGeneration;
+
+    private void RevertCheckboxes()
+    {
+        _checkboxGeneration++;
+        StateHasChanged();
+    }
+
     // ---- Single-flag toggle (immediate save) ------------------------------
     private async Task SetFlagAsync(sc_program_role row, RightFlag flag, bool value)
     {
         if (flag == RightFlag.Edit && !value && IsAdminLockRow(row))
         {
             Snackbar.Add(AdminLockMessage, Severity.Error);
-            StateHasChanged(); // revert the checkbox to the unchanged model value
+            RevertCheckboxes();
             return;
         }
 
@@ -300,6 +313,7 @@ else
             if (existing is null)
             {
                 Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                RevertCheckboxes();
                 return;
             }
 
@@ -329,7 +343,7 @@ else
         catch (InvalidOperationException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
-            StateHasChanged();
+            RevertCheckboxes();
         }
     }
 
@@ -353,6 +367,7 @@ else
             if (existing is null)
             {
                 Snackbar.Add("ไม่พบรายการสิทธิ์นี้ในระบบแล้ว (อาจถูกลบไป) — กรุณาเลือกกลุ่มผู้ใช้ใหม่", Severity.Error);
+                RevertCheckboxes();
                 return;
             }
 

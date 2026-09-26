@@ -1,6 +1,7 @@
 @page "/admin/system/user-sessions"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -8,6 +9,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -19,6 +21,15 @@
         รายการเซสชัน login ของผู้ใช้แต่ละคน — ยกเลิก (revoke) เซสชันใดเซสชันหนึ่งได้ทันที (บังคับ logout ภายใน 5 นาที
         ตามรอบตรวจสอบของระบบ) โดยไม่กระทบเซสชันอื่นของผู้ใช้คนเดียวกัน
     </MudText>
+
+    @if (_rights is not null && !_rights.CanEdit)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>
+    }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="6">
@@ -63,7 +74,7 @@
                     }
                 </MudTd>
                 <MudTd>
-                    @if (!context.isrevoked)
+                    @if (!context.isrevoked && _rights?.CanEdit == true)
                     {
                         <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RevokeAsync(context.sessionid))">ยกเลิกเซสชัน</MudButton>
                     }
@@ -78,11 +89,30 @@
     private sc_user? _selectedUser;
     private List<sc_user_session> _sessions = new();
     private string _actor = "admin";
+    private string? _error;
+    private const string ProgramPath = "/admin/system/user-sessions";
+    private ProgramRoleService.ProgramRights? _rights;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always).
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task<IEnumerable<sc_user>> SearchUsersAsync(string search, CancellationToken ct)
@@ -107,6 +137,13 @@
 
     private async Task RevokeAsync(long sessionId)
     {
+        _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Edit) is string denied)
+        {
+            _error = denied;
+            return;
+        }
+
         await using var context = await DbFactory.CreateDbContextAsync();
         var session = await context.sc_user_sessions.FirstOrDefaultAsync(s => s.sessionid == sessionId);
         if (session is null) return;

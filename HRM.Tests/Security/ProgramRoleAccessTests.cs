@@ -121,4 +121,36 @@ public class ProgramRoleAccessTests
         Assert.True(rights.CanEdit, "broad edit grant on another role was masked");
         Assert.True(rights.CanRead);
     }
+
+    // ---- role name → role ids (the cached snapshot) ----
+
+    private static System.Security.Claims.ClaimsPrincipal UserInRoles(params string[] roles)
+        => new(new System.Security.Claims.ClaimsIdentity(
+            roles.Select(r => new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r)), "test"));
+
+    private static sc_program_role RoleRow(long roleId, string path, bool r = false, bool e = false)
+        => new() { roleid = roleId, progpath = path, canread = r, canedit = e };
+
+    [Fact]
+    public void Two_active_roles_with_the_same_name_do_not_throw_and_both_count()
+    {
+        // Used to be ToDictionaryAsync(name → roleid): a duplicate name threw on
+        // every rights check, so every page failed for everyone.
+        var rows = new[] { RoleRow(1, "/pay", r: true), RoleRow(2, "/pay", e: true) };
+        var roles = new[] { ("PAYROLL_OFFICER", 1L), ("payroll_officer", 2L) };
+
+        var rights = ProgramRoleService.RightsFromRows(rows, roles, UserInRoles("Payroll_Officer"), "/pay/runs");
+
+        Assert.True(rights.CanRead);
+        Assert.True(rights.CanEdit);
+    }
+
+    [Fact]
+    public void Role_name_with_no_active_role_grants_nothing()
+    {
+        var rows = new[] { RoleRow(1, "/pay", r: true, e: true) };
+        var roles = new[] { ("Admin", 1L) };
+
+        Assert.Equal(Rights.None, ProgramRoleService.RightsFromRows(rows, roles, UserInRoles("Ghost"), "/pay"));
+    }
 }

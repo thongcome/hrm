@@ -37,6 +37,16 @@ public class ProgramRoleService(IDbContextFactory<HRMContext> dbFactory, IMemory
     private const string CacheKey = "sc_program_role.all";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
+    // Rows and the role-name map live in ONE cache entry so they can never be
+    // out of step (they used to be two entries, "…all" and "…all.rolemap").
+    // A role name maps to EVERY active role id carrying it: two active roles
+    // with the same name used to make ToDictionaryAsync throw, which failed
+    // every rights check on every page for everyone. Ported from the ADP.AI
+    // Advance.SecurityCore master (2b4abb5), CEO 26 ก.ย. 2569.
+    private sealed record RightsSnapshot(
+        Dictionary<long, List<sc_program_role>> RowsByRole,
+        Dictionary<string, long[]> RoleIdsByName);
+
     // ---- 1) Route scanning ------------------------------------------------
 
     // "/leave-requests/detail/{Id:long}" -> "/leave-requests/detail";
@@ -109,28 +119,36 @@ public class ProgramRoleService(IDbContextFactory<HRMContext> dbFactory, IMemory
 
     // ---- 3) Cached checks -------------------------------------------------
 
-    private async Task<Dictionary<long, List<sc_program_role>>> GetRowsByRoleAsync(CancellationToken ct)
+    private async Task<RightsSnapshot> GetSnapshotAsync(CancellationToken ct)
     {
         return (await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheTtl;
             await using var context = await dbFactory.CreateDbContextAsync(ct);
             var rows = await context.sc_program_roles.Where(p => p.isactive).ToListAsync(ct);
-            var roleNameToId = await context.sc_roles.Where(r => r.isactive)
-                .ToDictionaryAsync(r => r.name!, r => r.roleid, StringComparer.OrdinalIgnoreCase, ct);
-            cache.Set(CacheKey + ".rolemap", roleNameToId, CacheTtl);
-            return rows.GroupBy(r => r.roleid).ToDictionary(g => g.Key, g => g.ToList());
+            var roles = await context.sc_roles.Where(r => r.isactive && r.name != null)
+                .Select(r => new { r.name, r.roleid }).ToListAsync(ct);
+            return BuildSnapshot(rows, roles.Select(r => (r.name!, r.roleid)));
         }))!;
     }
 
-    public async Task<ProgramRights> GetRightsAsync(ClaimsPrincipal user, string path, CancellationToken ct = default)
-    {
-        var rowsByRole = await GetRowsByRoleAsync(ct);
-        var roleMap = cache.Get<Dictionary<string, long>>(CacheKey + ".rolemap") ?? new(StringComparer.OrdinalIgnoreCase);
+    // Pure — ProgramRoleAccessTests reaches it through RightsFromRows below.
+    private static RightsSnapshot BuildSnapshot(IEnumerable<sc_program_role> rows, IEnumerable<(string Name, long RoleId)> roles)
+        => new(
+            rows.GroupBy(r => r.roleid).ToDictionary(g => g.Key, g => g.ToList()),
+            roles.GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Select(r => r.RoleId).ToArray(), StringComparer.OrdinalIgnoreCase));
 
+    public async Task<ProgramRights> GetRightsAsync(ClaimsPrincipal user, string path, CancellationToken ct = default)
+        => RightsFor(await GetSnapshotAsync(ct), user, path);
+
+    private static ProgramRights RightsFor(RightsSnapshot snapshot, ClaimsPrincipal user, string path)
+    {
         var perRoleRows = user.FindAll(ClaimTypes.Role).Select(x => x.Value)
-            .Where(roleName => roleMap.TryGetValue(roleName, out var roleId) && rowsByRole.ContainsKey(roleId))
-            .Select(roleName => (IReadOnlyList<sc_program_role>)rowsByRole[roleMap[roleName]]);
+            .SelectMany(roleName => snapshot.RoleIdsByName.TryGetValue(roleName, out var ids) ? ids : [])
+            .Distinct()
+            .Where(snapshot.RowsByRole.ContainsKey)
+            .Select(roleId => (IReadOnlyList<sc_program_role>)snapshot.RowsByRole[roleId]);
 
         return ResolveRights(perRoleRows, path);
     }
@@ -199,9 +217,10 @@ public class ProgramRoleService(IDbContextFactory<HRMContext> dbFactory, IMemory
 
     // Called by the permission-admin screen after a save so changes apply
     // immediately there instead of waiting out the TTL.
-    public void InvalidateCache()
-    {
-        cache.Remove(CacheKey);
-        cache.Remove(CacheKey + ".rolemap");
-    }
+    public void InvalidateCache() => cache.Remove(CacheKey);
+
+    // Test seam for the snapshot logic (duplicate role names, role-id merge) without a database.
+    public static ProgramRights RightsFromRows(
+        IEnumerable<sc_program_role> rows, IEnumerable<(string Name, long RoleId)> roles, ClaimsPrincipal user, string path)
+        => RightsFor(BuildSnapshot(rows, roles), user, path);
 }

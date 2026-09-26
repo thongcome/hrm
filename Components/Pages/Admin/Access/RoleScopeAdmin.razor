@@ -1,6 +1,7 @@
 @page "/admin/system/role-scopes"
 @using System.Security.Claims
 @using HRM.Models
+@using HRM.Services.Security
 @using HRM.Services.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -8,6 +9,7 @@
 @using MudBlazor
 @inject IDbContextFactory<HRMContext> DbFactory
 @inject AuthenticationStateProvider AuthProvider
+@inject ProgramRoleService ProgramRoles
 @inject ISnackbar Snackbar
 @attribute [Authorize(Policy = "Menu:SYS_ADMIN")]
 
@@ -21,7 +23,13 @@
         <b>Role ที่ไม่มีรายการขอบเขตเลย = ไม่ถูกจำกัด (เห็นทุกอย่างเหมือนวันนี้)</b> — ตอนนี้บังคับใช้จริงแล้วที่หน้า
         รายชื่อพนักงาน (<MudLink Href="/pay/employees">/pay/employees</MudLink>) และตอนมอบหมายพนักงานเข้าเลขที่อัตรา
         (<MudLink Href="/pos/position-slots">/pos/position-slots</MudLink>) หน้าอื่นจะทยอยเปิดใช้ต่อไป
+        · <b>การสลับบริษัท</b>: ต้องมีขอบเขตประเภท "บริษัท" จึงสลับไปบริษัทนั้นได้ — role ที่ไม่มีขอบเขตบริษัทเห็นเฉพาะบริษัทของตัวเอง (ยกเว้นบทบาท Admin)
     </MudText>
+
+    @if (_rights is not null && !_rights.CanCreate && !_rights.CanDelete)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">หน้านี้ยังไม่ได้เปิดสิทธิ์แก้ไขให้บทบาทของคุณ</MudAlert>
+    }
 
     <MudGrid Class="mt-3">
         <MudItem xs="12" sm="6">
@@ -40,6 +48,8 @@
     }
     else
     {
+        @if (_rights?.CanCreate == true)
+        {
         <MudText Typo="Typo.h6" Class="mt-4 mb-2">เพิ่มขอบเขตใหม่</MudText>
         <MudGrid>
             <MudItem xs="12" sm="3">
@@ -79,6 +89,7 @@
             <MudItem xs="12" sm="2"><MudDatePicker Label="สิ้นสุด" @bind-Date="_newEndDate" Editable="true" DateFormat="dd/MM/yyyy" /></MudItem>
         </MudGrid>
         <MudButton Class="mt-2" Color="Color.Primary" Variant="Variant.Filled" OnClick="AddScopeAsync">เพิ่ม</MudButton>
+        }
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -109,7 +120,10 @@
                     </MudChip>
                 </MudTd>
                 <MudTd>
-                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveScopeAsync(context.scopeid))">ลบ</MudButton>
+                    @if (_rights?.CanDelete == true)
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => RemoveScopeAsync(context.scopeid))">ลบ</MudButton>
+                    }
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent><MudText Typo="Typo.body2">Role นี้ยังไม่มีขอบเขต — เห็นข้อมูลทั้งหมด (ไม่ถูกจำกัด)</MudText></NoRecordsContent>
@@ -126,6 +140,8 @@
     private List<string> _companyIds = new();
     private string? _error;
     private string _actor = "admin";
+    private const string ProgramPath = "/admin/system/role-scopes";
+    private ProgramRoleService.ProgramRights? _rights;
 
     private RoleScopeType _newScopeType = RoleScopeType.Org;
     private string? _selectedCompanyId;
@@ -138,10 +154,27 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         _actor = state.User.Identity?.Name ?? "admin";
+        _rights = await ProgramRoles.GetRightsAsync(state.User, ProgramPath);
 
         await using var context = await DbFactory.CreateDbContextAsync();
         _roles = await context.sc_roles.Where(r => r.isactive).OrderBy(r => r.roleid).ToListAsync();
         _companyIds = await context.Hremployee.Select(e => e.companyid).Distinct().OrderBy(c => c).ToListAsync();
+    }
+
+    // Second enforcement layer (AD.CRUDManage, both layers always) — a hidden
+    // button stops nobody who calls the handler directly.
+    private async Task<string?> RequireRightAsync(ProgramRoleService.ProgramAction action)
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        try
+        {
+            await ProgramRoles.RequireAsync(state.User, ProgramPath, action);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private async Task LoadScopesAsync()
@@ -228,6 +261,11 @@
     {
         _error = null;
         if (_selectedRoleId is null) return;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Create) is string denied)
+        {
+            _error = denied;
+            return;
+        }
 
         string? scopevalue = _newScopeType switch
         {
@@ -265,6 +303,13 @@
 
     private async Task RemoveScopeAsync(long scopeId)
     {
+        _error = null;
+        if (await RequireRightAsync(ProgramRoleService.ProgramAction.Delete) is string denied)
+        {
+            _error = denied;
+            return;
+        }
+
         await using var context = await DbFactory.CreateDbContextAsync();
         var scope = await context.sc_role_scopes.FirstOrDefaultAsync(s => s.scopeid == scopeId);
         if (scope is null) return;
