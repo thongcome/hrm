@@ -29,6 +29,22 @@ public static class TaxCalculationNarrative
             sb.Append("<div style=\"font-size:.95rem;line-height:1.7\">");
             sb.Append($"<p style=\"margin:0 0 .6rem\"><b>ภาษีที่หักงวดนี้ {Money(monthly)} บาท</b></p>");
 
+            // ภาษีเป็น 0 ไม่ได้แปลว่า "ยังไม่ได้คำนวณ" — บอกเหตุผลไว้ตรงนี้เลย เพราะเป็นคำถามที่
+            // พนักงานถาม HR บ่อยที่สุด และคำตอบมีสองแบบที่ต่างกันมาก (ยังไม่ถึงเกณฑ์ / หักครบแล้ว)
+            if (monthly == 0m)
+            {
+                var annualTax = root.TryGetProperty("AnnualCalculation", out var ac) && ac.ValueKind == JsonValueKind.Object
+                    ? Num(ac, "TotalAnnualTax") : 0m;
+                var ytdTax = Num(root, "YtdTaxBeforeThisPeriod");
+                var why = annualTax <= 0m
+                    ? "เงินได้ทั้งปีหลังหักค่าใช้จ่ายและค่าลดหย่อนแล้ว ยังไม่ถึงเกณฑ์ต้องเสียภาษี งวดนี้จึงไม่มีภาษีให้หัก"
+                    : ytdTax >= annualTax
+                        ? $"ภาษีทั้งปี {Money(annualTax)} บาท ถูกหักสะสมไปแล้ว {Money(ytdTax)} บาท ครบทั้งปีแล้ว งวดนี้จึงไม่ต้องหักเพิ่ม"
+                        : $"ภาษีทั้งปี {Money(annualTax)} บาท หักสะสมแล้ว {Money(ytdTax)} บาท ส่วนที่เหลือเฉลี่ยลงงวดที่เหลือแล้วปัดเป็น 0 ในงวดนี้";
+                sb.Append($"<p style=\"margin:0 0 .6rem;padding:.5rem .7rem;background:#F7F9FC;border-left:3px solid #1F3864\">"
+                        + $"<b>ทำไมงวดนี้ไม่ถูกหักภาษี:</b> {System.Net.WebUtility.HtmlEncode(why)}</p>");
+            }
+
             // ── เงินได้ ────────────────────────────────────────────────────
             sb.Append(Section("1. เงินได้ที่นำมาคิดภาษี"));
             sb.Append(Row("เงินได้งวดนี้ (ก่อนหักอะไร)", Num(root, "GrossEarnings")));

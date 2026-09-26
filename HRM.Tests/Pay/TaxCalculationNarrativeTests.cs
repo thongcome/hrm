@@ -79,4 +79,50 @@ public class TaxCalculationNarrativeTests
         Assert.Contains("30,000.00", html);
         Assert.DoesNotContain("นายจ้างเดิม", html);
     }
+
+    // ภาษีเป็น 0 ต้องกางให้ดูได้และบอกเหตุผล (ทีม HRM เจอก่อน 26 ก.ย. 2569) — คำถามที่ HR
+    // โดนถามบ่อยที่สุดคือ "ทำไมงวดนี้ไม่ถูกหักภาษี" และคำตอบมีสองแบบที่ต่างกันมาก
+    [Fact]
+    public void ภาษีเป็นศูนย์เพราะยังไม่ถึงเกณฑ์_บอกเหตุผลนั้น()
+    {
+        const string json = """
+        {
+          "GrossEarnings": 15000,
+          "YtdIncomeBeforeThisPeriod": 120000,
+          "AnnualCalculation": { "TotalAnnualTax": 0, "Breakdown": [] },
+          "YtdTaxBeforeThisPeriod": 0,
+          "MonthlyWithholding": 0
+        }
+        """;
+
+        Assert.True(TaxCalculationNarrative.TryBuild(json, out var html));
+        Assert.Contains("ทำไมงวดนี้ไม่ถูกหักภาษี", html);
+        Assert.Contains("ยังไม่ถึงเกณฑ์", html);
+        Assert.Contains("15,000.00", html);   // ยังกางตัวเลขให้ดูครบเหมือนเดิม
+    }
+
+    [Fact]
+    public void ภาษีเป็นศูนย์เพราะหักครบทั้งปีแล้ว_บอกยอดที่หักไปแล้ว()
+    {
+        const string json = """
+        {
+          "GrossEarnings": 41600,
+          "AnnualCalculation": { "TotalAnnualTax": 10520, "Breakdown": [] },
+          "YtdTaxBeforeThisPeriod": 10520,
+          "MonthlyWithholding": 0
+        }
+        """;
+
+        Assert.True(TaxCalculationNarrative.TryBuild(json, out var html));
+        Assert.Contains("ครบทั้งปีแล้ว", html);
+        Assert.Contains("10,520.00", html);
+        Assert.DoesNotContain("ยังไม่ถึงเกณฑ์", html);
+    }
+
+    [Fact]
+    public void ภาษีไม่เป็นศูนย์_ไม่ต้องมีกล่องอธิบายว่าทำไมไม่ถูกหัก()
+    {
+        Assert.True(TaxCalculationNarrative.TryBuild(Sample, out var html));
+        Assert.DoesNotContain("ทำไมงวดนี้ไม่ถูกหักภาษี", html);
+    }
 }

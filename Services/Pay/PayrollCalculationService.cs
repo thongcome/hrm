@@ -1101,6 +1101,9 @@ public class PayrollCalculationService
                         ExpenseDeductionCap = expenseDeductionCap,
                     },
                     AnnualCalculation = annualCalc,
+                    // ภาษีที่หักสะสมมาก่อนงวดนี้ — ต้องอยู่ในบันทึกด้วย ไม่งั้นตอบคำถามที่ HR โดนถามบ่อยที่สุด
+                    // ("ทำไมงวดนี้ไม่ถูกหักภาษี") ไม่ได้ว่าเพราะยังไม่ถึงเกณฑ์ หรือเพราะหักครบทั้งปีไปแล้ว (พอร์ตจาก Advance.Payroll 11d0c1e)
+                    YtdTaxBeforeThisPeriod = ytdTax,
                     MonthlyWithholding = monthlyTax,
                 }),
             });
